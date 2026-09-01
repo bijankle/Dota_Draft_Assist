@@ -1,105 +1,153 @@
 """Bracket-index verification against a synthetic two-source world with a
-known ground-truth alignment. The checker must accept the correct mapping
-(including with realistic near-identical neighbour win rates) and reject an
-off-by-one — the failure mode that would silently skew every baseline."""
+known ground-truth alignment.
+
+The realistic complications are modelled explicitly: neighbouring brackets
+have near-identical hero win rates, rank-graded hero popularity, an empty
+OpenDota Immortal tier, and — crucially — Stratz bucketing whole matches by
+average rank, which smooths every bracket toward its more populous
+neighbour. The checker must pass a correct mapping under all of that, and
+still fail a genuine off-by-one in either direction."""
 
 import numpy as np
 import pytest
 
 from draft_assist.data import verify
 
-# True population pyramid per bracket (games in some window).
-POPS = {"HERALD": 900_000, "GUARDIAN": 2_200_000, "CRUSADER": 3_600_000,
-        "ARCHON": 3_900_000, "LEGEND": 3_200_000, "ANCIENT": 1_900_000,
-        "DIVINE": 700_000, "IMMORTAL": 260_000}
+POPS = np.array([900_000, 2_200_000, 3_600_000, 3_900_000,
+                 3_200_000, 1_900_000, 700_000, 260_000], dtype=float)
 N_HEROES = 120
+ORDER = verify.BRACKET_ORDER
 
 
-def synth_world(od_shift: int = 0, immortal_empty: bool = False, seed: int = 5):
-    """Returns (hero_stats, stratz_counts_by_bracket).
+class World:
+    """Ground truth: per-bracket hero pick counts and win rates."""
 
-    od_shift shifts which bracket's data lands in OpenDota field "<t>_pick":
-    0 = the assumed mapping is true; +1 = every OD field actually holds the
-    next-lower bracket (an off-by-one bug).
-    """
+    def __init__(self, seed: int = 5):
+        rng = np.random.default_rng(seed)
+        base_share = rng.dirichlet(np.full(N_HEROES, 5.0))
+        popularity_grad = rng.normal(0, 0.5, N_HEROES)  # rank-graded picks
+        hero_eff = rng.normal(0, 0.025, N_HEROES)
+        skill_sens = rng.normal(0, 0.012, N_HEROES)     # rank-graded winrate
+        self.counts = np.zeros((8, N_HEROES))
+        self.wr = np.zeros((8, N_HEROES))
+        for b in range(8):
+            tilt = (b - 3.5) / 3.5
+            share = base_share * np.exp(popularity_grad * tilt)
+            share /= share.sum()
+            self.counts[b] = POPS[b] * share
+            self.wr[b] = np.clip(0.5 + hero_eff + skill_sens * tilt,
+                                 0.05, 0.95)
+
+
+def od_hero_stats(world: World, od_shift: int = 0,
+                  immortal_empty: bool = True, seed: int = 7):
+    """OpenDota heroStats fields; od_shift=+1 means field t actually holds
+    bracket t+1's games (a real off-by-one bug), etc."""
     rng = np.random.default_rng(seed)
-    share = rng.dirichlet(np.full(N_HEROES, 5.0))          # hero pick shares
-    hero_eff = rng.normal(0, 0.025, N_HEROES)              # hero strength
-    skill_sens = rng.normal(0, 0.012, N_HEROES)            # bracket tilt
-    order = verify.BRACKET_ORDER
-
-    def winrate(h: int, b_idx: int) -> float:
-        # Neighbouring brackets differ only slightly — the realistic regime
-        # where naive per-bracket correlation is useless.
-        tilt = (b_idx - 3.5) / 3.5
-        return float(np.clip(0.5 + hero_eff[h] + skill_sens[h] * tilt,
-                             0.05, 0.95))
-
     hero_stats = []
     for h in range(N_HEROES):
         entry = {"id": h + 1}
         for t in range(1, 9):
-            b_idx = t - 1 + od_shift
-            if not 0 <= b_idx < 8 or (immortal_empty and order[b_idx] == "IMMORTAL"):
+            b = t - 1 + od_shift
+            if not 0 <= b < 8 or (immortal_empty and b == 7):
                 picks = 0
             else:
-                pop = POPS[order[b_idx]]
-                picks = max(0, int(pop * share[h]
-                                   * rng.normal(1, 0.03)))
-            wins = int(picks * winrate(h, min(max(t - 1 + od_shift, 0), 7)))
+                picks = max(0, int(world.counts[b, h] * rng.normal(1, 0.02)))
+            wins = int(picks * world.wr[min(max(t - 1 + od_shift, 0), 7), h])
             entry[f"{t}_pick"], entry[f"{t}_win"] = picks, wins
         hero_stats.append(entry)
+    return hero_stats
 
-    stratz_counts = {}
-    for b_idx, bracket in enumerate(order):
-        counts = {}
+
+def stratz_counts(world: World, smoothed: bool, seed: int = 9):
+    """Stratz per-bracket counts; smoothed=True models match-average
+    bucketing: each bracket is a population-weighted mixture of itself and
+    its neighbours."""
+    rng = np.random.default_rng(seed)
+    out = {}
+    for b, bracket in enumerate(ORDER):
+        if smoothed:
+            mix = np.zeros(N_HEROES)
+            wr_acc = np.zeros(N_HEROES)
+            for nb, kernel in ((b - 1, 0.25), (b, 0.5), (b + 1, 0.25)):
+                if 0 <= nb < 8:
+                    w = kernel * POPS[nb]
+                    mix += w * world.counts[nb] / POPS[nb]
+                    wr_acc += w * world.counts[nb] / POPS[nb] * world.wr[nb]
+            wr = wr_acc / np.maximum(mix, 1e-9)
+            counts = mix / mix.sum() * POPS[b] * 0.4
+        else:
+            counts = world.counts[b] * 0.4
+            wr = world.wr[b]
+        entry = {}
         for h in range(N_HEROES):
-            m = max(1, int(POPS[bracket] * 0.4 * share[h]
-                           * rng.normal(1, 0.05)))
-            w = int(np.clip(rng.normal(winrate(h, b_idx),
-                                       0.5 / np.sqrt(m)), 0, 1) * m)
-            counts[h + 1] = (m, w)
-        stratz_counts[bracket] = counts
-    return hero_stats, stratz_counts
+            m = max(1, int(counts[h] * rng.normal(1, 0.02)))
+            wins = int(np.clip(rng.normal(wr[h], 0.5 / np.sqrt(m)), 0, 1) * m)
+            entry[h + 1] = (m, wins)
+        out[bracket] = entry
+    return out
 
 
-def run_verify(monkeypatch, hero_stats, stratz_counts):
+def run_verify(monkeypatch, hero_stats, counts):
     monkeypatch.setattr(verify.stratz, "fetch_bracket_counts",
-                        lambda bracket, take=14: stratz_counts[bracket])
+                        lambda bracket, take=14: counts[bracket])
     return verify.verify_tier_mapping(hero_stats, ("ANCIENT", "DIVINE"))
 
 
-def test_correct_mapping_passes(monkeypatch):
-    hero_stats, stratz_counts = synth_world(od_shift=0)
-    report = run_verify(monkeypatch, hero_stats, stratz_counts)
-    assert report["volume_check"]["best_shift"] == 0
-    assert report["volume_check"]["decisive"]
+def test_correct_mapping_clean_sources_passes(monkeypatch):
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 0),
+                        stratz_counts(world, smoothed=False))
     assert report["passed"], verify.format_report(report)
+    assert report["volume_check"]["ok"]
+    assert report["pickshare_check"]["ok"]
 
 
-def test_off_by_one_fails(monkeypatch):
-    hero_stats, stratz_counts = synth_world(od_shift=1)
-    report = run_verify(monkeypatch, hero_stats, stratz_counts)
+def test_correct_mapping_with_match_average_smoothing_passes(monkeypatch):
+    # The real-world regime that produced the false FAILED: Stratz brackets
+    # are neighbour mixtures. Structural checks must still say shift 0 and
+    # the ridge must not read the smoothing tilt as an off-by-one.
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 0),
+                        stratz_counts(world, smoothed=True))
+    assert report["passed"], verify.format_report(report)
+    assert report["winrate_ridge"]["consistent_shift"] is None
+
+
+def test_off_by_one_fails_clean(monkeypatch):
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 1),
+                        stratz_counts(world, smoothed=False))
     assert not report["passed"], verify.format_report(report)
 
 
-def test_off_by_one_other_direction_fails(monkeypatch):
-    hero_stats, stratz_counts = synth_world(od_shift=-1)
-    report = run_verify(monkeypatch, hero_stats, stratz_counts)
+def test_off_by_one_fails_other_direction(monkeypatch):
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, -1),
+                        stratz_counts(world, smoothed=False))
     assert not report["passed"], verify.format_report(report)
 
 
-def test_empty_immortal_tier_still_passes(monkeypatch):
-    # The real OpenDota feed showed a near-empty tier 8; a missing top tier
-    # must not break alignment of the tiers we actually use.
-    hero_stats, stratz_counts = synth_world(od_shift=0, immortal_empty=True)
-    report = run_verify(monkeypatch, hero_stats, stratz_counts)
-    assert report["volume_check"]["best_shift"] == 0
-    assert report["passed"], verify.format_report(report)
+def test_off_by_one_fails_even_with_smoothing(monkeypatch):
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 1),
+                        stratz_counts(world, smoothed=True))
+    assert not report["passed"], verify.format_report(report)
+
+
+def test_empty_immortal_is_reported_not_fatal(monkeypatch):
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 0,
+                                                   immortal_empty=True),
+                        stratz_counts(world, smoothed=True))
+    assert report["passed"]
+    assert any("zero games" in w for w in report["warnings"])
 
 
 def test_report_is_printable(monkeypatch):
-    hero_stats, stratz_counts = synth_world()
-    report = run_verify(monkeypatch, hero_stats, stratz_counts)
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 0),
+                        stratz_counts(world, smoothed=True))
     text = verify.format_report(report)
-    assert "volume alignment" in text and "PASSED" in text
+    assert "pick-share alignment" in text
+    assert "win-rate ridge" in text
