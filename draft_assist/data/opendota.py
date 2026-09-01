@@ -62,6 +62,9 @@ def fetch_heroes() -> dict[int, dict]:
             "internal_name": entry.get("name", ""),
             "img": entry.get("img", ""),
             "icon": entry.get("icon", ""),
+            # Loose role tags ("Carry", "Support", ...) used only for the
+            # UI's queued-role highlight, never for filtering.
+            "roles": entry.get("roles", []),
         }
     require(len(heroes) > 100, "OpenDota constants/heroes",
             f"only {len(heroes)} heroes parsed, expected 120+")
