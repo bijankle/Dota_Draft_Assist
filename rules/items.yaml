@@ -1,0 +1,428 @@
+# Hand-authored item counter rules — ASSERTED, not measured. Edit freely;
+# this file is the product, the engine just applies it.
+#
+# Shape of a rule:
+#   - item: Black King Bar          # item name shown in the UI
+#     trigger: Lion                 # hero name that triggers it (OpenDota
+#                                   # localized name, case-insensitive)
+#     side: enemy                   # "enemy" (default) or "ally" — save items
+#                                   # key off having someone worth saving
+#     severity: 3                   # 1 nice / 2 strong / 3 near-mandatory
+#     reason: "..."                 # short, names the triggering hero
+#     roles: [core]                 # optional; carry/mid/offlane/
+#                                   # soft_support/hard_support or groups
+#                                   # core/support; omitted = any role
+#     verified_patch: "7.39"        # when this rule was last sanity-checked
+#
+# Update meta.current_patch when Dota patches; rules older than two minor
+# patches get flagged stale in the UI (visible decay, not silent).
+#
+# Stacking is sublinear (1.0 / 0.6 / 0.4) — one Nullifier answers three
+# enemies. Severity floor and 5-item display cap live in the engine.
+# Expect silence in many games; that is correct.
+
+meta:
+  current_patch: "7.39"
+
+rules:
+  # ---- Black King Bar: magic burst / chain disable --------------------
+  - item: Black King Bar
+    trigger: Lion
+    severity: 3
+    reason: "Lion chains Hex + Impale + Finger — BKB lets you fight through it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Shadow Shaman
+    severity: 3
+    reason: "Shadow Shaman's Hex + Shackles is a full kill window without BKB"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Skywrath Mage
+    severity: 3
+    reason: "Skywrath's magic burst deletes cores without spell immunity"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Zeus
+    severity: 2
+    reason: "Zeus is pure magic damage — BKB blanks most of his kit"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Leshrac
+    severity: 2
+    reason: "Leshrac's stun + Edict burst is answered by BKB timing"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Enigma
+    severity: 2
+    reason: "BKB walks out of Enigma's Black Hole follow-up damage"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Nullifier: purgeable saves / buffs -----------------------------
+  - item: Nullifier
+    trigger: Omniknight
+    severity: 3
+    reason: "Nullifier purges Omniknight's Guardian Angel and Repel"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Dazzle
+    severity: 3
+    reason: "Nullifier prevents/strips Dazzle's Shallow Grave saves"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Oracle
+    severity: 3
+    reason: "Nullifier answers Oracle's False Promise and dispels his saves"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Ember Spirit
+    severity: 2
+    reason: "Nullifier mutes Ember's Flame Guard and blocks regen items"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Winter Wyvern
+    severity: 2
+    reason: "Nullifier strips Cold Embrace targets of item saves that follow"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+
+  # ---- Monkey King Bar: evasion ---------------------------------------
+  - item: Monkey King Bar
+    trigger: Phantom Assassin
+    severity: 3
+    reason: "Phantom Assassin's Blur requires true strike"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Monkey King Bar
+    trigger: Windranger
+    severity: 2
+    reason: "Windrun evasion blanks right-clicks without MKB"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Monkey King Bar
+    trigger: Brewmaster
+    severity: 2
+    reason: "Drunken Brawler evasion punishes physical cores without MKB"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Linken's Sphere: single-target ultimates -----------------------
+  - item: Linken's Sphere
+    trigger: Doom
+    severity: 3
+    reason: "Linken's blocks Doom on your key core"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Legion Commander
+    severity: 2
+    reason: "Linken's blocks Duel initiation"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Storm Spirit
+    severity: 2
+    reason: "Linken's eats Storm's Electric Vortex on his primary target"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Bane
+    severity: 2
+    reason: "Linken's blocks Fiend's Grip and Nightmare initiation"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Lotus Orb: reflectable single-target spells --------------------
+  - item: Lotus Orb
+    trigger: Legion Commander
+    severity: 2
+    reason: "Lotus on the Duel target dispels and reflects the follow-up"
+    verified_patch: "7.39"
+  - item: Lotus Orb
+    trigger: Lion
+    severity: 2
+    reason: "Lotus dispels Hex/Impale on a core and threatens the reflect"
+    verified_patch: "7.39"
+  - item: Lotus Orb
+    trigger: Pugna
+    severity: 1
+    reason: "Lotus reflects Decrepify and Nether Blast pressure"
+    verified_patch: "7.39"
+
+  # ---- Silence answers: Eul's / Manta / Guardian Greaves --------------
+  - item: Eul's Scepter
+    trigger: Silencer
+    severity: 2
+    reason: "Eul's self-cast dispels Silencer's Arcane Curse and buys time"
+    verified_patch: "7.39"
+  - item: Manta Style
+    trigger: Silencer
+    severity: 2
+    reason: "Manta dispels Silencer's silences on an agility core"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Manta Style
+    trigger: Death Prophet
+    severity: 2
+    reason: "Manta dispels Silence and dodges Spirit Siphon ticks"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Manta Style
+    trigger: Drow Ranger
+    severity: 1
+    reason: "Manta dispels Gust silence and confuses Drow's focus fire"
+    roles: [carry, mid]
+    verified_patch: "7.39"
+  - item: Guardian Greaves
+    trigger: Silencer
+    severity: 2
+    reason: "Greaves aura + dispel answers Global Silence teamfights"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+
+  # ---- Eul's: channels / Huskar / dispellables ------------------------
+  - item: Eul's Scepter
+    trigger: Huskar
+    severity: 2
+    reason: "Eul's purges Huskar's Berserker's Blood momentum and sets kills"
+    verified_patch: "7.39"
+  - item: Eul's Scepter
+    trigger: Sand King
+    severity: 2
+    reason: "Eul's cancels Sand King's Epicenter channel or dodges the blink combo"
+    verified_patch: "7.39"
+
+  # ---- Spirit Vessel: heal reliant heroes -----------------------------
+  - item: Spirit Vessel
+    trigger: Huskar
+    severity: 3
+    reason: "Vessel cuts Huskar's regen — the cleanest counter to his timing"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Alchemist
+    severity: 2
+    reason: "Vessel cuts Alchemist's Chemical Rage sustain in fights"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Morphling
+    severity: 2
+    reason: "Vessel drags Morphling down through Attribute Shift healing"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Necrophos
+    severity: 2
+    reason: "Vessel counters Necrophos's Heartstopper sustain and Ghost Shroud healing"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+
+  # ---- Pipe / Eternal Shroud: magic AoE teams -------------------------
+  - item: Pipe of Insight
+    trigger: Zeus
+    severity: 2
+    reason: "Pipe blunts Zeus's repeated magic AoE"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Leshrac
+    severity: 2
+    reason: "Pipe soaks Leshrac's Pulse Nova and Split Earth in fights"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Bristleback
+    severity: 1
+    reason: "Pipe reduces Quill Spray chip on your whole team"
+    roles: [support, offlane]
+    verified_patch: "7.39"
+
+  # ---- Ghost / Glimmer / Force: physical burst and saves --------------
+  - item: Ghost Scepter
+    trigger: Phantom Assassin
+    severity: 3
+    reason: "Ghost form blanks Phantom Assassin's burst on you"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Ursa
+    severity: 2
+    reason: "Ghost Scepter stops Ursa from right-clicking you down"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Sniper
+    severity: 2
+    reason: "Ghost walks Sniper's physical damage out of the fight"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Glimmer Cape
+    trigger: Zeus
+    severity: 1
+    reason: "Glimmer's magic resist helps under Zeus barrage (he can still reveal with ult)"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Force Staff
+    trigger: Mars
+    severity: 2
+    reason: "Force Staff moves allies over Arena walls and out of Cage + Spear"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Force Staff
+    trigger: Clockwerk
+    severity: 2
+    reason: "Force Staff pushes allies (or Clockwerk) out of Power Cogs"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Force Staff
+    trigger: Puck
+    severity: 1
+    reason: "Force breaks allies off Puck's Dream Coil rings"
+    roles: [support]
+    verified_patch: "7.39"
+
+  # ---- Heaven's Halberd: right-click reliant cores --------------------
+  - item: Heaven's Halberd
+    trigger: Phantom Assassin
+    severity: 2
+    reason: "Halberd disarm turns off Phantom Assassin for 5 seconds"
+    roles: [offlane]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Troll Warlord
+    severity: 2
+    reason: "Disarm through BKB answers Troll's Battle Trance window"
+    roles: [offlane]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Wraith King
+    severity: 1
+    reason: "Halberd disarm wastes Wraith King's second life uptime"
+    roles: [offlane]
+    verified_patch: "7.39"
+
+  # ---- Break: Silver Edge ---------------------------------------------
+  - item: Silver Edge
+    trigger: Bristleback
+    severity: 3
+    reason: "Break turns off Bristleback's passive — his whole tankiness"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Spectre
+    severity: 2
+    reason: "Break removes Spectre's Dispersion in fights"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Timbersaw
+    severity: 2
+    reason: "Break drops Reactive Armor stacks' value"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Hexes / instance lock: Scythe, Orchid/Bloodthorn ---------------
+  - item: Scythe of Vyse
+    trigger: Storm Spirit
+    severity: 3
+    reason: "Hex is the reliable catch on Storm Spirit mid-zip"
+    verified_patch: "7.39"
+  - item: Scythe of Vyse
+    trigger: Ember Spirit
+    severity: 2
+    reason: "Hex locks Ember Spirit despite remnants"
+    verified_patch: "7.39"
+  - item: Orchid Malevolence
+    trigger: Storm Spirit
+    severity: 2
+    reason: "Orchid silence grounds Storm Spirit before he balls out"
+    roles: [mid, carry]
+    verified_patch: "7.39"
+  - item: Orchid Malevolence
+    trigger: Puck
+    severity: 2
+    reason: "Silence stops Puck's Phase Shift / Jaunt escapes"
+    roles: [mid, carry]
+    verified_patch: "7.39"
+
+  # ---- Blade Mail ------------------------------------------------------
+  - item: Blade Mail
+    trigger: Sniper
+    severity: 1
+    reason: "Blade Mail punishes Sniper focusing you from max range"
+    roles: [offlane]
+    verified_patch: "7.39"
+  - item: Blade Mail
+    trigger: Zeus
+    severity: 1
+    reason: "Blade Mail returns Zeus's big magic nukes"
+    roles: [offlane]
+    verified_patch: "7.39"
+
+  # ---- Mage Slayer -----------------------------------------------------
+  - item: Mage Slayer
+    trigger: Zeus
+    severity: 2
+    reason: "Mage Slayer's debuff cuts Zeus's spam damage at the source"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Mage Slayer
+    trigger: Leshrac
+    severity: 2
+    reason: "Mage Slayer shreds Leshrac's sustained magic output"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Aeon Disk: burst combos ----------------------------------------
+  - item: Aeon Disk
+    trigger: Spirit Breaker
+    severity: 2
+    reason: "Aeon Disk survives Spirit Breaker's charge-burst on you"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Aeon Disk
+    trigger: Storm Spirit
+    severity: 2
+    reason: "Aeon Disk blanks Storm's zip-in burst on supports"
+    roles: [support]
+    verified_patch: "7.39"
+
+  # ---- Ally-keyed save rules: someone worth saving --------------------
+  - item: Glimmer Cape
+    trigger: Terrorblade
+    side: ally
+    severity: 2
+    reason: "Your Terrorblade is a protect-the-carry win condition — Glimmer keeps him alive"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Glimmer Cape
+    trigger: Medusa
+    side: ally
+    severity: 2
+    reason: "Your Medusa needs babysitting to her item timings — Glimmer saves her"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Force Staff
+    trigger: Sniper
+    side: ally
+    severity: 2
+    reason: "Your Sniper gets dove — Force Staff resets his positioning"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Force Staff
+    trigger: Invoker
+    side: ally
+    severity: 1
+    reason: "Your Invoker is jump target number one — Force him out"
+    roles: [support]
+    verified_patch: "7.39"
