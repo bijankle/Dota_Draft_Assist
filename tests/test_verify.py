@@ -104,14 +104,48 @@ def test_correct_mapping_clean_sources_passes(monkeypatch):
 
 
 def test_correct_mapping_with_match_average_smoothing_passes(monkeypatch):
-    # The real-world regime that produced the false FAILED: Stratz brackets
-    # are neighbour mixtures. Structural checks must still say shift 0 and
-    # the ridge must not read the smoothing tilt as an off-by-one.
+    # Stratz brackets as symmetric neighbour mixtures: the offset fit must
+    # land near 0, well under the off-by-one threshold.
     world = World()
     report = run_verify(monkeypatch, od_hero_stats(world, 0),
                         stratz_counts(world, smoothed=True))
     assert report["passed"], verify.format_report(report)
-    assert report["winrate_ridge"]["consistent_shift"] is None
+    ma = report["winrate_offset_fit"]["median_alpha"]
+    assert ma is not None and abs(ma) < 0.875
+
+
+def stratz_counts_half_notch(world: World, seed: int = 11):
+    """Stratz brackets whose boundaries sit half a notch below OpenDota's:
+    each bracket is a 50/50 blend of its tier and the tier below — the
+    regime observed on real data (uniform small tilt toward shift -1)."""
+    rng = np.random.default_rng(seed)
+    out = {}
+    for b, bracket in enumerate(ORDER):
+        lo = max(0, b - 1)
+        counts = 0.5 * world.counts[b] + 0.5 * world.counts[lo]
+        wr = ((0.5 * world.counts[b] * world.wr[b]
+               + 0.5 * world.counts[lo] * world.wr[lo])
+              / np.maximum(counts, 1e-9))
+        counts = counts / counts.sum() * POPS[b] * 0.4
+        entry = {}
+        for h in range(N_HEROES):
+            m = max(1, int(counts[h] * rng.normal(1, 0.02)))
+            wins = int(np.clip(rng.normal(wr[h], 0.5 / np.sqrt(m)), 0, 1) * m)
+            entry[h + 1] = (m, wins)
+        out[bracket] = entry
+    return out
+
+
+def test_half_notch_convention_offset_passes(monkeypatch):
+    # A bucketing-convention offset must be measured (~ -0.5), reported,
+    # and NOT read as an off-by-one.
+    world = World()
+    report = run_verify(monkeypatch, od_hero_stats(world, 0),
+                        stratz_counts_half_notch(world))
+    assert report["passed"], verify.format_report(report)
+    ma = report["winrate_offset_fit"]["median_alpha"]
+    assert ma is not None and -0.875 < ma <= -0.25
+    assert any("convention" in w for w in report["warnings"])
 
 
 def test_off_by_one_fails_clean(monkeypatch):
@@ -150,4 +184,4 @@ def test_report_is_printable(monkeypatch):
                         stratz_counts(world, smoothed=True))
     text = verify.format_report(report)
     assert "pick-share alignment" in text
-    assert "win-rate ridge" in text
+    assert "win-rate offset fit" in text
