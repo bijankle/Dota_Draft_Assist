@@ -8,10 +8,23 @@ an ordinary desktop window. Single-player personal tool — not a product.
 It never touches the game: no injection, no memory reading, no input
 automation. It only reads pixels from a window already on the user's screen.
 
-## Setup (Windows)
+## Setup (Windows) — double-click, no command prompt needed
+
+1. Double-click **`Setup.bat`** — creates the Python environment, installs
+   dependencies, and opens `.env` in Notepad for you to paste your Stratz
+   API key. (Requires Python 3.11+ from python.org, installed with
+   "Add python.exe to PATH" ticked.)
+2. **`Capture Probe.bat`** — step 1 below, with Dota running.
+3. **`Update Data.bat`** — downloads statistics and portraits (run ~daily).
+4. **`Tune Recognition.bat`** — trains the recogniser (no Dota needed).
+5. **`Start Draft Assist.bat`** — the app. **`Start Demo.bat`** runs it with
+   a fake draft so you can explore the interface without the game.
+
+The equivalent command-line calls are shown below for reference; every
+launcher is a thin wrapper around them.
 
 ```
-py -3.11 -m venv .venv
+py -3 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-windows.txt
 copy .env.example .env    # then paste your Stratz API key into .env
