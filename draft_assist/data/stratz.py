@@ -186,18 +186,17 @@ def fetch_matchups(hero_ids: list[int], bracket_filter: dict,
     return out
 
 
-def fetch_bracket_winrates(bracket: str) -> dict[int, float]:
-    """Per-hero winrate in ONE named bracket, for the OpenDota tier-index
-    cross-check (tools/verify_brackets.py). Uses heroStats.winDay summed over
-    the last week."""
+def fetch_bracket_counts(bracket: str, take: int = 14) -> dict[int, tuple[int, int]]:
+    """Per-hero (matches, wins) in ONE named bracket, for the OpenDota
+    tier-index cross-check. Uses heroStats.winDay summed over recent days."""
     data = _post(
         """
         query {
           heroStats {
-            winDay(take: 7, bracketIds: [%s]) { heroId matchCount winCount }
+            winDay(take: %d, bracketIds: [%s]) { heroId matchCount winCount }
           }
         }
-        """ % bracket,
+        """ % (take, bracket),
         f"stratz_windays_{bracket}.json",
     )
     rows = (data.get("heroStats") or {}).get("winDay")
@@ -213,4 +212,4 @@ def fetch_bracket_winrates(bracket: str) -> dict[int, float]:
         a = acc.setdefault(int(r["heroId"]), [0, 0])
         a[0] += int(r["matchCount"])
         a[1] += int(r["winCount"])
-    return {hid: w / m for hid, (m, w) in acc.items() if m > 0}
+    return {hid: (m, w) for hid, (m, w) in acc.items() if m > 0}
