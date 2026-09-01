@@ -1,0 +1,24 @@
+# Secrets — the Stratz API key lives in .env and must never be committed.
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Runtime data: API caches, captured frames, debug output, downloaded assets.
+data_cache/
+captures/
+debug_out/
+assets/portraits/
+assets/synth/
+calibration_local.json
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

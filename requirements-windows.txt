@@ -1,0 +1,7 @@
+# Windows runtime. Install on the Windows box:
+#   pip install -r requirements.txt -r requirements-windows.txt
+# opencv-python (with GUI support) replaces opencv-python-headless there if
+# both end up installed, either works for our usage.
+windows-capture>=1.4
+pywin32>=306
+PyQt6>=6.6

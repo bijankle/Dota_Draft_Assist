@@ -1,0 +1,7 @@
+# Cross-platform core. The Linux dev container installs only this file.
+numpy>=1.26,<3
+opencv-python-headless>=4.9
+requests>=2.31
+PyYAML>=6.0
+python-dotenv>=1.0
+pytest>=8.0
