@@ -108,3 +108,36 @@ def test_status_bar_reports_data_and_mode(window):
     msg = window.status.currentMessage()
     assert "mode: demo" in msg
     assert "bracket: ANCIENT+DIVINE" in msg
+
+
+def test_snapshot_button_reports_no_frame_in_demo(window):
+    window.refresh()
+    window.snapshot_button.click()
+    assert "No captured frame" in window.snapshot_label.text()
+
+
+def test_snapshot_writes_dump_for_a_frame(window, tmp_path, monkeypatch):
+    """With a frame present the button must produce a self-contained folder."""
+    import numpy as np
+
+    from draft_assist.vision import debug as debug_mod
+    from draft_assist.vision.layout import DraftLayout
+    from draft_assist.vision.recognize import DraftRead, SlotRead
+
+    monkeypatch.setattr(debug_mod, "DEBUG_OUT", tmp_path)
+    window.refresh()
+    frame = np.full((1080, 1920, 3), 40, dtype=np.uint8)
+    rects = DraftLayout().slots()
+    window.snapshot.frame = frame
+    window.snapshot.read_raw = DraftRead(slots=[
+        SlotRead(rect=r, hero_id=None, best_label="x", distance=30, margin=0)
+        for r in rects])
+    window.snapshot_button.click()
+
+    text = window.snapshot_label.text()
+    assert text.startswith("Saved to")
+    folder = tmp_path / sorted(p.name for p in tmp_path.iterdir())[0]
+    assert (folder / "frame.png").exists()
+    assert (folder / "overlay.png").exists()
+    assert (folder / "slots.txt").exists()
+    assert "hash_size" in (folder / "context.txt").read_text()

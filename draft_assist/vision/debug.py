@@ -38,10 +38,13 @@ def draw_overlay(frame: np.ndarray, read: DraftRead,
 
 def dump(frame: np.ndarray, read: DraftRead,
          names: dict[int, str] | None = None,
-         out_root: Path = DEBUG_OUT) -> Path:
+         out_root: Path | None = None) -> Path:
     """Writes frame.png, overlay.png, slot crops, and slots.txt into a
-    timestamped folder; returns the folder."""
-    folder = out_root / time.strftime("%Y%m%d_%H%M%S")
+    timestamped folder; returns the folder.
+
+    out_root is resolved at call time (not bound as a default) so the
+    destination can be repointed."""
+    folder = (out_root or DEBUG_OUT) / time.strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(folder / "frame.png"), frame)
     cv2.imwrite(str(folder / "overlay.png"), draw_overlay(frame, read, names))

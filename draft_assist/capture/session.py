@@ -23,7 +23,7 @@ import numpy as np
 
 from ..vision.layout import DraftLayout
 from ..vision.library import Library, RecognitionParams
-from ..vision.recognize import DraftRead, read_draft
+from ..vision.recognize import DraftRead, SlotRead, read_draft
 from . import gate
 
 IDLE_PERIOD = 1.0      # gate cadence
@@ -44,8 +44,55 @@ class SessionState:
     gate_score: float = float("inf")
     frames_arrived: int = 0
     stalled: bool = False
-    last_read: DraftRead | None = None
+    last_read: DraftRead | None = None       # STABILISED — what consumers use
+    last_read_raw: DraftRead | None = None   # per-frame — what debug shows
     last_frame: np.ndarray | None = None
+
+
+# Consecutive identical reads required before a slot's published value
+# changes. At the 2 Hz active cadence this is ~1.5 s of latency against a
+# ~30 s pick timer — cheap insurance against flicker.
+STABLE_CONFIRMS = 3
+
+
+class SlotStabilizer:
+    """Recognition can flicker frame-to-frame (hover overlays, animations,
+    a wrong window being captured). Published slot values are therefore
+    debounced: a slot changes only after the same NEW value is seen
+    STABLE_CONFIRMS times in a row, and unknown never overwrites a resolved
+    value — picks don't un-pick during a draft. Reset when the draft screen
+    goes away."""
+
+    def __init__(self, n_slots: int = 10, confirms: int = STABLE_CONFIRMS):
+        self.confirms = confirms
+        self.stable: list[int | None] = [None] * n_slots
+        self._candidate: list[int | None] = [None] * n_slots
+        self._count = [0] * n_slots
+
+    def reset(self) -> None:
+        n = len(self.stable)
+        self.stable = [None] * n
+        self._candidate = [None] * n
+        self._count = [0] * n
+
+    def update(self, read: DraftRead) -> DraftRead:
+        out = []
+        for i, s in enumerate(read.slots):
+            v = s.hero_id
+            if v is not None and v != self.stable[i]:
+                if v == self._candidate[i]:
+                    self._count[i] += 1
+                else:
+                    self._candidate[i], self._count[i] = v, 1
+                if self._count[i] >= self.confirms:
+                    self.stable[i] = v
+                    self._candidate[i], self._count[i] = None, 0
+            elif v == self.stable[i]:
+                self._candidate[i], self._count[i] = None, 0
+            out.append(SlotRead(rect=s.rect, hero_id=self.stable[i],
+                                best_label=s.best_label, distance=s.distance,
+                                margin=s.margin, crop=s.crop))
+        return DraftRead(slots=out)
 
 
 class CaptureSession:
@@ -64,6 +111,8 @@ class CaptureSession:
         # tests can repoint it.
         self._refs = gate.load_references(gate.GATE_DIR)
         self._control = None
+        self._stabilizer = SlotStabilizer()
+        self.capture_title: str | None = None
 
     # -- capture binding (Windows only) --------------------------------
     def start(self) -> str:
@@ -90,6 +139,7 @@ class CaptureSession:
             pass
 
         self._control = capture.start_free_threaded()
+        self.capture_title = title
         return title
 
     def stop(self) -> None:
@@ -140,13 +190,17 @@ class CaptureSession:
               and not self.state.forced):
             self.state.mode = "idle"
             self.state.last_read = None
+            self.state.last_read_raw = None
+            self._stabilizer.reset()
 
         if self.state.mode == "active" or self.state.forced:
-            read = read_draft(frame, self.layout, self.lib, self.params)
-            self.state.last_read = read
+            raw = read_draft(frame, self.layout, self.lib, self.params)
+            self.state.last_read_raw = raw
+            self.state.last_read = self._stabilizer.update(raw)
             self.state.last_frame = frame
-            resolved = 10 - read.unknown_count()
-            if resolved >= CONFIRM_SLOTS:
+            # A frame the recogniser itself resolves is the draft screen;
+            # judge that on the raw read so gate bootstrap isn't delayed.
+            if 10 - raw.unknown_count() >= CONFIRM_SLOTS:
                 if gate.save_reference(frame, gate.GATE_DIR) is not None:
                     self._refs = gate.load_references(gate.GATE_DIR)
         return self.state

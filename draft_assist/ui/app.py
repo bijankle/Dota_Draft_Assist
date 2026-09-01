@@ -154,6 +154,14 @@ class MainWindow(QMainWindow):
         self.debug_text = QPlainTextEdit()
         self.debug_text.setReadOnly(True)
         dlay.addWidget(self.debug_text, 1)
+        snap_row = QHBoxLayout()
+        self.snapshot_button = QPushButton(
+            "Save debug snapshot (frame + crops + matches)")
+        self.snapshot_button.clicked.connect(self._save_snapshot)
+        snap_row.addWidget(self.snapshot_button)
+        self.snapshot_label = QLabel("")
+        snap_row.addWidget(self.snapshot_label, 1)
+        dlay.addLayout(snap_row)
         tabs.addTab(dbg, "Debug")
 
         self.status = self.statusBar()
@@ -177,6 +185,43 @@ class MainWindow(QMainWindow):
 
     def _force_redraw(self) -> None:
         self.last_draft_key = None
+
+    def _save_snapshot(self) -> None:
+        """Dump exactly what the app sees right now: the captured frame, the
+        overlay with crop boxes, the ten slot crops, and the per-slot match
+        record. This folder is the unit of evidence — commit it and the
+        whole failure is reproducible offline."""
+        snap = self.snapshot
+        if snap is None or snap.frame is None:
+            self.snapshot_label.setText(
+                "No captured frame to save (demo mode has none).")
+            return
+        from ..vision import debug as debug_mod
+        from ..vision import library as library_mod
+        from ..vision.recognize import read_draft
+        names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
+        # Re-read with crops kept so the dump contains the slot images.
+        read = snap.read_raw
+        if getattr(self.provider, "session", None) is not None:
+            session = self.provider.session
+            read = read_draft(snap.frame, session.layout, session.lib,
+                              session.params, keep_crops=True)
+        if read is None:
+            self.snapshot_label.setText("No recognition result yet.")
+            return
+        folder = debug_mod.dump(snap.frame, read, names)
+        params = library_mod.load_params()
+        (folder / "context.txt").write_text(
+            f"mode={snap.mode}\nsource={snap.source}\n"
+            f"warning={snap.warning}\n"
+            f"frame_size={snap.frame.shape[1]}x{snap.frame.shape[0]}\n"
+            f"gate_score={snap.gate_score}\n"
+            f"frames_arrived={snap.frames_arrived}\n"
+            f"hash_size={params.hash_size} "
+            f"max_distance={params.max_distance} "
+            f"min_margin={params.min_margin}\n",
+            encoding="utf-8")
+        self.snapshot_label.setText(f"Saved to {folder}")
 
     def _current_draft(self) -> scoring.DraftState:
         if self.snapshot is None:
@@ -228,6 +273,7 @@ class MainWindow(QMainWindow):
 
         self.table.blockSignals(True)
         selected = self._selected_hero_id()
+        scroll_pos = self.table.verticalScrollBar().value()
         self.table.setRowCount(len(self.scored))
         for row, s in enumerate(self.scored):
             hero_roles = set(self.ds.heroes.get(s.hero_id, {})
@@ -242,6 +288,7 @@ class MainWindow(QMainWindow):
                     item.setBackground(HIGHLIGHT)
                 self.table.setItem(row, col, item)
         self.table.blockSignals(False)
+        self.table.verticalScrollBar().setValue(scroll_pos)
         if selected is not None:
             self._select_hero_row(selected)
         self._update_items(draft)
@@ -337,6 +384,8 @@ class MainWindow(QMainWindow):
         parts = [f"mode: {snap.mode}"]
         if snap.source:
             parts.append(snap.source)
+        if snap.warning:
+            parts.append(f"WARNING: {snap.warning}")
         if snap.stalled:
             parts.append("CAPTURE STALLED — occluded window may have "
                          "stopped presenting")
@@ -355,7 +404,10 @@ class MainWindow(QMainWindow):
         self.status.showMessage("   |   ".join(parts))
 
     def _update_debug(self, snap) -> None:
-        if snap.frame is None or snap.read is None:
+        # Debug shows the RAW per-frame read (live confidences, flicker and
+        # all); the draft panels show the stabilised one.
+        read = snap.read_raw or snap.read
+        if snap.frame is None or read is None:
             self.debug_text.setPlainText(
                 f"mode={snap.mode}  gate score={snap.gate_score:.3f}  "
                 f"frames arrived={snap.frames_arrived}\n"
@@ -365,7 +417,7 @@ class MainWindow(QMainWindow):
             return
         from ..vision.debug import draw_overlay
         names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
-        overlay = draw_overlay(snap.frame, snap.read, names)
+        overlay = draw_overlay(snap.frame, read, names)
         h, w = overlay.shape[:2]
         img = QImage(overlay.tobytes(), w, h, 3 * w,
                      QImage.Format.Format_BGR888)
@@ -375,7 +427,7 @@ class MainWindow(QMainWindow):
         self.debug_image.setPixmap(pix)
         lines = [f"gate score: {snap.gate_score:.3f}   "
                  f"frames arrived: {snap.frames_arrived}"]
-        for s in snap.read.slots:
+        for s in read.slots:
             resolved = ("UNKNOWN" if s.hero_id is None else
                         "EMPTY" if s.hero_id == -1 else self.ds.name(s.hero_id))
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "

@@ -22,11 +22,13 @@ class Snapshot:
     unknown: int = 0
     mode: str = "idle"          # idle | draft | forced | demo | replay
     frame: np.ndarray | None = None
-    read: DraftRead | None = None
+    read: DraftRead | None = None            # stabilised
+    read_raw: DraftRead | None = None        # per-frame, for the debug view
     gate_score: float = float("inf")
     stalled: bool = False
     frames_arrived: int = 0
     source: str = ""
+    warning: str = ""
 
 
 class DemoProvider:
@@ -72,6 +74,7 @@ class SessionProvider:
             mode=("forced" if state.forced else
                   "draft" if state.mode == "active" else "idle"),
             frame=state.last_frame, read=read,
+            read_raw=state.last_read_raw,
             gate_score=state.gate_score, stalled=state.stalled,
             frames_arrived=state.frames_arrived)
         if read is not None:
@@ -85,6 +88,17 @@ class LiveProvider(SessionProvider):
     def start(self) -> str:
         title = self.session.start()
         return f"capturing window '{title}'"
+
+    def poll(self) -> Snapshot:
+        snap = super().poll()
+        title = self.session.capture_title
+        if title:
+            snap.source = f"capturing '{title}'"
+            if title != "Dota 2":
+                snap.warning = (f"captured window is '{title}', not the Dota "
+                                "client — close other Dota-titled windows "
+                                "and restart the app")
+        return snap
 
 
 class ReplayProvider(SessionProvider):

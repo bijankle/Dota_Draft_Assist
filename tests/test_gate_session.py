@@ -6,7 +6,7 @@ import pytest
 
 from draft_assist.capture import gate
 from draft_assist.capture.session import (CaptureSession, MISSES_TO_DEACTIVATE,
-                                          TRIPS_TO_ACTIVATE)
+                                          STABLE_CONFIRMS, TRIPS_TO_ACTIVATE)
 from draft_assist.proving.evaluate import build_library_from_images
 from draft_assist.proving.synth import (Distortions, empty_slot_image,
                                         generate_case,
@@ -70,8 +70,13 @@ def test_session_activates_and_reads(draft_frame, menu_frame):
     for _ in range(TRIPS_TO_ACTIVATE):
         state = tick_now(session)
     assert state.mode == "active"
+    # Raw read resolves on the first recognised frame; the published read
+    # needs STABLE_CONFIRMS agreeing frames before it follows.
     state = tick_now(session)
-    assert state.last_read is not None
+    assert state.last_read_raw is not None
+    assert 10 - state.last_read_raw.unknown_count() >= 8
+    for _ in range(STABLE_CONFIRMS):
+        state = tick_now(session)
     assert 10 - state.last_read.unknown_count() >= 8
 
     session.inject_frame(menu_frame)
@@ -102,3 +107,62 @@ def test_confirmed_draft_bootstraps_gate_reference(tmp_path, monkeypatch,
     # gate can work on its own next draft.
     refs = gate.load_references(tmp_path)
     assert refs and gate.is_draft_screen(draft_frame, refs)
+
+
+def make_read(values):
+    from draft_assist.vision.layout import DraftLayout
+    from draft_assist.vision.recognize import DraftRead, SlotRead
+    rects = DraftLayout().slots()
+    return DraftRead(slots=[
+        SlotRead(rect=r, hero_id=v, best_label="t", distance=5, margin=10)
+        for r, v in zip(rects, values)])
+
+
+def test_stabilizer_debounces_flicker():
+    from draft_assist.capture.session import SlotStabilizer
+    st = SlotStabilizer(confirms=3)
+    base = [None] * 10
+    # A single-frame phantom must never surface.
+    seq = [7] + [None] * 5
+    for v in seq:
+        out = st.update(make_read([v] + base[1:]))
+    assert out.slots[0].hero_id is None
+    # Three consecutive identical reads publish the value.
+    for _ in range(3):
+        out = st.update(make_read([7] + base[1:]))
+    assert out.slots[0].hero_id == 7
+    # Later unknowns (hover overlay) never un-pick it.
+    out = st.update(make_read([None] + base[1:]))
+    assert out.slots[0].hero_id == 7
+    # Alternating values never accumulate confirmations.
+    for _ in range(6):
+        st.update(make_read([1] + base[1:]))
+        out = st.update(make_read([2] + base[1:]))
+    assert out.slots[0].hero_id == 7
+
+
+def test_stabilizer_allows_stable_correction():
+    from draft_assist.capture.session import SlotStabilizer
+    st = SlotStabilizer(confirms=3)
+    base = [None] * 10
+    for _ in range(3):
+        st.update(make_read([7] + base[1:]))
+    # A persistent different value (real correction) does replace it.
+    for _ in range(3):
+        out = st.update(make_read([9] + base[1:]))
+    assert out.slots[0].hero_id == 9
+
+
+def test_session_publishes_stable_read_and_raw_read(draft_frame):
+    session = make_session()
+    session.set_forced(True)
+    session.inject_frame(draft_frame)
+    state = tick_now(session)
+    # Raw read resolves immediately; stabilised read needs confirmations.
+    assert state.last_read_raw is not None
+    resolved_raw = 10 - state.last_read_raw.unknown_count()
+    assert resolved_raw >= 8
+    assert state.last_read.unknown_count() == 10  # not yet confirmed
+    for _ in range(2):
+        state = tick_now(session)
+    assert 10 - state.last_read.unknown_count() == resolved_raw
