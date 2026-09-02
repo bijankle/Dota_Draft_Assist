@@ -28,6 +28,12 @@ class Dataset:
     def name(self, hero_id: int) -> str:
         return self.heroes.get(hero_id, {}).get("name", f"hero {hero_id}")
 
+    @property
+    def is_empty(self) -> bool:
+        """True before any data has been downloaded. The UI opens in this
+        state rather than refusing to start, and offers to fetch data."""
+        return not self.hero_ids
+
     def age_hours(self) -> float:
         return (time.time() - self.meta["pulled_at"]) / 3600
 
@@ -69,3 +75,21 @@ def load(path: Path = MATRIX_FILE) -> Dataset:
         delta_with=z["delta_with"].astype(np.float64),
         meta=meta,
     )
+
+
+def empty_dataset() -> Dataset:
+    """A valid but heroless dataset, so the application can open and explain
+    itself before the first download instead of crashing on a missing file."""
+    return Dataset(
+        hero_ids=[], index={}, heroes={},
+        baseline=np.zeros(0), picks=np.zeros(0, dtype=np.int64),
+        delta_vs=np.zeros((0, 0)), delta_with=np.zeros((0, 0)),
+        meta={"pulled_at": 0.0, "target_brackets": [], "empty": True},
+    )
+
+
+def load_or_empty(path: Path = MATRIX_FILE) -> Dataset:
+    try:
+        return load(path)
+    except (FileNotFoundError, KeyError, ValueError):
+        return empty_dataset()

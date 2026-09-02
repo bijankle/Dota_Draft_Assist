@@ -242,3 +242,22 @@ def test_find_dota_window_never_guesses_a_lookalike(monkeypatch):
     monkeypatch.setattr(window, "list_window_titles",
                         lambda: ["Firefox", "Dota 2"])
     assert window.find_dota_window_title() == "Dota 2"
+
+
+def test_maintenance_tasks_are_well_formed():
+    """Each menu task must name real scripts and resolve {py} to this venv."""
+    import sys
+    from pathlib import Path
+
+    from draft_assist.config import REPO_ROOT
+    from draft_assist.ui.tasks import PY, TASKS, Task, TaskWorker
+
+    for key, task in TASKS.items():
+        assert isinstance(task, Task) and task.key == key
+        assert task.steps and task.blurb
+        worker = TaskWorker(task)
+        for step in task.steps:
+            argv = worker._argv(step)
+            assert PY not in argv           # placeholder fully resolved
+            if argv[0] == sys.executable and argv[1] not in ("-m", "-u"):
+                assert (REPO_ROOT / argv[1]).exists(), argv[1]

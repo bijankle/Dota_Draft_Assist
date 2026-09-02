@@ -8,84 +8,70 @@ an ordinary desktop window. Single-player personal tool — not a product.
 It never touches the game: no injection, no memory reading, no input
 automation. It only reads pixels from a window already on the user's screen.
 
-## Setup (Windows) — double-click, no command prompt needed
+## Install and run (Windows)
 
-1. Double-click **`Setup.bat`** — creates the Python environment, installs
-   dependencies, and opens `.env` in Notepad for you to paste your Stratz
-   API key. (Requires Python 3.11+ from python.org, installed with
-   "Add python.exe to PATH" ticked.)
-2. **`Capture Probe.bat`** — step 1 below, with Dota running.
-3. **`Update Data.bat`** — downloads statistics and portraits (run ~daily).
-4. **`Tune Recognition.bat`** — trains the recogniser (no Dota needed).
-5. **`Start Draft Assist.bat`** — the app. **`Start Demo.bat`** runs it with
-   a fake draft so you can explore the interface without the game.
+Double-click **`Dota Draft Assist.bat`**. That is the only file you launch,
+ever.
 
-The equivalent command-line calls are shown below for reference; every
-launcher is a thin wrapper around them.
+The first run installs a private Python environment beside the app and opens
+`.env` for your Stratz API key (free from https://stratz.com/api). Every run
+after that just starts the application — no console window, no other scripts.
 
-```
-py -3 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt -r requirements-windows.txt
-copy .env.example .env    # then paste your Stratz API key into .env
-```
+Requires Python 3.11+ from python.org, installed with "Add python.exe to
+PATH" ticked.
 
-## Step 1 — confirm occluded capture (do this before anything else)
+## Using the application
 
-The app's window sits in front of Dota, so capture must read the Dota window's
-own buffer, not the desktop. Whether Dota keeps producing frames while fully
-covered and unfocused varies by driver/Windows version. Verify it:
+Everything that used to be a separate script is a menu item that runs inside
+the app, with live progress and readable errors.
 
-1. Start Dota 2 in **borderless windowed** mode, sit in the main menu.
-2. Run `python tools/probe_capture.py` — it finds the Dota window, captures a
-   frame every 2 s, and writes numbered PNGs to `captures/probe/`.
-3. Cover the Dota window completely (maximize any other window over it) and
-   click something else so Dota is unfocused. Wait ~30 s.
-4. Look at the newest PNGs: they should show Dota's menu (with its idle
-   animations advancing between frames), **not** the covering window. The
-   probe also prints a changed/static verdict comparing consecutive frames.
+| Menu | Action | When |
+| --- | --- | --- |
+| **Data** | Update statistics and portraits | First run, then ~daily and after patches |
+| **Data** | Tune recognition | After updating portraits or labelling new crops |
+| **Data** | Reload data and library (F5) | After editing files by hand |
+| **Capture** | Capture source ▸ | Choose which window to read |
+| **Capture** | Bind to Dota client (Ctrl+D) | Re-bind after starting Dota |
+| **Capture** | Force recognition (Ctrl+F) | When the draft gate does not trip |
+| **Capture** | List capture sources / Run capture probe | Diagnosing capture |
+| **Tools** | Save debug snapshot (Ctrl+S) | When recognition looks wrong |
+| **Tools** | Edit / reload item rules | Tweaking `rules/items.yaml` |
+| **Help** | Update application | Pull the latest code from GitHub |
 
-If frames freeze while covered, the fallback is sizing the assist window to
-leave the Dota team panels visible; say so and we adjust the plan.
+The window opens even before anything is downloaded and tells you what to do
+next. It also opens when Dota is not running: capture is simply unbound, and
+the Capture menu lets you pick a source.
 
-## Step 2 — data and portraits (network, run ~daily / after patches)
+**Draft tab** — the full ranked hero list (never filtered by role; heroes
+matching your queued role are highlighted), a filter box, your team and the
+enemy team as clickable slots, the component breakdown for whichever hero is
+selected, and the item panel once your pick is locked.
 
-```
-python tools/pull_data.py        # OpenDota + Stratz -> data_cache/ (verifies
-                                 # bracket indexing across sources first)
-python tools/build_library.py    # download portraits, build hash library
-python tools/inspect_apis.py     # raw API dumps, when parsing breaks
-```
+**Debug tab** — the captured frame with the crop boxes drawn on it and the
+match confidence beside each slot. This answers almost every recognition
+question at a glance, because most vision bugs are just the wrong rectangle
+being cropped.
 
-The live scoring loop never makes network calls — it reads only these caches.
+### Step 1 — confirm occluded capture
 
-## Step 3 — tune recognition in the proving ground (no Dota needed)
+The app's window covers Dota, so capture reads the Dota window's own buffer
+rather than the desktop. Whether Dota keeps producing frames while fully
+covered varies by driver and Windows version, so verify it once:
 
-```
-python -m draft_assist.proving.tune              # real portraits
-python -m draft_assist.proving.tune --procedural # smoke run, no downloads
-```
+1. Start Dota 2 in **borderless windowed** mode.
+2. **Capture ▸ Run capture probe…**
+3. Cover the Dota window completely and unfocus it while the probe runs.
 
-Composites synthetic draft screens (resolution changes, brightness drift,
-compression, crop misalignment, pick-dimming) from the portrait library,
-grid-searches hash size / distance ceiling / margin floor, and saves the
-best operating point. Any WRONG match disqualifies a candidate before
-unknown-rate is considered — unknown slots are legitimate; wrong ones are not.
+Frames land in `captures/probe/`. They should keep showing Dota and keep
+reporting CHANGED. If they freeze, the fallback is sizing the assist window
+to leave the Dota team panels visible.
 
-## Run
+### Calibration
 
-```
-python -m draft_assist.ui.app            # live capture (Windows, Dota running)
-python -m draft_assist.ui.app --demo     # scripted fake draft, runs anywhere
-python -m draft_assist.ui.app --replay captures/probe   # saved frames
-```
-
-An ordinary draggable window — no overlay, no always-on-top. The Debug tab
-shows the captured frame with crop boxes and match confidences. If the draft
-gate doesn't trip, tick **Force recognition** (a confirmed draft then saves a
-gate reference so the gate works by itself next time). Nudge crop boxes by
-editing `calibration_local.json` (fractions of window size) while watching
-the Debug tab.
+Slot coordinates are fractions of the window size, so they survive
+resolution changes. If the crop boxes in the Debug tab do not sit on the
+hero portraits, nudge them in `calibration_local.json` while watching that
+tab.
 
 ## Self-training on real frames
 
@@ -111,9 +97,14 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 42 tests: normalisation math, scoring views, item
+pytest            # 67 tests: normalisation math, scoring views, item
                   # engine, vision end-to-end on synthetic screens, gate &
-                  # session state machine, headless UI smoke tests
+                  # session state machine, capture-source binding, and
+                  # headless UI smoke tests
+
+python -m draft_assist.ui.app --demo             # UI on a scripted draft
+python -m draft_assist.ui.app --replay DIR       # UI on saved frames
+python -m draft_assist.proving.tune --procedural # recognition, no downloads
 ```
 
 See `CLAUDE.md` for the domain invariants (normalised deltas, fractional

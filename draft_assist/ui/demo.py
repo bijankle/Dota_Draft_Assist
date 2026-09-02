@@ -73,7 +73,11 @@ class DemoDraft:
 
     def __init__(self, ds: Dataset, step_seconds: float = 4.0):
         rng = np.random.default_rng(int(time.time()) % 10_000)
-        picks = rng.choice(ds.hero_ids, size=10, replace=False)
+        # Degrade gracefully on a dataset with fewer than ten heroes (an
+        # empty one before the first download) instead of raising.
+        n = min(10, len(ds.hero_ids))
+        picks = (rng.choice(ds.hero_ids, size=n, replace=False)
+                 if n else np.zeros(0, dtype=int))
         self.radiant = [int(x) for x in picks[:5]]
         self.dire = [int(x) for x in picks[5:]]
         self.unknown_dire_slot = 4      # last dire slot never resolves
