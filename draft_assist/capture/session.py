@@ -115,15 +115,31 @@ class CaptureSession:
         self.capture_title: str | None = None
 
     # -- capture binding (Windows only) --------------------------------
-    def start(self) -> str:
+    def start(self, title: str | None = None) -> str:
+        """Bind capture to `title`, or to the Dota client when omitted.
+
+        Raises RuntimeError naming the visible windows if nothing matches —
+        the caller (the UI) offers a picker rather than dying, because
+        "which window am I capturing" is the question behind most apparent
+        recognition failures.
+        """
         from windows_capture import WindowsCapture
 
-        from .window import find_dota_window_title
-        title = find_dota_window_title()
+        from .window import find_dota_window_title, list_window_titles
         if title is None:
+            title = find_dota_window_title()
+        if title is None:
+            visible = list_window_titles()
             raise RuntimeError(
-                "No Dota 2 window found — start Dota in borderless windowed "
-                "mode first.")
+                "No window titled exactly 'Dota 2' is open — start Dota in "
+                "borderless windowed mode, or pick a capture source in the "
+                "app's Debug tab.\nVisible windows:\n  "
+                + "\n  ".join(visible[:40] or ["(none)"]))
+        self.stop()
+        self._stabilizer.reset()
+        with self._lock:
+            self._latest = None
+            self._count = 0
         capture = WindowsCapture(cursor_capture=False, draw_border=False,
                                  window_name=title)
 

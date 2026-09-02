@@ -1,16 +1,21 @@
 """Windows-only helpers around the Dota window handle (ctypes, no pywin32
 needed at import time on other platforms). READ-ONLY: this module measures
-the window; nothing anywhere sends input to it or touches the process (see
-CLAUDE.md).
+and enumerates windows; nothing anywhere sends input to the game or touches
+its process (see CLAUDE.md).
 """
 
 import sys
 
+# The Dota 2 client's window title is exactly this. Anything else with
+# "dota" in the title is some other program (a browser tab, a guide, a
+# video) and must never be captured by accident.
+DOTA_TITLE = "Dota 2"
 
-def find_dota_window_title() -> str | None:
-    """Exact 'Dota 2' title, or the single Dota-like candidate, else None."""
+
+def list_window_titles() -> list[str]:
+    """Visible top-level window titles, in z-order as EnumWindows reports."""
     if sys.platform != "win32":
-        return None
+        return []
     import ctypes
     from ctypes import wintypes
 
@@ -24,14 +29,38 @@ def find_dota_window_title() -> str | None:
             if length:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(hwnd, buf, length + 1)
-                titles.append(buf.value)
+                if buf.value.strip():
+                    titles.append(buf.value)
         return True
 
     user32.EnumWindows(enum_proc, 0)
-    if "Dota 2" in titles:
-        return "Dota 2"
-    candidates = [t for t in titles if "dota" in t.lower()]
-    return candidates[0] if len(candidates) == 1 else None
+    # De-duplicate while preserving order; identical titles cannot be told
+    # apart by name anyway.
+    seen, out = set(), []
+    for t in titles:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def find_dota_window_title() -> str | None:
+    """The Dota client's window, or None.
+
+    Deliberately EXACT: an earlier version fell back to 'the only visible
+    window with dota in its title', which happily bound a browser playing a
+    Dota video and fed the recogniser garbage pixels. A near miss here is
+    worse than no match, because the failure looks like broken recognition
+    rather than a wrong capture source.
+    """
+    return DOTA_TITLE if DOTA_TITLE in list_window_titles() else None
+
+
+def dota_like_titles() -> list[str]:
+    """Other windows mentioning Dota — offered as suggestions in the UI's
+    capture-source picker, never bound automatically."""
+    return [t for t in list_window_titles()
+            if "dota" in t.lower() and t != DOTA_TITLE]
 
 
 def client_size(title: str) -> tuple[int, int] | None:

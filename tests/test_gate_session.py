@@ -166,3 +166,79 @@ def test_session_publishes_stable_read_and_raw_read(draft_frame):
     for _ in range(2):
         state = tick_now(session)
     assert 10 - state.last_read.unknown_count() == resolved_raw
+
+
+class FakeSession:
+    """Stands in for CaptureSession without Windows Graphics Capture."""
+
+    def __init__(self, works=("Dota 2",)):
+        self.works = set(works)
+        self.capture_title = None
+        self.state = None
+        self.forced = False
+
+    def start(self, title=None):
+        if title is None:
+            title = "Dota 2" if "Dota 2" in self.works else None
+        if title is None:
+            raise RuntimeError("No window titled exactly 'Dota 2' is open\n"
+                               "Visible windows:\n  Firefox")
+        if title not in self.works:
+            raise RuntimeError(f"cannot capture '{title}'")
+        self.capture_title = title
+        return title
+
+    def stop(self):
+        pass
+
+    def set_forced(self, forced):
+        self.forced = forced
+
+    def tick(self):
+        from draft_assist.capture.session import SessionState
+        return SessionState()
+
+
+def test_live_provider_survives_missing_dota_window():
+    from draft_assist.ui.providers import LiveProvider
+    prov = LiveProvider(FakeSession(works=()))
+    message = prov.start()          # must not raise
+    assert "not bound" in message
+    assert prov.error
+    snap = prov.poll()
+    assert "no capture source bound" in snap.source
+    assert snap.warning
+
+
+def test_live_provider_rebinds_to_chosen_window():
+    from draft_assist.ui.providers import LiveProvider
+    prov = LiveProvider(FakeSession(works=("Dota 2", "OBS")))
+    assert "Dota 2" in prov.start()
+    msg = prov.rebind("OBS")
+    assert "OBS" in msg and not prov.error
+    # Capturing anything other than the client is loudly flagged, because a
+    # wrong source looks exactly like broken recognition.
+    snap = prov.poll()
+    assert "NOT the Dota client" in snap.warning
+
+
+def test_live_provider_reports_failed_rebind_without_raising():
+    from draft_assist.ui.providers import LiveProvider
+    prov = LiveProvider(FakeSession(works=("Dota 2",)))
+    prov.start()
+    msg = prov.rebind("Some Other Window")
+    assert "not bound" in msg and prov.error
+
+
+def test_find_dota_window_never_guesses_a_lookalike(monkeypatch):
+    from draft_assist.capture import window
+    monkeypatch.setattr(window, "list_window_titles",
+                        lambda: ["Dota 2 draft guide - YouTube — Firefox"])
+    # A browser tab is NOT the client: binding it silently is what made
+    # recognition look broken.
+    assert window.find_dota_window_title() is None
+    assert window.dota_like_titles() == [
+        "Dota 2 draft guide - YouTube — Firefox"]
+    monkeypatch.setattr(window, "list_window_titles",
+                        lambda: ["Firefox", "Dota 2"])
+    assert window.find_dota_window_title() == "Dota 2"

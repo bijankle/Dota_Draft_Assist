@@ -85,9 +85,41 @@ class SessionProvider:
 
 
 class LiveProvider(SessionProvider):
+    """Live Windows Graphics Capture, bound to a chosen window.
+
+    Binding failure is NOT fatal: the app opens anyway with the capture
+    source unbound so the user can pick a window from the Debug tab. Dying
+    at startup hides the one fact that explains most apparent recognition
+    failures — which window is actually being captured.
+    """
+
+    def __init__(self, session, title: str | None = None):
+        super().__init__(session)
+        self.requested_title = title
+        self.error = ""
+
     def start(self) -> str:
-        title = self.session.start()
-        return f"capturing window '{title}'"
+        return self.rebind(self.requested_title)
+
+    def rebind(self, title: str | None) -> str:
+        """(Re)bind capture; title None means 'find the Dota client'.
+        Never raises — the message it returns is shown in the UI."""
+        try:
+            bound = self.session.start(title)
+            self.error = ""
+            return f"capturing window '{bound}'"
+        except Exception as exc:  # binding failure must not kill the app
+            self.error = str(exc)
+            first_line = str(exc).splitlines()[0]
+            return f"capture not bound — {first_line}"
+
+    def available_sources(self) -> list[str]:
+        from ..capture.window import DOTA_TITLE, list_window_titles
+        titles = list_window_titles()
+        # Surface the Dota client first when present; it is the only one
+        # that is ever bound without the user asking.
+        return ([DOTA_TITLE] if DOTA_TITLE in titles else []) + \
+            [t for t in titles if t != DOTA_TITLE]
 
     def poll(self) -> Snapshot:
         snap = super().poll()
@@ -95,9 +127,12 @@ class LiveProvider(SessionProvider):
         if title:
             snap.source = f"capturing '{title}'"
             if title != "Dota 2":
-                snap.warning = (f"captured window is '{title}', not the Dota "
-                                "client — close other Dota-titled windows "
-                                "and restart the app")
+                snap.warning = (f"captured window is '{title}', NOT the Dota "
+                                "client — recognition results are meaningless")
+        else:
+            snap.source = "no capture source bound"
+            snap.warning = ("no window bound — choose one in the Debug tab's "
+                            "capture source picker")
         return snap
 
 

@@ -10,9 +10,10 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 (
     echo.
     echo The app exited with an error - read the message above.
-    echo If it says no dataset cache: run "Update Data.bat" first.
-    echo If it says no portrait library: run "Update Data.bat" first.
-    echo If it says no Dota window: start Dota in borderless windowed mode,
-    echo or use "Start Demo.bat" to try the app without the game.
+    echo If it says no dataset cache or no portrait library: run "Update Data.bat".
+    echo The app no longer exits when Dota is not running - it opens with no
+    echo capture source, and you choose one in its Debug tab.
+    echo "List Windows.bat" shows what is available to capture.
+    echo "Start Demo.bat" runs the interface without the game.
     pause
 )

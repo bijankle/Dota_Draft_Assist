@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Dota Draft Assist")
         self.resize(1180, 760)
         self._build()
+        self._refresh_sources()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
@@ -154,6 +155,24 @@ class MainWindow(QMainWindow):
         self.debug_text = QPlainTextEdit()
         self.debug_text.setReadOnly(True)
         dlay.addWidget(self.debug_text, 1)
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Capture source:"))
+        self.source_combo = QComboBox()
+        self.source_combo.setMinimumWidth(280)
+        src_row.addWidget(self.source_combo, 1)
+        self.refresh_sources_button = QPushButton("Refresh list")
+        self.refresh_sources_button.clicked.connect(self._refresh_sources)
+        src_row.addWidget(self.refresh_sources_button)
+        self.bind_button = QPushButton("Capture this window")
+        self.bind_button.clicked.connect(self._bind_source)
+        src_row.addWidget(self.bind_button)
+        dlay.addLayout(src_row)
+        if not hasattr(self.provider, "available_sources"):
+            for w in (self.source_combo, self.refresh_sources_button,
+                      self.bind_button):
+                w.setEnabled(False)
+            self.source_combo.addItem("(live capture only)")
+
         snap_row = QHBoxLayout()
         self.snapshot_button = QPushButton(
             "Save debug snapshot (frame + crops + matches)")
@@ -184,6 +203,25 @@ class MainWindow(QMainWindow):
                 else (snap.left, snap.right))
 
     def _force_redraw(self) -> None:
+        self.last_draft_key = None
+
+    def _refresh_sources(self) -> None:
+        if not hasattr(self.provider, "available_sources"):
+            return
+        current = self.source_combo.currentText()
+        self.source_combo.clear()
+        self.source_combo.addItems(self.provider.available_sources())
+        idx = self.source_combo.findText(current)
+        if idx >= 0:
+            self.source_combo.setCurrentIndex(idx)
+
+    def _bind_source(self) -> None:
+        title = self.source_combo.currentText()
+        if not title or not hasattr(self.provider, "rebind"):
+            return
+        message = self.provider.rebind(title)
+        self.snapshot_label.setText(message)
+        self.status.showMessage(message)
         self.last_draft_key = None
 
     def _save_snapshot(self) -> None:
@@ -447,7 +485,7 @@ def make_provider(args, ds: Dataset):
     session = CaptureSession(load_layout(), lib, params)
     if args.replay:
         return ReplayProvider(session, Path(args.replay))
-    return LiveProvider(session)
+    return LiveProvider(session, title=args.window)
 
 
 def main() -> None:
@@ -456,6 +494,9 @@ def main() -> None:
                         help="scripted fake draft; no dataset/library needed")
     parser.add_argument("--replay", metavar="DIR",
                         help="loop saved frames instead of live capture")
+    parser.add_argument("--window", metavar="TITLE",
+                        help="capture this window title instead of finding "
+                             "the Dota client (also selectable in the app)")
     args = parser.parse_args()
 
     if args.demo:
@@ -471,8 +512,13 @@ def main() -> None:
     provider = make_provider(args, ds)
     win = MainWindow(ds, provider, rules, meta)
     win.show()
+    # start() never raises for live capture: an unbound source is a state
+    # the user fixes in the Debug tab, not a crash.
     started = provider.start()
     win.status.showMessage(f"started: {started}")
+    win._refresh_sources()
+    if getattr(provider, "error", ""):
+        win.snapshot_label.setText(provider.error.splitlines()[0])
     code = app.exec()
     provider.stop()
     sys.exit(code)

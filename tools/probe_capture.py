@@ -14,19 +14,22 @@ occluded Dota should keep reporting CHANGED.
 Nothing gets built on top of capture until this probe passes.
 
 Usage (Windows, Dota 2 running in borderless windowed mode):
-    python tools/probe_capture.py [--minutes 5]
+    python tools/probe_capture.py [--minutes 5] [--window "Exact Title"]
 """
 
 import argparse
-import ctypes
 import sys
 import threading
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from draft_assist.capture.window import (DOTA_TITLE,  # noqa: E402
+                                         list_window_titles)
 
 try:
     from windows_capture import WindowsCapture
@@ -44,52 +47,47 @@ STALL_WARN = 5.0  # warn if no frame arrived for this long
 CHANGE_THRESHOLD = 0.15
 
 
-def list_window_titles() -> list[str]:
-    """Enumerate visible top-level window titles via user32, no pywin32 needed."""
-    user32 = ctypes.windll.user32
-    titles: list[str] = []
+def find_dota_title(override: str | None = None) -> str:
+    """The Dota client's window, or an explicit override.
 
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def enum_proc(hwnd, _lparam):
-        if user32.IsWindowVisible(hwnd):
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                titles.append(buf.value)
-        return True
-
-    user32.EnumWindows(enum_proc, 0)
-    return titles
-
-
-def find_dota_title() -> str:
+    Strict by design: an earlier version bound "the only window with dota in
+    its title", which cheerfully captured a browser playing a Dota video and
+    made the probe look like it worked. Use --window to capture something
+    else deliberately.
+    """
     titles = list_window_titles()
-    for title in titles:
-        if title == "Dota 2":
-            return title
-    candidates = [t for t in titles if "dota" in t.lower()]
-    if len(candidates) == 1:
-        print(f"Exact 'Dota 2' title not found; using '{candidates[0]}'")
-        return candidates[0]
-    if candidates:
-        sys.exit(
-            "Several Dota-like windows found, can't pick one automatically:\n"
-            + "\n".join(f"  '{t}'" for t in candidates)
-        )
-    sys.exit(
-        "No Dota 2 window found. Is the game running in borderless windowed "
-        "mode? Visible windows:\n" + "\n".join(f"  '{t}'" for t in titles)
-    )
+    if override:
+        if override not in titles:
+            sys.exit(f"No visible window titled {override!r}. Visible:\n"
+                     + "\n".join(f"  {t!r}" for t in titles))
+        return override
+    if DOTA_TITLE in titles:
+        return DOTA_TITLE
+    lookalikes = [t for t in titles if "dota" in t.lower()]
+    message = [
+        f"No window titled exactly {DOTA_TITLE!r} — is Dota running in "
+        "borderless windowed mode?",
+    ]
+    if lookalikes:
+        message.append("These mention Dota but are NOT the client:")
+        message += [f"  {t!r}" for t in lookalikes]
+        message.append("Capture one deliberately with: "
+                       "python tools/probe_capture.py --window \"<title>\"")
+    message.append("All visible windows:")
+    message += [f"  {t!r}" for t in titles]
+    sys.exit("\n".join(message))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--minutes", type=float, default=5.0,
                         help="how long to run before exiting (default 5)")
+    parser.add_argument("--window", metavar="TITLE",
+                        help="capture this exact window title instead of "
+                             "the Dota client")
     args = parser.parse_args()
 
-    title = find_dota_title()
+    title = find_dota_title(args.window)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Capturing window '{title}' -> {OUT_DIR}")
     print("Now cover the Dota window with another window and unfocus it.")
