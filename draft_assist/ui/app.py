@@ -149,6 +149,9 @@ class MainWindow(QMainWindow):
         game_menu = bar.addMenu("&Game")
         self._act(game_menu, "&Set up game data (GSI)…", self._install_gsi,
                   None, "Install Dota's Game State Integration config")
+        self._act(game_menu, "&Diagnose game data…", self._diagnose_gsi,
+                  "Ctrl+G",
+                  "Check every requirement and name the one that is failing")
         self._act(game_menu, "Game data &status…", self._gsi_status,
                   None, "What the game is actually reporting right now")
         self._act(game_menu, "&Record game data…",
@@ -591,6 +594,33 @@ class MainWindow(QMainWindow):
             "GSI is Valve's own feature: Dota sends this data because the "
             "config asks it to. Nothing is injected into the game and no "
             "memory is read.")
+        box.exec()
+
+    def _diagnose_gsi(self) -> None:
+        """Test each GSI requirement separately.
+
+        Every broken link produces the same symptom — silence — so guessing
+        is expensive. This names the failing step instead."""
+        from ..gsi import diagnose
+
+        server = getattr(self.provider, "server", None)
+        checks = diagnose.run_checks(server=server)
+        report = diagnose.format_report(checks)
+        failing = [c for c in checks if c.ok is False]
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning if failing
+                    else QMessageBox.Icon.Information)
+        box.setWindowTitle("Diagnose game data")
+        box.setText(diagnose.headline(checks))
+        if failing:
+            box.setInformativeText(failing[0].fix or failing[0].detail)
+        else:
+            box.setInformativeText(
+                "Dota only sends game data while you are in a match — "
+                "including the draft. The main menu sends nothing, so load "
+                "a game and check again.")
+        box.setDetailedText(report)
         box.exec()
 
     def _gsi_status(self) -> None:

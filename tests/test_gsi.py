@@ -301,3 +301,126 @@ def test_manual_provider_stands_alone():
     snap = provider.poll()
     assert snap.left == [1] and snap.right == [11]
     assert snap.mode == "manual"
+
+
+# ---- diagnostics -------------------------------------------------------
+
+def test_diagnose_names_the_missing_config(tmp_path, monkeypatch):
+    """The launch option alone does nothing: without a config file Dota has
+    nothing to send, and that must be the reported cause."""
+    from draft_assist.gsi import diagnose
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-gamestateintegration -novid")
+
+    checks = diagnose.run_checks(port=53000)
+    by_name = {c.name: c for c in checks}
+    assert by_name["Dota installation"].ok is True
+    assert by_name["Dota launch options"].ok is True
+    assert by_name["GSI config installed"].ok is False
+    assert "Set up game data" in by_name["GSI config installed"].fix
+    assert "GSI config installed" in diagnose.headline(checks)
+
+
+def test_diagnose_flags_a_missing_launch_option(tmp_path, monkeypatch):
+    from draft_assist.gsi import diagnose
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    gsi_install.install(port=53000, token="t", dota_dir=dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-novid -high")
+
+    checks = {c.name: c for c in diagnose.run_checks(port=53000)}
+    assert checks["GSI config installed"].ok is True
+    assert checks["Dota launch options"].ok is False
+    assert "-gamestateintegration" in checks["Dota launch options"].fix
+
+
+def test_diagnose_catches_a_port_mismatch(tmp_path, monkeypatch):
+    """A config written for one port while the app listens on another is
+    silent in exactly the same way as everything else."""
+    from draft_assist.gsi import diagnose
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    gsi_install.install(port=53000, token="t", dota_dir=dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-gamestateintegration")
+
+    checks = {c.name: c for c in diagnose.run_checks(port=53999)}
+    assert checks["Config port matches listener"].ok is False
+    assert "53000" in checks["Config port matches listener"].detail
+
+
+def test_diagnose_reports_rejected_payloads(tmp_path, monkeypatch):
+    from draft_assist.gsi import diagnose
+    from draft_assist.gsi.server import Reception
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    gsi_install.install(port=53000, token="t", dota_dir=dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-gamestateintegration")
+
+    class Server:
+        port = 53000
+
+        def snapshot(self):
+            return Reception(count=0, rejected=7,
+                             last_error="auth token mismatch")
+
+    checks = {c.name: c for c in diagnose.run_checks(server=Server())}
+    assert checks["Payloads received"].ok is False
+    assert "7 rejected" in checks["Payloads received"].detail
+    assert "token" in checks["Payloads received"].fix
+
+
+def test_diagnose_explains_silence_when_all_checks_pass(tmp_path, monkeypatch):
+    """Everything correct but no data is the normal state in the main menu,
+    and the report must say so rather than implying a fault."""
+    from draft_assist.gsi import diagnose
+    from draft_assist.gsi.server import Reception
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    gsi_install.install(port=53000, token="t", dota_dir=dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-gamestateintegration")
+    monkeypatch.setattr(diagnose, "_port_is_listening", lambda port: True)
+
+    class Server:
+        port = 53000
+
+        def snapshot(self):
+            return Reception(count=0, rejected=0)
+
+    report = diagnose.format_report(diagnose.run_checks(server=Server()))
+    assert "only while you are IN a match" in report
+
+
+def test_launch_option_parser_reads_the_dota_block(tmp_path, monkeypatch):
+    from draft_assist.gsi import diagnose
+
+    config = tmp_path / "userdata" / "1234" / "config"
+    config.mkdir(parents=True)
+    (config / "localconfig.vdf").write_text('''
+"UserLocalConfigStore"
+{
+  "Software" { "Valve" { "Steam" { "apps"
+  {
+    "730" { "LaunchOptions" "-novid" }
+    "570" { "LastPlayed" "1700000000" "LaunchOptions" "-gamestateintegration" }
+  } } } }
+}
+''', encoding="utf-8")
+    monkeypatch.setattr(gsi_install, "_steam_roots", lambda: [tmp_path])
+    # Must read Dota's block, not the first LaunchOptions in the file.
+    assert diagnose._steam_userdata_launch_options() == "-gamestateintegration"

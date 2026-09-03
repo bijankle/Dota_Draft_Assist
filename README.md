@@ -50,6 +50,7 @@ the app, with live progress and readable errors.
 | **Data** | Update statistics and portraits | First run, then ~daily and after patches |
 | **Data** | Reload data and library (F5) | After editing files by hand |
 | **Game** | Set up game data (GSI) | Once, before first use |
+| **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | To archive real payloads during a draft |
 | **Game** | Clear manual draft | Between games |
@@ -90,10 +91,18 @@ screen coordinates.
 ### Connecting the game (do this once)
 
 1. **Game ▸ Set up game data (GSI)** — finds the Dota install through Steam's
-   library folders and writes the config.
+   library folders and writes the config. **Both steps are required**: the
+   launch option only tells Dota to look for config files, so without this
+   one there is nothing for it to send.
 2. In Steam: right-click **Dota 2 → Properties → Launch Options**, add
    `-gamestateintegration`.
 3. Restart Dota.
+
+If no data arrives, **Game ▸ Diagnose game data** (Ctrl+G) tests each
+requirement separately — install found, config present, ports agreeing,
+launch option set, listener up, Dota running, payloads arriving — and names
+the one that is failing. Note that Dota sends GSI data only while you are
+**in a match** (the draft counts); the main menu sends nothing.
 
 **Game ▸ Game data status** then shows what is arriving and which components
 the feed carries. Nothing leaves your machine: the listener binds
