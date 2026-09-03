@@ -147,10 +147,10 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 96 tests: normalisation math, scoring views, item
-                  # engine, GSI config/listener/parsing/provider, vision
-                  # end-to-end on synthetic screens, gate & session state
-                  # machine, overlay, and headless UI smoke tests
+pytest            # 102 tests: normalisation math, scoring views, item
+                  # engine, GSI config/listener/parsing/provider/diagnostics,
+                  # vision end-to-end on synthetic screens, gate & session
+                  # state machine, overlay, and headless UI smoke tests
 
 python -m draft_assist.ui.app                    # game data (GSI)
 python -m draft_assist.ui.app --manual           # hand-entered draft
