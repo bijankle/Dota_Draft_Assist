@@ -132,10 +132,33 @@ def test_status_bar_reports_data_and_mode(window):
     assert "bracket: ANCIENT+DIVINE" in msg
 
 
-def test_snapshot_button_reports_no_frame_in_demo(window):
+def test_snapshot_falls_back_to_grabbing_dota(window, monkeypatch):
+    """With no live frame (game-data mode) the snapshot key still captures
+    the Dota window — that grab is what anchors overlay positions."""
     window.refresh()
     window.snapshot_button.click()
-    assert "No captured frame" in window.snapshot_label.text()
+    # Nothing to grab here (no Dota, no Windows), so it must say so plainly.
+    assert "Nothing to capture" in window.snapshot_label.text()
+
+
+def test_snapshot_grabs_a_frame_when_dota_is_available(window, tmp_path,
+                                                       monkeypatch):
+    import numpy as np
+
+    from draft_assist.vision import debug as debug_mod
+
+    monkeypatch.setattr(debug_mod, "DEBUG_OUT", tmp_path)
+    monkeypatch.setattr(
+        type(window), "_grab_dota_frame",
+        lambda self: np.full((1080, 1920, 3), 60, dtype=np.uint8))
+    window.refresh()
+    window.snapshot_button.click()
+    assert window.snapshot_label.text().startswith("Saved to")
+    folder = tmp_path / sorted(p.name for p in tmp_path.iterdir())[0]
+    assert (folder / "frame.png").exists()
+    # The overlay drawn on it is what makes slot positions checkable.
+    assert (folder / "overlay.png").exists()
+    assert (folder / "slots.txt").exists()
 
 
 def test_snapshot_writes_dump_for_a_frame(window, tmp_path, monkeypatch):
@@ -332,3 +355,121 @@ def test_capture_controls_hidden_under_game_data(qapp):
         assert not win.bind_button.isEnabled()
     finally:
         win.close()
+
+
+# ---- the always-on-top overlay -----------------------------------------
+
+def test_overlay_collapses_to_just_the_badge(qapp):
+    """Collapsed, the window must be the badge and nothing more, or an
+    invisible strip sits over the game swallowing clicks."""
+    from draft_assist.ui.overlay import BADGE_SIZE, PANEL_WIDTH, DraftOverlay
+
+    overlay = DraftOverlay(demo_dataset())
+    try:
+        overlay.show()
+        assert overlay.expanded
+        assert overlay.width() == PANEL_WIDTH
+        overlay.toggle()
+        assert not overlay.expanded
+        assert overlay.size().width() == BADGE_SIZE
+        assert overlay.size().height() == BADGE_SIZE
+        overlay.toggle()
+        assert overlay.width() == PANEL_WIDTH
+    finally:
+        overlay.close()
+
+
+def test_overlay_is_frameless_and_on_top(qapp):
+    from PyQt6.QtCore import Qt
+
+    from draft_assist.ui.overlay import DraftOverlay
+
+    overlay = DraftOverlay(demo_dataset())
+    try:
+        flags = overlay.windowFlags()
+        assert flags & Qt.WindowType.FramelessWindowHint
+        assert flags & Qt.WindowType.WindowStaysOnTopHint
+        # Must never steal keyboard focus from the game when it appears.
+        assert overlay.testAttribute(
+            Qt.WidgetAttribute.WA_ShowWithoutActivating)
+    finally:
+        overlay.close()
+
+
+def test_overlay_shows_ranked_heroes(qapp):
+    from draft_assist.model import scoring
+    from draft_assist.ui.overlay import DraftOverlay
+    from draft_assist.ui.providers import Snapshot
+
+    ds = demo_dataset()
+    overlay = DraftOverlay(ds, rows=4)
+    try:
+        draft = scoring.DraftState(allies=[1, 2], enemies=[11, 12],
+                                   my_role="carry")
+        scored = scoring.score_all(ds, draft)
+        snap = Snapshot(mode="draft", game_state="DOTA_GAMERULES_STATE_"
+                                                 "HERO_SELECTION")
+        overlay.update_content(snap, scored, draft)
+        visible = [l for l in overlay.row_labels if l.isVisibleTo(overlay)]
+        assert len(visible) == 4
+        assert scored[0].name in visible[0].text()
+        assert "%" in visible[0].text()
+        assert "Hero Selection" in overlay.state_label.text()
+        assert "4 picks known" in overlay.state_label.text()
+    finally:
+        overlay.close()
+
+
+def test_overlay_says_when_enemy_picks_are_missing(qapp):
+    from draft_assist.model import scoring
+    from draft_assist.ui.overlay import DraftOverlay
+    from draft_assist.ui.providers import Snapshot
+
+    ds = demo_dataset()
+    overlay = DraftOverlay(ds)
+    try:
+        draft = scoring.DraftState(allies=[1])
+        overlay.update_content(Snapshot(needs_manual=True),
+                               scoring.score_all(ds, draft), draft)
+        assert "not reported" in overlay.footer.text()
+    finally:
+        overlay.close()
+
+
+def test_overlay_toggle_persists_position_and_state(qapp, tmp_path,
+                                                    monkeypatch):
+    """Dragging it somewhere must survive a restart."""
+    from draft_assist.ui import settings as ui_settings
+
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "ui.json")
+    ds = demo_dataset()
+    win = make_window(qapp, ds)
+    monkeypatch.setattr(win, "settings", ui_settings.load())
+    try:
+        win.overlay_action.setChecked(True)
+        assert win.overlay is not None and win.overlay.isVisible()
+        win._remember_overlay_position(517, 233)
+        win.overlay.set_expanded(False)
+        win._remember_overlay_expanded(False)
+
+        stored = ui_settings.load(tmp_path / "ui.json")
+        assert stored["overlay_x"] == 517 and stored["overlay_y"] == 233
+        assert stored["overlay_expanded"] is False
+        assert stored["overlay_enabled"] is True
+
+        win._reset_overlay_position()
+        assert win.overlay.x() == 40
+    finally:
+        win.close()
+
+
+def test_overlay_closes_with_the_main_window(qapp, tmp_path, monkeypatch):
+    from draft_assist.ui import settings as ui_settings
+
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "ui.json")
+    win = make_window(qapp, demo_dataset())
+    monkeypatch.setattr(win, "settings", ui_settings.load())
+    win.overlay_action.setChecked(True)
+    overlay = win.overlay
+    win.close()
+    assert not overlay.isVisible()

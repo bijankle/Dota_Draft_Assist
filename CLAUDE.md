@@ -49,8 +49,8 @@ credentials, and put the account at risk. Do not go there.
    urgent. Do not "fix" this.
 
 5. **Input automation into the game is off limits.** See the boundary above.
-   The user reads recommendations in this window and switches to Dota to click
-   the pick themselves.
+   The user reads recommendations and switches to Dota to click the pick
+   themselves.
 
 ## Other standing decisions
 
@@ -84,6 +84,18 @@ credentials, and put the account at risk. Do not go there.
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   Item panel shows at most 5 items above a severity floor, only after the
   user's pick is locked. Silence in many games is correct — do not tune it away.
+- **The overlay sits OVER Dota, never inside it.** `ui/overlay.py` is an
+  ordinary frameless always-on-top window: no DLL injection, no hooking of the
+  present chain, no input sent to the game — which is what keeps it on the
+  safe side of the boundary above. It needs Dota in borderless windowed mode,
+  and it is deliberately interactive (not click-through) because the badge has
+  to be clickable and draggable. This reverses the original spec's "no
+  overlay" decision, at the user's request; the main window is unchanged.
+- **GSI carries no screen geometry.** It reports game state, not pixels (the
+  only coordinates in it are hero world positions). So the overlay anchors
+  itself to the Dota window rectangle, which Windows supplies from the window
+  handle; anything drawn against specific portraits needs coordinates from a
+  saved frame, which is what the snapshot key exists for.
 - **Stratz API key** lives in `.env` (`STRATZ_API_KEY=...`), gitignored since
   the first commit, read at runtime. Never hardcode, never commit.
 

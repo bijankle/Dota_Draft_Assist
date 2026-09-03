@@ -1,6 +1,9 @@
-"""The application window: an ordinary draggable, resizable desktop window —
-no transparency, no always-on-top, no click-through. It is not an overlay;
-the user reads it in front of Dota and switches to the game to pick.
+"""The application window: an ordinary draggable, resizable desktop window.
+
+An optional companion overlay (View > Draft overlay) puts a small draggable
+badge on top of Dota that expands into the recommendations; the main window
+stays a normal window, because the drill-downs need to be clicked. Neither
+touches the game — see overlay.py.
 
 Every maintenance action (update the app, pull statistics, tune recognition,
 probe capture, choose a capture source) is a menu item that runs in a
@@ -42,9 +45,11 @@ from ..data import store
 from ..data.store import Dataset
 from ..model import items as items_mod
 from ..model import scoring
+from . import settings as ui_settings
 from . import theme
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
+from .overlay import DraftOverlay
 from .task_dialog import TaskDialog
 from .tasks import TASKS
 
@@ -99,6 +104,8 @@ class MainWindow(QMainWindow):
         self.snapshot = None
         self.last_draft_key = None
         self.scored: list[scoring.ScoredHero] = []
+        self.settings = ui_settings.load()
+        self.overlay: DraftOverlay | None = None
         self.setWindowTitle("Dota Draft Assist")
         self.resize(1240, 820)
         self._build_menus()
@@ -106,6 +113,8 @@ class MainWindow(QMainWindow):
         self._refresh_sources()
         self._sync_source_controls()
         self._update_first_run_banner()
+        if self.settings.get("overlay_enabled"):
+            self._set_overlay(True)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
@@ -173,6 +182,18 @@ class MainWindow(QMainWindow):
                   lambda: self.run_task("list_windows"))
         self._act(cap_menu, "Run capture &probe…",
                   lambda: self.run_task("probe"))
+
+        view_menu = bar.addMenu("&View")
+        self.overlay_action = QAction("Draft &overlay", self)
+        self.overlay_action.setCheckable(True)
+        self.overlay_action.setShortcut(QKeySequence("Ctrl+O"))
+        self.overlay_action.setStatusTip(
+            "A small always-on-top badge over Dota that expands into the "
+            "recommendations")
+        self.overlay_action.toggled.connect(self._set_overlay)
+        view_menu.addAction(self.overlay_action)
+        self._act(view_menu, "&Reset overlay position",
+                  self._reset_overlay_position)
 
         tools_menu = bar.addMenu("&Tools")
         self._act(tools_menu, "&Save debug snapshot", self._save_snapshot,
@@ -433,6 +454,8 @@ class MainWindow(QMainWindow):
             except FileNotFoundError:
                 pass  # no portraits yet; the banner explains what to do
         self.last_draft_key = None
+        if self.overlay is not None:
+            self.overlay.set_dataset(self.ds)
         self._update_first_run_banner()
         self._refresh_views()
         self.status.showMessage(
@@ -484,6 +507,44 @@ class MainWindow(QMainWindow):
             "Item flags are hand-authored rules.\n\n"
             "It never injects code, reads game memory, or sends input to "
             "Dota — it only reads pixels from a window already on screen.")
+
+    # ---- overlay --------------------------------------------------------
+    def _set_overlay(self, enabled: bool) -> None:
+        if enabled and self.overlay is None:
+            self.overlay = DraftOverlay(
+                self.ds,
+                rows=int(self.settings.get("overlay_rows", 6)),
+                expanded=bool(self.settings.get("overlay_expanded", True)))
+            self.overlay.moved.connect(self._remember_overlay_position)
+            self.overlay.toggled.connect(self._remember_overlay_expanded)
+            self.overlay.move(int(self.settings.get("overlay_x", 40)),
+                              int(self.settings.get("overlay_y", 40)))
+        if self.overlay is not None:
+            self.overlay.setVisible(enabled)
+        self.settings["overlay_enabled"] = bool(enabled)
+        ui_settings.save(self.settings)
+        if self.overlay_action.isChecked() != enabled:
+            self.overlay_action.blockSignals(True)
+            self.overlay_action.setChecked(enabled)
+            self.overlay_action.blockSignals(False)
+
+    def _remember_overlay_position(self, x: int, y: int) -> None:
+        self.settings["overlay_x"] = int(x)
+        self.settings["overlay_y"] = int(y)
+        ui_settings.save(self.settings)
+
+    def _remember_overlay_expanded(self, expanded: bool) -> None:
+        self.settings["overlay_expanded"] = bool(expanded)
+        ui_settings.save(self.settings)
+
+    def _reset_overlay_position(self) -> None:
+        """Rescue for an overlay dragged off-screen or onto a monitor that
+        is no longer attached."""
+        self.settings["overlay_x"], self.settings["overlay_y"] = 40, 40
+        ui_settings.save(self.settings)
+        if self.overlay is not None:
+            self.overlay.move(40, 40)
+        self.status.showMessage("Overlay moved back to the top-left", 5000)
 
     # ---- game data (GSI) ----------------------------------------------
     def _install_gsi(self) -> None:
@@ -736,6 +797,9 @@ class MainWindow(QMainWindow):
         self._update_status(snap)
         self._update_manual_hint(snap)
         self._update_debug(snap)
+        if self.overlay is not None and self.overlay.isVisible():
+            self.overlay.update_content(snap, self.scored,
+                                        self._current_draft())
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -1026,29 +1090,51 @@ class MainWindow(QMainWindow):
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
         self.debug_text.setPlainText("\n".join(lines))
 
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self.overlay is not None:
+            self.overlay.close()
+        super().closeEvent(event)
+
     def _save_snapshot(self) -> None:
         """Dump exactly what the app sees right now: the captured frame, the
         overlay with crop boxes, the ten slot crops, and the per-slot match
         record. This folder is the unit of evidence — commit it and the
         whole failure is reproducible offline."""
         snap = self.snapshot
-        if snap is None or snap.frame is None:
+        frame = snap.frame if snap is not None else None
+        if frame is None:
+            # Running on game data there is no live frame, but a snapshot is
+            # exactly what is needed to anchor overlay positions — so grab
+            # one from the Dota window on demand.
+            frame = self._grab_dota_frame()
+        if frame is None:
             self.snapshot_label.setText(
-                "No captured frame to save (demo mode has none).")
+                "Nothing to capture: Dota must be running in borderless "
+                "windowed mode (demo mode has no frame at all).")
             return
+        if snap is not None:
+            snap.frame = frame
         from ..vision import debug as debug_mod
         from ..vision import library as library_mod
         from ..vision.recognize import read_draft
         names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
-        read = snap.read_raw
+        read = snap.read_raw if snap is not None else None
         session = getattr(self.provider, "session", None)
         if session is not None:
-            read = read_draft(snap.frame, session.layout, session.lib,
+            read = read_draft(frame, session.layout, session.lib,
                               session.params, keep_crops=True)
         if read is None:
-            self.snapshot_label.setText("No recognition result yet.")
-            return
-        folder = debug_mod.dump(snap.frame, read, names)
+            # No recognition ran (game-data mode): save the frame with the
+            # current slot boxes drawn on it, which is what calibration
+            # needs anyway.
+            from ..vision.layout import load_layout
+            from ..vision.recognize import DraftRead, SlotRead, crop_rect
+            layout = load_layout()
+            read = DraftRead(slots=[
+                SlotRead(rect=rect, hero_id=None, best_label="(not matched)",
+                         distance=0, margin=0, crop=crop_rect(frame, rect))
+                for rect in layout.slots()])
+        folder = debug_mod.dump(frame, read, names)
         try:
             params = library_mod.load_params()
             params_line = (f"hash_size={params.hash_size} "
@@ -1057,13 +1143,24 @@ class MainWindow(QMainWindow):
         except Exception:
             params_line = "recognition params unavailable\n"
         (folder / "context.txt").write_text(
-            f"mode={snap.mode}\nsource={snap.source}\n"
-            f"warning={snap.warning}\n"
-            f"frame_size={snap.frame.shape[1]}x{snap.frame.shape[0]}\n"
-            f"gate_score={snap.gate_score}\n"
-            f"frames_arrived={snap.frames_arrived}\n" + params_line,
-            encoding="utf-8")
+            f"mode={getattr(snap, 'mode', '?')}\n"
+            f"source={getattr(snap, 'source', '?')}\n"
+            f"game_state={getattr(snap, 'game_state', '')}\n"
+            f"warning={getattr(snap, 'warning', '')}\n"
+            f"frame_size={frame.shape[1]}x{frame.shape[0]}\n"
+            f"gate_score={getattr(snap, 'gate_score', '')}\n"
+            f"frames_arrived={getattr(snap, 'frames_arrived', 0)}\n"
+            + params_line, encoding="utf-8")
         self.snapshot_label.setText(f"Saved to {folder}")
+        self.status.showMessage(f"Snapshot saved to {folder}", 8000)
+
+    def _grab_dota_frame(self):
+        """One-shot capture of the Dota window, independent of the current
+        draft source."""
+        from ..capture.oneshot import capture_once
+        from ..capture.window import DOTA_TITLE, find_dota_window_title
+        title = find_dota_window_title() or DOTA_TITLE
+        return capture_once(title)
 
 
 def make_provider(args, ds: Dataset, manual: ManualDraft):

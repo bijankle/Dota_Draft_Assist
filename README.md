@@ -55,7 +55,8 @@ the app, with live progress and readable errors.
 | **Game** | Clear manual draft | Between games |
 | **Capture** | Use game data / Use screen capture | Switching source at runtime |
 | **Capture** | Capture source ▸, Bind to Dota client, Force recognition | Screen-capture fallback only |
-| **Tools** | Save debug snapshot (Ctrl+S) | When the capture fallback looks wrong |
+| **View** | Draft overlay (Ctrl+O) | A small badge over Dota that expands into the picks |
+| **Tools** | Save debug snapshot (Ctrl+S) | Grabs the Dota window with the slot boxes drawn on it |
 | **Tools** | Edit / reload item rules | Tweaking `rules/items.yaml` |
 | **Help** | Update application | Pull the latest code from GitHub |
 
@@ -72,6 +73,19 @@ selected, and the item panel once your pick is locked.
 match confidence beside each slot. This answers almost every recognition
 question at a glance, because most vision bugs are just the wrong rectangle
 being cropped.
+
+**Draft overlay** (Ctrl+O) — a small always-on-top badge you drag wherever
+you like. Click it to expand a compact panel of the top picks with their
+scores; click again to collapse back to a 30-pixel badge. Position and
+collapsed state are remembered. It sits *over* Dota as an ordinary window —
+nothing is injected into the game — which means Dota must run in
+**borderless windowed** mode, since an exclusive-fullscreen game draws above
+everything.
+
+**Ctrl+S** grabs the Dota window whatever the current source is, and saves it
+with the slot boxes drawn on top into `debug_out/<timestamp>/`. That frame is
+what anchors per-portrait annotations, since GSI reports game state but no
+screen coordinates.
 
 ### Connecting the game (do this once)
 

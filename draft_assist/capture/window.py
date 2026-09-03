@@ -79,3 +79,44 @@ def client_size(title: str) -> tuple[int, int] | None:
     if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
         return None
     return rect.right - rect.left, rect.bottom - rect.top
+
+
+def window_rect(title: str) -> tuple[int, int, int, int] | None:
+    """Client area of the window, in SCREEN coordinates: (x, y, w, h).
+
+    This is what an overlay anchors itself to. It is read straight from the
+    window handle — no capture, no calibration, nothing asked of the user —
+    which is why an edge-anchored overlay needs no setup at all.
+
+    Returns physical pixels. Callers on a scaled display must divide by the
+    screen's device pixel ratio before handing the numbers to Qt.
+    """
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    hwnd = user32.FindWindowW(None, title)
+    if not hwnd:
+        return None
+    rect = wintypes.RECT()
+    if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+        return None
+    origin = wintypes.POINT(0, 0)
+    if not user32.ClientToScreen(hwnd, ctypes.byref(origin)):
+        return None
+    return (origin.x, origin.y,
+            rect.right - rect.left, rect.bottom - rect.top)
+
+
+def is_foreground(title: str) -> bool:
+    """True when this window is the one the user is looking at, so an
+    overlay can hide itself the moment you alt-tab away from the game."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    hwnd = user32.FindWindowW(None, title)
+    return bool(hwnd) and user32.GetForegroundWindow() == hwnd
