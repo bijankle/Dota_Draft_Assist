@@ -48,6 +48,7 @@ the app, with live progress and readable errors.
 | Menu | Action | When |
 | --- | --- | --- |
 | **Data** | Update statistics and portraits | First run, then ~daily and after patches |
+| **Data** | Statistics bracket | Choose which ranks the numbers come from |
 | **Data** | Reload data and library (F5) | After editing files by hand |
 | **Game** | Set up game data (GSI) | Once, before first use |
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
@@ -123,6 +124,21 @@ resolution changes. If the crop boxes in the Debug tab do not sit on the
 hero portraits, nudge them in `calibration_local.json` while watching that
 tab.
 
+### Statistics bracket
+
+**Data ▸ Statistics bracket** chooses which ranks the hero win rates and
+matchups are drawn from. Hero strength genuinely differs by rank, and the
+default aims about one bracket above where you play (Ancient + Divine for a
+Legend player climbing), so the advice reflects the games you are trying to
+win rather than the ones you already do. Two adjacent brackets are combined,
+which roughly doubles the sample for a metagame difference smaller than the
+noise it removes; a single bracket is allowed but noisier.
+
+This is a data-pull setting, not a display filter — the baselines and
+matrices are built for the chosen brackets. Changing it therefore needs a
+data update, which the app offers immediately, and until then a banner says
+which bracket the cached numbers actually came from.
+
 ## Self-training on real frames
 
 ```
@@ -147,7 +163,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 102 tests: normalisation math, scoring views, item
+pytest            # 117 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

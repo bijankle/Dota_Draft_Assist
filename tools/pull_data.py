@@ -18,8 +18,12 @@ def main() -> None:
     parser.add_argument("--skip-bracket-check", action="store_true",
                         help="skip the OpenDota-vs-Stratz tier verification "
                              "(only if you are certain the mapping is right)")
+    parser.add_argument("--brackets", nargs="+", metavar="BRACKET",
+                        help="rank brackets to build statistics for "
+                             "(default: whatever is set in the app)")
     args = parser.parse_args()
-    build_dataset(skip_bracket_check=args.skip_bracket_check)
+    build_dataset(skip_bracket_check=args.skip_bracket_check,
+                  brackets=args.brackets)
 
 
 if __name__ == "__main__":

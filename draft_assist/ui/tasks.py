@@ -44,10 +44,11 @@ TASKS = {
         key="update_data",
         title="Update statistics and portraits",
         steps=[[PY, "tools/pull_data.py"], [PY, "tools/build_library.py"]],
-        blurb=("Downloads hero statistics for Ancient+Divine from OpenDota "
-               "and Stratz, verifies bracket indexing across both sources, "
-               "rebuilds the interaction matrices, and fetches hero "
-               "portraits. Run about once a day, and after a patch."),
+        blurb=("Downloads hero statistics for the bracket set in "
+               "Data > Statistics bracket, verifies bracket indexing across "
+               "OpenDota and Stratz, rebuilds the interaction matrices, and "
+               "fetches hero portraits. Run about once a day, and after a "
+               "patch."),
         needs_network=True,
         reload_after=True,
     ),

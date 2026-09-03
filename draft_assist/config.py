@@ -18,9 +18,52 @@ LAYOUT_FILE = REPO_ROOT / "draft_assist" / "vision" / "layout_default.json"
 # Local calibration nudges (gitignored); overrides the default layout.
 CALIBRATION_FILE = REPO_ROOT / "calibration_local.json"
 
-# Target bracket: user is Legend-Ancient, stats come from one bracket above —
-# Ancient and Divine combined (summed wins / summed picks). See CLAUDE.md.
-TARGET_BRACKETS = ("ANCIENT", "DIVINE")
+# Which rank brackets the statistics are drawn from.
+#
+# This is a DATA-PULL setting, not a display one: the baselines and the
+# interaction matrices are built for the chosen brackets, so changing it
+# means rebuilding the dataset. The choice is stored in preferences.json
+# (gitignored) and read at call time, so the app and the pull subprocess
+# always agree.
+#
+# The default follows the original reasoning: aim one bracket above where
+# you play, so the advice reflects the games you are trying to win rather
+# than the ones you already do. Two adjacent brackets are combined for
+# sample size.
+ALL_BRACKETS = ("HERALD", "GUARDIAN", "CRUSADER", "ARCHON",
+                "LEGEND", "ANCIENT", "DIVINE", "IMMORTAL")
+DEFAULT_TARGET_BRACKETS = ("ANCIENT", "DIVINE")
+PREFS_FILE = REPO_ROOT / "preferences.json"
+
+
+def target_brackets() -> tuple[str, ...]:
+    """The brackets statistics are pulled for, resolved at call time."""
+    import json
+    try:
+        stored = json.loads(PREFS_FILE.read_text(encoding="utf-8"))
+        chosen = stored.get("target_brackets")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return DEFAULT_TARGET_BRACKETS
+    if not isinstance(chosen, list):
+        return DEFAULT_TARGET_BRACKETS
+    # Keep canonical rank order regardless of what order they were picked
+    # in, and drop anything unrecognised rather than failing the pull.
+    valid = tuple(b for b in ALL_BRACKETS if b in chosen)
+    return valid or DEFAULT_TARGET_BRACKETS
+
+
+def save_target_brackets(brackets) -> None:
+    import json
+    ordered = [b for b in ALL_BRACKETS if b in set(brackets)]
+    if not ordered:
+        raise ValueError("at least one bracket must be selected")
+    PREFS_FILE.write_text(
+        json.dumps({"target_brackets": ordered}, indent=2), encoding="utf-8")
+
+
+# Backwards-compatible alias; prefer target_brackets() so a changed
+# preference takes effect without a restart.
+TARGET_BRACKETS = DEFAULT_TARGET_BRACKETS
 
 # Cached data older than this is considered stale and triggers a warning in
 # the UI (the pull itself is a manual/daily action; the live loop never

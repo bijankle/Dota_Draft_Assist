@@ -40,13 +40,15 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
 
-from ..config import DEBUG_OUT, REPO_ROOT, RULES_FILE
+from ..config import (DEBUG_OUT, REPO_ROOT, RULES_FILE,
+                       save_target_brackets, target_brackets)
 from ..data import store
 from ..data.store import Dataset
 from ..model import items as items_mod
 from ..model import scoring
 from . import settings as ui_settings
 from . import theme
+from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
 from .overlay import DraftOverlay
@@ -140,6 +142,9 @@ class MainWindow(QMainWindow):
         self._act(data_menu, "&Tune recognition…",
                   lambda: self.run_task("tune"), None,
                   "Search for recognition settings that never misidentify")
+        data_menu.addSeparator()
+        self._act(data_menu, "Statistics &bracket…", self._choose_brackets,
+                  None, "Which ranks the statistics are drawn from")
         data_menu.addSeparator()
         self._act(data_menu, "&Reload data and library", self.reload_backend,
                   "F5", "Re-read the downloaded data from disk")
@@ -466,7 +471,54 @@ class MainWindow(QMainWindow):
             + (f"{len(self.ds.hero_ids)} heroes" if not self.ds.is_empty
                else "no data downloaded yet"), 5000)
 
+    def _choose_brackets(self) -> None:
+        """Pick the rank brackets statistics come from, then offer the
+        re-pull the change requires."""
+        current = target_brackets()
+        dialog = BracketDialog(current, parent=self)
+        if dialog.exec() != BracketDialog.DialogCode.Accepted:
+            return
+        if dialog.selected == current:
+            return
+        try:
+            save_target_brackets(dialog.selected)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Statistics bracket",
+                                f"Could not save the choice:\n\n{exc}")
+            return
+        self._update_first_run_banner()
+        chosen = " + ".join(b.title() for b in dialog.selected)
+        answer = QMessageBox.question(
+            self, "Statistics bracket",
+            f"Statistics will now be pulled for {chosen}.\n\n"
+            "The cached data was built for the previous bracket, so it has "
+            "to be rebuilt. Update now?")
+        if answer == QMessageBox.StandardButton.Yes:
+            self.run_task("update_data")
+
+    def _bracket_mismatch(self) -> tuple[str, str] | None:
+        """(cached, wanted) when the dataset on disk was built for different
+        brackets than are currently selected — the numbers would otherwise
+        silently disagree with the label."""
+        if self.ds.is_empty:
+            return None
+        cached = tuple(self.ds.meta.get("target_brackets", ()))
+        wanted = target_brackets()
+        if cached and tuple(cached) != wanted:
+            return ("+".join(cached), "+".join(wanted))
+        return None
+
     def _update_first_run_banner(self) -> None:
+        mismatch = self._bracket_mismatch()
+        if mismatch:
+            cached, wanted = mismatch
+            self.banner_label.setText(
+                f"<b>Statistics are for {cached}, but {wanted} is "
+                "selected.</b> The numbers below are still the old bracket "
+                "until the data is rebuilt.")
+            self.banner_button.setText("Rebuild now")
+            self.banner.setVisible(True)
+            return
         if self.ds.is_empty:
             self.banner_label.setText(
                 "<b>No statistics downloaded yet.</b> The hero list stays "

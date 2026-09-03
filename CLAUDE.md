@@ -54,9 +54,16 @@ credentials, and put the account at risk. Do not go there.
 
 ## Other standing decisions
 
-- **Bracket**: user is Legend–Ancient; statistics come from one bracket above —
-  Ancient and Divine **combined** (summed wins / summed picks). Two adjacent
-  brackets are aggregated deliberately for sample size.
+- **Bracket is a user setting, not a constant.** The user plays Legend and is
+  climbing to Ancient, so the DEFAULT is one bracket above — Ancient and
+  Divine **combined** (summed wins / summed picks), two adjacent brackets
+  aggregated deliberately for sample size. It is changed in the app (Data >
+  Statistics bracket) and stored in `preferences.json`, read at call time by
+  `config.target_brackets()` so the app and the pull subprocess always agree.
+  Because baselines and matrices are BUILT for the chosen brackets, changing
+  it invalidates the cache: the dataset records its own `target_brackets` and
+  the UI banners a mismatch rather than showing one bracket's numbers under
+  another's label.
 - **Do not trust remembered API field names or bracket numbering** — including
   anything in this file. `tools/inspect_apis.py` dumps raw OpenDota/Stratz
   responses; parsing code validates its schema assumptions against real

@@ -473,3 +473,61 @@ def test_overlay_closes_with_the_main_window(qapp, tmp_path, monkeypatch):
     overlay = win.overlay
     win.close()
     assert not overlay.isVisible()
+
+
+# ---- statistics bracket -------------------------------------------------
+
+def test_banner_warns_when_data_bracket_differs_from_selection(
+        qapp, tmp_path, monkeypatch):
+    """A dataset built for one bracket must never be shown as another."""
+    from draft_assist import config
+    from draft_assist.ui import app as app_mod
+
+    monkeypatch.setattr(config, "PREFS_FILE", tmp_path / "preferences.json")
+    monkeypatch.setattr(app_mod, "target_brackets",
+                        lambda: ("LEGEND", "ANCIENT"))
+    ds = demo_dataset()          # built for ANCIENT+DIVINE
+    win = make_window(qapp, ds)
+    try:
+        win._update_first_run_banner()
+        assert win.banner.isVisible() or not win.isVisible()
+        text = win.banner_label.text()
+        assert "ANCIENT+DIVINE" in text and "LEGEND+ANCIENT" in text
+        assert "Rebuild" in win.banner_button.text()
+    finally:
+        win.close()
+
+
+def test_no_banner_when_bracket_matches(qapp, monkeypatch):
+    from draft_assist.ui import app as app_mod
+
+    monkeypatch.setattr(app_mod, "target_brackets",
+                        lambda: ("ANCIENT", "DIVINE"))
+    win = make_window(qapp, demo_dataset())
+    try:
+        win._update_first_run_banner()
+        assert not win.banner.isVisible()
+    finally:
+        win.close()
+
+
+def test_bracket_dialog_presets_and_validation(qapp):
+    from draft_assist.ui.bracket_dialog import BracketDialog
+
+    dialog = BracketDialog(("ANCIENT", "DIVINE"))
+    try:
+        assert dialog._chosen() == ("ANCIENT", "DIVINE")
+        dialog._apply_preset(("LEGEND", "ANCIENT"))
+        assert dialog._chosen() == ("LEGEND", "ANCIENT")
+        assert "Legend + Ancient" in dialog.summary.text()
+        # Changing the bracket invalidates the cache; the dialog must say so.
+        assert "rebuild" in dialog.summary.text().lower()
+
+        for box in dialog.boxes.values():
+            box.setChecked(False)
+        assert not dialog.ok.isEnabled()      # empty selection refused
+        dialog.boxes["IMMORTAL"].setChecked(True)
+        assert dialog.ok.isEnabled()
+        assert "noisier" in dialog.summary.text()   # single-bracket warning
+    finally:
+        dialog.close()

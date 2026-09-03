@@ -6,11 +6,14 @@ import time
 
 import numpy as np
 
-from ..config import TARGET_BRACKETS
+from ..config import target_brackets
 from . import normalize, opendota, store, stratz, verify
 
 
-def build_dataset(skip_bracket_check: bool = False) -> store.Dataset:
+def build_dataset(skip_bracket_check: bool = False,
+                  brackets: tuple[str, ...] | None = None) -> store.Dataset:
+    brackets = tuple(brackets) if brackets else target_brackets()
+    print(f"Building statistics for bracket(s): {'+'.join(brackets)}")
     print("Pulling OpenDota constants/heroes ...")
     heroes = opendota.fetch_heroes()
     print(f"  {len(heroes)} heroes")
@@ -23,7 +26,7 @@ def build_dataset(skip_bracket_check: bool = False) -> store.Dataset:
         bracket_check = {"passed": None, "skipped": True}
     else:
         print("Verifying OpenDota tier indexing against Stratz brackets ...")
-        bracket_check = verify.verify_tier_mapping(hero_stats, TARGET_BRACKETS)
+        bracket_check = verify.verify_tier_mapping(hero_stats, brackets)
         print(verify.format_report(bracket_check))
         if not bracket_check["passed"]:
             raise RuntimeError(
@@ -32,14 +35,14 @@ def build_dataset(skip_bracket_check: bool = False) -> store.Dataset:
                 "report above and data_cache/raw/, fix opendota.TIER_NAMES, "
                 "or rerun with --skip-bracket-check if you are certain.")
 
-    baselines = opendota.baseline_winrates(hero_stats, TARGET_BRACKETS)
+    baselines = opendota.baseline_winrates(hero_stats, brackets)
     total_picks = sum(v["picks"] for v in baselines.values())
-    print(f"Baselines: {TARGET_BRACKETS} combined, "
+    print(f"Baselines: {brackets} combined, "
           f"{total_picks:,} hero-picks total")
 
     print("Introspecting Stratz matchUp schema ...")
     schema = stratz.introspect()
-    bracket_filter = stratz.choose_bracket_filter(schema, TARGET_BRACKETS)
+    bracket_filter = stratz.choose_bracket_filter(schema, brackets)
     print(f"  bracket filter: {bracket_filter['arg']} = "
           f"{bracket_filter['values']} "
           f"({'exact' if bracket_filter['exact'] else 'covers ' + str(bracket_filter['covers'])})")
@@ -65,7 +68,7 @@ def build_dataset(skip_bracket_check: bool = False) -> store.Dataset:
         baseline=b, picks=picks, delta_vs=d_vs, delta_with=d_with,
         meta={
             "pulled_at": time.time(),
-            "target_brackets": list(TARGET_BRACKETS),
+            "target_brackets": list(brackets),
             "stratz_bracket_filter": bracket_filter,
             "bracket_check": bracket_check,
             "matrices_hold": "normalised deltas (see normalize.py), NOT raw win rates",
