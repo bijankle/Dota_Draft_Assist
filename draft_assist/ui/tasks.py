@@ -80,6 +80,16 @@ TASKS = {
                "client is among them, with its measured size."),
         cancellable=False,
     ),
+    "probe_gsi": Task(
+        key="probe_gsi",
+        title="Record game data",
+        steps=[[PY, "tools/probe_gsi.py", "--minutes", "10"]],
+        blurb=("Listens for Dota's Game State Integration payloads for ten "
+               "minutes, archives every one, and reports which components "
+               "the game actually sends. Run it and sit through a draft: "
+               "the verdict at the end says whether GSI can see the enemy "
+               "line-up or whether those picks must be entered by hand."),
+    ),
     "probe": Task(
         key="probe",
         title="Run capture probe",

@@ -1,17 +1,28 @@
 # Dota Draft Assist — domain facts and invariants
 
-Personal-use Windows desktop app that watches the Dota 2 client via Windows
-Graphics Capture, reads the draft off the screen, and shows hero/item
-recommendations in its own ordinary window. Single user, no distribution,
-no installers.
+Personal-use Windows desktop app that reads the current Dota 2 draft and
+shows hero/item recommendations in its own ordinary window. Single user, no
+distribution, no installers.
+
+**Draft state comes from Dota's Game State Integration (GSI) first**, with
+hand-entered slots filling anything GSI does not report, and screen capture
+retained only as an opt-in fallback (`--vision`). GSI is Valve's own
+documented channel: a config file in the Dota install asks the game to POST
+JSON to a local port, so the game volunteers its state. No pixels are
+interpreted, no per-frame compute, nothing to misrecognise.
 
 ## Non-negotiable boundary
 
 The app **never** injects code into the Dota process, hooks its rendering or
-presentation chain, reads its memory, or sends synthetic input to it. It reads
-pixels from a window already visible on the user's own screen and does nothing
-else to the game. If a feature seems to require crossing this line, stop and
-say so instead of implementing it.
+presentation chain, reads its memory, or sends synthetic input to it. It
+consumes data the game itself publishes (GSI), plus — only when explicitly
+enabled — pixels from a window already visible on the user's own screen. If a
+feature seems to require crossing this line, stop and say so instead of
+implementing it.
+
+This rules out the Steam Game Coordinator route: libraries that log in as a
+second Steam client to read live match data are unofficial, need account
+credentials, and put the account at risk. Do not go there.
 
 ## Domain facts not guessable from the code
 
@@ -25,10 +36,11 @@ say so instead of implementing it.
    absolute pixels.** The Dota window is measured from its handle at capture
    time. Calibration nudges are stored as fractional offsets too.
 
-3. **An unknown slot is a legitimate state, not an error.** When the perceptual
-   hash margin between best and second-best portrait match is too small, the
-   slot is marked unknown and scoring proceeds using only confidently resolved
-   slots. Silent about one slot beats wrong about one slot.
+3. **An unknown slot is a legitimate state, not an error.** Whether a slot is
+   unresolved because GSI did not report it or because a portrait hash margin
+   was too small, it is marked unknown and scoring proceeds using only the
+   slots that ARE known. Silent about one slot beats wrong about one slot.
+   Slots are never guessed; the user can always click one in by hand.
 
 4. **Item rule stacking is sublinear by design.** When several enemies trigger
    the same item, severities are sorted descending and weighted 1.0 / 0.6 /
@@ -49,6 +61,19 @@ say so instead of implementing it.
   anything in this file. `tools/inspect_apis.py` dumps raw OpenDota/Stratz
   responses; parsing code validates its schema assumptions against real
   responses and fails loudly. Bracket index mappings are asserted, not assumed.
+- **What GSI actually reports is an open question, settled by evidence.** The
+  `draft` component is understood to be spectator/observer-only, so a player's
+  own feed probably carries `provider`/`map`/`player`/`hero`/`items` but NOT
+  the enemy line-up. `tools/probe_gsi.py` archives real payloads and prints a
+  verdict; `GsiState.capabilities` records which blocks each payload carried.
+  The parser extracts what is present and never fabricates a pick. If real
+  payloads prove the draft block does arrive, the manual overlay simply stops
+  being needed — no other code changes.
+- **Bracket comparisons across sites are not apples to apples.** Stratz buckets
+  whole matches by average rank; OpenDota counts each player at their own rank.
+  That makes cross-source win rates disagree slightly even when tier labels are
+  correct, so `data/verify.py` decides tier alignment on match volumes and pick
+  shares, and only fails the win-rate check on an essentially-full shift.
 - **The live scoring loop never makes network calls.** Data is pulled at most
   once daily and cached to disk with a timestamp.
 - **Portrait matching is many-to-one**: persona/arcana portrait variants are
@@ -65,8 +90,10 @@ say so instead of implementing it.
 ## Development environment split
 
 Claude Code runs on Linux and cannot run Dota, Windows Graphics Capture, or
-see the screen. Only the `capture` module needs Windows + Dota; everything
-else runs headlessly from saved frames, cached data, or synthetic screens.
+see the screen. Only the `capture` module needs Windows + Dota, and only the
+GSI listener needs a running game; everything else runs headlessly from saved
+frames, cached data, archived GSI payloads, or synthetic screens. The GSI
+listener itself is testable by POSTing payloads to it, which the tests do.
 
 - `tools/probe_capture.py` — step-1 probe the user runs on Windows to confirm
   occluded-window capture works before anything is built on top of it.
@@ -80,6 +107,9 @@ else runs headlessly from saved frames, cached data, or synthetic screens.
 - Windows-only deps (`windows-capture`, `pywin32`, PyQt6 runtime) are in
   `requirements-windows.txt`; the Linux dev container installs
   `requirements.txt` only.
+- The app is launched by exactly one file, `Dota Draft Assist.bat`. Every
+  maintenance action is a menu item running in a progress dialog; do not add
+  new .bat files.
 
 ## Out of scope for the prototype
 

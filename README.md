@@ -1,12 +1,32 @@
 # Dota Draft Assist
 
-Personal Dota 2 drafting assistant. Watches the Dota 2 client with Windows
-Graphics Capture, reads the Ranked All Pick draft off the screen with
-perceptual-hash portrait matching, and shows hero and item recommendations in
-an ordinary desktop window. Single-player personal tool — not a product.
+Personal Dota 2 drafting assistant. Reads the current Ranked All Pick draft
+and shows hero and item recommendations in an ordinary desktop window.
+Single-player personal tool — not a product.
+
+**Draft state comes from Dota's own Game State Integration feed.** GSI is
+Valve's documented mechanism: a config file in the Dota install asks the game
+to POST JSON about itself to a local port. The game volunteers its state, so
+there is no screen reading, no per-frame compute, and nothing to
+misidentify.
 
 It never touches the game: no injection, no memory reading, no input
-automation. It only reads pixels from a window already on the user's screen.
+automation, and no logging in as a second Steam client.
+
+### One caveat, and the app is honest about it
+
+GSI's `draft` component is understood to be a spectator/observer feature. In
+your own ranked match the feed reliably reports **your** hero, your team, the
+match ID and the game state — but probably **not** the enemy line-up. So:
+
+- whatever the game reports is used automatically;
+- anything it does not report is **clicked in** — click an empty draft slot,
+  type a few letters, done;
+- screen capture is still available behind `--vision` as a fallback.
+
+**Game ▸ Record game data…** archives real payloads during a draft and prints
+a verdict on what GSI actually sends. If it turns out the draft block does
+arrive, the manual slots simply stop being needed — nothing else changes.
 
 ## Install and run (Windows)
 
@@ -28,13 +48,14 @@ the app, with live progress and readable errors.
 | Menu | Action | When |
 | --- | --- | --- |
 | **Data** | Update statistics and portraits | First run, then ~daily and after patches |
-| **Data** | Tune recognition | After updating portraits or labelling new crops |
 | **Data** | Reload data and library (F5) | After editing files by hand |
-| **Capture** | Capture source ▸ | Choose which window to read |
-| **Capture** | Bind to Dota client (Ctrl+D) | Re-bind after starting Dota |
-| **Capture** | Force recognition (Ctrl+F) | When the draft gate does not trip |
-| **Capture** | List capture sources / Run capture probe | Diagnosing capture |
-| **Tools** | Save debug snapshot (Ctrl+S) | When recognition looks wrong |
+| **Game** | Set up game data (GSI) | Once, before first use |
+| **Game** | Game data status | To see exactly what Dota is reporting |
+| **Game** | Record game data | To archive real payloads during a draft |
+| **Game** | Clear manual draft | Between games |
+| **Capture** | Use game data / Use screen capture | Switching source at runtime |
+| **Capture** | Capture source ▸, Bind to Dota client, Force recognition | Screen-capture fallback only |
+| **Tools** | Save debug snapshot (Ctrl+S) | When the capture fallback looks wrong |
 | **Tools** | Edit / reload item rules | Tweaking `rules/items.yaml` |
 | **Help** | Update application | Pull the latest code from GitHub |
 
@@ -52,21 +73,27 @@ match confidence beside each slot. This answers almost every recognition
 question at a glance, because most vision bugs are just the wrong rectangle
 being cropped.
 
-### Step 1 — confirm occluded capture
+### Connecting the game (do this once)
 
-The app's window covers Dota, so capture reads the Dota window's own buffer
-rather than the desktop. Whether Dota keeps producing frames while fully
-covered varies by driver and Windows version, so verify it once:
+1. **Game ▸ Set up game data (GSI)** — finds the Dota install through Steam's
+   library folders and writes the config.
+2. In Steam: right-click **Dota 2 → Properties → Launch Options**, add
+   `-gamestateintegration`.
+3. Restart Dota.
 
-1. Start Dota 2 in **borderless windowed** mode.
-2. **Capture ▸ Run capture probe…**
-3. Cover the Dota window completely and unfocus it while the probe runs.
+**Game ▸ Game data status** then shows what is arriving and which components
+the feed carries. Nothing leaves your machine: the listener binds
+`127.0.0.1` only and checks the auth token Dota sends.
 
-Frames land in `captures/probe/`. They should keep showing Dota and keep
-reporting CHANGED. If they freeze, the fallback is sizing the assist window
-to leave the Dota team panels visible.
+### The screen-capture fallback
 
-### Calibration
+Only if you want it (`--vision`, or **Capture ▸ Use screen capture**). The
+app's window covers Dota, so capture reads the Dota window's own buffer
+rather than the desktop; whether Dota keeps producing frames while covered
+varies by driver, so verify with **Capture ▸ Run capture probe…** while the
+Dota window is covered. Frames land in `captures/probe/`.
+
+### Calibration (screen-capture fallback only)
 
 Slot coordinates are fractions of the window size, so they survive
 resolution changes. If the crop boxes in the Debug tab do not sit on the
@@ -97,14 +124,16 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 67 tests: normalisation math, scoring views, item
-                  # engine, vision end-to-end on synthetic screens, gate &
-                  # session state machine, capture-source binding, and
-                  # headless UI smoke tests
+pytest            # 89 tests: normalisation math, scoring views, item
+                  # engine, GSI config/listener/parsing/provider, vision
+                  # end-to-end on synthetic screens, gate & session state
+                  # machine, and headless UI smoke tests
 
+python -m draft_assist.ui.app                    # game data (GSI)
+python -m draft_assist.ui.app --manual           # hand-entered draft
+python -m draft_assist.ui.app --vision           # screen-capture fallback
 python -m draft_assist.ui.app --demo             # UI on a scripted draft
-python -m draft_assist.ui.app --replay DIR       # UI on saved frames
-python -m draft_assist.proving.tune --procedural # recognition, no downloads
+python tools/probe_gsi.py --minutes 10           # what does GSI really send?
 ```
 
 See `CLAUDE.md` for the domain invariants (normalised deltas, fractional

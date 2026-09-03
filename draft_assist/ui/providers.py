@@ -13,6 +13,7 @@ import numpy as np
 from ..data.store import Dataset
 from ..vision.recognize import DraftRead
 from .demo import DemoDraft
+from .manual import ManualDraft, merge
 
 
 @dataclass
@@ -29,6 +30,12 @@ class Snapshot:
     frames_arrived: int = 0
     source: str = ""
     warning: str = ""
+    # GSI-specific: what the game itself reported, and what it could not.
+    game_state: str = ""
+    gsi_live: bool = False
+    gsi_notes: list[str] = field(default_factory=list)
+    gsi_capabilities: dict = field(default_factory=dict)
+    needs_manual: bool = False
 
 
 class DemoProvider:
@@ -162,3 +169,103 @@ class ReplayProvider(SessionProvider):
         snap = super().poll()
         snap.source = self.paths[(self.i - 1) % len(self.paths)].name
         return snap
+
+
+class GsiProvider:
+    """Draft state from Dota's own Game State Integration feed.
+
+    This is the sanctioned data path: Dota volunteers JSON to a local port
+    because a config file asks it to. Nothing is injected, no memory is
+    read, no pixels are interpreted, and there is no per-frame compute.
+
+    What the feed carries is discovered, not assumed. Whatever GSI reports
+    is used; whatever it omits is filled from manually entered slots, and
+    the Snapshot says which is which so the UI can be honest about it.
+    """
+
+    def __init__(self, dataset: Dataset, server, manual: ManualDraft | None = None,
+                 install_hint: str = ""):
+        self.ds = dataset
+        self.server = server
+        self.manual = manual if manual is not None else ManualDraft()
+        self.install_hint = install_hint
+        self.last_state = None
+
+    def start(self) -> str:
+        try:
+            self.server.start()
+        except OSError as exc:
+            return (f"could not open the GSI port {self.server.port}: {exc}. "
+                    "Another program may be using it.")
+        return f"listening for Dota game data on 127.0.0.1:{self.server.port}"
+
+    def stop(self) -> None:
+        self.server.stop()
+
+    def set_forced(self, forced: bool) -> None:
+        """No gate to override: the game tells us when a draft is happening."""
+
+    def poll(self) -> Snapshot:
+        from ..gsi import state as gsi_state
+
+        reception = self.server.snapshot()
+        snap = Snapshot(mode="idle", source="game data (GSI)")
+        snap.frames_arrived = reception.count
+        snap.gsi_live = reception.live
+
+        if reception.payload is None:
+            snap.warning = (
+                "no data from Dota yet — "
+                + (self.install_hint or
+                   "install GSI from the Capture menu and add "
+                   "-gamestateintegration to Dota's launch options"))
+            snap.needs_manual = True
+            snap.left = merge([], self.manual.entered("ally"))
+            snap.right = merge([], self.manual.entered("enemy"))
+            snap.mode = "manual" if not self.manual.is_empty else "idle"
+            return snap
+
+        parsed = gsi_state.parse(reception.payload, self.ds)
+        self.last_state = parsed
+        snap.game_state = parsed.game_state
+        snap.gsi_notes = parsed.notes
+        snap.gsi_capabilities = parsed.capabilities
+        snap.source = f"game data (GSI) · {parsed.summary()}"
+
+        snap.left = merge(parsed.allies, self.manual.entered("ally"))
+        snap.right = merge(parsed.enemies, self.manual.entered("enemy"))
+        snap.needs_manual = not parsed.has_full_draft
+        snap.mode = "draft" if parsed.drafting else (
+            "manual" if not self.manual.is_empty else "idle")
+
+        if not reception.live:
+            snap.warning = ("Dota has stopped sending data (game closed, or "
+                            "the -gamestateintegration launch option is "
+                            "missing)")
+        elif reception.rejected and not reception.count:
+            snap.warning = reception.last_error
+        return snap
+
+
+class ManualProvider:
+    """Draft entered entirely by hand — no game connection at all. Useful
+    for planning a draft away from the client, and as the guaranteed
+    fallback."""
+
+    def __init__(self, manual: ManualDraft | None = None):
+        self.manual = manual if manual is not None else ManualDraft()
+
+    def start(self) -> str:
+        return "manual entry — click the draft slots to fill them in"
+
+    def stop(self) -> None:
+        pass
+
+    def set_forced(self, forced: bool) -> None:
+        pass
+
+    def poll(self) -> Snapshot:
+        return Snapshot(left=self.manual.entered("ally"),
+                        right=self.manual.entered("enemy"),
+                        mode="manual", source="manual entry",
+                        needs_manual=True)

@@ -8,8 +8,16 @@ progress dialog, so there is exactly one thing to launch and no console
 windows. The window opens even with no data downloaded yet and explains what
 to do.
 
+Draft state comes from Dota's own Game State Integration feed by default —
+the game reports itself through a Valve-supported channel, so there is no
+pixel interpretation and no per-frame compute. Screen capture is retained
+behind --vision as a fallback for anything GSI does not report, and any slot
+can always be filled in by hand.
+
 Run modes (everything but live capture works with no game and no Windows):
-    python -m draft_assist.ui.app              # live capture (Windows)
+    python -m draft_assist.ui.app              # game data (GSI)
+    python -m draft_assist.ui.app --manual     # hand-entered draft
+    python -m draft_assist.ui.app --vision     # screen capture fallback
     python -m draft_assist.ui.app --demo       # scripted fake draft
     python -m draft_assist.ui.app --replay DIR # saved frames from disk
 """
@@ -35,6 +43,8 @@ from ..data.store import Dataset
 from ..model import items as items_mod
 from ..model import scoring
 from . import theme
+from .hero_picker import HeroPickerDialog
+from .manual import ManualDraft
 from .task_dialog import TaskDialog
 from .tasks import TASKS
 
@@ -79,10 +89,13 @@ def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, ds: Dataset, provider, rules, rules_meta):
+    def __init__(self, ds: Dataset, provider, rules, rules_meta,
+                 manual: ManualDraft | None = None):
         super().__init__()
         self.ds, self.provider = ds, provider
         self.rules, self.rules_meta = rules, rules_meta
+        self.manual = manual if manual is not None else getattr(
+            provider, "manual", None) or ManualDraft()
         self.snapshot = None
         self.last_draft_key = None
         self.scored: list[scoring.ScoredHero] = []
@@ -91,6 +104,7 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._build()
         self._refresh_sources()
+        self._sync_source_controls()
         self._update_first_run_banner()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
@@ -123,7 +137,24 @@ class MainWindow(QMainWindow):
         self._act(data_menu, "Open data &folder",
                   lambda: open_folder(REPO_ROOT / "data_cache"))
 
+        game_menu = bar.addMenu("&Game")
+        self._act(game_menu, "&Set up game data (GSI)…", self._install_gsi,
+                  None, "Install Dota's Game State Integration config")
+        self._act(game_menu, "Game data &status…", self._gsi_status,
+                  None, "What the game is actually reporting right now")
+        self._act(game_menu, "&Record game data…",
+                  lambda: self.run_task("probe_gsi"), None,
+                  "Archive raw GSI payloads during a draft")
+        game_menu.addSeparator()
+        self._act(game_menu, "&Clear manual draft", self._clear_manual,
+                  "Ctrl+Shift+C", "Empty every hand-entered slot")
+
         cap_menu = bar.addMenu("&Capture")
+        self._act(cap_menu, "Use screen capture (&fallback)",
+                  self._switch_to_vision, None,
+                  "Read the draft from pixels instead of game data")
+        self._act(cap_menu, "Use &game data (GSI)", self._switch_to_gsi)
+        cap_menu.addSeparator()
         self.source_menu = cap_menu.addMenu("Capture &source")
         self.source_menu.aboutToShow.connect(self._populate_source_menu)
         self._act(cap_menu, "Bind to &Dota client",
@@ -252,13 +283,19 @@ class MainWindow(QMainWindow):
             row = QHBoxLayout()
             row.setSpacing(6)
             buttons = []
-            for _ in range(5):
-                b = QPushButton("—")
-                b.setEnabled(False)
+            for index in range(5):
+                b = QPushButton("+")
                 b.setProperty("slot", True)
-                b.setToolTip("Click a drafted hero to see what beats it")
-                b.clicked.connect(self._on_drafted_clicked)
                 b.setProperty("side", side)
+                b.setProperty("slot_index", index)
+                b.setToolTip("Click to set this pick; click a filled slot to "
+                             "see what beats it. Right-click to change or "
+                             "clear.")
+                b.clicked.connect(self._on_slot_clicked)
+                b.setContextMenuPolicy(
+                    Qt.ContextMenuPolicy.CustomContextMenu)
+                b.customContextMenuRequested.connect(
+                    lambda _pos, side=side, i=index: self._edit_slot(side, i))
                 row.addWidget(b)
                 buttons.append(b)
             self.team_buttons[side] = buttons
@@ -266,6 +303,10 @@ class MainWindow(QMainWindow):
         self.unknown_label = QLabel("")
         self.unknown_label.setProperty("dim", True)
         tlay.addWidget(self.unknown_label)
+        self.manual_hint = QLabel("")
+        self.manual_hint.setWordWrap(True)
+        self.manual_hint.setProperty("dim", True)
+        tlay.addWidget(self.manual_hint)
         teams_card.setSizePolicy(teams_card.sizePolicy().horizontalPolicy(),
                                  teams_card.sizePolicy().Policy.Maximum)
         rlay.addWidget(teams_card)
@@ -337,10 +378,8 @@ class MainWindow(QMainWindow):
         src_row.addWidget(self.bind_button)
         slay.addLayout(src_row)
         if not hasattr(self.provider, "available_sources"):
-            for w in (self.source_combo, self.refresh_sources_button,
-                      self.bind_button):
-                w.setEnabled(False)
-            self.source_combo.addItem("(live capture only)")
+            self.source_combo.addItem(
+                "(screen capture only — the current source is game data)")
         dlay.addWidget(src_card)
 
         self.debug_image = QLabel("No frame captured yet.")
@@ -446,6 +485,196 @@ class MainWindow(QMainWindow):
             "It never injects code, reads game memory, or sends input to "
             "Dota — it only reads pixels from a window already on screen.")
 
+    # ---- game data (GSI) ----------------------------------------------
+    def _install_gsi(self) -> None:
+        """Write the GSI config into the Dota install and say what is left
+        to do — the launch option is the step everyone forgets."""
+        from ..gsi import install as gsi_install
+
+        port = getattr(getattr(self.provider, "server", None), "port",
+                       gsi_install.DEFAULT_PORT)
+        try:
+            result = gsi_install.install(port=port)
+        except gsi_install.DotaNotFound as exc:
+            QMessageBox.warning(self, "Set up game data", str(exc))
+            return
+        except OSError as exc:
+            QMessageBox.warning(
+                self, "Set up game data",
+                f"Could not write the config file:\n\n{exc}\n\n"
+                "If Dota is installed somewhere protected, run the app once "
+                "as administrator, or copy the config in by hand.")
+            return
+
+        server = getattr(self.provider, "server", None)
+        if server is not None:
+            server.token = result.token
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Set up game data")
+        box.setText("Game State Integration is installed."
+                    if result.created else
+                    "Game State Integration was already installed.")
+        box.setInformativeText(
+            "One more step, and Dota must be restarted for it to take "
+            "effect:\n\n"
+            "In Steam, right-click Dota 2 → Properties → Launch Options, "
+            f"and add:\n\n    {gsi_install.LAUNCH_OPTION}\n\n"
+            "Then restart Dota. This app will start receiving game data "
+            "automatically.")
+        box.setDetailedText(
+            f"Config written to:\n{result.config_path}\n\n"
+            f"Dota install:\n{result.dota_dir}\n\n"
+            f"Listening on 127.0.0.1:{result.port}\n\n"
+            "GSI is Valve's own feature: Dota sends this data because the "
+            "config asks it to. Nothing is injected into the game and no "
+            "memory is read.")
+        box.exec()
+
+    def _gsi_status(self) -> None:
+        """Report exactly what the game is sending — the evidence that
+        settles what GSI can and cannot do."""
+        from ..gsi import install as gsi_install
+
+        server = getattr(self.provider, "server", None)
+        if server is None:
+            QMessageBox.information(
+                self, "Game data status",
+                "The current source is not game data. Switch with "
+                "Capture ▸ Use game data (GSI).")
+            return
+        reception = server.snapshot()
+        lines = [f"Listening on 127.0.0.1:{server.port}",
+                 f"Payloads received: {reception.count}",
+                 f"Rejected (bad auth token): {reception.rejected}"]
+        if reception.payload is None:
+            lines += [
+                "",
+                "Dota has not sent anything yet. Check that:",
+                "  1. the GSI config is installed (Game ▸ Set up game data)",
+                f"  2. Dota's launch options include {gsi_install.LAUNCH_OPTION}",
+                "  3. Dota has been restarted since adding it",
+            ]
+        else:
+            lines.append(f"Last payload: {reception.age:.1f}s ago")
+            state = getattr(self.provider, "last_state", None)
+            if state is not None:
+                lines += ["", f"Game state: {state.summary()}", "",
+                          "Components this feed carries:"]
+                for name, present in state.capabilities.items():
+                    lines.append(f"  {'yes' if present else 'no ':>3}  {name}")
+                if state.notes:
+                    lines += ["", "Notes:"] + [f"  - {n}" for n in state.notes]
+                lines += [
+                    "",
+                    ("GSI IS reporting the full draft — manual entry is not "
+                     "needed." if state.has_full_draft else
+                     "GSI is NOT reporting both line-ups, so enemy picks "
+                     "must be clicked in. Click any draft slot to fill it."),
+                ]
+        if reception.last_error:
+            lines += ["", f"Last error: {reception.last_error}"]
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Game data status")
+        box.setText(("Receiving game data from Dota."
+                     if reception.live else "Not receiving game data."))
+        box.setDetailedText("\n".join(lines))
+        box.exec()
+
+    def _switch_to_gsi(self) -> None:
+        from ..gsi import install as gsi_install
+        from ..gsi.server import GsiServer
+        from .providers import GsiProvider
+
+        if isinstance(self.provider, GsiProvider):
+            self.status.showMessage("Already using game data (GSI)", 5000)
+            return
+        token = gsi_install.read_installed_token()
+        server = GsiServer(gsi_install.DEFAULT_PORT, token=token)
+        self._swap_provider(GsiProvider(self.ds, server, self.manual))
+
+    def _switch_to_vision(self) -> None:
+        from .providers import LiveProvider
+
+        if isinstance(self.provider, LiveProvider):
+            self.status.showMessage("Already using screen capture", 5000)
+            return
+        answer = QMessageBox.question(
+            self, "Use screen capture",
+            "Screen capture reads the draft from pixels. It is the older, "
+            "less reliable path and is kept only as a fallback.\n\n"
+            "Switch to it anyway?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from ..capture.session import CaptureSession
+            from ..vision import library
+            from ..vision.layout import load_layout
+            params = library.load_params()
+            lib = library.load(expected_hash_size=params.hash_size)
+        except FileNotFoundError as exc:
+            QMessageBox.warning(self, "Use screen capture",
+                                f"Screen capture needs the portrait library:"
+                                f"\n\n{exc}")
+            return
+        self._swap_provider(LiveProvider(CaptureSession(load_layout(), lib,
+                                                        params)))
+
+    def _swap_provider(self, provider) -> None:
+        try:
+            self.provider.stop()
+        except Exception:
+            pass
+        self.provider = provider
+        self.last_draft_key = None
+        message = provider.start()
+        self.status.showMessage(message, 8000)
+        self._refresh_sources()
+        self._sync_source_controls()
+
+    def _sync_source_controls(self) -> None:
+        """Only show capture controls when pixels are actually the source;
+        under game data there is no gate to force and no window to bind."""
+        is_capture = hasattr(self.provider, "session")
+        for widget in (self.force_check,):
+            widget.setVisible(is_capture)
+        self.force_action.setEnabled(is_capture)
+        for widget in (self.source_combo, self.refresh_sources_button,
+                       self.bind_button):
+            widget.setEnabled(is_capture
+                              and hasattr(self.provider, "available_sources"))
+
+    def _clear_manual(self) -> None:
+        self.manual.clear()
+        self.last_draft_key = None
+        self.status.showMessage("Cleared hand-entered draft slots", 5000)
+
+    def _edit_slot(self, side: str, index: int) -> None:
+        """Fill, change or clear a draft slot by hand."""
+        if self.ds.is_empty:
+            QMessageBox.information(
+                self, "Choose hero",
+                "Download the hero data first: Data ▸ Update statistics.")
+            return
+        snap = self.snapshot
+        taken = set()
+        if snap is not None:
+            taken = set(snap.left) | set(snap.right)
+        slots = (self.manual.allies if side == "ally" else self.manual.enemies)
+        current = slots[index] if index < len(slots) else None
+        caption = ("Your team" if side == "ally" else "Enemy team")
+        dialog = HeroPickerDialog(self.ds, taken=taken, current=current,
+                                  title=f"{caption} — slot {index + 1}",
+                                  parent=self)
+        if dialog.exec() != HeroPickerDialog.DialogCode.Accepted:
+            return
+        self.manual.set_slot(side, index,
+                             None if dialog.cleared else dialog.selected)
+        self.last_draft_key = None
+
     # ---- capture source ------------------------------------------------
     def _set_forced(self, on: bool) -> None:
         for widget in (self.force_check, self.force_action):
@@ -505,7 +734,22 @@ class MainWindow(QMainWindow):
             self.last_draft_key = draft_key
             self._on_draft_changed(allies, enemies, snap.unknown)
         self._update_status(snap)
+        self._update_manual_hint(snap)
         self._update_debug(snap)
+
+    def _update_manual_hint(self, snap) -> None:
+        """Say plainly which picks the game reported and which need typing —
+        the app should never leave the user guessing why a slot is empty."""
+        if not snap.needs_manual:
+            self.manual_hint.setText("")
+            return
+        if snap.game_state:
+            self.manual_hint.setText(
+                "The game reports your own hero and match state, but not the "
+                "other line-up — click the empty slots to fill them in.")
+        else:
+            self.manual_hint.setText(
+                "Click the empty slots to enter the draft by hand.")
 
     def _sides(self, snap) -> tuple[list[int], list[int]]:
         mine_right = self.side_combo.currentIndex() == 1
@@ -536,11 +780,11 @@ class MainWindow(QMainWindow):
                 if i < len(ids):
                     b.setText(self.ds.name(ids[i]))
                     b.setProperty("hero_id", ids[i])
-                    b.setEnabled(True)
                 else:
-                    b.setText("—")
+                    # Empty slots stay enabled: clicking one is how a pick
+                    # gets entered when the game does not report it.
+                    b.setText("+")
                     b.setProperty("hero_id", None)
-                    b.setEnabled(False)
         self.unknown_label.setText(
             f"{unknown} slot(s) unresolved — scoring uses only confident "
             "slots" if unknown else "")
@@ -644,12 +888,22 @@ class MainWindow(QMainWindow):
                     "reasons.</p>")
         self.detail.setHtml("".join(html))
 
-    def _on_drafted_clicked(self) -> None:
+    def _on_slot_clicked(self) -> None:
         b = self.sender()
         hid = b.property("hero_id")
         if hid is None:
+            self._edit_slot(b.property("side"), b.property("slot_index"))
             return
-        side = b.property("side")
+        self._show_counters(hid, b.property("side"))
+
+    def _on_drafted_clicked(self) -> None:
+        """Kept for callers that click a slot expecting the counters view."""
+        b = self.sender()
+        hid = b.property("hero_id")
+        if hid is not None:
+            self._show_counters(hid, b.property("side"))
+
+    def _show_counters(self, hid: int, side: str) -> None:
         draft = self._current_draft()
         drafted = set(draft.allies) | set(draft.enemies)
         counters = scoring.counters_to(self.ds, hid, exclude=drafted)[:15]
@@ -702,6 +956,8 @@ class MainWindow(QMainWindow):
         parts = [f"mode: {snap.mode}"]
         if snap.source:
             parts.append(snap.source)
+        if snap.game_state:
+            parts.append(snap.game_state.replace("DOTA_GAMERULES_STATE_", ""))
         if snap.warning:
             parts.append(f"WARNING: {snap.warning}")
         if snap.stalled:
@@ -810,28 +1066,51 @@ class MainWindow(QMainWindow):
         self.snapshot_label.setText(f"Saved to {folder}")
 
 
-def make_provider(args, ds: Dataset):
-    from .providers import DemoProvider, LiveProvider, ReplayProvider
+def make_provider(args, ds: Dataset, manual: ManualDraft):
+    """Choose the draft source.
+
+    Game data (GSI) is the default: Dota reports its own state through a
+    Valve-supported channel, with no pixel interpretation and no per-frame
+    compute. Screen capture remains available behind --vision as a fallback
+    for anything GSI turns out not to report.
+    """
+    from .providers import (DemoProvider, GsiProvider, LiveProvider,
+                            ManualProvider, ReplayProvider)
     if args.demo:
         return DemoProvider(ds)
-    from ..vision import library
-    from ..vision.layout import load_layout
-    from ..capture.session import CaptureSession
-    params = library.load_params()
+    if args.manual:
+        return ManualProvider(manual)
+
+    if args.vision or args.replay:
+        from ..capture.session import CaptureSession
+        from ..vision import library
+        from ..vision.layout import load_layout
+        params = library.load_params()
+        try:
+            lib = library.load(expected_hash_size=params.hash_size)
+        except FileNotFoundError:
+            # No portraits downloaded yet: an empty library still lets the
+            # app open and offer Data > Update statistics.
+            import numpy as np
+            from ..vision.library import Library
+            lib = Library(bits=np.zeros((0, params.bits), dtype=np.uint8),
+                          hero_ids=np.zeros(0, dtype=np.int32), labels=[],
+                          hash_size=params.hash_size)
+        session = CaptureSession(load_layout(), lib, params)
+        if args.replay:
+            return ReplayProvider(session, Path(args.replay))
+        return LiveProvider(session, title=args.window)
+
+    from ..gsi import install as gsi_install
+    from ..gsi.server import GsiServer
+    hint = ""
     try:
-        lib = library.load(expected_hash_size=params.hash_size)
-    except FileNotFoundError:
-        # No portraits downloaded yet: an empty library still lets the app
-        # open and offer Data > Update statistics.
-        import numpy as np
-        from ..vision.library import Library
-        lib = Library(bits=np.zeros((0, params.bits), dtype=np.uint8),
-                      hero_ids=np.zeros(0, dtype=np.int32), labels=[],
-                      hash_size=params.hash_size)
-    session = CaptureSession(load_layout(), lib, params)
-    if args.replay:
-        return ReplayProvider(session, Path(args.replay))
-    return LiveProvider(session, title=args.window)
+        gsi_install.find_dota_dir()
+    except gsi_install.DotaNotFound:
+        hint = ("Dota install not found — use Game ▸ Set up game data once "
+                "Dota is installed")
+    server = GsiServer(args.port, token=gsi_install.read_installed_token())
+    return GsiProvider(ds, server, manual, install_hint=hint)
 
 
 CRASH_LOG = DEBUG_OUT / "crash.log"
@@ -881,7 +1160,16 @@ def _main() -> None:
     parser.add_argument("--window", metavar="TITLE",
                         help="capture this window title instead of finding "
                              "the Dota client (also selectable in the app)")
+    parser.add_argument("--vision", action="store_true",
+                        help="use screen capture instead of game data")
+    parser.add_argument("--manual", action="store_true",
+                        help="enter the draft entirely by hand")
+    parser.add_argument("--port", type=int, default=None,
+                        help="port the GSI listener binds (default 53000)")
     args = parser.parse_args()
+    if args.port is None:
+        from ..gsi.install import DEFAULT_PORT
+        args.port = DEFAULT_PORT
 
     if args.demo:
         from .demo import demo_dataset
@@ -897,8 +1185,9 @@ def _main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Dota Draft Assist")
     app.setStyleSheet(theme.STYLESHEET)
-    provider = make_provider(args, ds)
-    win = MainWindow(ds, provider, rules, meta)
+    manual = ManualDraft()
+    provider = make_provider(args, ds, manual)
+    win = MainWindow(ds, provider, rules, meta, manual)
     win.show()
     # start() never raises for live capture: an unbound source is a state
     # the user fixes from the Capture menu, not a crash.

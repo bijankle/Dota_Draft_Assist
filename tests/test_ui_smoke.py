@@ -37,14 +37,22 @@ def window(qapp):
     win.close()
 
 
+EMPTY_SLOT_TEXT = "+"
+
+
+def filled(window, side):
+    """Slot labels that hold a hero; empty slots read '+' and stay clickable
+    so a pick can be entered by hand."""
+    return [b.text() for b in window.team_buttons[side]
+            if b.text() != EMPTY_SLOT_TEXT]
+
+
 def test_refresh_populates_table_and_teams(window):
     window.refresh()
     assert window.table.rowCount() > 100
-    named = [b.text() for b in window.team_buttons["ally"] if b.isEnabled()]
-    assert len(named) == 5
-    enemy_named = [b.text() for b in window.team_buttons["enemy"]
-                   if b.isEnabled()]
-    assert len(enemy_named) == 4  # demo leaves one dire slot unknown
+    assert len(filled(window, "ally")) == 5
+    # demo leaves one dire slot unknown
+    assert len(filled(window, "enemy")) == 4
     assert "unresolved" in window.unknown_label.text()
 
 
@@ -53,9 +61,8 @@ def test_drafted_heroes_not_in_candidate_list(window):
     listed = {window.table.item(r, 0).text()
               for r in range(window.table.rowCount())}
     for side in ("ally", "enemy"):
-        for b in window.team_buttons[side]:
-            if b.isEnabled():
-                assert b.text() not in listed
+        for name in filled(window, side):
+            assert name not in listed
 
 
 def test_breakdown_view(window):
@@ -67,15 +74,14 @@ def test_breakdown_view(window):
     assert hero_name in html
     assert "baseline" in html
     # Every drafted hero the score depends on is itemised by name.
-    drafted = [b.text() for side in ("ally", "enemy")
-               for b in window.team_buttons[side] if b.isEnabled()]
+    drafted = filled(window, "ally") + filled(window, "enemy")
     assert sum(name in html for name in drafted) >= 5
 
 
 def test_counters_view(window):
     window.refresh()
     button = window.team_buttons["enemy"][0]
-    assert button.isEnabled()
+    assert button.text() != EMPTY_SLOT_TEXT
     button.click()
     assert "Best against" in window.detail.toHtml()
 
@@ -112,10 +118,10 @@ def test_role_highlight_changes_rows(window):
 
 def test_side_swap_flips_teams(window):
     window.refresh()
-    before = [b.text() for b in window.team_buttons["ally"] if b.isEnabled()]
+    before = filled(window, "ally")
     window.side_combo.setCurrentIndex(1)
     window.refresh()
-    after = [b.text() for b in window.team_buttons["enemy"] if b.isEnabled()]
+    after = filled(window, "enemy")
     assert before == after
 
 
@@ -247,3 +253,82 @@ def test_crash_reporter_writes_a_log(tmp_path, monkeypatch, qapp):
         app_mod._report_crash(exc)
     text = (tmp_path / "crash.log").read_text()
     assert "boom in startup" in text and "ValueError" in text
+
+
+def test_manual_hint_explains_missing_picks(qapp, monkeypatch):
+    """When the game cannot report the enemy line-up the UI must say so."""
+    from draft_assist.gsi import state as gsi_state
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import GsiProvider
+    from tests.test_gsi import FakeServer
+
+    ds = demo_dataset()
+    manual = ManualDraft()
+    payload = {"map": {"game_state": gsi_state.STATE_HERO_SELECTION},
+               "player": {"team_name": "radiant"}, "hero": {"id": 5}}
+    provider = GsiProvider(ds, FakeServer(payload), manual)
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, provider, rules, meta, manual)
+    win.timer.stop()
+    try:
+        win.refresh()
+        assert "not the other line-up" in win.manual_hint.text()
+        assert "HERO_SELECTION" in win.status.currentMessage()
+
+        # Entering a pick by hand puts it straight into the draft.
+        manual.set_slot("enemy", 0, 11)
+        win.last_draft_key = None
+        win.refresh()
+        assert win.snapshot.right == [11]
+        assert filled(win, "enemy") == [ds.name(11)]
+    finally:
+        win.close()
+
+
+def test_manual_slot_click_opens_picker(window, monkeypatch):
+    """Clicking an empty slot must offer a hero, not silently do nothing."""
+    from draft_assist.ui import app as app_mod
+
+    chosen = {}
+
+    class FakePicker:
+        DialogCode = app_mod.HeroPickerDialog.DialogCode
+
+        def __init__(self, ds, taken=frozenset(), current=None, title="",
+                     parent=None):
+            chosen["title"] = title
+            chosen["taken"] = taken
+            self.selected = 42
+            self.cleared = False
+
+        def exec(self):
+            return app_mod.HeroPickerDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(app_mod, "HeroPickerDialog", FakePicker)
+    window.refresh()
+    window._edit_slot("enemy", 4)
+    assert window.manual.enemies[4] == 42
+    assert "Enemy team" in chosen["title"]
+
+
+def test_capture_controls_hidden_under_game_data(qapp):
+    """Force recognition and window binding are meaningless without pixels."""
+    from draft_assist.gsi import state as gsi_state
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import GsiProvider
+    from tests.test_gsi import FakeServer
+
+    ds = demo_dataset()
+    payload = {"map": {"game_state": gsi_state.STATE_IN_PROGRESS}}
+    provider = GsiProvider(ds, FakeServer(payload), ManualDraft())
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, provider, rules, meta)
+    win.timer.stop()
+    try:
+        assert not win.force_check.isVisible()
+        assert not win.force_action.isEnabled()
+        assert not win.bind_button.isEnabled()
+    finally:
+        win.close()
