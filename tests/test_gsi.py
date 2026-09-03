@@ -85,11 +85,21 @@ def post(port, payload):
                            json.dumps(payload).encode()).read()
 
 
+def free_port() -> int:
+    """A port nothing is using. The listener binds exclusively, so tests
+    must not reuse fixed ports that may still be settling."""
+    import socket
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def test_server_accepts_authenticated_payloads():
-    server = GsiServer(53201, token="secret")
+    port = free_port()
+    server = GsiServer(port, token="secret")
     server.start()
     try:
-        post(53201, {"auth": {"token": "secret"},
+        post(port, {"auth": {"token": "secret"},
                      "map": {"game_state": gsi_state.STATE_HERO_SELECTION}})
         snap = server.snapshot()
         assert snap.count == 1 and snap.live
@@ -100,10 +110,11 @@ def test_server_accepts_authenticated_payloads():
 
 def test_server_rejects_wrong_token():
     """Another local program must not be able to feed us game state."""
-    server = GsiServer(53202, token="secret")
+    port = free_port()
+    server = GsiServer(port, token="secret")
     server.start()
     try:
-        post(53202, {"auth": {"token": "wrong"}, "map": {}})
+        post(port, {"auth": {"token": "wrong"}, "map": {}})
         snap = server.snapshot()
         assert snap.count == 0 and snap.rejected == 1
         assert "auth token" in snap.last_error
@@ -112,11 +123,12 @@ def test_server_rejects_wrong_token():
 
 
 def test_server_archives_payloads(tmp_path):
-    server = GsiServer(53203, token=None, archive_dir=tmp_path)
+    port = free_port()
+    server = GsiServer(port, token=None, archive_dir=tmp_path)
     server.start()
     try:
-        post(53203, {"map": {"game_state": "X"}})
-        post(53203, {"map": {"game_state": "Y"}})
+        post(port, {"map": {"game_state": "X"}})
+        post(port, {"map": {"game_state": "Y"}})
     finally:
         server.stop()
     archived = sorted(tmp_path.glob("gsi_*.json"))
@@ -424,3 +436,70 @@ def test_launch_option_parser_reads_the_dota_block(tmp_path, monkeypatch):
     monkeypatch.setattr(gsi_install, "_steam_roots", lambda: [tmp_path])
     # Must read Dota's block, not the first LaunchOptions in the file.
     assert diagnose._steam_userdata_launch_options() == "-gamestateintegration"
+
+
+# ---- port exclusivity --------------------------------------------------
+
+def test_two_servers_cannot_share_a_port():
+    """On Windows SO_REUSEADDR would let a second copy bind the same port and
+    silently receive nothing while the first got every payload — two windows
+    disagreeing about whether Dota is sending. The bind must be exclusive."""
+    port = free_port()
+    first = GsiServer(port)
+    first.start()
+    try:
+        second = GsiServer(port)
+        with pytest.raises(OSError):
+            second.start(attempts=1)
+    finally:
+        first.stop()
+
+
+def test_provider_reports_a_port_clash_persistently(dataset):
+    """A failed bind looks exactly like Dota being silent, so it has to be
+    stated every poll rather than in a status message that scrolls away."""
+    class ClashingServer:
+        port = 53000
+        token = None
+
+        def start(self):
+            raise OSError(98, "Address already in use")
+
+        def stop(self):
+            pass
+
+        def snapshot(self):
+            from draft_assist.gsi.server import Reception
+            return Reception()
+
+    provider = GsiProvider(dataset, ClashingServer(), ManualDraft())
+    message = provider.start()
+    assert "could not open the GSI port" in message
+    assert provider.bind_error
+    for _ in range(3):                      # sticky across polls
+        snap = provider.poll()
+        assert "already in use" in snap.warning
+        assert "another copy" in snap.warning
+
+
+def test_diagnose_blames_the_other_copy_not_dota(tmp_path, monkeypatch):
+    from draft_assist.gsi import diagnose
+    from draft_assist.gsi.server import Reception
+
+    dota = tmp_path / "dota 2 beta"
+    (dota / "game" / "dota").mkdir(parents=True)
+    monkeypatch.setattr(gsi_install, "find_dota_dir", lambda *a, **k: dota)
+    gsi_install.install(port=53000, token="t", dota_dir=dota)
+    monkeypatch.setattr(diagnose, "_steam_userdata_launch_options",
+                        lambda *a, **k: "-gamestateintegration")
+
+    class Server:
+        port = 53000
+        _bind_error = "port in use"
+
+        def snapshot(self):
+            return Reception(count=0, rejected=0)
+
+    checks = {c.name: c for c in diagnose.run_checks(server=Server())}
+    assert checks["GSI port owned by this app"].ok is False
+    assert "another copy" in checks["GSI port owned by this app"].fix.lower()

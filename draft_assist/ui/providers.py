@@ -190,13 +190,20 @@ class GsiProvider:
         self.manual = manual if manual is not None else ManualDraft()
         self.install_hint = install_hint
         self.last_state = None
+        # A failed bind must be sticky, not a status message that scrolls
+        # away: an unbound listener looks exactly like Dota being silent.
+        self.bind_error = ""
 
     def start(self) -> str:
         try:
             self.server.start()
+            self.bind_error = ""
         except OSError as exc:
-            return (f"could not open the GSI port {self.server.port}: {exc}. "
-                    "Another program may be using it.")
+            self.bind_error = (
+                f"port {self.server.port} is already in use — another copy "
+                "of this app is probably already running. Close the other "
+                "one, then use Capture > Use game data (GSI).")
+            return f"could not open the GSI port {self.server.port}: {exc}"
         return f"listening for Dota game data on 127.0.0.1:{self.server.port}"
 
     def stop(self) -> None:
@@ -212,6 +219,14 @@ class GsiProvider:
         snap = Snapshot(mode="idle", source="game data (GSI)")
         snap.frames_arrived = reception.count
         snap.gsi_live = reception.live
+
+        if self.bind_error:
+            snap.warning = self.bind_error
+            snap.needs_manual = True
+            snap.left = merge([], self.manual.entered("ally"))
+            snap.right = merge([], self.manual.entered("enemy"))
+            snap.mode = "manual" if not self.manual.is_empty else "idle"
+            return snap
 
         if reception.payload is None:
             snap.warning = (

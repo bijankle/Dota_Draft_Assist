@@ -125,14 +125,24 @@ def run_checks(server=None, port: int | None = None) -> list[Check]:
             "" if has else f"Add {gsi_install.LAUNCH_OPTION} in Steam > "
                            "Dota 2 > Properties > Launch Options."))
 
-    # 5. Our listener
+    # 5. Our listener — and whether it is OURS
     listening = _port_is_listening(port)
-    checks.append(Check(
-        "Listener accepting connections", listening,
-        f"127.0.0.1:{port} {'is' if listening else 'is not'} accepting "
-        "connections",
-        "" if listening else "Switch the source back to game data: "
-                             "Capture > Use game data (GSI)."))
+    bind_error = getattr(server, "_bind_error", "") if server else ""
+    if bind_error:
+        checks.append(Check(
+            "GSI port owned by this app", False,
+            f"127.0.0.1:{port} is held by another process",
+            "Another copy of this app is probably running. Close every "
+            "other copy, then use Capture > Use game data (GSI). Two copies "
+            "cannot share the port: one receives everything and the other "
+            "receives nothing."))
+    else:
+        checks.append(Check(
+            "Listener accepting connections", listening,
+            f"127.0.0.1:{port} {'is' if listening else 'is not'} accepting "
+            "connections",
+            "" if listening else "Switch the source back to game data: "
+                                 "Capture > Use game data (GSI)."))
 
     # 6. Is Dota even running?
     from ..capture.window import DOTA_TITLE, find_dota_window_title

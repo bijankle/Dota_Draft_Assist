@@ -10,6 +10,7 @@ token Dota sends is checked, so another local program cannot feed us state.
 """
 
 import json
+import socket
 import threading
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,31 @@ class Reception:
         """Dota's heartbeat is ~10 s, so silence beyond that means the game
         is closed or the launch option is missing."""
         return self.payload is not None and self.age < 15.0
+
+
+class _ExclusiveHTTPServer(ThreadingHTTPServer):
+    """An HTTP server that refuses to share its port.
+
+    http.server sets allow_reuse_address = 1, which on Linux only bypasses
+    TIME_WAIT — but on WINDOWS it permits two sockets to bind the same
+    address and port, with undefined delivery between them. A second copy of
+    this app would then bind 53000 "successfully" and silently receive
+    nothing while the first copy got every payload: two windows disagreeing
+    about whether Dota is sending anything, which is impossible to diagnose
+    from the symptom. Binding exclusively turns that into a loud, obvious
+    error instead.
+    """
+
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:          # Windows only
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            except OSError:
+                pass                        # best effort; the bind still checks
+        super().server_bind()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -86,8 +112,28 @@ class GsiServer:
         self._archived = 0
 
     # -- lifecycle -------------------------------------------------------
-    def start(self) -> None:
-        httpd = ThreadingHTTPServer(("127.0.0.1", self.port), _Handler)
+    def start(self, attempts: int = 3, delay: float = 0.4) -> None:
+        """Bind the listener, retrying briefly.
+
+        Binding exclusively (see _ExclusiveHTTPServer) means a port left over
+        from a previous run can still be settling when the app is restarted
+        quickly. A short retry absorbs that without weakening the guarantee
+        that two copies can never share the port; a genuine clash still
+        raises, just over a second later.
+        """
+        last: OSError | None = None
+        httpd = None
+        for attempt in range(attempts):
+            try:
+                httpd = _ExclusiveHTTPServer(("127.0.0.1", self.port),
+                                             _Handler)
+                break
+            except OSError as exc:
+                last = exc
+                if attempt < attempts - 1:
+                    time.sleep(delay)
+        if httpd is None:
+            raise last if last else OSError("could not bind the GSI port")
         httpd.gsi = self                       # type: ignore[attr-defined]
         httpd.daemon_threads = True
         self._httpd = httpd

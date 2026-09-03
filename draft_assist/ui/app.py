@@ -604,6 +604,10 @@ class MainWindow(QMainWindow):
         from ..gsi import diagnose
 
         server = getattr(self.provider, "server", None)
+        if server is not None:
+            # Let the diagnostic see a failed bind, which otherwise looks
+            # identical to Dota simply not sending anything.
+            server._bind_error = getattr(self.provider, "bind_error", "")
         checks = diagnose.run_checks(server=server)
         report = diagnose.format_report(checks)
         failing = [c for c in checks if c.ok is False]
@@ -612,16 +616,27 @@ class MainWindow(QMainWindow):
         box.setIcon(QMessageBox.Icon.Warning if failing
                     else QMessageBox.Icon.Information)
         box.setWindowTitle("Diagnose game data")
-        box.setText(diagnose.headline(checks))
-        if failing:
-            box.setInformativeText(failing[0].fix or failing[0].detail)
-        else:
-            box.setInformativeText(
-                "Dota only sends game data while you are in a match — "
-                "including the draft. The main menu sends nothing, so load "
-                "a game and check again.")
         box.setDetailedText(report)
+
+        def render() -> None:
+            """Re-run while the dialog is open. A point-in-time result goes
+            stale the moment a draft starts, and a stale 'no payloads' next
+            to a working overlay is worse than no diagnostic at all."""
+            live = diagnose.run_checks(server=server)
+            bad = [c for c in live if c.ok is False]
+            box.setText(diagnose.headline(live))
+            box.setInformativeText(
+                (bad[0].fix or bad[0].detail) if bad else
+                "Dota only sends game data while you are in a match — "
+                "including the draft. The main menu sends nothing.")
+            box.setDetailedText(diagnose.format_report(live))
+
+        render()
+        ticker = QTimer(box)
+        ticker.timeout.connect(render)
+        ticker.start(1000)
         box.exec()
+        ticker.stop()
 
     def _gsi_status(self) -> None:
         """Report exactly what the game is sending — the evidence that
