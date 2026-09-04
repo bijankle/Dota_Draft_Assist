@@ -54,7 +54,8 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | To archive real payloads during a draft |
-| **Game** | Simulate a draft | Test the whole app with Dota closed |
+| **Game** | Simulate a draft | Test the whole app with Dota closed (both line-ups) |
+| **Game** | Simulate a draft (as real GSI behaves) | The same, without the enemy picks GSI does not send |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
 | **Game** | Clear manual draft | Between games |
 | **Capture** | Use game data / Use screen capture | Switching source at runtime |
@@ -159,13 +160,17 @@ sharing a port, a stale status bar) lived in that plumbing, and `--demo`
 would have caught none of them.
 
 ```
-python tools/simulate_gsi.py                 # a ranked All Pick draft
-python tools/simulate_gsi.py --speed 4 --loop
-python tools/simulate_gsi.py --with-draft    # pretend GSI reports both
-                                             # line-ups (it probably does
-                                             # not — rehearsal only)
+python tools/simulate_gsi.py --with-draft --loop   # what the menu runs:
+                                             # both teams fill in, repeating
+python tools/simulate_gsi.py --loop          # as real GSI behaves: your
+                                             # hero only, enemy slots stay
+                                             # empty on purpose
 python tools/simulate_gsi.py --from data_cache/gsi   # replay REAL payloads
 ```
+
+Every line it prints is derived from the payload actually sent — game state,
+whether your hero is in it, how many picks the draft block carries — so the
+log can never claim content the data does not contain.
 
 Start the app first, then run it (or use the menu item). Note the honest
 limit: modelled payloads are this codebase's own belief about the format
@@ -198,7 +203,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 122 tests: normalisation math, scoring views, item
+pytest            # 128 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

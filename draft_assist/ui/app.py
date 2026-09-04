@@ -165,7 +165,10 @@ class MainWindow(QMainWindow):
         game_menu.addSeparator()
         self._act(game_menu, "Si&mulate a draft…",
                   lambda: self.run_task("simulate_gsi"), None,
-                  "Send fake game data to this app, with Dota closed")
+                  "Send fake game data with both line-ups, Dota closed")
+        self._act(game_menu, "Simulate a draft (as real GSI behaves)…",
+                  lambda: self.run_task("simulate_gsi_real"), None,
+                  "The same, without the enemy line-up GSI does not send")
         self._act(game_menu, "Replay recorded game data…",
                   lambda: self.run_task("replay_gsi"), None,
                   "Replay payloads archived from a real match")
@@ -312,10 +315,12 @@ class MainWindow(QMainWindow):
 
         teams_card, tlay = card("Draft")
         self.team_buttons = {}
+        self.team_captions = {}
         for side, caption in (("ally", "Your team"), ("enemy", "Enemy team")):
             label = QLabel(caption)
             label.setProperty("dim", True)
             tlay.addWidget(label)
+            self.team_captions[side] = label
             row = QHBoxLayout()
             row.setSpacing(6)
             buttons = []
@@ -355,7 +360,11 @@ class MainWindow(QMainWindow):
             self.role_combo.addItem(label)
         self.role_combo.currentIndexChanged.connect(self._refresh_views)
         row1.addWidget(self.role_combo, 1)
-        row1.addWidget(QLabel("My team:"))
+        # Only meaningful when the source is pixels: the two banks are then
+        # just screen positions. Game data reports player.team_name, so
+        # asking would be asking about something already known.
+        self.side_label = QLabel("My team:")
+        row1.addWidget(self.side_label)
         self.side_combo = QComboBox()
         self.side_combo.addItems(["left bank", "right bank"])
         self.side_combo.currentIndexChanged.connect(self._force_redraw)
@@ -899,11 +908,28 @@ class MainWindow(QMainWindow):
             self.last_draft_key = draft_key
             self._on_draft_changed(allies, enemies, snap.unknown)
         self._update_status(snap)
+        self._update_team_captions(snap)
         self._update_manual_hint(snap)
         self._update_debug(snap)
         if self.overlay is not None and self.overlay.isVisible():
             self.overlay.update_content(snap, self.scored,
                                         self._current_draft())
+
+    def _update_team_captions(self, snap) -> None:
+        """Say who the app thinks you are, using what the game reported,
+        and hide the side question when it is already answered."""
+        known = getattr(snap, "sides_known", False)
+        self.side_label.setVisible(not known)
+        self.side_combo.setVisible(not known)
+
+        name = getattr(snap, "player_name", "")
+        team = getattr(snap, "my_team", "")
+        bits = [b for b in (name, team.title()) if b]
+        self.team_captions["ally"].setText(
+            f"Your team — {' · '.join(bits)}" if bits else "Your team")
+        self.team_captions["enemy"].setText(
+            "Enemy team — " + ("Dire" if team == "radiant" else "Radiant")
+            if team else "Enemy team")
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -920,6 +946,14 @@ class MainWindow(QMainWindow):
                 "Click the empty slots to enter the draft by hand.")
 
     def _sides(self, snap) -> tuple[list[int], list[int]]:
+        """(allies, enemies).
+
+        When the source reports which team is yours, left/right already mean
+        ally/enemy and the manual swap must not apply — otherwise the app
+        would let the user contradict the game.
+        """
+        if getattr(snap, "sides_known", False):
+            return (snap.left, snap.right)
         mine_right = self.side_combo.currentIndex() == 1
         return ((snap.right, snap.left) if mine_right
                 else (snap.left, snap.right))

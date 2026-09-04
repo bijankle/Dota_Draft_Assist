@@ -35,6 +35,39 @@ FALLBACK_HEROES = [
 ]
 
 
+def describe_payload(payload: dict) -> str:
+    """Describe what a payload ACTUALLY contains.
+
+    Labels are derived here rather than written by the scenario builder,
+    because a label that describes intent instead of content is worse than
+    no label: an earlier version announced "picking (4 allies, 4 enemies)"
+    while sending payloads with no draft block at all, which made a correct
+    app look broken and sent the reader hunting a bug that did not exist.
+    """
+    state = (payload.get("map") or {}).get("game_state", "")
+    parts = [state.replace("DOTA_GAMERULES_STATE_", "").replace("_", " ").title()
+             or "no game state"]
+
+    hero = payload.get("hero")
+    parts.append(f"your hero: {hero.get('name', '?')}"
+                 if isinstance(hero, dict) and hero.get("name")
+                 else "your hero: none yet")
+
+    draft = payload.get("draft")
+    if isinstance(draft, dict):
+        counted = {}
+        for key, side in (("team2", "radiant"), ("team3", "dire")):
+            block = draft.get(key) or {}
+            counted[side] = sum(
+                1 for slot in range(5)
+                if block.get(f"pick{slot}_id") or block.get(f"pick{slot}_class"))
+        parts.append(f"draft block: {counted['radiant']} radiant, "
+                     f"{counted['dire']} dire")
+    else:
+        parts.append("no draft block (as a player's own feed behaves)")
+    return " · ".join(parts)
+
+
 @dataclass
 class Step:
     delay: float          # seconds to wait before sending this payload
@@ -92,8 +125,7 @@ def all_pick_scenario(dataset=None, token: str | None = None,
 
     steps: list[Step] = []
 
-    def add(delay, game_state, hero, label, picked_allies=(),
-            picked_enemies=()):
+    def add(delay, game_state, hero, picked_allies=(), picked_enemies=()):
         payload = _base(game_state, hero, token=token)
         if include_draft_block:
             payload["draft"] = {
@@ -103,26 +135,30 @@ def all_pick_scenario(dataset=None, token: str | None = None,
                 "team3": {f"pick{i}_id": h[0]
                           for i, h in enumerate(picked_enemies)},
             }
-        steps.append(Step(scaled(delay), payload, label))
+        steps.append(Step(scaled(delay), payload, describe_payload(payload)))
 
     # Hero selection: picks land one at a time, ours partway through.
-    add(0.0, gsi_state.STATE_HERO_SELECTION, None, "draft opens")
+    add(0.0, gsi_state.STATE_HERO_SELECTION, None)
     for i in range(1, 5):
         add(2.0, gsi_state.STATE_HERO_SELECTION, None,
-            f"picking ({i} allies, {i} enemies)",
             picked_allies=allies[:i], picked_enemies=enemies[:i])
-    add(2.0, gsi_state.STATE_HERO_SELECTION, mine, "you lock in",
+    add(2.0, gsi_state.STATE_HERO_SELECTION, mine,
         picked_allies=[mine] + allies, picked_enemies=enemies)
 
-    add(3.0, gsi_state.STATE_STRATEGY, mine, "strategy time",
+    add(3.0, gsi_state.STATE_STRATEGY, mine,
         picked_allies=[mine] + allies, picked_enemies=enemies)
-    add(3.0, gsi_state.STATE_PREGAME, mine, "pre-game",
+    add(3.0, gsi_state.STATE_PREGAME, mine,
         picked_allies=[mine] + allies, picked_enemies=enemies)
 
-    running = _base(gsi_state.STATE_IN_PROGRESS, mine, token=token)
+    # The running payload must carry the same draft block as the rest, or
+    # the line-up would vanish the moment the game starts — the flag has to
+    # mean the same thing for every step it produces.
+    add(4.0, gsi_state.STATE_IN_PROGRESS, mine,
+        picked_allies=[mine] + allies, picked_enemies=enemies)
+    running = steps[-1].payload
     running["map"]["clock_time"] = 120
     running["items"] = {"slot0": {"name": "item_tango", "can_cast": True}}
-    steps.append(Step(scaled(4.0), running, "game in progress"))
+    steps[-1] = Step(steps[-1].delay, running, describe_payload(running))
     return steps
 
 
@@ -150,8 +186,8 @@ def replay_scenario(directory: Path, token: str | None = None,
             payload["auth"] = {"token": token}
         elif "auth" in payload:
             payload.pop("auth")
-        state = (payload.get("map") or {}).get("game_state", "?")
-        steps.append(Step(delay, payload, f"{path.name} · {state}"))
+        steps.append(Step(delay, payload,
+                          f"{path.name} · {describe_payload(payload)}"))
     if not steps:
         raise ValueError(f"no readable payloads in {directory}")
     return steps

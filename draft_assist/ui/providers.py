@@ -32,6 +32,11 @@ class Snapshot:
     warning: str = ""
     # GSI-specific: what the game itself reported, and what it could not.
     game_state: str = ""
+    # True when left/right already MEAN ally/enemy (game data or manual
+    # entry), so the user must never be asked which side they are on.
+    sides_known: bool = False
+    player_name: str = ""
+    my_team: str = ""
     gsi_live: bool = False
     gsi_notes: list[str] = field(default_factory=list)
     gsi_capabilities: dict = field(default_factory=dict)
@@ -223,12 +228,14 @@ class GsiProvider:
         if self.bind_error:
             snap.warning = self.bind_error
             snap.needs_manual = True
+            snap.sides_known = True
             snap.left = merge([], self.manual.entered("ally"))
             snap.right = merge([], self.manual.entered("enemy"))
             snap.mode = "manual" if not self.manual.is_empty else "idle"
             return snap
 
         if reception.payload is None:
+            snap.sides_known = True
             snap.warning = (
                 "no data from Dota yet — "
                 + (self.install_hint or
@@ -243,6 +250,9 @@ class GsiProvider:
         parsed = gsi_state.parse(reception.payload, self.ds)
         self.last_state = parsed
         snap.game_state = parsed.game_state
+        snap.sides_known = True
+        snap.player_name = parsed.my_name
+        snap.my_team = parsed.my_team
         snap.gsi_notes = parsed.notes
         snap.gsi_capabilities = parsed.capabilities
         snap.source = f"game data (GSI) · {parsed.summary()}"
@@ -283,4 +293,4 @@ class ManualProvider:
         return Snapshot(left=self.manual.entered("ally"),
                         right=self.manual.entered("enemy"),
                         mode="manual", source="manual entry",
-                        needs_manual=True)
+                        needs_manual=True, sides_known=True)

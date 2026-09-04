@@ -531,3 +531,71 @@ def test_bracket_dialog_presets_and_validation(qapp):
         assert "noisier" in dialog.summary.text()   # single-bracket warning
     finally:
         dialog.close()
+
+
+# ---- the app should not ask what the game already reports ---------------
+
+def gsi_window(qapp, payload, manual=None):
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import GsiProvider
+    from tests.test_gsi import FakeServer
+
+    ds = demo_dataset()
+    manual = manual or ManualDraft()
+    provider = GsiProvider(ds, FakeServer(payload), manual)
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, provider, rules, meta, manual)
+    win.timer.stop()
+    return win, ds
+
+
+def test_side_selector_is_hidden_when_the_game_reports_your_team(qapp):
+    from draft_assist.gsi import state as gsi_state
+
+    win, ds = gsi_window(qapp, {
+        "map": {"game_state": gsi_state.STATE_HERO_SELECTION},
+        "player": {"team_name": "dire", "name": "Bijson"},
+        "hero": {"id": 5}})
+    try:
+        win.refresh()
+        assert not win.side_combo.isVisibleTo(win)
+        assert not win.side_label.isVisibleTo(win)
+        # And it says who it thinks you are, from the game's own report.
+        assert "Bijson" in win.team_captions["ally"].text()
+        assert "Dire" in win.team_captions["ally"].text()
+        assert "Radiant" in win.team_captions["enemy"].text()
+    finally:
+        win.close()
+
+
+def test_side_selector_cannot_contradict_the_game(qapp):
+    """Flipping the (hidden) control must not swap teams when the game has
+    already said which side is yours."""
+    from draft_assist.gsi import state as gsi_state
+    from draft_assist.ui.manual import ManualDraft
+
+    manual = ManualDraft()
+    manual.set_slot("enemy", 0, 11)
+    win, ds = gsi_window(qapp, {
+        "map": {"game_state": gsi_state.STATE_HERO_SELECTION},
+        "player": {"team_name": "radiant", "name": "Bijson"},
+        "hero": {"id": 5}}, manual=manual)
+    try:
+        win.refresh()
+        assert filled(win, "ally") == [ds.name(5)]
+        assert filled(win, "enemy") == [ds.name(11)]
+        win.side_combo.setCurrentIndex(1)
+        win.last_draft_key = None
+        win.refresh()
+        assert filled(win, "ally") == [ds.name(5)]     # unchanged
+        assert filled(win, "enemy") == [ds.name(11)]
+    finally:
+        win.close()
+
+
+def test_side_selector_still_shown_for_pixel_sources(window):
+    """With screen capture the banks are just screen positions, so the
+    question is real and the control must stay."""
+    window.refresh()
+    assert window.side_combo.isVisibleTo(window)
+    assert "Your team" in window.team_captions["ally"].text()

@@ -553,7 +553,8 @@ def test_replay_scenario_reads_archives_and_retokens(tmp_path):
     steps = simulate.replay_scenario(tmp_path, token="NEW")
     assert len(steps) == 2                      # unreadable file skipped
     assert all(s.payload["auth"]["token"] == "NEW" for s in steps)
-    assert "HERO_SELECTION" in steps[0].label
+    assert "gsi_00001.json" in steps[0].label
+    assert "Hero Selection" in steps[0].label
 
     with pytest.raises(FileNotFoundError):
         simulate.replay_scenario(tmp_path / "nothing-here")
@@ -598,3 +599,51 @@ def test_simulated_payloads_are_rejected_with_the_wrong_token(dataset):
         assert "auth token" in snap.last_error
     finally:
         server.stop()
+
+
+def test_labels_describe_the_payload_not_the_intention():
+    """A label that announces picks the payload does not contain makes a
+    correct app look broken — that exact defect cost a debugging cycle."""
+    from draft_assist.gsi import simulate
+
+    bare = {"map": {"game_state": gsi_state.STATE_HERO_SELECTION}}
+    label = simulate.describe_payload(bare)
+    assert "no draft block" in label
+    assert "your hero: none yet" in label
+
+    with_picks = {
+        "map": {"game_state": gsi_state.STATE_HERO_SELECTION},
+        "hero": {"id": 1, "name": "npc_dota_hero_antimage"},
+        "draft": {"team2": {"pick0_id": 1, "pick1_id": 2},
+                  "team3": {"pick0_id": 11}},
+    }
+    label = simulate.describe_payload(with_picks)
+    assert "2 radiant, 1 dire" in label
+    assert "npc_dota_hero_antimage" in label
+
+
+def test_no_scenario_step_claims_picks_it_does_not_send(dataset):
+    """Every label must be consistent with its own payload, both ways."""
+    from draft_assist.gsi import simulate
+
+    for include in (False, True):
+        for step in simulate.all_pick_scenario(
+                dataset, include_draft_block=include, speed=1000):
+            has_draft = isinstance(step.payload.get("draft"), dict)
+            assert ("draft block:" in step.label) == has_draft
+            assert ("no draft block" in step.label) != has_draft
+
+
+def test_draft_block_persists_into_the_running_game(dataset):
+    """With --with-draft every step carries the line-up, including the
+    running-game payload; otherwise the draft vanishes when the game starts
+    and the flag would mean different things at different moments."""
+    from draft_assist.gsi import simulate
+
+    steps = simulate.all_pick_scenario(dataset, include_draft_block=True,
+                                       speed=1000)
+    assert all(isinstance(s.payload.get("draft"), dict) for s in steps)
+    final = gsi_state.parse(steps[-1].payload, dataset)
+    assert final.game_state == gsi_state.STATE_IN_PROGRESS
+    assert final.has_full_draft
+    assert "items" in steps[-1].payload      # still the running payload
