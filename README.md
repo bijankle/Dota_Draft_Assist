@@ -13,15 +13,20 @@ misidentify.
 It never touches the game: no injection, no memory reading, no input
 automation, and no logging in as a second Steam client.
 
-### One caveat, and the app is honest about it
+### One caveat, measured rather than assumed
 
-GSI's `draft` component is understood to be a spectator/observer feature. In
-your own ranked match the feed reliably reports **your** hero, your team, the
-match ID and the game state — but probably **not** the enemy line-up. So:
+GSI's `draft` component is a spectator/observer feature. Replaying 8493
+payloads recorded from a real match through the parser showed that across the
+**entire** hero-selection phase the feed reported **zero picks — including
+your own** (`hero` only appears at strategy time, once drafting is over).
+What it does reliably report is the phase, your name, your side and the match
+ID. So:
 
 - whatever the game reports is used automatically;
-- anything it does not report is **clicked in** — click an empty draft slot,
-  type a few letters, done;
+- the picks are **typed in**: the quick-entry bar above the draft slots takes
+  a few letters and Enter, Tab flips between enemy and ally, Undo removes the
+  last one. An ambiguous prefix fills nothing rather than risk the wrong
+  hero. Clicking a slot still opens the full picker;
 - screen capture is still available behind `--vision` as a fallback.
 
 **Game ▸ Record game data** is a tick-box on the listener the app is already
@@ -225,7 +230,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 141 tests: normalisation math, scoring views, item
+pytest            # 150 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

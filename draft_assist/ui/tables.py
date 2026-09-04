@@ -13,10 +13,11 @@ Two things live here that Qt does not give for free:
   the rows are then laid side by side.
 """
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (QHeaderView, QLabel, QTableWidget,
-                             QTableWidgetItem, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
+                             QTableWidget, QTableWidgetItem,
+                             QVBoxLayout, QWidget)
 
 from . import theme
 
@@ -164,3 +165,20 @@ class BreakdownPanel(QWidget):
             header.setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
                 if column % 2 else QHeaderView.ResizeMode.Stretch)
+
+
+class QuickEntry(QLineEdit):
+    """A line edit that reports Tab instead of letting Qt move focus.
+
+    During a draft the same field is used for both teams, so Tab has to
+    mean 'other side' — losing focus mid-draft costs more than tab order
+    is worth here.
+    """
+
+    tab_pressed = pyqtSignal()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+            self.tab_pressed.emit()
+            return
+        super().keyPressEvent(event)

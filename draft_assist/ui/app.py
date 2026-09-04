@@ -36,7 +36,8 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPi
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
-                             QPushButton, QSplitter, QTableWidget,
+                             QLayout, QPushButton, QSplitter,
+                             QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
 
@@ -52,7 +53,7 @@ from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
 from .overlay import DraftOverlay
-from .tables import BreakdownPanel, ValueItem
+from .tables import BreakdownPanel, QuickEntry, ValueItem
 from .task_dialog import TaskDialog
 from .tasks import TASKS
 
@@ -102,6 +103,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ds, self.provider = ds, provider
         self._open_tasks = []
+        self.quick_side = "enemy"
+        # (side, index) in the order they were typed, so Undo
+        # removes the last pick rather than an arbitrary one.
+        self._entry_order: list[tuple[str, int]] = []
         self.rules, self.rules_meta = rules, rules_meta
         self.manual = manual if manual is not None else getattr(
             provider, "manual", None) or ManualDraft()
@@ -364,6 +369,31 @@ class MainWindow(QMainWindow):
                 buttons.append(b)
             self.team_buttons[side] = buttons
             tlay.addLayout(row)
+        # Typing the draft in is not a fallback any more, it is the normal
+        # way the other nine picks arrive, so it gets a keyboard path: type
+        # a few letters, Enter fills the next empty slot on the active side,
+        # Tab flips sides. A draft is 30 seconds long.
+        quick = QHBoxLayout()
+        quick.setSpacing(6)
+        self.quick_side_button = QPushButton("Enemy")
+        self.quick_side_button.setToolTip(
+            "Which team the next entry goes to (Tab flips it)")
+        self.quick_side_button.setFixedWidth(78)
+        self.quick_side_button.clicked.connect(self._flip_quick_side)
+        quick.addWidget(self.quick_side_button)
+        self.quick_entry = QuickEntry()
+        self.quick_entry.setPlaceholderText(
+            "Type a hero and press Enter to add the pick…")
+        self.quick_entry.returnPressed.connect(self._quick_add)
+        self.quick_entry.tab_pressed.connect(self._flip_quick_side)
+        quick.addWidget(self.quick_entry, 1)
+        self.quick_undo = QPushButton("Undo")
+        self.quick_undo.setFixedWidth(64)
+        self.quick_undo.setToolTip("Remove the last hand-entered pick")
+        self.quick_undo.clicked.connect(self._quick_undo)
+        quick.addWidget(self.quick_undo)
+        tlay.addLayout(quick)
+
         self.unknown_label = QLabel("")
         self.unknown_label.setProperty("dim", True)
         tlay.addWidget(self.unknown_label)
@@ -371,10 +401,14 @@ class MainWindow(QMainWindow):
         self.manual_hint.setWordWrap(True)
         self.manual_hint.setProperty("dim", True)
         tlay.addWidget(self.manual_hint)
-        # Fixed, not Maximum: Maximum lets the layout squeeze the card below
-        # its own minimum when the right-hand column is tight, which clipped
-        # the bottom off the hero names. The draft is the thing you read —
-        # it keeps its height and the panels below it give way instead.
+        # Maximum let the layout squeeze the card below its own minimum
+        # when the right-hand column got tight, which sheared the bottom off
+        # the hero names. SetMinimumSize pins the card's minimum to what its
+        # contents actually need — a wrapping hint label needs more height
+        # than the card's sizeHint alone reports, so a policy derived from
+        # sizeHint is not enough. The draft is the thing you read: it keeps
+        # its height and the panels below it give way instead.
+        tlay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         teams_card.setSizePolicy(teams_card.sizePolicy().horizontalPolicy(),
                                  teams_card.sizePolicy().Policy.Fixed)
         rlay.addWidget(teams_card)
@@ -896,8 +930,82 @@ class MainWindow(QMainWindow):
 
     def _clear_manual(self) -> None:
         self.manual.clear()
+        self._entry_order.clear()
         self.last_draft_key = None
         self.status.showMessage("Cleared hand-entered draft slots", 5000)
+
+    # -- quick keyboard entry --------------------------------------------
+
+    def _flip_quick_side(self) -> None:
+        self.quick_side = "ally" if self.quick_side == "enemy" else "enemy"
+        self.quick_side_button.setText(self.quick_side.title())
+        self.quick_entry.setFocus()
+
+    def resolve_hero(self, text: str, exclude: set[int] | None = None):
+        """Text a user typed under time pressure -> hero id, or None.
+
+        Exact name wins, then a prefix, then a word start, then anything
+        containing it — and an ambiguous prefix is NOT resolved, because
+        silently entering the wrong hero is worse than entering none.
+        """
+        needle = " ".join(text.split()).lower()
+        if not needle:
+            return None
+        exclude = exclude or set()
+        pool = [(hid, self.ds.name(hid)) for hid in self.ds.hero_ids
+                if hid not in exclude]
+        for hid, name in pool:
+            if name.lower() == needle:
+                return hid
+        for match in (lambda n: n.startswith(needle),
+                      lambda n: any(w.startswith(needle) for w in n.split()),
+                      lambda n: needle in n):
+            hits = [hid for hid, name in pool if match(name.lower())]
+            if len(hits) == 1:
+                return hits[0]
+            if hits:
+                return None          # ambiguous: make the user type more
+        return None
+
+    def _quick_add(self) -> None:
+        text = self.quick_entry.text().strip()
+        if not text:
+            return
+        if self.ds.is_empty:
+            self.status.showMessage(
+                "No hero data yet — Data ▸ Update statistics", 6000)
+            return
+        snap = self.snapshot
+        taken = (set(snap.left) | set(snap.right)) if snap else set()
+        hero_id = self.resolve_hero(text, exclude=taken)
+        if hero_id is None:
+            self.status.showMessage(
+                f"'{text}' matches no single undrafted hero — keep typing",
+                4000)
+            return
+        side = self.quick_side
+        slots = self.manual.allies if side == "ally" else self.manual.enemies
+        if None not in slots:
+            self.status.showMessage(f"{side.title()} team is already full",
+                                    4000)
+            return
+        index = slots.index(None)
+        self.manual.set_slot(side, index, hero_id)
+        self._entry_order.append((side, index))
+        self.quick_entry.clear()
+        self.last_draft_key = None
+        self.status.showMessage(
+            f"{self.ds.name(hero_id)} → {side} slot {index + 1}", 4000)
+        self.refresh()
+
+    def _quick_undo(self) -> None:
+        if not self._entry_order:
+            self.status.showMessage("Nothing hand-entered to undo", 4000)
+            return
+        side, index = self._entry_order.pop()
+        self.manual.set_slot(side, index, None)
+        self.last_draft_key = None
+        self.refresh()
 
     def _edit_slot(self, side: str, index: int) -> None:
         """Fill, change or clear a draft slot by hand."""

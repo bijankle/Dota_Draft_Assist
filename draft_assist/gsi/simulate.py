@@ -61,8 +61,13 @@ def describe_payload(payload: dict) -> str:
             counted[side] = sum(
                 1 for slot in range(5)
                 if block.get(f"pick{slot}_id") or block.get(f"pick{slot}_class"))
-        parts.append(f"draft block: {counted['radiant']} radiant, "
-                     f"{counted['dire']} dire")
+        if counted["radiant"] or counted["dire"]:
+            parts.append(f"draft block: {counted['radiant']} radiant, "
+                         f"{counted['dire']} dire")
+        else:
+            keys = ",".join(sorted(draft)[:4]) or "empty"
+            parts.append(f"draft block present but NO picks read from it "
+                         f"(keys: {keys})")
     else:
         parts.append("no draft block (as a player's own feed behaves)")
     return " · ".join(parts)

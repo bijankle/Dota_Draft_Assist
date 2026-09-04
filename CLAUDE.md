@@ -68,14 +68,26 @@ credentials, and put the account at risk. Do not go there.
   anything in this file. `tools/inspect_apis.py` dumps raw OpenDota/Stratz
   responses; parsing code validates its schema assumptions against real
   responses and fails loudly. Bracket index mappings are asserted, not assumed.
-- **What GSI actually reports is an open question, settled by evidence.** The
-  `draft` component is understood to be spectator/observer-only, so a player's
-  own feed probably carries `provider`/`map`/`player`/`hero`/`items` but NOT
-  the enemy line-up. `tools/probe_gsi.py` archives real payloads and prints a
-  verdict; `GsiState.capabilities` records which blocks each payload carried.
-  The parser extracts what is present and never fabricates a pick. If real
-  payloads prove the draft block does arrive, the manual overlay simply stops
-  being needed — no other code changes.
+- **What GSI reports during a draft is now settled by evidence, and the
+  answer is: almost nothing.** 8493 payloads recorded from one real Turbo All
+  Pick match were replayed through the parser. Across the entire
+  `HERO_SELECTION` phase every payload reported **zero picks — including the
+  player's own**. `hero` first appears at `STRATEGY_TIME`, i.e. after the
+  draft is over. A `draft` key WAS present throughout (the replay labels
+  distinguish an absent block from an empty one), but no picks could be read
+  out of it; whether it is genuinely empty or carries a shape other than the
+  documented `team2`/`team3` + `pick{n}_id` is not yet known, and is not
+  guessed — `Game ▸ What did the recording contain?` dumps the block's real
+  keys and a sample so the question is answered from data.
+
+  The consequence is architectural: **GSI cannot drive recommendations during
+  a draft.** What it reliably gives is the phase (so the app knows a draft is
+  happening), the player's name and side, and the match id. The ten picks
+  come from hand entry (the quick-entry bar: type, Enter, Tab to flip side)
+  or from the `--vision` fallback reading the screen. `GsiState.capabilities`
+  still records what each payload carried, and the parser still never
+  fabricates a pick — if a future payload proves otherwise, the manual
+  overlay simply stops being needed and no other code changes.
 - **Bracket comparisons across sites are not apples to apples.** Stratz buckets
   whole matches by average rank; OpenDota counts each player at their own rank.
   That makes cross-source win rates disagree slightly even when tier labels are

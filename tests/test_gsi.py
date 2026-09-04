@@ -630,8 +630,11 @@ def test_no_scenario_step_claims_picks_it_does_not_send(dataset):
         for step in simulate.all_pick_scenario(
                 dataset, include_draft_block=include, speed=1000):
             has_draft = isinstance(step.payload.get("draft"), dict)
-            assert ("draft block:" in step.label) == has_draft
-            assert ("no draft block" in step.label) != has_draft
+            says_absent = "no draft block" in step.label
+            assert says_absent != has_draft
+            if has_draft:
+                assert ("draft block:" in step.label
+                        or "NO picks read from it" in step.label)
 
 
 def test_draft_block_persists_into_the_running_game(dataset):
@@ -769,3 +772,40 @@ def test_recording_verdict_refuses_to_answer_without_a_draft(tmp_path):
     text = gsi_summary.format_report(
         gsi_summary.from_directory(tmp_path, demo_dataset()))
     assert "does not cover a draft" in text
+
+
+def test_label_distinguishes_an_unreadable_draft_block_from_an_empty_one():
+    """A real recording showed "0 radiant, 0 dire", which reads as "nobody
+    has picked" when it may equally mean "the block is shaped differently".
+    The label must not settle that question silently."""
+    from draft_assist.gsi import simulate
+
+    label = simulate.describe_payload({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {"activeteam": 2, "pick": True, "activeteam_time": 12}})
+    assert "NO picks read from it" in label
+    assert "activeteam" in label
+    assert "0 radiant" not in label
+
+
+def test_verdict_prints_the_shape_of_an_unparsed_draft_block(tmp_path):
+    """When a block arrives that yields no picks, the report has to hand
+    over its real keys — that is the only thing that can distinguish an
+    empty block from an unknown shape."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {"activeteam": 2, "radiant": {"pick0": "npc_dota_hero_lion"}},
+    }))
+    (tmp_path / "gsi_00002.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {"activeteam": 2},
+    }))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "The 'draft' block DID arrive" in text
+    assert "activeteam" in text and "radiant" in text
+    # the fullest block is the one worth showing, not merely the first
+    assert "npc_dota_hero_lion" in text
+    assert "shape this parser does not know" in text

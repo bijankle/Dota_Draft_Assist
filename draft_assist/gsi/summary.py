@@ -24,10 +24,26 @@ class Report:
     draft_block_seen: bool = False
     player_names: set = field(default_factory=set)
     unreadable: int = 0
+    # A draft block that arrives but yields no picks is the interesting
+    # case: either Dota really sends an empty one, or its shape is not the
+    # team2/team3 + pickN_id this parser assumes. Guessing between those is
+    # exactly what this project refuses to do, so keep the raw evidence.
+    draft_keys: Counter = field(default_factory=Counter)
+    draft_sample: dict | None = None
+    draft_sample_state: str = ""
 
     def add(self, payload: dict, dataset) -> None:
         parsed = gsi_state.parse(payload, dataset)
         self.payloads += 1
+        block = payload.get("draft")
+        if isinstance(block, dict):
+            self.draft_keys.update(block.keys())
+            richer = self.draft_sample is None or (
+                _weight(block) > _weight(self.draft_sample))
+            if richer:
+                self.draft_sample = block
+                self.draft_sample_state = (
+                    (payload.get("map") or {}).get("game_state", ""))
         for name, present in parsed.capabilities.items():
             if present:
                 self.components[name] += 1
@@ -39,6 +55,18 @@ class Report:
             self.player_names.add(parsed.my_name)
         self.best_picks = max(self.best_picks,
                               len(parsed.allies) + len(parsed.enemies))
+
+
+def _weight(block: dict) -> int:
+    """How much a draft block actually carries, shape-agnostically: nested
+    dicts count for their contents, so the fullest sample wins."""
+    total = 0
+    for value in block.values():
+        if isinstance(value, dict):
+            total += 1 + _weight(value)
+        elif value not in (None, "", 0, "0", -1):
+            total += 1
+    return total
 
 
 def from_directory(directory: Path, dataset) -> Report:
@@ -85,6 +113,19 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         lines.append("  (no HERO_SELECTION payload — this recording does not "
                      "cover a draft, so it cannot answer the question)")
 
+    if report.draft_keys:
+        lines += ["", "The 'draft' block DID arrive. Its keys, with how many "
+                      "payloads carried each:"]
+        for name, count in report.draft_keys.most_common(24):
+            lines.append(f"  {count:6d}  {name}")
+        if report.draft_sample is not None:
+            lines += ["",
+                      "Fullest draft block seen"
+                      + (f" (during {report.draft_sample_state})"
+                         if report.draft_sample_state else "") + ":",
+                      _indent(json.dumps(report.draft_sample, indent=2,
+                                         sort_keys=True)[:4000])]
+
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:
         lines += [
@@ -95,8 +136,10 @@ def format_report(report: Report, archive: Path | None = None) -> str:
     elif report.draft_block_seen:
         lines += [
             f"  A 'draft' block arrived but only {report.best_picks} picks "
-            "were ever visible.",
-            "  Send the recording to Claude to see what it does carry.",
+            "were read out of it.",
+            "  That is either an empty block or a shape this parser does "
+            "not know. The keys printed above",
+            "  say which — paste them to Claude rather than guessing.",
         ]
     else:
         lines += [
@@ -113,3 +156,7 @@ def format_report(report: Report, archive: Path | None = None) -> str:
     if archive is not None:
         lines += ["", f"Recording: {archive}"]
     return "\n".join(lines)
+
+
+def _indent(text: str, prefix: str = "  ") -> str:
+    return "\n".join(prefix + line for line in text.splitlines())

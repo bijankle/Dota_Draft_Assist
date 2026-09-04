@@ -726,3 +726,131 @@ def test_modeless_task_is_shown_not_executed(window, monkeypatch):
     window.run_task("simulate_gsi")
     assert shown == ["simulate_gsi"] and executed == []
     assert len(window._open_tasks) == 1
+
+
+# ---- typing the draft in, which is now the normal path -----------------
+
+def blank_window(qapp):
+    """A window with nothing drafted, so quick entry starts from empty."""
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    ds = demo_dataset()
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, ManualProvider(ManualDraft()), rules, meta)
+    win.timer.stop()
+    win.refresh()
+    return win
+
+
+def test_quick_entry_fills_the_next_slot_on_the_active_side(qapp):
+    window = blank_window(qapp)
+    try:
+        name = window.ds.name(window.ds.hero_ids[0])
+        window.quick_entry.setText(name)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.enemies[0] == window.ds.hero_ids[0]
+        assert window.manual.allies == [None] * 5
+        assert window.quick_entry.text() == ""
+
+        other = window.ds.name(window.ds.hero_ids[1])
+        window.quick_entry.setText(other)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.enemies[1] == window.ds.hero_ids[1]
+    finally:
+        window.close()
+
+
+def test_tab_flips_the_side_without_losing_focus(qapp):
+    window = blank_window(qapp)
+    try:
+        assert window.quick_side == "enemy"
+        window.quick_entry.tab_pressed.emit()
+        assert window.quick_side == "ally"
+        assert window.quick_side_button.text() == "Ally"
+        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.allies[0] == window.ds.hero_ids[0]
+    finally:
+        window.close()
+
+
+def test_quick_entry_refuses_an_ambiguous_prefix(qapp):
+    """Silently entering the wrong hero mid-draft is worse than entering
+    none: two heroes share a prefix, so nothing is filled."""
+    window = blank_window(qapp)
+    try:
+        names = [window.ds.name(h) for h in window.ds.hero_ids]
+        shared = None
+        for length in range(1, 4):
+            heads = {}
+            for name in names:
+                heads.setdefault(name[:length].lower(), []).append(name)
+            shared = next((k for k, v in heads.items() if len(v) > 1), None)
+            if shared:
+                break
+        assert shared, "demo dataset has no ambiguous prefix to test with"
+        assert window.resolve_hero(shared) is None
+        window.quick_entry.setText(shared)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.enemies == [None] * 5
+        assert window.quick_entry.text() == shared     # not thrown away
+    finally:
+        window.close()
+
+
+def test_quick_entry_matches_a_word_inside_the_name(qapp):
+    """Nobody types "Bounty Hunter" in a 30-second draft."""
+    window = blank_window(qapp)
+    try:
+        target = next((h for h in window.ds.hero_ids
+                       if " " in window.ds.name(h)), None)
+        if target is None:
+            pytest.skip("no multi-word hero in the demo dataset")
+        second = window.ds.name(target).split()[1]
+        if window.resolve_hero(second) is None:
+            pytest.skip(f"{second!r} is ambiguous in this dataset")
+        assert window.resolve_hero(second) == target
+    finally:
+        window.close()
+
+
+def test_quick_entry_will_not_add_a_hero_already_drafted(window):
+    window.refresh()
+    already = filled(window, "enemy")[0]
+    before = list(window.manual.enemies)
+    window.quick_entry.setText(already)
+    window.quick_entry.returnPressed.emit()
+    assert window.manual.enemies == before
+
+
+def test_quick_undo_removes_the_last_pick_typed(qapp):
+    window = blank_window(qapp)
+    try:
+        for hero_id in window.ds.hero_ids[:2]:
+            window.quick_entry.setText(window.ds.name(hero_id))
+            window.quick_entry.returnPressed.emit()
+        window.quick_entry.tab_pressed.emit()          # to the ally side
+        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[2]))
+        window.quick_entry.returnPressed.emit()
+
+        window._quick_undo()                           # the ally one
+        assert window.manual.allies == [None] * 5
+        assert window.manual.enemies[:2] == list(window.ds.hero_ids[:2])
+        window._quick_undo()
+        assert window.manual.enemies[1] is None
+        assert window.manual.enemies[0] == window.ds.hero_ids[0]
+    finally:
+        window.close()
+
+
+def test_clearing_the_draft_also_forgets_the_undo_history(qapp):
+    window = blank_window(qapp)
+    try:
+        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
+        window.quick_entry.returnPressed.emit()
+        window._clear_manual()
+        assert window._entry_order == []
+        window._quick_undo()          # must not resurrect a stale slot
+        assert window.manual.enemies == [None] * 5
+    finally:
+        window.close()
