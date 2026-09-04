@@ -69,7 +69,7 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | Tick it to archive real payloads while you play |
-| **Game** | What did the recording contain? | Reads the archive and says whether GSI ever sent the enemy picks |
+| **Game** | What did the recording contain? | Reads the archive (no game needed) and says whether GSI ever sent the enemy picks |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
@@ -230,7 +230,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 156 tests: normalisation math, scoring views, item
+pytest            # 158 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

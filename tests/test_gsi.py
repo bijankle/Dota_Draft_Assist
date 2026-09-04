@@ -899,3 +899,40 @@ def test_verdict_reports_where_heroes_are_named_while_drafting(tmp_path):
         gsi_summary.from_directory(tmp_path, demo_dataset()))
     assert "hero.name" in text
     assert "while drafting, this feed names no hero at all" in text
+
+
+def test_verdict_says_when_the_recording_was_made(tmp_path):
+    """Recording appends, so a folder can hold an old match; the report must
+    not let a stale archive read as evidence about the game just played."""
+    import os
+    import time as time_mod
+    from draft_assist.gsi import summary as gsi_summary
+
+    path = tmp_path / "gsi_00001.json"
+    path.write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
+                "matchid": "8123456789"},
+        "draft": {}}))
+    old = time_mod.time() - 12 * 86400
+    os.utime(path, (old, old))
+
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "Recorded:" in text
+    assert "12 days old" in text
+    assert "ARCHIVE, not the game you just played" in text
+    assert "8123456789" in text
+
+
+def test_verdict_warns_when_several_matches_are_mixed_together(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    for i, match in enumerate(["111", "111", "222"]):
+        (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
+            "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
+                    "matchid": match},
+            "draft": {}}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    text = gsi_summary.format_report(report)
+    assert len(report.match_ids) == 2
+    assert "separate games mixed together" in text

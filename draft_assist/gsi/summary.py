@@ -8,6 +8,7 @@ inspector so both can never disagree.
 """
 
 import json
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,6 +75,14 @@ class Report:
     # unrecognised is surfaced rather than dropped.
     other_keys: Counter = field(default_factory=Counter)
     hero_paths: Counter = field(default_factory=Counter)
+    # Recording resumes past whatever a previous session left,
+    # so one folder can hold several matches from different
+    # days. Say so rather than let a stale archive be read as
+    # evidence about the game just played.
+    match_ids: Counter = field(default_factory=Counter)
+    first_written: float = 0.0
+    last_written: float = 0.0
+    files: int = 0
     draft_hero_paths: Counter = field(default_factory=Counter)
 
     def add(self, payload: dict, dataset) -> None:
@@ -113,6 +122,8 @@ class Report:
             self.states[parsed.game_state] += 1
         if parsed.my_name:
             self.player_names.add(parsed.my_name)
+        if parsed.match_id and parsed.match_id != "0":
+            self.match_ids[parsed.match_id] += 1
         self.best_picks = max(self.best_picks,
                               len(parsed.allies) + len(parsed.enemies))
 
@@ -132,11 +143,15 @@ def _weight(value: object) -> int:
 def from_directory(directory: Path, dataset) -> Report:
     report = Report()
     for path in sorted(directory.glob("gsi_*.json")):
+        report.files += 1
         try:
+            written = path.stat().st_mtime
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             report.unreadable += 1
             continue
+        report.first_written = min(report.first_written or written, written)
+        report.last_written = max(report.last_written, written)
         if isinstance(payload, dict):
             report.add(payload, dataset)
         else:
@@ -156,6 +171,22 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         ]
         return "\n".join(lines)
 
+    if report.first_written:
+        span = (f"{_when(report.first_written)}  to  "
+                f"{_when(report.last_written)}")
+        lines.append(f"Recorded: {span}")
+        age = (time.time() - report.last_written) / 86400
+        if age >= 1:
+            lines.append(f"  (the newest payload here is {age:.0f} days old — "
+                         "this is an ARCHIVE, not the game you just played)")
+    if report.match_ids:
+        lines.append(f"Matches in this folder: {len(report.match_ids)} "
+                     "(" + ", ".join(
+                         f"{mid} ×{count}" for mid, count
+                         in report.match_ids.most_common(5)) + ")")
+        if len(report.match_ids) > 1:
+            lines.append("  Recording appends, so these are separate games "
+                         "mixed together. Empty the folder to start clean.")
     if report.player_names:
         lines.append("Reported as: " + ", ".join(sorted(report.player_names)))
     lines.append("")
@@ -256,3 +287,7 @@ def format_report(report: Report, archive: Path | None = None) -> str:
 
 def _indent(text: str, prefix: str = "  ") -> str:
     return "\n".join(prefix + line for line in text.splitlines())
+
+
+def _when(stamp: float) -> str:
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(stamp))
