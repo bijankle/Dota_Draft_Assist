@@ -51,6 +51,28 @@ def hero_mentions(value: object, path: str = "") -> list[str]:
     return found
 
 
+def hero_objects(value: object, path: str = ""):
+    """Yield (path, hero internal name, team) for every object in a payload
+    that names a hero.
+
+    The minimap turned out to name heroes during hero selection, which the
+    draft block never does. Whether that is usable depends entirely on WHICH
+    heroes and WHOSE — so the object around the name is collected too,
+    rather than the name alone.
+    """
+    if isinstance(value, dict):
+        named = [v for v in value.values()
+                 if isinstance(v, str) and v.startswith(HERO_PREFIX)]
+        if named:
+            team = value.get("team")
+            yield path, named[0], str(team) if team is not None else "?"
+        for key, item in value.items():
+            yield from hero_objects(item, f"{path}.{key}" if path else key)
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            yield from hero_objects(item, f"{path}[{index}]")
+
+
 @dataclass
 class Report:
     payloads: int = 0
@@ -83,6 +105,13 @@ class Report:
     first_written: float = 0.0
     last_written: float = 0.0
     files: int = 0
+    # Hero names found during the drafting states, with the
+    # team recorded beside them. This is the only lead left
+    # for reading a draft automatically.
+    draft_heroes: Counter = field(default_factory=Counter)
+    draft_best: list = field(default_factory=list)
+    draft_best_state: str = ""
+    draft_phase_payloads: int = 0
     draft_hero_paths: Counter = field(default_factory=Counter)
 
     def add(self, payload: dict, dataset) -> None:
@@ -92,6 +121,15 @@ class Report:
         self.hero_paths.update(paths)
         if parsed.game_state in gsi_state.DRAFTING_STATES:
             self.draft_hero_paths.update(paths)
+            self.draft_phase_payloads += 1
+            found = list(hero_objects(payload))
+            seen = {(hero, team) for _p, hero, team in found}
+            self.draft_heroes.update(f"team {team}: {hero}"
+                                     for hero, team in seen)
+            if len(seen) > len(self.draft_best):
+                self.draft_best = sorted(
+                    (team, hero, path) for path, hero, team in found)
+                self.draft_best_state = parsed.game_state
 
         known = set(gsi_state.PLAYER_COMPONENTS
                     + gsi_state.SPECTATOR_COMPONENTS)
@@ -241,6 +279,28 @@ def format_report(report: Report, archive: Path | None = None) -> str:
     else:
         lines.append("  nowhere — while drafting, this feed names no hero "
                      "at all, not even your own")
+
+    if report.draft_heroes:
+        lines += ["", f"WHICH heroes, in the {report.draft_phase_payloads} "
+                      "draft-phase payloads (team field as Dota reports it, "
+                      "2 = Radiant, 3 = Dire):"]
+        for name, count in report.draft_heroes.most_common(30):
+            lines.append(f"  {count:6d}  {name}")
+        lines += ["", "The single draft-phase payload naming the most heroes"
+                      + (f" (during {report.draft_best_state})"
+                         if report.draft_best_state else "")
+                      + f" named {len(report.draft_best)}:"]
+        for team, hero, path in report.draft_best:
+            lines.append(f"  team {team:<3s} {hero:<28s} {path}")
+        teams = {team for team, _h, _p in report.draft_best}
+        lines.append("")
+        if len(teams) >= 2:
+            lines.append("  BOTH teams appear. If this holds during hero "
+                         "selection the draft can be read automatically — "
+                         "tell Claude.")
+        else:
+            lines.append("  Only one team appears, which is what vision-"
+                         "limited data looks like: you see your own side.")
 
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:

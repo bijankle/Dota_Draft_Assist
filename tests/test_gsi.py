@@ -936,3 +936,48 @@ def test_verdict_warns_when_several_matches_are_mixed_together(tmp_path):
     text = gsi_summary.format_report(report)
     assert len(report.match_ids) == 2
     assert "separate games mixed together" in text
+
+
+def test_hero_objects_keeps_the_team_beside_the_name():
+    """A hero name is only useful with the side it is on."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    found = sorted(gsi_summary.hero_objects({
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2,
+                           "name": "npc_dota_hero_lion"},
+                    "o1": {"unitname": "npc_dota_hero_axe", "team": 3},
+                    "o2": {"unitname": "npc_dota_creep", "team": 2}},
+        "hero": {"name": "npc_dota_hero_lion"}}))
+    assert ("hero", "npc_dota_hero_lion", "?") in found
+    assert ("minimap.o0", "npc_dota_hero_lion", "2") in found
+    assert ("minimap.o1", "npc_dota_hero_axe", "3") in found
+    assert not any(hero == "npc_dota_creep" for _p, hero, _t in found)
+
+
+def test_verdict_reports_both_teams_when_the_draft_phase_names_them(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2},
+                    "o1": {"unitname": "npc_dota_hero_axe", "team": 3}}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "team 2: npc_dota_hero_lion" in text
+    assert "team 3: npc_dota_hero_axe" in text
+    assert "BOTH teams appear" in text
+
+
+def test_verdict_calls_out_a_one_sided_draft_phase(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2},
+                    "o1": {"unitname": "npc_dota_hero_axe", "team": 2}}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "Only one team appears" in text
+    assert "BOTH teams appear" not in text
