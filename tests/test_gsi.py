@@ -852,3 +852,50 @@ def test_verdict_surfaces_components_the_codebase_did_not_expect(tmp_path):
     text = gsi_summary.format_report(report)
     assert "wearables" in text and "abilities" in text
     assert "map" not in report.other_keys
+
+
+def test_empty_draft_block_shows_as_empty_not_null(tmp_path):
+    """Every block being {} weighed zero against a None start, so a key seen
+    8493 times was reported as "null" — which reads as "never seen"."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    for i in range(3):
+        (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
+            "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+            "draft": {}}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    text = gsi_summary.format_report(report)
+    assert report.draft_sample == {}
+    assert "null" not in text
+    assert "really is sending an empty draft block" in text
+    assert "Dota sends an EMPTY draft block" in text
+
+
+def test_hero_mention_scan_finds_heroes_anywhere_in_a_payload():
+    """The last question worth asking a feed that will not report a draft:
+    is a hero named anywhere in it at all? Walk it, do not guess."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    paths = gsi_summary.hero_mentions({
+        "hero": {"name": "npc_dota_hero_lion"},
+        "wearables": {"player3": {"wearable0": 4242}},
+        "minimap": {"o1": {"unitname": "npc_dota_hero_axe", "xpos": 10}},
+        "events": [{"hero_id": 7}, {"hero_id": 0}],
+        "map": {"matchid": "123"},
+    })
+    assert set(paths) == {"hero.name", "minimap.o1.unitname", "events[0].hero_id"}
+
+
+def test_verdict_reports_where_heroes_are_named_while_drafting(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {}, "hero": {}}))
+    (tmp_path / "gsi_00002.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"},
+        "draft": {}, "hero": {"name": "npc_dota_hero_lion"}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "hero.name" in text
+    assert "while drafting, this feed names no hero at all" in text

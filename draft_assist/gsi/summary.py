@@ -15,6 +15,41 @@ from pathlib import Path
 from . import state as gsi_state
 
 
+class _Unset:
+    """Distinguishes 'no sample yet' from a sample that is genuinely empty."""
+
+    def __repr__(self) -> str:
+        return "<none seen>"
+
+
+_UNSET = _Unset()
+
+HERO_PREFIX = "npc_dota_hero_"
+
+
+def hero_mentions(value: object, path: str = "") -> list[str]:
+    """Every place in a payload where something names a hero.
+
+    The last question worth asking of a feed that will not report the
+    draft: is a hero named ANYWHERE in it? Answered by walking the whole
+    payload rather than by knowing where to look, so a block this codebase
+    has never heard of still gets found.
+    """
+    found = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found += hero_mentions(item, f"{path}.{key}" if path else key)
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            found += hero_mentions(item, f"{path}[{index}]")
+    elif isinstance(value, str) and value.startswith(HERO_PREFIX):
+        found.append(path)
+    elif isinstance(value, int) and not isinstance(value, bool) and value > 0 \
+            and path.rsplit(".", 1)[-1] in ("hero_id", "heroid"):
+        found.append(path)
+    return found
+
+
 @dataclass
 class Report:
     payloads: int = 0
@@ -30,7 +65,7 @@ class Report:
     # exactly what this project refuses to do, so keep the raw evidence.
     draft_keys: Counter = field(default_factory=Counter)
     draft_types: Counter = field(default_factory=Counter)
-    draft_sample: object = None
+    draft_sample: object = _UNSET
     draft_sample_state: str = ""
     draft_key_present: int = 0
     # Top-level keys neither component list knows about. The
@@ -38,10 +73,17 @@ class Report:
     # components this codebase did not expect, so anything
     # unrecognised is surfaced rather than dropped.
     other_keys: Counter = field(default_factory=Counter)
+    hero_paths: Counter = field(default_factory=Counter)
+    draft_hero_paths: Counter = field(default_factory=Counter)
 
     def add(self, payload: dict, dataset) -> None:
         parsed = gsi_state.parse(payload, dataset)
         self.payloads += 1
+        paths = hero_mentions(payload)
+        self.hero_paths.update(paths)
+        if parsed.game_state in gsi_state.DRAFTING_STATES:
+            self.draft_hero_paths.update(paths)
+
         known = set(gsi_state.PLAYER_COMPONENTS
                     + gsi_state.SPECTATOR_COMPONENTS)
         self.other_keys.update(k for k in payload if k not in known)
@@ -54,7 +96,11 @@ class Report:
             self.draft_types[type(block).__name__] += 1
             if isinstance(block, dict):
                 self.draft_keys.update(block.keys())
-            if _weight(block) > _weight(self.draft_sample):
+            # A sentinel, not None: every block being {} weighs zero, and
+            # against a None start that never wins, so the report showed
+            # "null" for a key it had seen 8493 times.
+            if (self.draft_sample is _UNSET
+                    or _weight(block) > _weight(self.draft_sample)):
                 self.draft_sample = block
                 self.draft_sample_state = (
                     (payload.get("map") or {}).get("game_state", ""))
@@ -150,12 +196,38 @@ def format_report(report: Report, archive: Path | None = None) -> str:
             lines.append("  ^ carries nothing: Dota really is sending an "
                          "empty draft block.")
 
+    lines += ["", "Everywhere a hero is named, ACROSS THE WHOLE PAYLOAD:"]
+    if report.hero_paths:
+        for name, count in report.hero_paths.most_common(20):
+            lines.append(f"  {count:6d}  {name}")
+    else:
+        lines.append("  nowhere — no hero is named anywhere in this feed")
+    lines += ["", "...and the same during hero selection and strategy time, "
+                  "which is the only part that could help a draft:"]
+    if report.draft_hero_paths:
+        for name, count in report.draft_hero_paths.most_common(20):
+            lines.append(f"  {count:6d}  {name}")
+    else:
+        lines.append("  nowhere — while drafting, this feed names no hero "
+                     "at all, not even your own")
+
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:
         lines += [
             "  GSI DOES report the full draft in your own games.",
             "  Manual entry is unnecessary — tell Claude and the app can "
             "rely on it entirely.",
+        ]
+    elif report.draft_key_present and _weight(report.draft_sample) == 0:
+        lines += [
+            "  Dota sends an EMPTY draft block. Not a shape this parser "
+            "misreads — there is nothing in it.",
+            "  GSI does not report the line-ups for your own match, and the "
+            "hero-mention scan above says",
+            "  whether anything else in the feed does. The picks have to be "
+            "typed in (quick-entry bar:",
+            "  type, Enter, Tab to flip side) or read from the screen with "
+            "--vision.",
         ]
     elif report.draft_block_seen:
         lines += [
