@@ -54,6 +54,8 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | To archive real payloads during a draft |
+| **Game** | Simulate a draft | Test the whole app with Dota closed |
+| **Game** | Replay recorded game data | Replay real payloads from a past match |
 | **Game** | Clear manual draft | Between games |
 | **Capture** | Use game data / Use screen capture | Switching source at runtime |
 | **Capture** | Capture source ▸, Bind to Dota client, Force recognition | Screen-capture fallback only |
@@ -139,6 +141,39 @@ matrices are built for the chosen brackets. Changing it therefore needs a
 data update, which the app offers immediately, and until then a banner says
 which bracket the cached numbers actually came from.
 
+## Testing without Dota
+
+Four options, in increasing fidelity:
+
+| Option | Exercises | Needs |
+| --- | --- | --- |
+| `--demo` | The interface only — state is injected straight into the UI | nothing |
+| `--manual` | Scoring, the hero picker, item rules | nothing |
+| **Game ▸ Simulate a draft** | **The real path: HTTP listener, auth, parser, provider, UI, overlay** | nothing |
+| **Game ▸ Replay recorded game data** | The same path, with payloads Dota actually sent | one recorded match |
+
+The simulator is the useful one. It POSTs Game State Integration payloads to
+the running app exactly as Dota would, so the plumbing gets tested rather
+than bypassed — every bug found here so far (auth token mismatch, two copies
+sharing a port, a stale status bar) lived in that plumbing, and `--demo`
+would have caught none of them.
+
+```
+python tools/simulate_gsi.py                 # a ranked All Pick draft
+python tools/simulate_gsi.py --speed 4 --loop
+python tools/simulate_gsi.py --with-draft    # pretend GSI reports both
+                                             # line-ups (it probably does
+                                             # not — rehearsal only)
+python tools/simulate_gsi.py --from data_cache/gsi   # replay REAL payloads
+```
+
+Start the app first, then run it (or use the menu item). Note the honest
+limit: modelled payloads are this codebase's own belief about the format
+echoed back, so they can confirm the app handles what it expects, but they
+cannot discover that a real field is shaped differently. Recording one real
+match with **Game ▸ Record game data** and replaying it is a strictly
+stronger test.
+
 ## Self-training on real frames
 
 ```
@@ -163,7 +198,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 117 tests: normalisation math, scoring views, item
+pytest            # 122 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

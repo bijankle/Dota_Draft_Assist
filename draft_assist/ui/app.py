@@ -163,6 +163,13 @@ class MainWindow(QMainWindow):
                   lambda: self.run_task("probe_gsi"), None,
                   "Archive raw GSI payloads during a draft")
         game_menu.addSeparator()
+        self._act(game_menu, "Si&mulate a draft…",
+                  lambda: self.run_task("simulate_gsi"), None,
+                  "Send fake game data to this app, with Dota closed")
+        self._act(game_menu, "Replay recorded game data…",
+                  lambda: self.run_task("replay_gsi"), None,
+                  "Replay payloads archived from a real match")
+        game_menu.addSeparator()
         self._act(game_menu, "&Clear manual draft", self._clear_manual,
                   "Ctrl+Shift+C", "Empty every hand-entered slot")
 

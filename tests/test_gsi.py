@@ -503,3 +503,98 @@ def test_diagnose_blames_the_other_copy_not_dota(tmp_path, monkeypatch):
     checks = {c.name: c for c in diagnose.run_checks(server=Server())}
     assert checks["GSI port owned by this app"].ok is False
     assert "another copy" in checks["GSI port owned by this app"].fix.lower()
+
+
+# ---- the simulator -----------------------------------------------------
+
+def test_modelled_scenario_matches_a_real_player_feed(dataset):
+    """Without the draft block — the expected real case — the scenario must
+    yield your own hero and NO enemies, never a fabricated line-up."""
+    from draft_assist.gsi import simulate
+
+    steps = simulate.all_pick_scenario(dataset, token="t", speed=100)
+    assert steps and all(s.payload["auth"]["token"] == "t" for s in steps)
+
+    states = [gsi_state.parse(s.payload, dataset) for s in steps]
+    assert states[0].game_state == gsi_state.STATE_HERO_SELECTION
+    assert states[0].drafting
+    assert states[-1].game_state == gsi_state.STATE_IN_PROGRESS
+
+    locked = [s for s in states if s.my_hero_id is not None]
+    assert locked, "the scenario never locks in a hero"
+    assert all(s.enemies == [] for s in states)
+    assert all(not s.has_full_draft for s in states)
+
+
+def test_modelled_scenario_can_rehearse_a_full_draft(dataset):
+    """With the draft block on, the app must use it and stop asking for
+    manual entry — the rehearsal for GSI turning out richer than expected."""
+    from draft_assist.gsi import simulate
+
+    steps = simulate.all_pick_scenario(dataset, token="t",
+                                       include_draft_block=True, speed=100)
+    final = gsi_state.parse(steps[-2].payload, dataset)
+    assert len(final.allies) == 5 and len(final.enemies) == 5
+    assert final.has_full_draft
+
+
+def test_replay_scenario_reads_archives_and_retokens(tmp_path):
+    """Archived payloads were recorded under an old token; replaying must
+    rewrite it or every one would be rejected."""
+    from draft_assist.gsi import simulate
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps(
+        {"auth": {"token": "OLD"},
+         "map": {"game_state": gsi_state.STATE_HERO_SELECTION}}))
+    (tmp_path / "gsi_00002.json").write_text(json.dumps(
+        {"map": {"game_state": gsi_state.STATE_IN_PROGRESS}}))
+    (tmp_path / "gsi_00003.json").write_text("not json")
+
+    steps = simulate.replay_scenario(tmp_path, token="NEW")
+    assert len(steps) == 2                      # unreadable file skipped
+    assert all(s.payload["auth"]["token"] == "NEW" for s in steps)
+    assert "HERO_SELECTION" in steps[0].label
+
+    with pytest.raises(FileNotFoundError):
+        simulate.replay_scenario(tmp_path / "nothing-here")
+
+
+def test_simulator_drives_the_real_ingestion_path(dataset):
+    """The point of the simulator: exercise listener, auth and parser, not
+    just inject state into the UI the way --demo does."""
+    from draft_assist.gsi import simulate
+
+    port = free_port()
+    server = GsiServer(port, token="tok")
+    server.start()
+    try:
+        provider = GsiProvider(dataset, server, ManualDraft())
+        steps = simulate.all_pick_scenario(dataset, token="tok", speed=1000)
+        for step in steps:
+            post(port, step.payload)
+        snap = provider.poll()
+        assert server.snapshot().count == len(steps)
+        assert snap.game_state == gsi_state.STATE_IN_PROGRESS
+        assert snap.left                      # own hero came through
+        assert snap.needs_manual              # enemies did not, correctly
+    finally:
+        server.stop()
+
+
+def test_simulated_payloads_are_rejected_with_the_wrong_token(dataset):
+    """Guards the trap that produced silent failure before: a token drift
+    between config and app rejects everything, and must be visible."""
+    from draft_assist.gsi import simulate
+
+    port = free_port()
+    server = GsiServer(port, token="right")
+    server.start()
+    try:
+        for step in simulate.all_pick_scenario(dataset, token="wrong",
+                                               speed=1000):
+            post(port, step.payload)
+        snap = server.snapshot()
+        assert snap.count == 0 and snap.rejected > 0
+        assert "auth token" in snap.last_error
+    finally:
+        server.stop()

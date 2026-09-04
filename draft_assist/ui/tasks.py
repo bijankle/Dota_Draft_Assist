@@ -81,6 +81,27 @@ TASKS = {
                "client is among them, with its measured size."),
         cancellable=False,
     ),
+    "simulate_gsi": Task(
+        key="simulate_gsi",
+        title="Simulate a draft (no Dota needed)",
+        steps=[[PY, "tools/simulate_gsi.py", "--speed", "2"]],
+        blurb=("Pretends to be Dota and sends game data to this app, so the "
+               "whole path — listener, parser, draft panel, overlay — can be "
+               "exercised with the game closed. Watch the Draft tab while it "
+               "runs. The payloads are modelled on what this app expects "
+               "Dota to send; replaying payloads recorded from a real match "
+               "is a stronger test."),
+        cancellable=True,
+    ),
+    "replay_gsi": Task(
+        key="replay_gsi",
+        title="Replay recorded game data",
+        steps=[[PY, "tools/simulate_gsi.py", "--from"]],
+        blurb=("Replays real payloads previously archived by Record game "
+               "data, exactly as Dota sent them. This is the highest-"
+               "fidelity test available without launching the game."),
+        cancellable=True,
+    ),
     "probe_gsi": Task(
         key="probe_gsi",
         title="Record game data",
