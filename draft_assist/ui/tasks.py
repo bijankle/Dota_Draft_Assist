@@ -83,7 +83,7 @@ TASKS = {
     ),
     "simulate_gsi": Task(
         key="simulate_gsi",
-        title="Simulate a draft (both line-ups)",
+        title="Simulate a draft — full teams",
         steps=[[PY, "tools/simulate_gsi.py", "--with-draft", "--loop"]],
         blurb=("Pretends to be Dota and sends game data to this app, so the "
                "whole path — listener, parser, draft panel, overlay — can be "
@@ -97,14 +97,16 @@ TASKS = {
     ),
     "simulate_gsi_real": Task(
         key="simulate_gsi_real",
-        title="Simulate a draft (as real GSI behaves)",
+        title="Simulate a draft — ONLY your hero (as real GSI)",
         steps=[[PY, "tools/simulate_gsi.py", "--loop"]],
-        blurb=("The same simulation without the spectator draft block, which "
-               "is what a player's own feed is expected to look like: your "
-               "hero and game state arrive, the enemy line-up does not. The "
-               "enemy slots stay empty on purpose — that is the behaviour "
-               "you would see in a real game, and where you would click the "
-               "picks in by hand."),
+        blurb=("EXPECT MOSTLY EMPTY SLOTS. This sends what a player's own "
+               "GSI feed is believed to contain: your hero and the game "
+               "state, and nothing about anyone else. You will see one hero "
+               "in your team and no enemies, looping.\n\n"
+               "That is the point — it shows the real limitation, and where "
+               "you would click the enemy picks in by hand. To watch the "
+               "app work with a full draft, use 'Simulate a draft — full "
+               "teams' instead."),
         cancellable=True,
     ),
     "replay_gsi": Task(

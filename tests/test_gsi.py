@@ -647,3 +647,62 @@ def test_draft_block_persists_into_the_running_game(dataset):
     assert final.game_state == gsi_state.STATE_IN_PROGRESS
     assert final.has_full_draft
     assert "items" in steps[-1].payload      # still the running payload
+
+
+# ---- recording on the live listener ------------------------------------
+
+def test_recording_toggles_on_the_running_listener(tmp_path):
+    """Recording must use the listener already running: a second process
+    cannot bind the port, which is exactly what crashed before."""
+    port = free_port()
+    server = GsiServer(port, token=None)
+    server.start()
+    try:
+        assert not server.recording
+        post(port, {"map": {"game_state": "A"}})
+        assert not list(tmp_path.glob("*.json"))     # nothing archived yet
+
+        server.set_archive_dir(tmp_path)
+        assert server.recording
+        post(port, {"map": {"game_state": "B"}})
+        assert len(list(tmp_path.glob("gsi_*.json"))) == 1
+
+        server.set_archive_dir(None)
+        post(port, {"map": {"game_state": "C"}})
+        assert len(list(tmp_path.glob("gsi_*.json"))) == 1   # stopped
+    finally:
+        server.stop()
+
+
+def test_recording_resumes_after_existing_files(tmp_path):
+    """Turning recording on again must not overwrite an earlier session."""
+    (tmp_path / "gsi_00001.json").write_text("{}")
+    (tmp_path / "gsi_00002.json").write_text("{}")
+    port = free_port()
+    server = GsiServer(port, token=None)
+    server.start()
+    try:
+        assert server.set_archive_dir(tmp_path) == 2
+        post(port, {"map": {"game_state": "X"}})
+        assert (tmp_path / "gsi_00003.json").exists()
+    finally:
+        server.stop()
+
+
+def test_status_endpoint_exposes_acceptance(tmp_path):
+    """A rejected payload still returns 200, so a sender can only tell it
+    was heard by asking. Without this, a token mismatch is invisible."""
+    port = free_port()
+    server = GsiServer(port, token="right")
+    server.start()
+    try:
+        post(port, {"auth": {"token": "right"}, "map": {}})
+        post(port, {"auth": {"token": "wrong"}, "map": {}})
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/") as response:
+            status = json.loads(response.read().decode())
+        assert status["accepted"] == 1
+        assert status["rejected"] == 1
+        assert "auth token" in status["last_error"]
+        assert status["recording"] is False
+    finally:
+        server.stop()

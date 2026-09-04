@@ -33,6 +33,21 @@ from draft_assist.gsi import simulate  # noqa: E402
 import json  # noqa: E402
 
 
+def listener_status(port: int, timeout: float = 3.0) -> dict | None:
+    """Ask the app how many payloads it has accepted and rejected.
+
+    Essential, because a rejected payload still gets a 200: without this a
+    token mismatch is indistinguishable from success, and the simulator
+    would cheerfully report sending nine payloads that the app threw away.
+    """
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/",
+                                    timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, json.JSONDecodeError, OSError):
+        return None
+
+
 def send(port: int, payload: dict, timeout: float = 5.0) -> None:
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/",
@@ -77,10 +92,25 @@ def main() -> None:
         steps = simulate.all_pick_scenario(
             dataset, token=token, include_draft_block=args.with_draft,
             speed=args.speed)
-        print(f"Simulating {len(steps)} MODELLED payloads"
-              + (" including the spectator draft block" if args.with_draft
-                 else " (no draft block, as a player's own feed is expected)"))
-    print("Start the app first if you have not. Ctrl+C to stop.\n")
+        if args.with_draft:
+            print(f"Simulating {len(steps)} MODELLED payloads WITH the "
+                  "spectator draft block: both teams will fill in.")
+        else:
+            print(f"Simulating {len(steps)} MODELLED payloads WITHOUT a "
+                  "draft block.")
+            print("EXPECT ONLY YOUR OWN HERO TO APPEAR. The enemy slots "
+                  "stay empty on purpose — that is what a player's own GSI "
+                  "feed is believed to contain.")
+            print("For a full draft, add --with-draft.")
+    before = listener_status(args.port)
+    if before is None:
+        raise SystemExit(
+            f"Nothing is listening on port {args.port}.\n"
+            "Start the app first, and make sure its source is game data "
+            "(Capture > Use game data).")
+    print(f"App is listening (accepted {before.get('accepted', 0)} payloads "
+          f"so far).")
+    print("Watch the Draft tab. Ctrl+C to stop.\n")
 
     sent = 0
     try:
@@ -103,8 +133,25 @@ def main() -> None:
         print("\nstopped.")
 
     print(f"\nDone: {sent} payloads sent.")
+
+    after = listener_status(args.port)
+    if after is not None:
+        accepted = after.get("accepted", 0) - before.get("accepted", 0)
+        rejected = after.get("rejected", 0) - before.get("rejected", 0)
+        print(f"The app accepted {accepted} and rejected {rejected}.")
+        if sent and accepted == 0:
+            print("\nNOTHING WAS ACCEPTED. The app is running but threw "
+                  "every payload away.")
+            if rejected:
+                print(f"Reason: {after.get('last_error') or 'auth token'}")
+                print("Fix: Game > Set up game data (GSI) so the app and the "
+                      "config share a token, then restart this.")
+        elif accepted < sent:
+            print("Some payloads were dropped; see Game > Diagnose game "
+                  "data in the app.")
+
     if not args.replay:
-        print("Reminder: these were MODELLED on what this codebase expects "
+        print("\nReminder: these were MODELLED on what this codebase expects "
               "Dota to send.\nRecord real ones with Game > Record game data "
               "for a stronger test.")
 

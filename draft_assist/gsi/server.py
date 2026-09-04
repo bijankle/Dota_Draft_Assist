@@ -87,12 +87,27 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        """Report reception counts.
+
+        Without this a sender cannot tell whether it was heard: a rejected
+        payload still gets a 200, so a token mismatch looks identical to
+        success. Counts only — never payload contents.
+        """
+        server: "GsiServer" = self.server.gsi          # type: ignore[attr-defined]
+        snap = server.snapshot()
+        body = json.dumps({
+            "listener": "Dota Draft Assist",
+            "accepted": snap.count,
+            "rejected": snap.rejected,
+            "last_error": snap.last_error,
+            "recording": server.archive_dir is not None,
+            "archived": server._archived,
+        }).encode("utf-8")
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        payload = b"Dota Draft Assist GSI listener\n"
-        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(payload)
+        self.wfile.write(body)
 
     def log_message(self, *_args) -> None:
         """Silence the default stderr access log; a windowless app has no
@@ -188,6 +203,27 @@ class GsiServer:
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         except OSError:
             pass
+
+    def set_archive_dir(self, directory: Path | None) -> int:
+        """Start or stop archiving payloads on the LIVE listener.
+
+        Recording used to mean running a second process, which cannot work:
+        only one listener may hold the port, so the recorder and the app
+        fought over it. The app already receives everything, so it does the
+        recording itself.
+        """
+        self.archive_dir = directory
+        if directory is not None:
+            directory.mkdir(parents=True, exist_ok=True)
+            # Continue after whatever is already there rather than
+            # overwriting a previous recording.
+            existing = sorted(directory.glob("gsi_*.json"))
+            self._archived = len(existing)
+        return self._archived
+
+    @property
+    def recording(self) -> bool:
+        return self.archive_dir is not None
 
     def snapshot(self) -> Reception:
         with self._lock:

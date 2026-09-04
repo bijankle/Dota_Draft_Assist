@@ -159,16 +159,22 @@ class MainWindow(QMainWindow):
                   "Check every requirement and name the one that is failing")
         self._act(game_menu, "Game data &status…", self._gsi_status,
                   None, "What the game is actually reporting right now")
-        self._act(game_menu, "&Record game data…",
-                  lambda: self.run_task("probe_gsi"), None,
-                  "Archive raw GSI payloads during a draft")
+        self.record_action = QAction("&Record game data", self)
+        self.record_action.setCheckable(True)
+        self.record_action.setStatusTip(
+            "Archive every payload Dota sends, using the listener already "
+            "running — no second process, no port clash")
+        self.record_action.toggled.connect(self._set_recording)
+        game_menu.addAction(self.record_action)
+        self._act(game_menu, "Open &recordings folder",
+                  lambda: open_folder(REPO_ROOT / "data_cache" / "gsi"))
         game_menu.addSeparator()
-        self._act(game_menu, "Si&mulate a draft…",
+        self._act(game_menu, "Si&mulate a draft — full teams…",
                   lambda: self.run_task("simulate_gsi"), None,
-                  "Send fake game data with both line-ups, Dota closed")
-        self._act(game_menu, "Simulate a draft (as real GSI behaves)…",
+                  "Both line-ups fill in — the best way to see the app work")
+        self._act(game_menu, "Simulate a draft — only your hero…",
                   lambda: self.run_task("simulate_gsi_real"), None,
-                  "The same, without the enemy line-up GSI does not send")
+                  "Shows the real GSI limitation: enemy slots stay empty")
         self._act(game_menu, "Replay recorded game data…",
                   lambda: self.run_task("replay_gsi"), None,
                   "Replay payloads archived from a real match")
@@ -706,6 +712,35 @@ class MainWindow(QMainWindow):
         box.exec()
         ticker.stop()
 
+    def _set_recording(self, on: bool) -> None:
+        """Toggle archiving on the live listener.
+
+        Recording used to spawn a second process, which could never work:
+        only one listener can hold the port, so the recorder collided with
+        the app that was already receiving everything.
+        """
+        from ..config import DATA_CACHE
+
+        server = getattr(self.provider, "server", None)
+        if server is None:
+            QMessageBox.information(
+                self, "Record game data",
+                "Recording needs the game-data source. Switch with "
+                "Capture ▸ Use game data (GSI).")
+            self.record_action.blockSignals(True)
+            self.record_action.setChecked(False)
+            self.record_action.blockSignals(False)
+            return
+        folder = DATA_CACHE / "gsi"
+        count = server.set_archive_dir(folder if on else None)
+        if on:
+            self.status.showMessage(
+                f"Recording game data to {folder} "
+                f"({count} payloads already there)", 8000)
+        else:
+            self.status.showMessage(
+                f"Stopped recording — {count} payloads in {folder}", 8000)
+
     def _gsi_status(self) -> None:
         """Report exactly what the game is sending — the evidence that
         settles what GSI can and cannot do."""
@@ -1165,6 +1200,9 @@ class MainWindow(QMainWindow):
         if snap.stalled:
             parts.append("CAPTURE STALLED — occluded window may have "
                          "stopped presenting")
+        server = getattr(self.provider, "server", None)
+        if server is not None and getattr(server, "recording", False):
+            parts.append(f"RECORDING ({server._archived} payloads)")
         if self.ds.is_empty:
             parts.append("data: none — use Data ▸ Update statistics")
         else:

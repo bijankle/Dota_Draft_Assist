@@ -24,9 +24,19 @@ match ID and the game state — but probably **not** the enemy line-up. So:
   type a few letters, done;
 - screen capture is still available behind `--vision` as a fallback.
 
-**Game ▸ Record game data…** archives real payloads during a draft and prints
-a verdict on what GSI actually sends. If it turns out the draft block does
-arrive, the manual slots simply stop being needed — nothing else changes.
+**Game ▸ Record game data** is a tick-box on the listener the app is already
+running, not a second program: ticking it starts archiving every payload Dota
+sends into `data_cache/gsi/`, and the status bar shows the count. (An earlier
+version launched a separate recorder, which could not work — two processes
+cannot hold the same port.) Replay what you record to settle what GSI really
+sends; if the draft block does arrive, the manual slots simply stop being
+needed and nothing else changes.
+
+Recording **while spectating or watching a replay** is worth doing: `draft` is
+believed to be a spectator-side component, so that is the context where it is
+most likely to show up. Note it is still the JSON feed being recorded — the
+app does not look at hero portraits in that mode. Portrait reading is the
+separate `--vision` path.
 
 ## Install and run (Windows)
 
@@ -53,9 +63,9 @@ the app, with live progress and readable errors.
 | **Game** | Set up game data (GSI) | Once, before first use |
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
-| **Game** | Record game data | To archive real payloads during a draft |
-| **Game** | Simulate a draft | Test the whole app with Dota closed (both line-ups) |
-| **Game** | Simulate a draft (as real GSI behaves) | The same, without the enemy picks GSI does not send |
+| **Game** | Record game data | Tick it to archive real payloads while you play |
+| **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
+| **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
 | **Game** | Clear manual draft | Between games |
 | **Capture** | Use game data / Use screen capture | Switching source at runtime |
@@ -150,7 +160,7 @@ Four options, in increasing fidelity:
 | --- | --- | --- |
 | `--demo` | The interface only — state is injected straight into the UI | nothing |
 | `--manual` | Scoring, the hero picker, item rules | nothing |
-| **Game ▸ Simulate a draft** | **The real path: HTTP listener, auth, parser, provider, UI, overlay** | nothing |
+| **Game ▸ Simulate a draft — full teams** | **The real path: HTTP listener, auth, parser, provider, UI, overlay** | nothing |
 | **Game ▸ Replay recorded game data** | The same path, with payloads Dota actually sent | one recorded match |
 
 The simulator is the useful one. It POSTs Game State Integration payloads to
@@ -203,7 +213,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 128 tests: normalisation math, scoring views, item
+pytest            # 131 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

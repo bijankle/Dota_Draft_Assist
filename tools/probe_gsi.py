@@ -50,7 +50,18 @@ def main() -> None:
 
     server = GsiServer(args.port, token=token,
                        archive_dir=None if args.no_archive else ARCHIVE)
-    server.start()
+    try:
+        server.start(attempts=1)
+    except OSError:
+        raise SystemExit(
+            f"Port {args.port} is already in use.\n\n"
+            "Only one program can listen for Dota's game data, and the app "
+            "is almost certainly already doing it. Recording from a second "
+            "process cannot work.\n\n"
+            "Use the app instead: Game > Record game data (a toggle). It "
+            "archives to the same folder, using the listener that is "
+            "already receiving everything.\n\n"
+            "This standalone probe is only for running with the app closed.")
     print(f"Listening on http://127.0.0.1:{args.port}/ for "
           f"{args.minutes:.0f} minutes.")
     print(f"Dota needs the launch option {gsi_install.LAUNCH_OPTION} and a "
