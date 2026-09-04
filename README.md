@@ -182,8 +182,12 @@ Every line it prints is derived from the payload actually sent — game state,
 whether your hero is in it, how many picks the draft block carries — so the
 log can never claim content the data does not contain.
 
-Start the app first, then run it (or use the menu item). Note the honest
-limit: modelled payloads are this codebase's own belief about the format
+Start the app first, then run it (or use the menu item). The simulate and
+replay dialogs are **modeless on purpose** — they feed the draft panel, so
+you keep clicking heroes and reading the synergy/counter breakdown while the
+picks arrive. Closing the dialog stops the feed.
+
+Note the honest limit: modelled payloads are this codebase's own belief about the format
 echoed back, so they can confirm the app handles what it expects, but they
 cannot discover that a real field is shaped differently. Recording one real
 match with **Game ▸ Record game data** and replaying it is a strictly
@@ -213,7 +217,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 131 tests: normalisation math, scoring views, item
+pytest            # 134 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

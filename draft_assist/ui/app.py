@@ -100,6 +100,7 @@ class MainWindow(QMainWindow):
                  manual: ManualDraft | None = None):
         super().__init__()
         self.ds, self.provider = ds, provider
+        self._open_tasks = []
         self.rules, self.rules_meta = rules, rules_meta
         self.manual = manual if manual is not None else getattr(
             provider, "manual", None) or ManualDraft()
@@ -333,6 +334,11 @@ class MainWindow(QMainWindow):
             for index in range(5):
                 b = QPushButton("+")
                 b.setProperty("slot", True)
+                # The card below is allowed to shrink, and a hero name
+                # sheared in half is the result. Font metrics, not a
+                # guessed pixel count, because the user's Windows font is
+                # not this machine's and may be scaled.
+                b.setMinimumHeight(b.fontMetrics().height() + 16)
                 b.setProperty("side", side)
                 b.setProperty("slot_index", index)
                 b.setToolTip("Click to set this pick; click a filled slot to "
@@ -354,8 +360,12 @@ class MainWindow(QMainWindow):
         self.manual_hint.setWordWrap(True)
         self.manual_hint.setProperty("dim", True)
         tlay.addWidget(self.manual_hint)
+        # Fixed, not Maximum: Maximum lets the layout squeeze the card below
+        # its own minimum when the right-hand column is tight, which clipped
+        # the bottom off the hero names. The draft is the thing you read —
+        # it keeps its height and the panels below it give way instead.
         teams_card.setSizePolicy(teams_card.sizePolicy().horizontalPolicy(),
-                                 teams_card.sizePolicy().Policy.Maximum)
+                                 teams_card.sizePolicy().Policy.Fixed)
         rlay.addWidget(teams_card)
 
         controls_card, clay = card()
@@ -464,9 +474,25 @@ class MainWindow(QMainWindow):
     def run_task(self, key: str) -> None:
         task = TASKS[key]
         dialog = TaskDialog(task, self)
+        if task.modeless:
+            # A feeding task drives the main window, so it must not sit on
+            # top of it modally: the point of simulating a draft is to click
+            # the heroes it produces and read the breakdown.
+            dialog.finished.connect(
+                lambda _r, d=dialog: self._task_finished(d))
+            self._open_tasks.append(dialog)
+            dialog.start()
+            dialog.show()
+            return
         dialog.start()
         dialog.exec()
         if dialog.succeeded and task.reload_after:
+            self.reload_backend()
+
+    def _task_finished(self, dialog) -> None:
+        if dialog in self._open_tasks:
+            self._open_tasks.remove(dialog)
+        if dialog.succeeded and dialog.task.reload_after:
             self.reload_backend()
 
     def reload_backend(self) -> None:
@@ -1269,6 +1295,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if self.overlay is not None:
             self.overlay.close()
+        # A modeless task owns a subprocess that would otherwise keep POSTing
+        # to a port nobody is listening on any more.
+        for dialog in list(self._open_tasks):
+            dialog.close()
         super().closeEvent(event)
 
     def _save_snapshot(self) -> None:

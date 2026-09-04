@@ -34,6 +34,11 @@ class Task:
     # Reload dataset/library into the running app when the task succeeds.
     reload_after: bool = False
     cancellable: bool = True
+    # Run without blocking the main window. Tasks that FEED the app (the
+    # simulators, the replayer) exist to make the draft panel move, so a
+    # modal dialog over it defeats the whole point -- you could watch the
+    # heroes arrive but not click one to see why it scores well.
+    modeless: bool = False
     env: dict = field(default_factory=dict)
 
 
@@ -92,8 +97,9 @@ TASKS = {
                "This sends BOTH line-ups, which real GSI probably does not "
                "do — it is the best way to see the app working, not a "
                "faithful picture of a live match. For that, use 'Simulate a "
-               "draft (as real GSI behaves)'."),
+               "draft — only your hero'."),
         cancellable=True,
+        modeless=True,
     ),
     "simulate_gsi_real": Task(
         key="simulate_gsi_real",
@@ -108,6 +114,7 @@ TASKS = {
                "app work with a full draft, use 'Simulate a draft — full "
                "teams' instead."),
         cancellable=True,
+        modeless=True,
     ),
     "replay_gsi": Task(
         key="replay_gsi",
@@ -117,16 +124,7 @@ TASKS = {
                "data, exactly as Dota sent them. This is the highest-"
                "fidelity test available without launching the game."),
         cancellable=True,
-    ),
-    "probe_gsi": Task(
-        key="probe_gsi",
-        title="Record game data",
-        steps=[[PY, "tools/probe_gsi.py", "--minutes", "10"]],
-        blurb=("Listens for Dota's Game State Integration payloads for ten "
-               "minutes, archives every one, and reports which components "
-               "the game actually sends. Run it and sit through a draft: "
-               "the verdict at the end says whether GSI can see the enemy "
-               "line-up or whether those picks must be entered by hand."),
+        modeless=True,
     ),
     "probe": Task(
         key="probe",

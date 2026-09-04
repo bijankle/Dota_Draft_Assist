@@ -599,3 +599,67 @@ def test_side_selector_still_shown_for_pixel_sources(window):
     window.refresh()
     assert window.side_combo.isVisibleTo(window)
     assert "Your team" in window.team_captions["ally"].text()
+
+
+def test_draft_card_never_clips_the_hero_names(window):
+    """A hero name sheared in half was the symptom; the cause was the card
+    being allowed to shrink below its own minimum when the column got
+    tight. Check the real constraint, at sizes a user might drag to."""
+    card = window.team_buttons["ally"][0].parent()
+    for height in (900, 700, 560, 480, 400, 340):
+        window.resize(1280, height)
+        window.show()
+        QApplication.processEvents()
+        assert card.height() >= card.minimumSizeHint().height(), \
+            f"draft card squeezed at window height {height}"
+        for side in ("ally", "enemy"):
+            for button in window.team_buttons[side]:
+                needed = button.fontMetrics().height()
+                assert button.height() >= needed + 8, (
+                    f"{side} slot is {button.height()}px for a "
+                    f"{needed}px font at window height {height}")
+
+
+def test_feeding_tasks_do_not_block_the_main_window():
+    """The simulators exist to make the draft panel move, so blocking the
+    window behind a modal dialog would defeat them: you could watch heroes
+    arrive but not click one to read its breakdown."""
+    from draft_assist.ui.tasks import TASKS
+    for key in ("simulate_gsi", "simulate_gsi_real", "replay_gsi"):
+        assert TASKS[key].modeless, f"{key} would block the draft panel"
+    for key in ("update_data", "tune", "update_app"):
+        assert not TASKS[key].modeless, \
+            f"{key} changes data under the running app and must block"
+
+
+def test_modeless_task_is_shown_not_executed(window, monkeypatch):
+    import draft_assist.ui.app as app_mod
+
+    shown, executed = [], []
+
+    class FakeDialog:
+        def __init__(self, task, parent):
+            self.task = task
+            self.succeeded = False
+
+            class _Signal:
+                def connect(self, _slot):
+                    pass
+            self.finished = _Signal()
+
+        def start(self):
+            pass
+
+        def show(self):
+            shown.append(self.task.key)
+
+        def exec(self):
+            executed.append(self.task.key)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(app_mod, "TaskDialog", FakeDialog)
+    window.run_task("simulate_gsi")
+    assert shown == ["simulate_gsi"] and executed == []
+    assert len(window._open_tasks) == 1
