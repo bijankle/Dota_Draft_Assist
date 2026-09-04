@@ -65,7 +65,8 @@ def hero_objects(value: object, path: str = ""):
                  if isinstance(v, str) and v.startswith(HERO_PREFIX)]
         if named:
             team = value.get("team")
-            yield path, named[0], str(team) if team is not None else "?"
+            yield (path, named[0],
+                   str(team) if team is not None else "?", value)
         for key, item in value.items():
             yield from hero_objects(item, f"{path}.{key}" if path else key)
     elif isinstance(value, (list, tuple)):
@@ -108,28 +109,37 @@ class Report:
     # Hero names found during the drafting states, with the
     # team recorded beside them. This is the only lead left
     # for reading a draft automatically.
-    draft_heroes: Counter = field(default_factory=Counter)
-    draft_best: list = field(default_factory=list)
-    draft_best_state: str = ""
-    draft_phase_payloads: int = 0
+    # Per game state, never merged: heroes named during STRATEGY_TIME are
+    # useless (the draft is over and everyone has spawned), so pooling them
+    # with hero selection inflates the only number that matters.
+    phase_heroes: dict = field(default_factory=dict)
+    phase_payloads: Counter = field(default_factory=Counter)
+    phase_best: dict = field(default_factory=dict)
     draft_hero_paths: Counter = field(default_factory=Counter)
 
-    def add(self, payload: dict, dataset) -> None:
+    def add(self, payload: dict, dataset, source: str = "") -> None:
         parsed = gsi_state.parse(payload, dataset)
         self.payloads += 1
         paths = hero_mentions(payload)
         self.hero_paths.update(paths)
         if parsed.game_state in gsi_state.DRAFTING_STATES:
             self.draft_hero_paths.update(paths)
-            self.draft_phase_payloads += 1
+            state = parsed.game_state
+            self.phase_payloads[state] += 1
             found = list(hero_objects(payload))
-            seen = {(hero, team) for _p, hero, team in found}
-            self.draft_heroes.update(f"team {team}: {hero}"
-                                     for hero, team in seen)
-            if len(seen) > len(self.draft_best):
-                self.draft_best = sorted(
-                    (team, hero, path) for path, hero, team in found)
-                self.draft_best_state = parsed.game_state
+            seen = {(hero, team) for _p, hero, team, _o in found}
+            self.phase_heroes.setdefault(state, Counter()).update(
+                f"team {team}: {hero}" for hero, team in seen)
+            distinct = len({hero for hero, _t in seen})
+            best = self.phase_best.get(state)
+            if best is None or distinct > best["distinct"]:
+                self.phase_best[state] = {
+                    "distinct": distinct,
+                    "match": parsed.match_id,
+                    "source": source,
+                    "objects": [(path, obj) for path, _h, _t, obj in
+                                sorted(found)],
+                }
 
         known = set(gsi_state.PLAYER_COMPONENTS
                     + gsi_state.SPECTATOR_COMPONENTS)
@@ -178,7 +188,10 @@ def _weight(value: object) -> int:
     return 1
 
 
-def from_directory(directory: Path, dataset) -> Report:
+def from_directory(directory: Path, dataset, match: str = "") -> Report:
+    """Read an archive. `match` keeps only payloads from one match id —
+    recording appends, so a folder routinely holds several games and
+    pooling them makes every per-phase count meaningless."""
     report = Report()
     for path in sorted(directory.glob("gsi_*.json")):
         report.files += 1
@@ -191,7 +204,10 @@ def from_directory(directory: Path, dataset) -> Report:
         report.first_written = min(report.first_written or written, written)
         report.last_written = max(report.last_written, written)
         if isinstance(payload, dict):
-            report.add(payload, dataset)
+            if match and str((payload.get("map") or {}).get("matchid", "")) \
+                    != match:
+                continue
+            report.add(payload, dataset, source=path.name)
         else:
             report.unreadable += 1
     return report
@@ -218,13 +234,16 @@ def format_report(report: Report, archive: Path | None = None) -> str:
             lines.append(f"  (the newest payload here is {age:.0f} days old — "
                          "this is an ARCHIVE, not the game you just played)")
     if report.match_ids:
-        lines.append(f"Matches in this folder: {len(report.match_ids)} "
+        lines.append(f"Matches examined: {len(report.match_ids)} "
                      "(" + ", ".join(
                          f"{mid} ×{count}" for mid, count
                          in report.match_ids.most_common(5)) + ")")
         if len(report.match_ids) > 1:
             lines.append("  Recording appends, so these are separate games "
-                         "mixed together. Empty the folder to start clean.")
+                         "pooled together, which makes the per-phase counts "
+                         "below meaningless.")
+            lines.append("  Re-run with --match <id> for one game, or empty "
+                         "the folder before recording to start clean.")
     if report.player_names:
         lines.append("Reported as: " + ", ".join(sorted(report.player_names)))
     lines.append("")
@@ -280,27 +299,53 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         lines.append("  nowhere — while drafting, this feed names no hero "
                      "at all, not even your own")
 
-    if report.draft_heroes:
-        lines += ["", f"WHICH heroes, in the {report.draft_phase_payloads} "
-                      "draft-phase payloads (team field as Dota reports it, "
-                      "2 = Radiant, 3 = Dire):"]
-        for name, count in report.draft_heroes.most_common(30):
-            lines.append(f"  {count:6d}  {name}")
-        lines += ["", "The single draft-phase payload naming the most heroes"
-                      + (f" (during {report.draft_best_state})"
-                         if report.draft_best_state else "")
-                      + f" named {len(report.draft_best)}:"]
-        for team, hero, path in report.draft_best:
-            lines.append(f"  team {team:<3s} {hero:<28s} {path}")
-        teams = {team for team, _h, _p in report.draft_best}
+    for state in (gsi_state.STATE_HERO_SELECTION, gsi_state.STATE_STRATEGY):
+        heroes = report.phase_heroes.get(state)
+        short = state.replace("DOTA_GAMERULES_STATE_", "")
+        count = report.phase_payloads.get(state, 0)
+        lines += ["", "=" * 68,
+                  f"{short}: {count} payloads"]
+        if state == gsi_state.STATE_STRATEGY:
+            lines.append("(the draft is already over here — shown only for "
+                         "comparison)")
+        if not heroes:
+            lines.append("  no hero named anywhere in these payloads")
+            continue
+        lines.append("")
+        lines.append("Heroes named, with the team field beside them "
+                     "(2 = Radiant, 3 = Dire, ? = no team field):")
+        for name, seen in heroes.most_common(30):
+            lines.append(f"  {seen:6d}  {name}")
+
+        best = report.phase_best[state]
+        lines += ["",
+                  f"The single payload naming the most distinct heroes "
+                  f"({best['distinct']}) was {best['source']} "
+                  f"(match {best['match'] or '?'}). Every hero-bearing "
+                  f"object in it, in full:"]
+        for path, obj in best["objects"][:24]:
+            lines.append(f"  {path}")
+            lines.append(_indent(json.dumps(obj, sort_keys=True,
+                                            default=repr)[:400], "      "))
+        if len(best["objects"]) > 24:
+            lines.append(f"  ... and {len(best['objects']) - 24} more")
+
+        # "?" is the absence of a team field, not a second team. Counting it
+        # as one reported BOTH TEAMS APPEAR over data that was entirely one
+        # side.
+        teams = {t.split(":")[0].removeprefix("team ").strip()
+                 for t in heroes}
+        teams = {t for t in teams if t not in ("?", "")}
         lines.append("")
         if len(teams) >= 2:
-            lines.append("  BOTH teams appear. If this holds during hero "
-                         "selection the draft can be read automatically — "
-                         "tell Claude.")
+            lines.append(f"  Teams present: {sorted(teams)} — BOTH sides are "
+                         "named, so this phase can be read automatically.")
+        elif teams:
+            lines.append(f"  Only team {teams.pop()} is ever named. That is "
+                         "what vision-limited data looks like: your own "
+                         "side only.")
         else:
-            lines.append("  Only one team appears, which is what vision-"
-                         "limited data looks like: you see your own side.")
+            lines.append("  No object carried a team field at all.")
 
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:

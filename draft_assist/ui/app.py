@@ -29,6 +29,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -173,6 +174,10 @@ class MainWindow(QMainWindow):
             "running — no second process, no port clash")
         self.record_action.toggled.connect(self._set_recording)
         game_menu.addAction(self.record_action)
+        self._act(game_menu, "Start a &fresh recording…",
+                  self._new_recording, None,
+                  "Move the existing recording aside so the next one is a "
+                  "single clean match")
         self._act(game_menu, "What did the recording contain?…",
                   lambda: self.run_task("inspect_recording"), None,
                   "Read the archived payloads and say whether GSI ever "
@@ -933,6 +938,40 @@ class MainWindow(QMainWindow):
         self._entry_order.clear()
         self.last_draft_key = None
         self.status.showMessage("Cleared hand-entered draft slots", 5000)
+
+    def _new_recording(self) -> None:
+        """Set the current archive aside so the next recording is one match.
+
+        Recording deliberately resumes past existing files, so a folder
+        accumulates games from different days and every per-phase count in
+        the report is then pooled across them. Renaming beats deleting:
+        the old payloads are still the only evidence about what GSI sends.
+        """
+        folder = REPO_ROOT / "data_cache" / "gsi"
+        existing = sorted(folder.glob("gsi_*.json")) if folder.is_dir() else []
+        if not existing:
+            self.status.showMessage(
+                "No recording to set aside — the folder is already empty",
+                6000)
+            return
+        was_recording = self.record_action.isChecked()
+        if was_recording:
+            self.record_action.setChecked(False)   # release the files first
+        destination = folder.with_name(
+            "gsi_" + time.strftime("%Y%m%d_%H%M%S"))
+        try:
+            folder.rename(destination)
+        except OSError as exc:
+            QMessageBox.warning(
+                self, "Start a fresh recording",
+                f"Could not move the recording aside:\n\n{exc}")
+            return
+        finally:
+            if was_recording:
+                self.record_action.setChecked(True)
+        self.status.showMessage(
+            f"{len(existing)} payloads moved to {destination.name} — "
+            "the next recording starts clean", 8000)
 
     # -- quick keyboard entry --------------------------------------------
 

@@ -854,3 +854,42 @@ def test_clearing_the_draft_also_forgets_the_undo_history(qapp):
         assert window.manual.enemies == [None] * 5
     finally:
         window.close()
+
+
+def test_fresh_recording_moves_the_old_archive_aside(qapp, monkeypatch,
+                                                     tmp_path):
+    """Recording appends, so a folder ends up holding several matches and
+    every per-phase count in the report is pooled across them."""
+    import draft_assist.ui.app as app_mod
+
+    root = tmp_path / "repo"
+    (root / "data_cache" / "gsi").mkdir(parents=True)
+    for i in range(3):
+        (root / "data_cache" / "gsi" / f"gsi_{i:05d}.json").write_text("{}")
+    monkeypatch.setattr(app_mod, "REPO_ROOT", root)
+
+    window = blank_window(qapp)
+    try:
+        window._new_recording()
+        assert not (root / "data_cache" / "gsi").exists()
+        moved = [p for p in (root / "data_cache").iterdir()
+                 if p.name.startswith("gsi_")]
+        assert len(moved) == 1
+        assert len(list(moved[0].glob("gsi_*.json"))) == 3
+        assert "moved to" in window.status.currentMessage()
+    finally:
+        window.close()
+
+
+def test_fresh_recording_says_so_when_there_is_nothing_to_move(qapp,
+                                                               monkeypatch,
+                                                               tmp_path):
+    import draft_assist.ui.app as app_mod
+
+    monkeypatch.setattr(app_mod, "REPO_ROOT", tmp_path)
+    window = blank_window(qapp)
+    try:
+        window._new_recording()
+        assert "already empty" in window.status.currentMessage()
+    finally:
+        window.close()

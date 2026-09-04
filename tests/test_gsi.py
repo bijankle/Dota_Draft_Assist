@@ -935,14 +935,16 @@ def test_verdict_warns_when_several_matches_are_mixed_together(tmp_path):
     report = gsi_summary.from_directory(tmp_path, demo_dataset())
     text = gsi_summary.format_report(report)
     assert len(report.match_ids) == 2
-    assert "separate games mixed together" in text
+    assert "separate games pooled together" in text
+    assert "--match" in text
 
 
 def test_hero_objects_keeps_the_team_beside_the_name():
     """A hero name is only useful with the side it is on."""
     from draft_assist.gsi import summary as gsi_summary
 
-    found = sorted(gsi_summary.hero_objects({
+    found = sorted((path, hero, team) for path, hero, team, _obj
+                   in gsi_summary.hero_objects({
         "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2,
                            "name": "npc_dota_hero_lion"},
                     "o1": {"unitname": "npc_dota_hero_axe", "team": 3},
@@ -966,7 +968,8 @@ def test_verdict_reports_both_teams_when_the_draft_phase_names_them(tmp_path):
         gsi_summary.from_directory(tmp_path, demo_dataset()))
     assert "team 2: npc_dota_hero_lion" in text
     assert "team 3: npc_dota_hero_axe" in text
-    assert "BOTH teams appear" in text
+    assert "BOTH sides are named" in text
+    assert "'2', '3'" in text
 
 
 def test_verdict_calls_out_a_one_sided_draft_phase(tmp_path):
@@ -979,5 +982,80 @@ def test_verdict_calls_out_a_one_sided_draft_phase(tmp_path):
                     "o1": {"unitname": "npc_dota_hero_axe", "team": 2}}}))
     text = gsi_summary.format_report(
         gsi_summary.from_directory(tmp_path, demo_dataset()))
-    assert "Only one team appears" in text
-    assert "BOTH teams appear" not in text
+    assert "Only team 2 is ever named" in text
+    assert "BOTH sides are named" not in text
+
+
+def test_strategy_time_is_never_pooled_with_hero_selection(tmp_path):
+    """Heroes named at strategy time are worthless — the draft is over and
+    everyone has spawned. Pooling them inflated the one number that
+    matters, and made a one-sided draft phase look like both teams."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2}}}))
+    (tmp_path / "gsi_00002.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME"},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2},
+                    "o1": {"unitname": "npc_dota_hero_axe", "team": 3}}}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    selection = report.phase_heroes["DOTA_GAMERULES_STATE_HERO_SELECTION"]
+    assert set(selection) == {"team 2: npc_dota_hero_lion"}
+    text = gsi_summary.format_report(report)
+    assert "HERO_SELECTION: 1 payloads" in text
+    assert "STRATEGY_TIME: 1 payloads" in text
+    assert "the draft is already over here" in text
+    # the one-sided hero-selection phase must not borrow strategy time's
+    # second team
+    before = text.index("HERO_SELECTION: 1 payloads")
+    after = text.index("STRATEGY_TIME: 1 payloads")
+    assert "Only team 2 is ever named" in text[before:after]
+
+
+def test_a_missing_team_field_is_not_a_second_team(tmp_path):
+    """"?" means no team field. Counted as a team it reported BOTH TEAMS
+    APPEAR over data that was entirely one side."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "hero": {"name": "npc_dota_hero_magnataur"},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_magnataur",
+                           "team": 2}}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "team ?: npc_dota_hero_magnataur" in text
+    assert "Only team 2 is ever named" in text
+    assert "BOTH sides are named" not in text
+
+
+def test_one_match_can_be_isolated_from_a_pooled_folder(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    for i, (match, hero) in enumerate([("111", "npc_dota_hero_lion"),
+                                       ("222", "npc_dota_hero_axe")]):
+        (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
+            "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
+                    "matchid": match},
+            "minimap": {"o0": {"unitname": hero, "team": 2}}}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset(), match="111")
+    assert list(report.match_ids) == ["111"]
+    assert set(report.phase_heroes["DOTA_GAMERULES_STATE_HERO_SELECTION"]) \
+        == {"team 2: npc_dota_hero_lion"}
+
+
+def test_the_richest_payload_dump_names_its_file(tmp_path):
+    """A dump you cannot go back to is not evidence."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00007.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
+                "matchid": "8981992551"},
+        "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2,
+                           "xpos": -1000, "ypos": 500}}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "gsi_00007.json" in text
+    assert "8981992551" in text
+    assert '"xpos": -1000' in text      # the whole object, not just the name

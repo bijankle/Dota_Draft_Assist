@@ -69,6 +69,7 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | Tick it to archive real payloads while you play |
+| **Game** | Start a fresh recording | Moves the old archive aside so the next one is a single clean match |
 | **Game** | What did the recording contain? | Reads the archive (no game needed) and says whether GSI ever sent the enemy picks |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
@@ -230,7 +231,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 161 tests: normalisation math, scoring views, item
+pytest            # 167 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
@@ -241,6 +242,7 @@ python -m draft_assist.ui.app --vision           # screen-capture fallback
 python -m draft_assist.ui.app --demo             # UI on a scripted draft
 python tools/probe_gsi.py --minutes 10           # what does GSI really send?
 python tools/inspect_recording.py               # ...and what did it send?
+python tools/inspect_recording.py --match 8981992551   # one game only
 ```
 
 See `CLAUDE.md` for the domain invariants (normalised deltas, fractional

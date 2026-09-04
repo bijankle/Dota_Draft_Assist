@@ -23,6 +23,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--from", dest="source", type=Path,
                         default=DATA_CACHE / "gsi")
+    parser.add_argument("--match", default="", metavar="ID",
+                        help="only payloads from this match id (a folder "
+                             "often holds several games)")
     args = parser.parse_args()
 
     if not args.source.is_dir():
@@ -36,7 +39,8 @@ def main() -> None:
         print("NOTE: no hero data downloaded yet, so hero names will be "
               "blank.\n")
     print(f"Examining {args.source}\n")
-    report = gsi_summary.from_directory(args.source, dataset)
+    report = gsi_summary.from_directory(args.source, dataset,
+                                        match=args.match)
     print(gsi_summary.format_report(report, args.source))
 
 
