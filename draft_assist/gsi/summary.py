@@ -29,18 +29,32 @@ class Report:
     # team2/team3 + pickN_id this parser assumes. Guessing between those is
     # exactly what this project refuses to do, so keep the raw evidence.
     draft_keys: Counter = field(default_factory=Counter)
-    draft_sample: dict | None = None
+    draft_types: Counter = field(default_factory=Counter)
+    draft_sample: object = None
     draft_sample_state: str = ""
+    draft_key_present: int = 0
+    # Top-level keys neither component list knows about. The
+    # recording that settled the draft question also showed
+    # components this codebase did not expect, so anything
+    # unrecognised is surfaced rather than dropped.
+    other_keys: Counter = field(default_factory=Counter)
 
     def add(self, payload: dict, dataset) -> None:
         parsed = gsi_state.parse(payload, dataset)
         self.payloads += 1
-        block = payload.get("draft")
-        if isinstance(block, dict):
-            self.draft_keys.update(block.keys())
-            richer = self.draft_sample is None or (
-                _weight(block) > _weight(self.draft_sample))
-            if richer:
+        known = set(gsi_state.PLAYER_COMPONENTS
+                    + gsi_state.SPECTATOR_COMPONENTS)
+        self.other_keys.update(k for k in payload if k not in known)
+        if "draft" in payload:
+            # Type-agnostic on purpose. An earlier version only looked
+            # inside dicts, so a real recording reported the draft key
+            # present 8493 times and then printed nothing about it.
+            block = payload["draft"]
+            self.draft_key_present += 1
+            self.draft_types[type(block).__name__] += 1
+            if isinstance(block, dict):
+                self.draft_keys.update(block.keys())
+            if _weight(block) > _weight(self.draft_sample):
                 self.draft_sample = block
                 self.draft_sample_state = (
                     (payload.get("map") or {}).get("game_state", ""))
@@ -57,16 +71,16 @@ class Report:
                               len(parsed.allies) + len(parsed.enemies))
 
 
-def _weight(block: dict) -> int:
-    """How much a draft block actually carries, shape-agnostically: nested
-    dicts count for their contents, so the fullest sample wins."""
-    total = 0
-    for value in block.values():
-        if isinstance(value, dict):
-            total += 1 + _weight(value)
-        elif value not in (None, "", 0, "0", -1):
-            total += 1
-    return total
+def _weight(value: object) -> int:
+    """How much a value actually carries, shape-agnostically, so the fullest
+    sample wins whatever shape the block turns out to be."""
+    if isinstance(value, dict):
+        return sum(1 + _weight(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(1 + _weight(v) for v in value)
+    if value in (None, "", 0, "0", -1, False):
+        return 0
+    return 1
 
 
 def from_directory(directory: Path, dataset) -> Report:
@@ -105,6 +119,10 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         seen = report.components.get(name, 0)
         mark = " " if seen else "MISSING"
         lines.append(f"  {seen:6d}  {name:<14s}{mark}")
+    if report.other_keys:
+        lines += ["", "Other top-level keys (not in either component list):"]
+        for name, count in report.other_keys.most_common(20):
+            lines.append(f"  {count:6d}  {name}")
     lines.append("")
     lines.append("Game states seen:")
     for name, count in report.states.most_common():
@@ -113,18 +131,24 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         lines.append("  (no HERO_SELECTION payload — this recording does not "
                      "cover a draft, so it cannot answer the question)")
 
-    if report.draft_keys:
-        lines += ["", "The 'draft' block DID arrive. Its keys, with how many "
-                      "payloads carried each:"]
-        for name, count in report.draft_keys.most_common(24):
+    if report.draft_key_present:
+        lines += ["", f"The 'draft' key arrived in "
+                      f"{report.draft_key_present} payloads. It held:"]
+        for name, count in report.draft_types.most_common():
             lines.append(f"  {count:6d}  {name}")
-        if report.draft_sample is not None:
-            lines += ["",
-                      "Fullest draft block seen"
-                      + (f" (during {report.draft_sample_state})"
-                         if report.draft_sample_state else "") + ":",
-                      _indent(json.dumps(report.draft_sample, indent=2,
-                                         sort_keys=True)[:4000])]
+        if report.draft_keys:
+            lines += ["", "Keys inside it, and how many payloads had each:"]
+            for name, count in report.draft_keys.most_common(30):
+                lines.append(f"  {count:6d}  {name}")
+        lines += ["",
+                  "Fullest draft value seen"
+                  + (f" (during {report.draft_sample_state})"
+                     if report.draft_sample_state else "") + ":",
+                  _indent(json.dumps(report.draft_sample, indent=2,
+                                     sort_keys=True, default=repr)[:4000])]
+        if _weight(report.draft_sample) == 0:
+            lines.append("  ^ carries nothing: Dota really is sending an "
+                         "empty draft block.")
 
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:

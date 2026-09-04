@@ -804,8 +804,51 @@ def test_verdict_prints_the_shape_of_an_unparsed_draft_block(tmp_path):
     }))
     text = gsi_summary.format_report(
         gsi_summary.from_directory(tmp_path, demo_dataset()))
-    assert "The 'draft' block DID arrive" in text
+    assert "The 'draft' key arrived in" in text
     assert "activeteam" in text and "radiant" in text
     # the fullest block is the one worth showing, not merely the first
     assert "npc_dota_hero_lion" in text
     assert "shape this parser does not know" in text
+
+
+def test_verdict_reports_a_draft_key_that_is_not_an_object(tmp_path):
+    """A real recording had the draft key in all 8493 payloads while the
+    report said nothing about it, because the inspector only looked inside
+    dicts. Whatever Dota puts there has to be shown."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    for i, value in enumerate([[], None, ["something"]]):
+        (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
+            "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+            "draft": value}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    text = gsi_summary.format_report(report)
+    assert report.draft_key_present == 3
+    assert "The 'draft' key arrived in 3 payloads" in text
+    assert "list" in text and "NoneType" in text
+    assert "something" in text          # the fullest value, not the first
+
+
+def test_verdict_calls_an_empty_draft_block_what_it_is(tmp_path):
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "draft": {}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "really is sending an empty draft block" in text
+
+
+def test_verdict_surfaces_components_the_codebase_did_not_expect(tmp_path):
+    """The recording that settled the draft question also carried blocks
+    this codebase had not predicted; unknown keys must not be dropped."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "wearables": {"player0": {}}, "abilities": {}, "auth": {}}))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    text = gsi_summary.format_report(report)
+    assert "wearables" in text and "abilities" in text
+    assert "map" not in report.other_keys

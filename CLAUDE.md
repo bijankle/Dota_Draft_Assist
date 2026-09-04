@@ -75,10 +75,18 @@ credentials, and put the account at risk. Do not go there.
   player's own**. `hero` first appears at `STRATEGY_TIME`, i.e. after the
   draft is over. A `draft` key WAS present throughout (the replay labels
   distinguish an absent block from an empty one), but no picks could be read
-  out of it; whether it is genuinely empty or carries a shape other than the
-  documented `team2`/`team3` + `pick{n}_id` is not yet known, and is not
-  guessed — `Game ▸ What did the recording contain?` dumps the block's real
-  keys and a sample so the question is answered from data.
+  out of it, and it is **not a JSON object** — the inspector found the key in
+  all 8493 payloads while finding no keys inside it. Whether it is empty, a
+  list, or something else is answered by `Game ▸ What did the recording
+  contain?`, which dumps the value's type and its fullest sample. Not guessed.
+
+  The same recording also disproved a second assumption in this file: the
+  feed carried `buildings`, `minimap`, `roshan`, `couriers` and
+  `neutralitems` in every payload. Those were listed here as
+  spectator-only components. A player's own feed evidently carries more than
+  expected, so `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to
+  what to look for, never a claim about what arrives — the report lists any
+  top-level key neither list knows about.
 
   The consequence is architectural: **GSI cannot drive recommendations during
   a draft.** What it reliably gives is the phase (so the app knows a draft is
