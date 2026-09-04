@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from draft_assist.config import RULES_FILE  # noqa: E402
@@ -15,6 +16,7 @@ from draft_assist.model import items as items_mod  # noqa: E402
 from draft_assist.ui.app import MainWindow  # noqa: E402
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
+from draft_assist.ui.tables import SORT_ROLE  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -66,16 +68,41 @@ def test_drafted_heroes_not_in_candidate_list(window):
 
 
 def test_breakdown_view(window):
-    """Selecting a candidate shows its per-opponent terms, not just a sum."""
+    """Selecting a candidate shows its per-opponent terms, not just a sum,
+    split into an ally bank and an enemy bank."""
     window.refresh()
     window.table.selectRow(0)
     hero_name = window.table.item(0, 0).text()
-    html = window.detail.toHtml()
-    assert hero_name in html
-    assert "baseline" in html
-    # Every drafted hero the score depends on is itemised by name.
-    drafted = filled(window, "ally") + filled(window, "enemy")
-    assert sum(name in html for name in drafted) >= 5
+    panel = window.detail
+    assert hero_name == panel.heading.text()
+    assert "baseline" in panel.subtitle.text()
+    allies = [name for name, _ in panel.rows_for(0)]
+    enemies = [name for name, _ in panel.rows_for(1)]
+    # Every drafted hero the score depends on is itemised by name, on the
+    # side it is actually on.
+    assert set(allies) <= set(filled(window, "ally"))
+    assert set(enemies) <= set(filled(window, "enemy"))
+    assert len(allies) + len(enemies) >= 5
+
+
+def test_breakdown_banks_sort_by_size_and_independently(window):
+    """The point of the panel is that the terms which moved the number are
+    on top — and sorting the enemy bank must not drag the allies along."""
+    window.refresh()
+    window.table.selectRow(0)
+    panel = window.detail
+    values = [delta for _, delta in panel.rows_for(0)]
+    assert values == sorted(values, reverse=True)
+
+    allies_before = [name for name, _ in panel.rows_for(0)]
+    panel._sort_bank(3)                     # the enemy bank's value column
+    assert [name for name, _ in panel.rows_for(0)] == allies_before
+    enemies = [delta for _, delta in panel.rows_for(1)]
+    assert enemies == sorted(enemies)       # flipped to ascending
+
+    panel._sort_bank(0)                     # ally bank, by name
+    names = [name for name, _ in panel.rows_for(0)]
+    assert names == sorted(names, key=str.lower)
 
 
 def test_counters_view(window):
@@ -83,7 +110,43 @@ def test_counters_view(window):
     button = window.team_buttons["enemy"][0]
     assert button.text() != EMPTY_SLOT_TEXT
     button.click()
-    assert "Best against" in window.detail.toHtml()
+    assert "Best against" in window.detail.heading.text()
+    assert panel_values(window.detail, 0) == sorted(
+        panel_values(window.detail, 0), reverse=True)
+
+
+def panel_values(panel, bank):
+    return [delta for _, delta in panel.rows_for(bank)]
+
+
+def test_hero_table_sorts_on_numbers_not_text(window):
+    """Sorted as text, "+9.0" lands above "+10.0" and a percentage column
+    comes out alphabetical."""
+    window.refresh()
+    header = window.table.horizontalHeader()
+    for column, reverse in ((1, True), (2, True), (3, False), (4, False)):
+        window.table.sortItems(
+            column, Qt.SortOrder.DescendingOrder if reverse
+            else Qt.SortOrder.AscendingOrder)
+        values = [window.table.item(row, column).data(SORT_ROLE)
+                  for row in range(window.table.rowCount())]
+        assert values == sorted(values, reverse=reverse), \
+            f"column {column} is not in numeric order"
+    assert header.isSortIndicatorShown()
+
+
+def test_chosen_sort_survives_a_refresh(window):
+    """The table refreshes on a timer; a sort the user picked must not be
+    silently reset under them every second."""
+    window.refresh()
+    window.table.sortItems(2, Qt.SortOrder.AscendingOrder)
+    window.refresh()
+    header = window.table.horizontalHeader()
+    assert header.sortIndicatorSection() == 2
+    assert header.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+    values = [window.table.item(row, 2).data(SORT_ROLE)
+              for row in range(window.table.rowCount())]
+    assert values == sorted(values)
 
 
 def test_items_only_after_lock(window):

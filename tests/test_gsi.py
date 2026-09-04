@@ -706,3 +706,66 @@ def test_status_endpoint_exposes_acceptance(tmp_path):
         assert status["recording"] is False
     finally:
         server.stop()
+
+
+# ---- the verdict over a recording --------------------------------------
+
+def test_recording_verdict_says_no_draft_block(tmp_path):
+    """The whole reason recordings exist: settle whether a player's own
+    feed carries the enemy line-up, from payloads rather than belief."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    for i, state in enumerate(["DOTA_GAMERULES_STATE_HERO_SELECTION"] * 3):
+        (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
+            "provider": {"name": "Dota 2"},
+            "map": {"game_state": state},
+            "player": {"name": "Bijson", "team_name": "radiant"},
+            "hero": {"name": "npc_dota_hero_lion"},
+        }))
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    text = gsi_summary.format_report(report)
+    assert report.payloads == 3
+    assert not report.draft_block_seen
+    assert "No 'draft' block ever arrived" in text
+    assert "clicked in by hand" in text
+    assert "MISSING" in text          # the spectator components are named
+
+
+def test_recording_verdict_reports_a_real_draft_block(tmp_path):
+    ds = demo_dataset()
+    ids = list(ds.heroes)[:10]
+    assert len(ids) == 10
+    draft = {"team2": {f"pick{i}_id": hid for i, hid in enumerate(ids[:5])},
+             "team3": {f"pick{i}_id": hid for i, hid in enumerate(ids[5:])}}
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "provider": {"name": "Dota 2"},
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "player": {"name": "Bijson", "team_name": "radiant"},
+        "draft": draft,
+    }))
+    from draft_assist.gsi import summary as gsi_summary
+    report = gsi_summary.from_directory(tmp_path, ds)
+    assert report.draft_block_seen
+    assert report.best_picks >= 9
+    assert "GSI DOES report the full draft" in gsi_summary.format_report(report)
+
+
+def test_recording_verdict_survives_a_corrupt_file(tmp_path):
+    (tmp_path / "gsi_00001.json").write_text("{not json")
+    (tmp_path / "gsi_00002.json").write_text(json.dumps(
+        {"map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"}}))
+    from draft_assist.gsi import summary as gsi_summary
+    report = gsi_summary.from_directory(tmp_path, demo_dataset())
+    assert report.unreadable == 1 and report.payloads == 1
+
+
+def test_recording_verdict_refuses_to_answer_without_a_draft(tmp_path):
+    """A recording made after the draft cannot settle the question, and
+    must not be read as evidence that GSI is silent."""
+    (tmp_path / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"},
+        "player": {"name": "Bijson"}}))
+    from draft_assist.gsi import summary as gsi_summary
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "does not cover a draft" in text

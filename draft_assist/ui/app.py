@@ -52,6 +52,7 @@ from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
 from .overlay import DraftOverlay
+from .tables import BreakdownPanel, ValueItem
 from .task_dialog import TaskDialog
 from .tasks import TASKS
 
@@ -167,6 +168,10 @@ class MainWindow(QMainWindow):
             "running — no second process, no port clash")
         self.record_action.toggled.connect(self._set_recording)
         game_menu.addAction(self.record_action)
+        self._act(game_menu, "What did the recording contain?…",
+                  lambda: self.run_task("inspect_recording"), None,
+                  "Read the archived payloads and say whether GSI ever "
+                  "reported the enemy picks")
         self._act(game_menu, "Open &recordings folder",
                   lambda: open_folder(REPO_ROOT / "data_cache" / "gsi"))
         game_menu.addSeparator()
@@ -305,7 +310,13 @@ class MainWindow(QMainWindow):
         self.table.setSelectionMode(
             QTableWidget.SelectionMode.SingleSelection)
         self.table.itemSelectionChanged.connect(self._on_candidate_selected)
+        # Sorting is on the numbers behind the cells, not their text: as
+        # text "+10.0" sorts above "+9.0" and a percentage column comes out
+        # alphabetical.
+        self.table.setSortingEnabled(True)
+        self.table.sortItems(1, Qt.SortOrder.DescendingOrder)
         header = self.table.horizontalHeader()
+        header.setSortIndicatorShown(True)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, 5):
             header.setSectionResizeMode(
@@ -398,11 +409,12 @@ class MainWindow(QMainWindow):
         rlay.addWidget(controls_card)
 
         detail_card, dlay2 = card("Why this score")
-        self.detail = QTextBrowser()
-        self.detail.setOpenExternalLinks(False)
         # The breakdown is the panel that catches a plausible total reached
-        # for poor reasons, so it gets real estate rather than two lines.
-        self.detail.setMinimumHeight(170)
+        # for poor reasons, so it gets real estate rather than two lines,
+        # and the terms sort by size so the ones that moved the number are
+        # never buried under a dozen near-zeroes.
+        self.detail = BreakdownPanel()
+        self.detail.setMinimumHeight(190)
         dlay2.addWidget(self.detail)
         rlay.addWidget(detail_card, 3)
 
@@ -1073,19 +1085,21 @@ class MainWindow(QMainWindow):
         self.table.blockSignals(True)
         selected = self._selected_hero_id()
         scroll_pos = self.table.verticalScrollBar().value()
+        # Populate unsorted, then re-enable: Qt re-applies whichever column
+        # the user chose, so a refresh every second does not fight them.
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(self.scored))
         for row, s in enumerate(self.scored):
             hero_roles = set(self.ds.heroes.get(s.hero_id, {})
                              .get("roles", []))
-            cells = [s.name, f"{s.score * 100:.1f}%",
-                     f"{s.baseline * 100:.1f}%",
-                     f"{s.vs_total * 100:+.1f}", f"{s.with_total * 100:+.1f}"]
-            for col, text in enumerate(cells):
-                item = QTableWidgetItem(text)
+            cells = [(s.name, None), (f"{s.score * 100:.1f}%", s.score),
+                     (f"{s.baseline * 100:.1f}%", s.baseline),
+                     (f"{s.vs_total * 100:+.1f}", s.vs_total),
+                     (f"{s.with_total * 100:+.1f}", s.with_total)]
+            for col, (text, value) in enumerate(cells):
+                item = (QTableWidgetItem(text) if value is None
+                        else ValueItem(text, value))
                 item.setData(Qt.ItemDataRole.UserRole, s.hero_id)
-                if col:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight
-                                          | Qt.AlignmentFlag.AlignVCenter)
                 if col == 3 and s.vs_total:
                     item.setForeground(QColor(theme.GOOD if s.vs_total > 0
                                               else theme.BAD))
@@ -1095,6 +1109,7 @@ class MainWindow(QMainWindow):
                 if tags and tags & hero_roles:
                     item.setBackground(HIGHLIGHT)
                 self.table.setItem(row, col, item)
+        self.table.setSortingEnabled(True)
         self.table.blockSignals(False)
         self.table.verticalScrollBar().setValue(scroll_pos)
         if selected is not None:
@@ -1128,28 +1143,22 @@ class MainWindow(QMainWindow):
         terms = scoring.breakdown(self.ds, hid, draft)
         by_id = {s.hero_id: s for s in self.scored}
         s = by_id.get(hid)
-        html = [f"<h3 style='margin:2px 0'>{self.ds.name(hid)}</h3>"]
+        subtitle = ""
         if s:
-            html.append(f"<p style='color:{theme.TEXT_DIM}'>baseline "
-                        f"{s.baseline * 100:.1f}% &rarr; total "
-                        f"<b style='color:{theme.TEXT}'>"
-                        f"{s.score * 100:.1f}%</b></p>")
-        if not terms:
-            html.append(f"<p style='color:{theme.TEXT_DIM}'>No drafted heroes "
-                        "resolved yet — the score is pure baseline.</p>")
-        html.append("<table cellpadding=3 width=100%>")
-        for t in terms:
-            kind = "vs" if t.kind == "vs" else "with"
-            color = theme.GOOD if t.delta > 0 else theme.BAD
-            html.append(
-                f"<tr><td>{kind} {t.other_name}</td>"
-                f"<td align=right><font color='{color}'>"
-                f"{t.delta * 100:+.2f}</font></td></tr>")
-        html.append("</table>")
-        html.append(f"<p style='color:{theme.TEXT_DIM}'>Individual terms, not "
-                    "the sum — check whether a plausible total has poor "
-                    "reasons.</p>")
-        self.detail.setHtml("".join(html))
+            subtitle = (f"baseline {s.baseline * 100:.1f}%  →  total "
+                        f"{s.score * 100:.1f}%")
+        banks = [("With ally", [(t.other_name, t.delta) for t in terms
+                                if t.kind != "vs"]),
+                 ("Vs enemy", [(t.other_name, t.delta) for t in terms
+                               if t.kind == "vs"])]
+        self.detail.show_banks(
+            self.ds.name(hid), subtitle, banks,
+            footnote=("Individual terms in percentage points, not the sum — "
+                      "check whether a plausible total has poor reasons. "
+                      "Click a heading to re-sort that side."),
+            empty=("No drafted heroes resolved yet — the score is pure "
+                   "baseline. Fill in the draft slots and the terms appear "
+                   "here."))
 
     def _on_slot_clicked(self) -> None:
         b = self.sender()
@@ -1171,17 +1180,12 @@ class MainWindow(QMainWindow):
         drafted = set(draft.allies) | set(draft.enemies)
         counters = scoring.counters_to(self.ds, hid, exclude=drafted)[:15]
         cap = "counters to" if side == "enemy" else "what beats your"
-        html = [f"<h3 style='margin:2px 0'>Best against "
-                f"{self.ds.name(hid)}</h3>",
-                f"<p style='color:{theme.TEXT_DIM}'>{cap} {side} pick</p>",
-                "<table cellpadding=3 width=100%>"]
-        for chid, name, delta in counters:
-            color = theme.GOOD if delta > 0 else theme.BAD
-            html.append(f"<tr><td>{name}</td><td align=right>"
-                        f"<font color='{color}'>{delta * 100:+.2f}</font>"
-                        "</td></tr>")
-        html.append("</table>")
-        self.detail.setHtml("".join(html))
+        self.detail.show_banks(
+            f"Best against {self.ds.name(hid)}",
+            f"{cap} {side} pick",
+            [("Hero", [(name, delta) for _chid, name, delta in counters])],
+            footnote="Percentage points against this hero alone.",
+            empty="No matchup data for this hero yet.")
 
     def _update_items(self, draft: scoring.DraftState) -> None:
         if draft.my_hero is None:

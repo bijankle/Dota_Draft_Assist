@@ -64,6 +64,7 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Game** | Record game data | Tick it to archive real payloads while you play |
+| **Game** | What did the recording contain? | Reads the archive and says whether GSI ever sent the enemy picks |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
@@ -83,6 +84,13 @@ the Capture menu lets you pick a source.
 matching your queued role are highlighted), a filter box, your team and the
 enemy team as clickable slots, the component breakdown for whichever hero is
 selected, and the item panel once your pick is locked.
+
+Every table sorts on click, and on the **numbers behind** the cells rather
+than their text — sorted as text, `+9.0` lands above `+10.0` and a percentage
+column comes out alphabetical. A sort you choose survives the once-a-second
+refresh. **Why this score** puts allies and enemies in two banks side by
+side, each ordered by size so the terms that actually moved the number are on
+top; clicking one bank's heading re-sorts only that bank.
 
 **Debug tab** — the captured frame with the crop boxes drawn on it and the
 match confidence beside each slot. This answers almost every recognition
@@ -217,7 +225,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 134 tests: normalisation math, scoring views, item
+pytest            # 141 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
@@ -227,6 +235,7 @@ python -m draft_assist.ui.app --manual           # hand-entered draft
 python -m draft_assist.ui.app --vision           # screen-capture fallback
 python -m draft_assist.ui.app --demo             # UI on a scripted draft
 python tools/probe_gsi.py --minutes 10           # what does GSI really send?
+python tools/inspect_recording.py               # ...and what did it send?
 ```
 
 See `CLAUDE.md` for the domain invariants (normalised deltas, fractional

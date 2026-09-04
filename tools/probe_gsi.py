@@ -16,7 +16,6 @@ whether GSI can see the line-ups.
 import argparse
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -25,6 +24,7 @@ from draft_assist.config import DATA_CACHE  # noqa: E402
 from draft_assist.data import store  # noqa: E402
 from draft_assist.gsi import install as gsi_install  # noqa: E402
 from draft_assist.gsi import state as gsi_state  # noqa: E402
+from draft_assist.gsi import summary as gsi_summary  # noqa: E402
 from draft_assist.gsi.server import GsiServer  # noqa: E402
 
 ARCHIVE = DATA_CACHE / "gsi"
@@ -70,10 +70,7 @@ def main() -> None:
         print(f"Archiving payloads to {ARCHIVE}")
     print("\nGo into a game and sit through the draft. Ctrl+C to stop.\n")
 
-    seen_components: Counter = Counter()
-    states_seen: Counter = Counter()
-    best_picks = 0
-    draft_block_seen = False
+    report = gsi_summary.Report()
     last_report = 0.0
     deadline = time.monotonic() + args.minutes * 60
 
@@ -88,15 +85,7 @@ def main() -> None:
                 continue
 
             parsed = gsi_state.parse(reception.payload, dataset)
-            for name, present in parsed.capabilities.items():
-                if present:
-                    seen_components[name] += 1
-            if parsed.capabilities.get("draft"):
-                draft_block_seen = True
-            if parsed.game_state:
-                states_seen[parsed.game_state] += 1
-            picks = len(parsed.allies) + len(parsed.enemies)
-            best_picks = max(best_picks, picks)
+            report.add(reception.payload, dataset)
 
             if time.monotonic() - last_report > 3:
                 last_report = time.monotonic()
@@ -107,40 +96,15 @@ def main() -> None:
         server.stop()
 
     reception = server.snapshot()
-    print("\n" + "=" * 68)
-    print(f"Payloads received: {reception.count}   "
-          f"rejected: {reception.rejected}")
+    print()
     if not reception.count:
+        print(f"Payloads received: 0   rejected: {reception.rejected}")
         print("\nNOTHING WAS RECEIVED. Check, in order:")
         print("  1. Game > Set up game data installed the config")
         print(f"  2. Dota launch options contain {gsi_install.LAUNCH_OPTION}")
         print("  3. Dota was restarted after adding it")
         return
-
-    print("\nComponents seen (payload counts):")
-    for name in (gsi_state.PLAYER_COMPONENTS + gsi_state.SPECTATOR_COMPONENTS):
-        print(f"  {seen_components.get(name, 0):6d}  {name}")
-    print("\nGame states seen:")
-    for name, count in states_seen.most_common():
-        print(f"  {count:6d}  {name}")
-
-    print("\nVERDICT")
-    if draft_block_seen and best_picks >= 9:
-        print("  GSI DOES report the full draft in your own games.")
-        print("  Manual entry is unnecessary — tell Claude, and the app can "
-              "rely on it entirely.")
-    elif draft_block_seen:
-        print(f"  A 'draft' block arrived but only {best_picks} picks were "
-              "ever visible.")
-        print("  Send data_cache/gsi/ to Claude to see what it does carry.")
-    else:
-        print("  No 'draft' block ever arrived: GSI does NOT report the "
-              "line-ups for a player's own match.")
-        print("  Your own hero and game state ARE reported, so the app knows "
-              "when a draft is happening and who you are;")
-        print("  enemy picks have to be clicked in (or read from the screen "
-              "with --vision).")
-    print(f"\nArchived payloads: {ARCHIVE}")
+    print(gsi_summary.format_report(report, ARCHIVE))
 
 
 if __name__ == "__main__":

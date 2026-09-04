@@ -126,6 +126,15 @@ TASKS = {
         cancellable=True,
         modeless=True,
     ),
+    "inspect_recording": Task(
+        key="inspect_recording",
+        title="What did the recording contain?",
+        steps=[[PY, "tools/inspect_recording.py"]],
+        blurb=("Reads the payloads already archived by Record game data and "
+               "reports which components Dota actually sent — and whether "
+               "the enemy line-up was ever among them. It only reads files, "
+               "so it is safe to run while the app is listening."),
+    ),
     "probe": Task(
         key="probe",
         title="Run capture probe",
