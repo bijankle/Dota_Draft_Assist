@@ -359,7 +359,7 @@ def test_manual_hint_explains_missing_picks(qapp, monkeypatch):
     win.timer.stop()
     try:
         win.refresh()
-        assert "nothing about the other nine picks" in \
+        assert "reads them off the Dota window" in \
             win.manual_hint.text()
         assert "HERO_SELECTION" in win.status.currentMessage()
 
