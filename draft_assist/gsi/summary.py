@@ -130,11 +130,17 @@ class Report:
             seen = {(hero, team) for _p, hero, team, _o in found}
             self.phase_heroes.setdefault(state, Counter()).update(
                 f"team {team}: {hero}" for hero, team in seen)
-            distinct = len({hero for hero, _t in seen})
-            best = self.phase_best.get(state)
-            if best is None or distinct > best["distinct"]:
-                self.phase_best[state] = {
-                    "distinct": distinct,
+            # Keyed by WHICH heroes, not just the state: one session can
+            # hold two drafts (a game after a game), and dumping only the
+            # fullest payload in the session means the other draft -- the
+            # one being asked about -- is never shown.
+            distinct = {hero for hero, _t in seen}
+            key = frozenset(distinct)
+            slot = self.phase_best.setdefault(state, {})
+            best = slot.get(key)
+            if best is None or len(distinct) > best["distinct"]:
+                slot[key] = {
+                    "distinct": len(distinct),
                     "match": parsed.match_id,
                     "source": source,
                     "objects": [(path, obj) for path, _h, _t, obj in
@@ -317,18 +323,24 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         for name, seen in heroes.most_common(30):
             lines.append(f"  {seen:6d}  {name}")
 
-        best = report.phase_best[state]
-        lines += ["",
-                  f"The single payload naming the most distinct heroes "
-                  f"({best['distinct']}) was {best['source']} "
-                  f"(match {best['match'] or '?'}). Every hero-bearing "
-                  f"object in it, in full:"]
-        for path, obj in best["objects"][:24]:
-            lines.append(f"  {path}")
-            lines.append(_indent(json.dumps(obj, sort_keys=True,
-                                            default=repr)[:400], "      "))
-        if len(best["objects"]) > 24:
-            lines.append(f"  ... and {len(best['objects']) - 24} more")
+        drafts = sorted(report.phase_best.get(state, {}).values(),
+                        key=lambda entry: -entry["distinct"])
+        drafts = drafts[:3]
+        for number, best in enumerate(drafts, start=1):
+            label = (f"DRAFT {number} of {len(drafts)} — " if len(drafts) > 1
+                     else "")
+            lines += ["",
+                      f"{label}the fullest payload ({best['distinct']} "
+                      f"distinct heroes) was {best['source']} "
+                      f"(match {best['match'] or '?'}). Every hero-bearing "
+                      f"object in it, in full:"]
+            for path, obj in best["objects"][:24]:
+                lines.append(f"  {path}")
+                lines.append(_indent(json.dumps(obj, sort_keys=True,
+                                                default=repr)[:400],
+                                     "      "))
+            if len(best["objects"]) > 24:
+                lines.append(f"  ... and {len(best['objects']) - 24} more")
 
         # "?" is the absence of a team field, not a second team. Counting it
         # as one reported BOTH TEAMS APPEAR over data that was entirely one

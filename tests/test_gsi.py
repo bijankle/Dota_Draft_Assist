@@ -1580,3 +1580,28 @@ def test_the_sides_are_never_a_guess_during_the_draft():
     provider, _ds = hybrid(hero_selection_payload("radiant"),
                            radiant=[75, 21], dire=[86, 102])
     assert provider.poll().left == [75, 21]
+
+
+def test_two_drafts_in_one_session_are_both_dumped(tmp_path):
+    """A session can hold a game after a game. Dumping only the fullest
+    payload in the whole session meant the other draft -- the one being
+    asked about -- was never shown, and the wrong one kept coming back."""
+    from draft_assist.gsi import summary as gsi_summary
+
+    first = ["ursa", "axe", "lion", "zuus", "death_prophet",
+             "necrolyte", "vengefulspirit", "lich", "juggernaut",
+             "tidehunter"]
+    second = ["bristleback", "warlock", "sven", "sniper", "vengefulspirit",
+              "witch_doctor", "axe", "lion", "drow_ranger", "necrolyte"]
+    for index, heroes in enumerate((first, second)):
+        (tmp_path / f"gsi_{index:05d}.json").write_text(json.dumps({
+            "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME"},
+            "minimap": {f"o{i}": {"unitname": f"npc_dota_hero_{name}",
+                                  "team": 2, "xpos": 100 + i, "ypos": 10}
+                        for i, name in enumerate(heroes)}}))
+    text = gsi_summary.format_report(
+        gsi_summary.from_directory(tmp_path, demo_dataset()))
+    assert "DRAFT 1 of 2" in text and "DRAFT 2 of 2" in text
+    assert "npc_dota_hero_ursa" in text
+    assert "npc_dota_hero_bristleback" in text
+    assert "gsi_00000.json" in text and "gsi_00001.json" in text

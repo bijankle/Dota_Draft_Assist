@@ -179,6 +179,22 @@ credentials, and put the account at risk. Do not go there.
   into a reading. Do not start trusting `team` on the strength of the 2/4
   split without establishing what team 4 means.
 
+  **Ground truth, once, and it killed the rule.** For one match the user
+  named the real teams: Radiant = Bristleback, Necrophos, Drow Ranger,
+  Lion, Witch Doctor; Dire = Axe, Vengeful Spirit, Sven, Warlock, Sniper.
+  The two runs of five the app produced were `R D D D D` and `R D R R R` —
+  **neither run is a team**, each holds exactly one hero from the other
+  side, and only the player's own hero was right. Worse than chance.
+
+  The shape of the error is a SWAP: move Bristleback and Axe between the
+  runs and both become clean teams. So the ordering is nearly right and
+  two entries are transposed, which is a lead — but the payload for that
+  match has not been seen, so nothing has been changed on the strength of
+  it. Get the payload before touching the rule again. The session report
+  now dumps the fullest payload per DRAFT rather than per session, because
+  that session held two games and the one being asked about was never the
+  one shown.
+
   **Open lead:** in `PRE_GAME` the minimap carries exactly five hero
   objects (`o86`–`o90` in one recording, 163 payloads). Five, not ten, is
   what vision-limited data looks like — so those five are plausibly the
