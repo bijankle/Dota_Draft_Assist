@@ -20,15 +20,16 @@ splits by phase:
 
 | Phase | What GSI gives you |
 | --- | --- |
-| Hero selection | Your name, your side, the match — and **no hero at all**, not even your own |
+| Hero selection | Your name, your side, the match — and **no hero but your own**, once you have locked it |
 | Strategy time onward | **All ten heroes**, read from the minimap |
 
 The `draft` block is empty (`{}`) in every payload ever recorded, at every
 game state, so the picks do not arrive that way. But from strategy time the
-minimap names all ten, and the app reads both line-ups out of it: which five
-are yours is decided by where your own hero sits, and the split is checked
-against the lane positions before it is believed. A failed check fills
-nothing rather than guessing.
+minimap names all ten, and the app reads both line-ups out of it: origin
+duplicates are dropped, the remaining ten arrive as two runs of five, and
+which five are yours is decided by where your own hero sits. Ten distinct
+heroes and your own among them are required; a failed check fills nothing
+rather than guessing.
 
 So the app uses **both**, and that is the default — neither is sufficient
 alone:
@@ -296,7 +297,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 203 tests: normalisation math, scoring views, item
+pytest            # 206 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

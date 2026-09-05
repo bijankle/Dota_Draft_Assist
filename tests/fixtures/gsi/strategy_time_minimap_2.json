@@ -1,0 +1,22 @@
+{
+  "_comment": "Real payload gsi_00208.json, match 8983179556, recorded by the user 2026-09-05. STRATEGY_TIME, all ten heroes. This one disproves the lane-position pairing rule inferred from the first fixture: (176,-370) holds pudge AND axe, both from the same run of five, and (176,370) holds lion AND obsidian_destroyer, likewise. Positions are lane assignments, not ally/enemy pairs, and a lane can hold two heroes from one team.",
+  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8983179556"},
+  "player": {"name": "Bijson", "team_name": "radiant"},
+  "hero": {"facet": 0, "id": 76, "name": "npc_dota_hero_obsidian_destroyer"},
+  "draft": {},
+  "minimap": {
+    "o0":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_obsidian_destroyer", "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o1":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_obsidian_destroyer", "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o2":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_obsidian_destroyer", "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o3":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_lion",               "visionrange": 0, "xpos": 176,  "yaw": 19, "ypos": 370},
+    "o4":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_lich",               "visionrange": 0, "xpos": 1088, "yaw": 25, "ypos": 0},
+    "o5":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_slardar",            "visionrange": 0, "xpos": 752,  "yaw": 9,  "ypos": 144},
+    "o6":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_phantom_assassin",   "visionrange": 0, "xpos": 752,  "yaw": -5, "ypos": -144},
+    "o7":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_obsidian_destroyer", "visionrange": 0, "xpos": 176,  "yaw": 19, "ypos": 370},
+    "o8":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_hoodwink",           "visionrange": 0, "xpos": 1088, "yaw": 25, "ypos": 0},
+    "o9":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_life_stealer",       "visionrange": 0, "xpos": 752,  "yaw": 9,  "ypos": 144},
+    "o10": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_pudge",              "visionrange": 0, "xpos": 176,  "yaw": 0,  "ypos": -370},
+    "o11": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_axe",                "visionrange": 0, "xpos": 176,  "yaw": 0,  "ypos": -370},
+    "o12": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_winter_wyvern",      "visionrange": 0, "xpos": 752,  "yaw": -5, "ypos": -144}
+  }
+}

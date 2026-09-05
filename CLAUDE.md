@@ -82,26 +82,40 @@ credentials, and put the account at risk. Do not go there.
     game state. It is not a shape the parser misreads; there is nothing in
     it. Community lore that `draft` is spectator-only is consistent with
     this. Do not write code that expects it to fill.
-  - During `HERO_SELECTION` — 58 payloads in the cleanest recording — the
-    feed names **no hero anywhere at all**, not even the player's own.
-    Nothing can be recommended from GSI while picking; that is what the
-    quick-entry bar exists for.
+  - During `HERO_SELECTION` the feed names **no hero but your own**, and
+    only once you have locked it in — as three origin duplicates that carry
+    no line-up. One recording named nothing at all across 58 payloads;
+    another named only the player's own hero across 156. Either way nothing
+    about the other nine picks arrives while picking, which is why the
+    screen is read and the quick-entry bar exists.
   - From `STRATEGY_TIME` onward the **minimap carries all ten heroes**, and
     `gsi/minimap.py` reads both line-ups out of it. Too late to choose a
     pick, in time for items and lane matchups.
 
-  How the minimap is read, and why each guard exists — all from the recorded
-  payload, none of it documented by Valve:
-  - Heroes arrive as two runs of five in object order (`o0`…`o12`), the
-    duplicates being the player's own hero parked at the origin.
-  - **The `team` field is not usable.** Every object said `team 2` while the
-    player was on Dire. Believing it puts all ten on one side.
+  How the minimap is read. Two recorded matches (fixtures
+  `strategy_time_minimap*.json`) agree on this and none of it is documented
+  by Valve:
+  - Objects at the origin `(0,0)` are **dropped first**. They are always
+    duplicates of the player's own hero — three in both recordings — so
+    counted, ten placed heroes look like thirteen.
+  - What remains is exactly ten objects in object order, arriving as **two
+    runs of five**.
   - Which run is yours is decided by **where your own hero is**, never by
     order. No own hero, no reading.
-  - The split is verified against positions: five lane slots each hold one
-    hero from each run. A single position holding two heroes from the same
-    run disqualifies the reading, and fewer than three confirming positions
-    rejects it. A failed check yields **nothing**, never a guess.
+  - Guards: exactly ten non-origin objects, ten distinct heroes, all
+    resolvable, own hero in exactly one run. A failed check yields
+    **nothing**, never a guess.
+
+  Two things that look like signal and are NOT:
+  - **The `team` field.** Every object in both recordings said `team 2` —
+    once with the player on Dire, once on Radiant. Constant, so it
+    distinguishes nothing. Believing it puts all ten on one side.
+  - **The lane positions.** An earlier version paired heroes across the five
+    xpos/ypos values to verify the split and reported "5 of 5 confirm".
+    That was a coincidence of the first match. In the second, `(176,-370)`
+    holds pudge AND axe, both on the same team, because a lane can hold two
+    heroes from one side. Positions are lane assignments, not ally/enemy
+    pairs. The check was removed; do not reintroduce it.
 
   `GsiState.lineup_source` says which of these produced the picks, and the
   UI shows it. `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to
