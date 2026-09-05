@@ -130,9 +130,11 @@ credentials, and put the account at risk. Do not go there.
     so far distinguishes the sides: the `team` field is constant, the lane
     slots are placements (two team-mates share one), and object order is
     not reliably team order. So `Lineups.sides_certain` is False, the note
-    says the split is a guess, and the UI carries **Swap teams**, which
-    flips it for the match and resets on a new match id. Do not re-assert
-    the split as fact without evidence that settles it.
+    says the split is a guess, and the UI carries two corrections, both
+    reset on a new match id: **Swap teams** flips the whole reading, and a
+    slot's **Move to the other team** exchanges one hero with its opposite
+    number (an exchange, never one-way — a 5v5 cannot become 4v6). Do not
+    re-assert the split as fact without evidence that settles it.
   - Guards on the ten: exactly ten entries after de-duplication, ten
     distinct heroes, all resolvable, own hero among them. A failed check
     yields **nothing**, never a guess.
@@ -150,9 +152,19 @@ credentials, and put the account at risk. Do not go there.
   16s and a scrambled one at 43s from the same match. The latch clears on
   a new `HERO_SELECTION` or a new match id.
 
-  **The `team` field is not usable.** Every object in every recording says
-  `team 2` — with the player on Dire in one and Radiant in others.
-  Constant, so it distinguishes nothing.
+  **The `team` field is not usable AT STRATEGY TIME**, where every object
+  in every recording says `team 2` — with the player on Dire in one and
+  Radiant in others. Constant there, so it distinguishes nothing.
+
+  It is NOT constant everywhere, which corrects an earlier claim in this
+  file: during `HERO_SELECTION` one recording carried both `team 2` and
+  `team 4`. Those hero-selection entries are junk for our purposes — that
+  payload named nyx_assassin, venomancer, snapfire, bristleback and oracle,
+  and only one of the five (axe) was in the match at all; they are pick-
+  screen models and hovers, at scattered positions with odd `yaw`. The
+  parser ignores hero selection entirely, which is why this never leaked
+  into a reading. Do not start trusting `team` on the strength of the 2/4
+  split without establishing what team 4 means.
 
   **Open lead:** in `PRE_GAME` the minimap carries exactly five hero
   objects (`o86`–`o90` in one recording, 163 payloads). Five, not ten, is

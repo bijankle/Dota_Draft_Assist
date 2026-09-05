@@ -183,7 +183,10 @@ ten slots. Clicking an empty slot opens the picker for that slot only and
 never chains into the next. A hero already in the draft cannot be entered
 again, on either team. **Right-click a slot** to change it, clear it, or
 give it a role (Pos 1–5), which then shows on the slot — the role belongs to
-the lane, so it survives the hero being replaced.
+the lane, so it survives the hero being replaced — or **move it to the other
+team**, which exchanges it with the hero opposite so the draft stays 5v5.
+That is for when the game's line-up comes back with one hero on the wrong
+side; **⇅ Swap teams** is for when the whole reading is backwards.
 
 Two panels sit on the right, kept apart on purpose:
 
@@ -346,7 +349,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 269 tests: normalisation math, scoring views, item
+pytest            # 272 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

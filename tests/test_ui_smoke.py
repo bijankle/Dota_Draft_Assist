@@ -1596,3 +1596,50 @@ def test_an_empty_slot_with_a_role_still_shows_it(qapp):
         assert window.team_buttons["ally"][0].text() == "Pos 5 · +"
     finally:
         window.close()
+
+
+def test_one_hero_can_be_moved_to_the_other_team(qapp):
+    """Swap teams fixes a whole line-up read backwards; this fixes one
+    hero, which is what "some are wrong" actually needs. It exchanges
+    rather than moving one way: a 5v5 cannot become 4v6."""
+    window = minimap_window(qapp)
+    try:
+        allies, enemies = window._sides(window.snapshot)
+        mine, theirs = allies[1], enemies[1]
+        window._move_hero("ally", 1)
+        after_allies, after_enemies = window._sides(window.snapshot)
+        assert mine in after_enemies and mine not in after_allies
+        assert theirs in after_allies and theirs not in after_enemies
+        assert len(after_allies) == len(after_enemies) == 5
+        assert set(after_allies) | set(after_enemies) == set(allies) | set(
+            enemies)
+    finally:
+        window.close()
+
+
+def test_moving_a_hero_back_restores_it(qapp):
+    window = minimap_window(qapp)
+    try:
+        before = window._sides(window.snapshot)
+        window._move_hero("ally", 0)
+        window.refresh()
+        # find it on the enemy side and move it home again
+        for index, button in enumerate(window.team_buttons["enemy"]):
+            if button.property("hero_id") == before[0][0]:
+                window._move_hero("enemy", index)
+                break
+        assert window._sides(window.snapshot) == before
+    finally:
+        window.close()
+
+
+def test_a_new_match_forgets_moved_heroes(qapp):
+    window = minimap_window(qapp)
+    try:
+        window._move_hero("ally", 1)
+        assert window.side_overrides
+        window.provider.server._reception.payload["map"]["matchid"] = "777"
+        window.refresh()
+        assert window.side_overrides == {}
+    finally:
+        window.close()

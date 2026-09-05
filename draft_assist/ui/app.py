@@ -124,6 +124,9 @@ class MainWindow(QMainWindow):
         self.slot_roles = {"ally": [None] * 5,
                            "enemy": [None] * 5}
         self._swap_match = ""
+        # hero id -> "ally"/"enemy", for one hero put on the wrong
+        # side. Cleared with the swap when the match changes.
+        self.side_overrides: dict[int, str] = {}
         from ..vision import layout as layout_mod
         session = getattr(provider, "session", None)
         self.layout_spec = (getattr(session, "layout", None)
@@ -1306,6 +1309,10 @@ class MainWindow(QMainWindow):
         clear = menu.addAction("Clear slot")
         clear.setEnabled(button.property("hero_id") is not None)
         clear.triggered.connect(lambda: self._clear_slot(side, index))
+        move = menu.addAction("Move to the other team")
+        move.setToolTip("Exchanges with the hero opposite, keeping 5v5")
+        move.setEnabled(button.property("hero_id") is not None)
+        move.triggered.connect(lambda: self._move_hero(side, index))
         role_menu = menu.addMenu("Role")
         for label in ("Pos 1", "Pos 2", "Pos 3", "Pos 4", "Pos 5"):
             action = role_menu.addAction(label)
@@ -1318,6 +1325,32 @@ class MainWindow(QMainWindow):
         role_menu.addAction("No role").triggered.connect(
             lambda: self._set_slot_role(side, index, None))
         menu.exec(button.mapToGlobal(pos))
+
+    def _move_hero(self, side: str, index: int) -> None:
+        """Put one hero on the other team.
+
+        Swap teams fixes a whole line-up read the wrong way round; this
+        fixes one hero. Both exist because the minimap gives ten heroes
+        without reliably saying whose they are, and being able to correct
+        the app in a click beats it insisting on a guess.
+        """
+        other = "enemy" if side == "ally" else "ally"
+        hero_id = self.team_buttons[side][index].property("hero_id")
+        if hero_id is None:
+            return
+        # An EXCHANGE, not a one-way move: a 5v5 cannot become 4v6, and if
+        # one hero is on the wrong side its opposite number usually is too.
+        partner = self.team_buttons[other][index].property("hero_id")
+        self.side_overrides[hero_id] = other
+        if partner is not None:
+            self.side_overrides[partner] = side
+        self.last_draft_key = None
+        message = f"{self.ds.name(hero_id)} moved to the other team"
+        if partner is not None:
+            message = (f"{self.ds.name(hero_id)} and "
+                       f"{self.ds.name(partner)} exchanged teams")
+        self.status.showMessage(message, 6000)
+        self.refresh()
 
     def _set_slot_role(self, side: str, index: int, role: str | None) -> None:
         self.slot_roles[side][index] = role
@@ -1605,6 +1638,7 @@ class MainWindow(QMainWindow):
         if match != self._swap_match:
             self._swap_match = match
             self.swap_sides = False
+            self.side_overrides.clear()
         # Never during the draft. There the picks come from the screen,
         # where Radiant is always the left bank and Dire the right, and the
         # game has already said which of those is yours — so the sides are
@@ -1652,14 +1686,26 @@ class MainWindow(QMainWindow):
         """
         if getattr(snap, "sides_known", False):
             # The minimap gives ten heroes but not, reliably, which five are
-            # yours — one real match came out inverted. So a swap is allowed
-            # HERE, where the game itself has not settled it.
+            # yours — one real match came out inverted. So corrections are
+            # allowed HERE, where the game itself has not settled it.
+            left, right = snap.left, snap.right
             if self.swap_sides and not getattr(snap, "sides_certain", True):
-                return (snap.right, snap.left)
-            return (snap.left, snap.right)
+                left, right = right, left
+            return self._apply_side_overrides(left, right)
         mine_right = self.side_combo.currentIndex() == 1
         return ((snap.right, snap.left) if mine_right
                 else (snap.left, snap.right))
+
+    def _apply_side_overrides(self, allies, enemies):
+        """Move individually corrected heroes across, keeping order."""
+        if not self.side_overrides:
+            return (allies, enemies)
+        wanted = self.side_overrides
+        mine = [h for h in allies if wanted.get(h, "ally") == "ally"]
+        theirs = [h for h in enemies if wanted.get(h, "enemy") == "enemy"]
+        mine += [h for h in enemies if wanted.get(h) == "ally"]
+        theirs += [h for h in allies if wanted.get(h) == "enemy"]
+        return (mine[:5], theirs[:5])
 
     def _force_redraw(self) -> None:
         self.last_draft_key = None
