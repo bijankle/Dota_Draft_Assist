@@ -124,14 +124,18 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
-- **Recording is one button, one folder per press, and ends itself**
-  (`record.py`, `recordings/<timestamp>/`). Press before queueing and never
-  touch it again: frames start at the press (the queue and loading screen are
-  where a capture-binding fault shows up), and `Recorder.observe()` stops the
-  session `POST_DRAFT_GRACE` after the game leaves the drafting states, with
-  `MAX_SESSION` as a backstop for a press with no game behind it. A blank
-  `game_state` is Dota going quiet, never the draft ending, and re-entering a
-  drafting state cancels the countdown. Contents: payloads, draft frames, and `state.jsonl` — one
+- **Recording needs no interaction at all** (`record.py`,
+  `recordings/<timestamp>/`). With `auto_record` on (the default),
+  `_consider_auto_record` starts a session the moment `game_state` reaches a
+  drafting state, and `Recorder.observe()` ends it `POST_DRAFT_GRACE` after
+  the game leaves one, with `MAX_SESSION` as a backstop. Frames run from the
+  start of the session, not from the draft: the queue and loading screen are
+  where a capture-binding fault shows up, and by hero selection it is too
+  late to notice. Three cases that look like edges and are not: a blank
+  `game_state` is Dota going quiet rather than the draft ending; re-entering
+  a drafting state cancels the countdown; and stopping by hand mid-draft sets
+  `_auto_blocked` so Auto does not immediately start another, cleared when
+  the match ends. One folder per session, never pooled. Contents: payloads, draft frames, and `state.jsonl` — one
   line per tick saying what the app concluded and which source produced it.
   Sessions are never pooled; two matches in one archive made every count in
   the report meaningless. The session report grades the screen's reading

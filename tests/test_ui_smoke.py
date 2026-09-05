@@ -1087,3 +1087,117 @@ def test_the_label_counts_down_to_the_automatic_stop(qapp, monkeypatch,
         assert "auto-stop in" in window.recording_label.text()
     finally:
         window.close()
+
+
+# ---- recording that starts itself ---------------------------------------
+
+class DraftSnap:
+    game_state = "DOTA_GAMERULES_STATE_HERO_SELECTION"
+    frame = None
+    frames_arrived = 7
+
+
+class MenuSnap:
+    game_state = ""
+    frame = None
+    frames_arrived = 0
+
+
+def test_recording_starts_itself_when_the_draft_does(qapp, monkeypatch,
+                                                     tmp_path):
+    """The session you most want is the one you were not expecting."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.auto_record_check.setChecked(True)
+        window._consider_auto_record(MenuSnap())
+        assert not window.recorder.active
+
+        window._consider_auto_record(DraftSnap())
+        assert window.recorder.active
+        assert "Draft detected" in window.status.currentMessage()
+    finally:
+        window.close()
+
+
+def test_it_does_not_start_a_second_session_mid_draft(qapp, monkeypatch,
+                                                      tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.auto_record_check.setChecked(True)
+        window._consider_auto_record(DraftSnap())
+        folder = window.recorder.folder
+        for _ in range(5):
+            window._consider_auto_record(DraftSnap())
+        assert window.recorder.folder == folder
+    finally:
+        window.close()
+
+
+def test_stopping_by_hand_mid_draft_stays_stopped(qapp, monkeypatch,
+                                                  tmp_path):
+    """Otherwise Stop would mean "stop for one tick"."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.auto_record_check.setChecked(True)
+        window._consider_auto_record(DraftSnap())
+        window.snapshot = DraftSnap()
+        window.record_button.click()               # stop by hand
+        assert not window.recorder.active
+
+        window._consider_auto_record(DraftSnap())
+        assert not window.recorder.active          # and it stays stopped
+
+        window._consider_auto_record(MenuSnap())   # the match ends
+        window._consider_auto_record(DraftSnap())  # the next one starts
+        assert window.recorder.active
+    finally:
+        window.close()
+
+
+def test_auto_can_be_turned_off_and_is_remembered(qapp, monkeypatch,
+                                                  tmp_path):
+    from draft_assist.ui import settings as ui_settings
+
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.auto_record_check.setChecked(False)
+        window._consider_auto_record(DraftSnap())
+        assert not window.recorder.active
+        assert ui_settings.load()["auto_record"] is False
+        assert window.recording_label.text() == ""
+
+        window.auto_record_check.setChecked(True)
+        assert "waiting for a draft" in window.recording_label.text()
+        assert ui_settings.load()["auto_record"] is True
+    finally:
+        window.close()
+
+
+def test_a_whole_draft_needs_no_presses_at_all(qapp, monkeypatch, tmp_path):
+    """Start to finish, hands off: the draft starts the session and the
+    pre-game ends it."""
+    from draft_assist import record as record_mod
+
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.auto_record_check.setChecked(True)
+        window._consider_auto_record(DraftSnap())
+        window._capture_recording(DraftSnap(), [], [])
+        folder = window.recorder.folder
+        assert window.recorder.active
+
+        class PreGame:
+            game_state = "DOTA_GAMERULES_STATE_PRE_GAME"
+            frame = None
+            frames_arrived = 40
+
+        window._capture_recording(PreGame(), [], [])
+        assert window.recorder.active                  # still in the grace
+        window.recorder.left_draft_at -= record_mod.POST_DRAFT_GRACE + 1
+        window._capture_recording(PreGame(), [], [])
+
+        assert not window.recorder.active
+        assert (folder / "report.txt").is_file()
+        assert "after the draft ended" in window.status.currentMessage()
+    finally:
+        window.close()

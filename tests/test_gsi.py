@@ -243,6 +243,7 @@ class FakeServer:
             count=count)
         self.token = None
         self.started = False
+        self.archive_dir = None
 
     def start(self):
         self.started = True
@@ -252,6 +253,10 @@ class FakeServer:
 
     def snapshot(self):
         return self._reception
+
+    def set_archive_dir(self, directory):
+        self.archive_dir = directory
+        return 0
 
 
 def test_provider_fills_missing_picks_from_manual_entry(dataset):

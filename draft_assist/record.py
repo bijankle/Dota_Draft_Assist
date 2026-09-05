@@ -36,6 +36,10 @@ from pathlib import Path
 FRAME_INTERVAL = 2.0
 MAX_FRAMES = 600
 DRAFT_STATES = ("HERO_SELECTION", "STRATEGY_TIME")
+
+
+def is_drafting(game_state: str) -> bool:
+    return any(name in str(game_state or "") for name in DRAFT_STATES)
 # Stop by itself a minute after the draft ends. Nothing after that answers
 # a question, and the alternative is remembering to press Stop mid-game.
 POST_DRAFT_GRACE = 60.0
@@ -144,7 +148,7 @@ class Recorder:
             return (f"stopped automatically after "
                     f"{MAX_SESSION / 60:.0f} minutes")
         state = str(game_state or "")
-        if any(name in state for name in DRAFT_STATES):
+        if is_drafting(state):
             self.saw_draft = True
             self.left_draft_at = 0.0
             return ""

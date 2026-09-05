@@ -18,6 +18,11 @@ DEFAULTS = {
     "overlay_y": 40,
     "overlay_expanded": True,
     "overlay_rows": 6,
+    # Start a recording by itself when Dota reaches the draft. On by
+    # default: the session you most want is the one you were not
+    # expecting, and remembering to press Record before queueing is
+    # exactly the thing that gets forgotten.
+    "auto_record": True,
 }
 
 

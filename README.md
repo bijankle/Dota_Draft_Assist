@@ -51,10 +51,15 @@ alone:
 
 ### Recording — one button
 
-Press **Record** before you queue. That is the whole interaction — it takes
-frames from the moment you press it, and **stops itself a minute after the
-draft ends**. Stop is there if you want it, and there is nothing to press
-mid-game. Everything for that game lands in its own folder:
+**You do not have to press anything.** With **Auto** ticked (the default),
+the app starts a recording the moment Dota reports hero selection and stops
+it a minute after the draft ends. Open the app, play; the session that was
+worth keeping is the one you were not expecting.
+
+**Record** is still there to start one by hand — outside a draft, or after
+stopping one. Stopping by hand mid-draft stays stopped: Auto will not
+restart it until the next match. Everything for one game lands in its own
+folder:
 
 ```
 recordings/2026-09-05_2031/
@@ -144,7 +149,8 @@ the app, with live progress and readable errors.
 | **Game** | Set up game data (GSI) | Once, before first use |
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
-| **Toolbar** | Record / Stop | Captures one game: payloads, frames, and the app's own reading |
+| **Toolbar** | Auto | Records every draft by itself — on by default, nothing to press |
+| **Toolbar** | Record / Stop | Start or end a session by hand |
 | **Toolbar** | Report | Opens the newest recording's report — one document for the whole session |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
@@ -306,7 +312,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 224 tests: normalisation math, scoring views, item
+pytest            # 229 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

@@ -108,6 +108,9 @@ class MainWindow(QMainWindow):
         self._open_tasks = []
         self.recorder = record_mod.Recorder(RECORDINGS_DIR)
         self.sessions: list = []
+        # Set when the user stops a session by hand during a draft,
+        # so auto does not immediately start another one.
+        self._auto_blocked = False
         self.quick_side = "enemy"
         # (side, index) in the order they were typed, so Undo
         # removes the last pick rather than an arbitrary one.
@@ -257,6 +260,15 @@ class MainWindow(QMainWindow):
             "draft ends.")
         self.record_button.clicked.connect(self._toggle_recording)
         toolbar.addWidget(self.record_button)
+
+        self.auto_record_check = QCheckBox("Auto")
+        self.auto_record_check.setToolTip(
+            "Start recording by itself when Dota reaches the draft, and "
+            "stop a minute after it ends")
+        self.auto_record_check.setChecked(
+            bool(self.settings.get("auto_record", True)))
+        self.auto_record_check.toggled.connect(self._set_auto_record)
+        toolbar.addWidget(self.auto_record_check)
 
         self.recording_label = QLabel("")
         self.recording_label.setProperty("dim", True)
@@ -1042,13 +1054,41 @@ class MainWindow(QMainWindow):
             server = getattr(getattr(provider, "gsi", None), "server", None)
         return server
 
+    def _set_auto_record(self, on: bool) -> None:
+        self.settings["auto_record"] = bool(on)
+        ui_settings.save(self.settings)
+        self._auto_blocked = False
+        self._update_record_button()
+
     def _toggle_recording(self) -> None:
         if self.recorder.active:
-            self._stop_recording()
+            # Stopping by hand mid-draft must mean stopping, not stopping
+            # for one tick — otherwise auto would restart it immediately.
+            self._auto_blocked = record_mod.is_drafting(
+                getattr(self.snapshot, "game_state", ""))
+            self._stop_recording("stopped by hand")
         else:
             self._start_recording()
 
-    def _start_recording(self) -> None:
+    def _consider_auto_record(self, snap) -> None:
+        """Start a session by itself when the game reaches the draft.
+
+        The recording you most want is the one you were not expecting, and
+        pressing Record before queueing is exactly the thing that gets
+        forgotten. Stopping is already automatic, so this closes the loop:
+        the app is either open or it is not.
+        """
+        drafting = record_mod.is_drafting(getattr(snap, "game_state", ""))
+        if not drafting:
+            self._auto_blocked = False       # re-arm for the next match
+            return
+        if self.recorder.active or self._auto_blocked:
+            return
+        if not self.auto_record_check.isChecked():
+            return
+        self._start_recording(automatic=True)
+
+    def _start_recording(self, automatic: bool = False) -> None:
         """One button, everything: payloads, frames and the app's reading.
 
         Each press opens its own folder. Recording never appends to an
@@ -1066,7 +1106,9 @@ class MainWindow(QMainWindow):
         if server is not None:
             server.set_archive_dir(self.recorder.gsi_dir)
         self._update_record_button()
-        self.status.showMessage(f"Recording to {folder.name}", 6000)
+        self.status.showMessage(
+            ("Draft detected — recording to " if automatic
+             else "Recording to ") + folder.name, 8000)
 
     def _stop_recording(self, reason: str = "") -> None:
         server = self._gsi_server()
@@ -1090,7 +1132,9 @@ class MainWindow(QMainWindow):
         self.record_button.style().unpolish(self.record_button)
         self.record_button.style().polish(self.record_button)
         if not recording:
-            self.recording_label.setText("")
+            self.recording_label.setText(
+                "auto — waiting for a draft"
+                if self.auto_record_check.isChecked() else "")
 
     def _capture_recording(self, snap, allies, enemies) -> None:
         """Called every tick while recording, and does the whole job on its
@@ -1281,6 +1325,7 @@ class MainWindow(QMainWindow):
         if draft_key != self.last_draft_key:
             self.last_draft_key = draft_key
             self._on_draft_changed(allies, enemies, snap.unknown)
+        self._consider_auto_record(snap)
         self._capture_recording(snap, allies, enemies)
         self._update_status(snap)
         self._update_team_captions(snap)
