@@ -108,3 +108,48 @@ def test_fractional_layout_survives_resolution_change(portraits, lib):
         report = evaluate([case], layout, lib, PARAMS)
         assert report.wrong == 0
         assert report.correct >= 8, (resolution, report.summary())
+
+
+# ---- the HUD is 16:9, the monitor may not be ---------------------------
+
+def test_crop_boxes_follow_dotas_16_9_hud_not_the_monitor():
+    """On 3440x1440 the HUD is pillarboxed into the middle 2560 pixels. A
+    plain fraction-of-width put the boxes hundreds of pixels left of the
+    portraits, which is what a real ultrawide session showed."""
+    from draft_assist.vision.layout import DraftLayout, hud_box
+
+    left, span = hud_box(3440, 1440)
+    assert (left, span) == (440.0, 2560.0)
+
+    slot = DraftLayout().slots()[0]
+    wide = slot.to_pixels(3440, 1440)
+    normal = slot.to_pixels(2560, 1440)
+    assert wide[0] == normal[0] + 440          # shifted, not stretched
+    assert wide[2] == normal[2]                # same width in pixels
+    assert wide[1:2] == normal[1:2]            # y unchanged
+
+
+def test_a_16_9_display_is_unaffected():
+    from draft_assist.vision.layout import DraftLayout, hud_box
+
+    for width, height in ((1920, 1080), (2560, 1440), (1280, 720)):
+        assert hud_box(width, height) == (0.0, float(width))
+    slot = DraftLayout().slots()[0]
+    assert slot.to_pixels(1920, 1080)[0] == round(slot.x * 1920)
+
+
+def test_a_taller_than_16_9_display_uses_its_full_width():
+    """4:3 and 16:10 are narrower than the HUD box, never pillarboxed."""
+    from draft_assist.vision.layout import hud_box
+
+    assert hud_box(1280, 1024) == (0.0, 1280.0)
+    assert hud_box(1920, 1200) == (0.0, 1920.0)
+
+
+def test_every_slot_stays_inside_the_frame_on_an_ultrawide():
+    from draft_assist.vision.layout import DraftLayout
+
+    for slot in DraftLayout().slots():
+        x, y, w, h = slot.to_pixels(3440, 1440)
+        assert 0 <= x and x + w <= 3440
+        assert 0 <= y and y + h <= 1440

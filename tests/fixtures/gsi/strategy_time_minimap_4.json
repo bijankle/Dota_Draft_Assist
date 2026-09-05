@@ -1,0 +1,136 @@
+{
+  "_comment": "Real payload gsi_00023.json, recorded by the user 2026-09-05. STRATEGY_TIME; Bijson played Rubick. Two things this fixture pins: SVEN sits at the origin with no other placement, so dropping every origin entry loses a real player and leaves nine; and dragon_knight shares a lane slot with juggernaut, both on the same team, which is why the lane-pairing check cannot be used to validate the split.",
+  "map": {
+    "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
+    "matchid": "0"
+  },
+  "player": {
+    "name": "Bijson",
+    "team_name": "radiant"
+  },
+  "hero": {
+    "facet": 0,
+    "id": 86,
+    "name": "npc_dota_hero_rubick"
+  },
+  "draft": {},
+  "minimap": {
+    "o0": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_rubick",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o1": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_rubick",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o2": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_rubick",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o3": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_witch_doctor",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 19,
+      "ypos": 370
+    },
+    "o4": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_dragon_knight",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": 9,
+      "ypos": 144
+    },
+    "o5": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_rubick",
+      "visionrange": 0,
+      "xpos": 1088,
+      "yaw": 25,
+      "ypos": 0
+    },
+    "o6": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lion",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 0,
+      "ypos": -370
+    },
+    "o7": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_juggernaut",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": 9,
+      "ypos": 144
+    },
+    "o8": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_death_prophet",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": -5,
+      "ypos": -144
+    },
+    "o9": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_skeleton_king",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 19,
+      "ypos": 370
+    },
+    "o10": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_vengefulspirit",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": -5,
+      "ypos": -144
+    },
+    "o11": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_sniper",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 0,
+      "ypos": -370
+    },
+    "o12": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_sven",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 25,
+      "ypos": 0
+    }
+  }
+}

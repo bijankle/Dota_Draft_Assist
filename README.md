@@ -228,12 +228,19 @@ rather than the desktop; whether Dota keeps producing frames while covered
 varies by driver, so verify with **Capture ▸ Run capture probe…** while the
 Dota window is covered. Frames land in `captures/probe/`.
 
-### Calibration (screen-capture fallback only)
+### Calibration
 
-Slot coordinates are fractions of the window size, so they survive
-resolution changes. If the crop boxes in the Debug tab do not sit on the
-hero portraits, nudge them in `calibration_local.json` while watching that
-tab.
+Slot coordinates are fractions of **Dota's 16:9 HUD area**, not of the
+window: Dota pillarboxes its HUD, so on a 3440x1440 ultrawide the portraits
+occupy the middle 2560 pixels and a fraction of the full width lands 440
+pixels to the left. The app accounts for that, so one calibration holds
+across resolutions.
+
+If the crop boxes in **Debug ▸ Live** still do not sit on the portraits
+during hero selection, the **Crop boxes** panel underneath nudges them —
+left bank, right bank, top, width, height, spacing — and the boxes move on
+the picture as you turn the numbers. **Save** writes
+`calibration_local.json`; **Reset to defaults** undoes it.
 
 ### Statistics bracket
 
@@ -315,7 +322,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 234 tests: normalisation math, scoring views, item
+pytest            # 241 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

@@ -20,6 +20,22 @@ from pathlib import Path
 from ..config import CALIBRATION_FILE
 
 
+HUD_ASPECT = 16 / 9
+
+
+def hud_box(width: int, height: int) -> tuple[float, float]:
+    """(left edge, width) of the 16:9 area Dota draws its HUD into.
+
+    On 16:9 and narrower this is the whole window. On anything wider the
+    HUD is pillarboxed to a centred 16:9 box, which is what makes a plain
+    fraction-of-width wrong on an ultrawide monitor.
+    """
+    if not width or not height:
+        return 0.0, float(width)
+    span = min(float(width), height * HUD_ASPECT)
+    return (width - span) / 2.0, span
+
+
 @dataclass
 class SlotRect:
     team: str        # "radiant" | "dire"
@@ -30,8 +46,17 @@ class SlotRect:
     h: float
 
     def to_pixels(self, width: int, height: int) -> tuple[int, int, int, int]:
-        return (round(self.x * width), round(self.y * height),
-                round(self.w * width), round(self.h * height))
+        """Fractions to pixels, anchored to Dota's 16:9 HUD box.
+
+        Dota lays its HUD out in a 16:9 area centred horizontally, and on a
+        wider display it pillarboxes that area rather than stretching it —
+        so on 3440x1440 the ten portraits occupy the middle 2560 pixels and
+        a fraction of the FULL width lands hundreds of pixels off. The
+        vertical axis needs no such correction: the bar hugs the top edge.
+        """
+        left, span = hud_box(width, height)
+        return (round(left + self.x * span), round(self.y * height),
+                round(self.w * span), round(self.h * height))
 
 
 @dataclass

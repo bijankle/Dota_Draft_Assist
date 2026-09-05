@@ -38,9 +38,15 @@ credentials, and put the account at risk. Do not go there.
    contaminated by hero main effects; we want only the interaction term. If a
    stored matrix ever contains raw rates, every recommendation is wrong.
 
-2. **All pick-slot coordinates are fractions of window width/height, never
-   absolute pixels.** The Dota window is measured from its handle at capture
-   time. Calibration nudges are stored as fractional offsets too.
+2. **All pick-slot coordinates are fractions of Dota's 16:9 HUD box, never
+   absolute pixels and never fractions of the raw window.** Dota pillarboxes
+   its HUD into a centred 16:9 area, so on 3440x1440 the portraits live in
+   the middle 2560 pixels; `layout.hud_box()` supplies that offset and every
+   `SlotRect.to_pixels` goes through it. Treating them as fractions of the
+   full width put the crop boxes 440px left of the portraits on a real
+   ultrawide session. The vertical axis needs no correction — the bar hugs
+   the top edge. Calibration nudges are fractional too, and are edited live
+   in Debug ▸ Live with the boxes drawn on the picture.
 
 3. **An unknown slot is a legitimate state, not an error.** Whether a slot is
    unresolved because GSI did not report it or because a portrait hash margin
@@ -95,27 +101,32 @@ credentials, and put the account at risk. Do not go there.
   How the minimap is read. Two recorded matches (fixtures
   `strategy_time_minimap*.json`) agree on this and none of it is documented
   by Valve:
-  - Objects at the origin `(0,0)` are **dropped first**. They are always
-    duplicates of the player's own hero — three in both recordings — so
-    counted, ten placed heroes look like thirteen.
+  - Origin `(0,0)` entries that duplicate a hero placed elsewhere are
+    dropped; an origin entry for a hero placed nowhere else is a real
+    player with no lane chosen and is kept (see below).
   - What remains is exactly ten objects in object order, arriving as **two
     runs of five**.
   - Which run is yours is decided by **where your own hero is**, never by
     order. No own hero, no reading.
-  - Guards: exactly ten non-origin objects, ten distinct heroes, all
-    resolvable, own hero in exactly one run, and the lane check below. A
-    failed check yields **nothing**, never a guess.
+  - Guards: exactly ten entries after de-duplication, ten distinct heroes,
+    all resolvable, own hero in exactly one run. A failed check yields
+    **nothing**, never a guess.
 
-  The lane slots are the **check, and refusing is the point**. The five
-  xpos/ypos values are strategy-map slots, each holding one hero from each
-  run — one of yours, one of theirs. Recordings 1 and 3 have all five
-  consistent; recording 2 has two slots holding both heroes from the SAME
-  run, which cannot happen if the runs are teams. That was briefly read as
-  "positions are lane assignments, so drop the check" — backwards. The
-  contradiction is the data saying the run split is wrong for that payload,
-  and a wrong line-up is worse than none because the app then advises
-  against heroes on the user's own side. Require five agreeing slots and
-  zero contradictions, or produce nothing.
+  **The lane slots are NOT a check, and two attempts at using one were
+  wrong.** They are where a hero was placed on the strategy map — yours in
+  the lane you chose, theirs in the lane you predicted — and two team-mates
+  can share a lane. Recordings 2 and 4 both do (pudge with axe, dragon
+  knight with juggernaut); requiring each slot to hold one hero from each
+  run passed on 1 and 3 by coincidence and refused 2 and 4 outright. Gone
+  for good; do not reintroduce it in any form. What validates the split is
+  structural only — ten heroes, all distinct, all known, yours among them —
+  plus the session report printing the reading so a wrong one is visible.
+
+  **An origin entry is not always a duplicate.** Three copies of the
+  player's own hero sit at `(0,0)` alongside its real placement, but
+  recording 4 has Sven at the origin and nowhere else, because no lane had
+  been chosen for it. Dropping every origin entry lost a real player and
+  left nine. Only origin entries whose hero appears elsewhere are dropped.
 
   **Only `STRATEGY_TIME` is read**, and the first complete reading is
   latched for the match by `GsiProvider`. After strategy time the minimap

@@ -1,6 +1,7 @@
 """Headless UI smoke test: the whole window runs on fake state (demo
 provider, offscreen Qt platform) — no Dota, no capture, no network."""
 
+import json
 import os
 from pathlib import Path
 
@@ -1201,3 +1202,40 @@ def test_a_whole_draft_needs_no_presses_at_all(qapp, monkeypatch, tmp_path):
         assert "after the draft ended" in window.status.currentMessage()
     finally:
         window.close()
+
+
+def test_calibration_moves_the_crop_boxes_live(window):
+    """Editing JSON and restarting is not a workflow anyone completes; the
+    boxes have to move while the picture is on screen."""
+    before = window.layout_spec.radiant_x
+    window.cal_spins["radiant_x"].setValue(before + 0.02)
+    assert window.layout_spec.radiant_x == pytest.approx(before + 0.02)
+    assert "not saved" in window.cal_label.text()
+
+
+def test_calibration_reaches_the_capture_session(window, monkeypatch):
+    class Session:
+        layout = None
+    monkeypatch.setattr(window.provider, "session", Session(),
+                        raising=False)
+    window.cal_spins["pitch"].setValue(0.07)
+    assert window.provider.session.layout is window.layout_spec
+    assert window.layout_spec.pitch == pytest.approx(0.07)
+
+
+def test_calibration_saves_and_resets(window, monkeypatch, tmp_path):
+    import draft_assist.vision.layout as layout_mod
+
+    target = tmp_path / "calibration_local.json"
+    monkeypatch.setattr(layout_mod, "CALIBRATION_FILE", target)
+    monkeypatch.setattr(layout_mod.save_calibration, "__defaults__", (target,))
+
+    window.cal_spins["slot_w"].setValue(0.09)
+    window._save_calibration()
+    assert "saved" in window.cal_label.text()
+    assert json.loads(target.read_text())["slot_w"] == pytest.approx(0.09)
+
+    window._reset_calibration()
+    assert window.layout_spec.slot_w == layout_mod.DraftLayout().slot_w
+    assert window.cal_spins["slot_w"].value() == pytest.approx(
+        layout_mod.DraftLayout().slot_w)

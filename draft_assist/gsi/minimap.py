@@ -5,9 +5,12 @@ HERO_SELECTION the feed names no hero but your own. From STRATEGY_TIME the
 minimap carries all ten, in a shape two recorded matches agree on
 (`tests/fixtures/gsi/`):
 
-  * Some objects sit at the origin, (0,0). They are always duplicates of the
-    player's own hero — three of them in both recordings — and carry no
-    information. They are dropped first, before anything is counted.
+  * Some objects sit at the origin, (0,0). Three of them are duplicates of
+    the player's own hero, which also appears in its lane. But an origin
+    entry is NOT always a duplicate: recording 4 has Sven there, in no
+    other slot, because no lane had been chosen for it yet. Dropping every
+    origin entry lost Sven and left nine heroes, so only origin entries
+    whose hero appears elsewhere are dropped.
   * What remains is exactly ten objects in object order (`o3`…`o12` in one
     match, `o0`…`o12` minus the origin in the other), one per player, and
     they arrive as **two runs of five**.
@@ -18,16 +21,19 @@ minimap carries all ten, in a shape two recorded matches agree on
 `team 2`, with the player on Dire in one and Radiant in another. Constant,
 so it distinguishes nothing.
 
-**The lane positions ARE the check, and refusing is the point.** The five
-xpos/ypos values are strategy-map lane slots, and each holds exactly one
-hero from each run — one of yours, one of theirs. A third recording has all
-five pairs consistent; the second has two positions holding both heroes
-from the SAME run, which cannot happen if the runs are teams. This was
-briefly read as "positions are lane assignments, so drop the check". That
-was backwards: the contradiction is the data saying the run split is wrong
-for that payload, and the honest response is to produce nothing. A wrong
-line-up is worse than none, because the app then advises against heroes on
-your own team.
+**The lane positions are NOT a check, and two attempts at using them as one
+were wrong.** They are where each hero sits on the strategy map: your five
+in the lanes you chose, theirs in the lanes you predicted. Nothing stops
+two heroes from the same team sharing a lane, and recordings 2 and 4 both
+do exactly that — pudge with axe, dragon knight with juggernaut. Requiring
+the five slots to pair one-from-each-run passed on recordings 1 and 3 by
+coincidence and refused 2 and 4 outright. It is gone for good.
+
+What remains is the run split anchored on your own hero. It matches the
+strategy screen itself, which has exactly two panels of five: CHOOSE YOUR
+LANE and PREDICT ENEMY LANES. The guards are structural — ten heroes, all
+distinct, all known, yours among them — and the session report prints the
+reading so a wrong one is visible rather than silent.
 
 Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
 real units rather than strategy-map slots, and the object order means
@@ -64,8 +70,10 @@ def _index(key: str) -> int:
 def hero_entries(payload: dict, drop_origin: bool = True):
     """(object index, hero internal name, position) in object order.
 
-    Origin entries are dropped by default: they are duplicates of your own
-    hero and counting them makes ten objects look like thirteen.
+    Origin entries whose hero is ALSO placed somewhere else are duplicates
+    and are dropped — counting them makes ten heroes look like thirteen.
+    An origin entry for a hero placed nowhere else is a real player with no
+    lane chosen yet, and is kept: dropping it left one recording with nine.
     """
     block = payload.get("minimap")
     if not isinstance(block, dict):
@@ -77,12 +85,21 @@ def hero_entries(payload: dict, drop_origin: bool = True):
         name = obj.get("unitname") or obj.get("name")
         if not isinstance(name, str) or not name.startswith(HERO_PREFIX):
             continue
-        if drop_origin and (obj.get("xpos"), obj.get("ypos")) == ORIGIN:
-            continue
         entries.append((_index(key), name,
                         (obj.get("xpos"), obj.get("ypos"))))
     entries.sort()
-    return entries
+    if not drop_origin:
+        return entries
+    placed = {name for _i, name, position in entries if position != ORIGIN}
+    kept, seen = [], set()
+    for index, name, position in entries:
+        if position == ORIGIN and name in placed:
+            continue                      # a duplicate of a placed hero
+        if name in seen:
+            continue                      # same hero at two origin slots
+        seen.add(name)
+        kept.append((index, name, position))
+    return kept
 
 
 def read_lineups(payload: dict, name_to_id: dict[str, int],
@@ -133,44 +150,6 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
             "yours — refusing to guess which five are your team")
         return out
 
-    matched, contradicted = _lane_pairs(names[:TEAM_SIZE], positions)
-    if contradicted or matched != TEAM_SIZE:
-        # The lane slots disagree with the run split. Whatever the runs
-        # mean in this payload, they are not the two teams, and a wrong
-        # line-up is worse than none: the app would advise against heroes
-        # on the user's own side.
-        out.notes.append(
-            f"minimap line-up REFUSED: {matched} of {TEAM_SIZE} lane slots "
-            f"back the split and {contradicted} contradict it, so these ten "
-            "heroes cannot be split into teams from this payload")
-        return out
-
     out.allies, out.enemies = allies, enemies
-    out.notes.append("line-ups read from the minimap "
-                     f"({matched} of {TEAM_SIZE} lane slots agree)")
+    out.notes.append("line-ups read from the minimap")
     return out
-
-
-def _lane_pairs(first_run: list[str],
-                positions: dict[str, tuple]) -> tuple[int, int]:
-    """(lane slots backing the run split, slots contradicting it).
-
-    Each strategy-map slot should hold one hero from each run — one of
-    yours and one of theirs. A slot holding two from the SAME run says the
-    runs are not the teams, and outweighs any number of slots that agree.
-    """
-    run_one = set(first_run)
-    slots: dict[tuple, list[str]] = {}
-    for name, position in positions.items():
-        if position in (None, ORIGIN, (None, None)):
-            continue
-        slots.setdefault(position, []).append(name)
-    matched = contradicted = 0
-    for names in slots.values():
-        if len(names) != 2:
-            contradicted += 1            # not a pair at all
-        elif len({name in run_one for name in names}) == 2:
-            matched += 1
-        else:
-            contradicted += 1
-    return matched, contradicted

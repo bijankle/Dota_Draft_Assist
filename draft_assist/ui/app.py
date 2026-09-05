@@ -37,13 +37,15 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPi
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
-                             QLayout, QListWidget, QPushButton,
+                             QDoubleSpinBox, QLayout, QListWidget,
+                             QPushButton,
                              QScrollArea, QSplitter,
                              QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
 
-from ..config import (DEBUG_OUT, RECORDINGS_DIR, REPO_ROOT, RULES_FILE,
+from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
+                       REPO_ROOT, RULES_FILE,
                        save_target_brackets, target_brackets)
 from ..data import store
 from ..data.store import Dataset
@@ -111,6 +113,10 @@ class MainWindow(QMainWindow):
         # Set when the user stops a session by hand during a draft,
         # so auto does not immediately start another one.
         self._auto_blocked = False
+        from ..vision import layout as layout_mod
+        session = getattr(provider, "session", None)
+        self.layout_spec = (getattr(session, "layout", None)
+                            or layout_mod.load_layout())
         self.quick_side = "enemy"
         # (side, index) in the order they were typed, so Undo
         # removes the last pick rather than an arbitrary one.
@@ -550,6 +556,56 @@ class MainWindow(QMainWindow):
         self.debug_text.setReadOnly(True)
         self.debug_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         dlay.addWidget(self.debug_text, 1)
+
+        # Calibration lives beside the picture because it is only usable
+        # with the picture: the boxes move as the numbers change, so being
+        # off is corrected by eye in seconds rather than by editing JSON
+        # and restarting.
+        cal_card, callay = card("Crop boxes")
+        cal_note = QLabel(
+            "Nudge until the boxes sit on the hero portraits during hero "
+            "selection. Values are fractions of Dota's 16:9 HUD area, so "
+            "they hold across resolutions.")
+        cal_note.setWordWrap(True)
+        cal_note.setProperty("dim", True)
+        callay.addWidget(cal_note)
+        grid = QHBoxLayout()
+        self.cal_spins = {}
+        for field, label, step in (
+                ("radiant_x", "left bank x", 0.001),
+                ("dire_x", "right bank x", 0.001),
+                ("y", "top y", 0.001),
+                ("slot_w", "width", 0.001),
+                ("slot_h", "height", 0.001),
+                ("pitch", "spacing", 0.001)):
+            column = QVBoxLayout()
+            caption = QLabel(label)
+            caption.setProperty("dim", True)
+            column.addWidget(caption)
+            spin = QDoubleSpinBox()
+            spin.setDecimals(4)
+            spin.setRange(0.0, 1.0)
+            spin.setSingleStep(step)
+            spin.setValue(getattr(self.layout_spec, field))
+            spin.valueChanged.connect(
+                lambda value, name=field: self._set_calibration(name, value))
+            column.addWidget(spin)
+            self.cal_spins[field] = spin
+            grid.addLayout(column)
+        callay.addLayout(grid)
+        cal_buttons = QHBoxLayout()
+        save_cal = QPushButton("Save")
+        save_cal.setProperty("accent", True)
+        save_cal.clicked.connect(self._save_calibration)
+        cal_buttons.addWidget(save_cal)
+        reset_cal = QPushButton("Reset to defaults")
+        reset_cal.clicked.connect(self._reset_calibration)
+        cal_buttons.addWidget(reset_cal)
+        self.cal_label = QLabel("")
+        self.cal_label.setProperty("dim", True)
+        cal_buttons.addWidget(self.cal_label, 1)
+        callay.addLayout(cal_buttons)
+        dlay.addWidget(cal_card)
 
         snap_row = QHBoxLayout()
         self.snapshot_button = QPushButton(
@@ -1302,6 +1358,35 @@ class MainWindow(QMainWindow):
                 lambda _checked, t=title: self._bind_title(t))
             group.addAction(action)
             self.source_menu.addAction(action)
+
+    def _set_calibration(self, field: str, value: float) -> None:
+        """Live: the next frame is cropped with the new numbers, so the
+        boxes in the picture move as the spin box turns."""
+        setattr(self.layout_spec, field, float(value))
+        session = getattr(self.provider, "session", None)
+        if session is not None:
+            session.layout = self.layout_spec
+        self.cal_label.setText("changed — not saved")
+        self._force_redraw()
+
+    def _save_calibration(self) -> None:
+        from ..vision import layout as layout_mod
+        try:
+            layout_mod.save_calibration(self.layout_spec)
+        except OSError as exc:
+            self.cal_label.setText(f"could not save: {exc}")
+            return
+        self.cal_label.setText(f"saved to {CALIBRATION_FILE.name}")
+
+    def _reset_calibration(self) -> None:
+        from ..vision import layout as layout_mod
+        self.layout_spec = layout_mod.DraftLayout()
+        for field, spin in self.cal_spins.items():
+            spin.blockSignals(True)
+            spin.setValue(getattr(self.layout_spec, field))
+            spin.blockSignals(False)
+        self._set_calibration("y", self.layout_spec.y)   # push and redraw
+        self.cal_label.setText("reset to defaults — not saved")
 
     def _refresh_sources(self) -> None:
         if not hasattr(self.provider, "available_sources"):

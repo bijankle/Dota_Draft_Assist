@@ -1094,7 +1094,10 @@ def minimap_dataset():
              # the third recorded match
              25: "lich", 6: "drow_ranger", 47: "viper", 2: "axe",
              37: "warlock", 8: "juggernaut", 20: "vengefulspirit",
-             49: "dragon_knight", 22: "zuus"}
+             49: "dragon_knight", 22: "zuus",
+             # the fourth recorded match
+             30: "witch_doctor", 43: "death_prophet",
+             42: "skeleton_king", 18: "sven"}
     heroes = {hid: {"name": name.title(),
                     "internal_name": f"npc_dota_hero_{name}",
                     "roles": []}
@@ -1153,44 +1156,42 @@ def test_minimap_is_not_read_when_your_hero_is_unknown():
                for n in parsed.notes)
 
 
-def test_a_split_the_lane_slots_contradict_is_refused():
-    """The second recorded match has two slots holding both heroes from the
-    same run, which cannot happen if the runs are teams. A wrong line-up is
-    worse than none — the app would advise against your own team — so it
-    produces nothing."""
+def test_lane_slots_cannot_validate_the_split():
+    """Twice I used the five lane slots to verify the ally/enemy split,
+    requiring each to hold one hero from each run. Recordings 2 and 4 both
+    break it — pudge with axe, dragon knight with juggernaut, same team in
+    the same lane — because a lane slot is where a hero was PLACED, and two
+    team-mates can share one. It passed on recordings 1 and 3 by
+    coincidence. All four must read."""
+    ds = minimap_dataset()
+    for which in (1, 2, 3, 4):
+        parsed = gsi_state.parse(real_strategy_payload(which), ds)
+        assert parsed.lineup_source == "minimap", which
+        assert len(parsed.allies) == 5 and len(parsed.enemies) == 5, which
+        assert parsed.my_hero_id in parsed.allies, which
+
+    shared = {}
+    for obj in real_strategy_payload(4)["minimap"].values():
+        shared.setdefault((obj["xpos"], obj["ypos"]), []).append(
+            obj["unitname"])
+    assert sorted(shared[(752, 144)]) == [
+        "npc_dota_hero_dragon_knight", "npc_dota_hero_juggernaut"]
+
+
+def test_an_unplaced_hero_at_the_origin_is_kept():
+    """Recording 4 has Sven at (0,0) and nowhere else — no lane chosen yet.
+    Dropping every origin entry lost a real player and left nine."""
     from draft_assist.gsi import minimap as gsi_minimap
 
+    payload = real_strategy_payload(4)
+    kept = [name for _i, name, _p in gsi_minimap.hero_entries(payload)]
+    assert len(kept) == 10
+    assert "npc_dota_hero_sven" in kept
+    assert kept.count("npc_dota_hero_rubick") == 1     # duplicates dropped
+
     ds = minimap_dataset()
-    payload = real_strategy_payload(2)
-    positions = {}
-    for obj in payload["minimap"].values():
-        positions.setdefault((obj["xpos"], obj["ypos"]), []).append(
-            obj["unitname"])
-    assert sorted(positions[(176, -370)]) == [
-        "npc_dota_hero_axe", "npc_dota_hero_pudge"]
-
-    name_to_id = {info["internal_name"]: hid
-                  for hid, info in ds.heroes.items()}
-    out = gsi_minimap.read_lineups(
-        payload, name_to_id, 76, "DOTA_GAMERULES_STATE_STRATEGY_TIME")
-    assert not out.complete
-    assert any("REFUSED" in note for note in out.notes)
-
     parsed = gsi_state.parse(payload, ds)
-    assert parsed.lineup_source == ""
-    assert parsed.enemies == []
-
-
-def test_a_split_every_lane_slot_backs_is_accepted():
-    """The third recorded match: five slots, each holding one hero from
-    each run. Lion is the player's, on Radiant."""
-    ds = minimap_dataset()
-    parsed = gsi_state.parse(real_strategy_payload(3), ds)
-    assert parsed.lineup_source == "minimap"
-    assert [ds.name(h) for h in parsed.allies] == [
-        "Lion", "Drow_Ranger", "Viper", "Lich", "Axe"]
-    assert [ds.name(h) for h in parsed.enemies] == [
-        "Warlock", "Juggernaut", "Vengefulspirit", "Dragon_Knight", "Zuus"]
+    assert ds.name(parsed.enemies[-1]) == "Sven"
 
 
 def test_only_the_strategy_map_is_read():
@@ -1232,12 +1233,11 @@ def test_minimap_is_not_read_when_your_hero_is_unknown():
                for n in parsed.notes)
 
 
-def test_the_readable_matches_read_the_same_way():
-    """Two matches, two players, opposite sides — one rule. The third
-    recording is deliberately absent: its lane slots contradict the split
-    and it is refused."""
+def test_every_recorded_match_reads_the_same_way():
+    """Four matches, different players and sides — one rule."""
     ds = minimap_dataset()
-    for which, hero in ((1, "Rubick"), (3, "Lion")):
+    for which, hero in ((1, "Rubick"), (2, "Obsidian_Destroyer"),
+                        (3, "Lion"), (4, "Rubick")):
         parsed = gsi_state.parse(real_strategy_payload(which), ds)
         assert parsed.lineup_source == "minimap", which
         assert len(parsed.allies) == 5 and len(parsed.enemies) == 5
