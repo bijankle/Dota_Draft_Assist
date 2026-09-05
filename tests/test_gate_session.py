@@ -206,7 +206,7 @@ def test_live_provider_survives_missing_dota_window():
     assert "not bound" in message
     assert prov.error
     snap = prov.poll()
-    assert "no capture source bound" in snap.source
+    assert "waiting for the Dota window" in snap.source
     assert snap.warning
 
 

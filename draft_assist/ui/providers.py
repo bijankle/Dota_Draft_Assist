@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..capture.window import DOTA_TITLE
 from ..data.store import Dataset
 from ..vision.recognize import DraftRead
 from .demo import DemoDraft
@@ -108,10 +109,14 @@ class LiveProvider(SessionProvider):
     failures — which window is actually being captured.
     """
 
+    # How often to look for the Dota window again when not bound to it.
+    REBIND_EVERY = 3.0
+
     def __init__(self, session, title: str | None = None):
         super().__init__(session)
         self.requested_title = title
         self.error = ""
+        self._last_rebind = 0.0
 
     def start(self) -> str:
         return self.rebind(self.requested_title)
@@ -129,7 +134,7 @@ class LiveProvider(SessionProvider):
             return f"capture not bound — {first_line}"
 
     def available_sources(self) -> list[str]:
-        from ..capture.window import DOTA_TITLE, list_window_titles
+        from ..capture.window import list_window_titles
         titles = list_window_titles()
         # Surface the Dota client first when present; it is the only one
         # that is ever bound without the user asking.
@@ -137,18 +142,45 @@ class LiveProvider(SessionProvider):
             [t for t in titles if t != DOTA_TITLE]
 
     def poll(self) -> Snapshot:
+        self._rebind_to_dota_if_possible()
         snap = super().poll()
         title = self.session.capture_title
         if title:
             snap.source = f"capturing '{title}'"
-            if title != "Dota 2":
+            if title != DOTA_TITLE:
                 snap.warning = (f"captured window is '{title}', NOT the Dota "
                                 "client — recognition results are meaningless")
         else:
-            snap.source = "no capture source bound"
-            snap.warning = ("no window bound — choose one in the Debug tab's "
-                            "capture source picker")
+            snap.source = "waiting for the Dota window"
+            snap.warning = ("Dota is not running, or not in borderless "
+                            "windowed mode — capture binds itself as soon "
+                            "as its window appears")
         return snap
+
+    def _rebind_to_dota_if_possible(self) -> None:
+        """Bind to Dota the moment its window exists.
+
+        A real session spent a whole draft bound to a File Explorer window
+        called "Dota_Draft_Assist" and captured nothing useful, because
+        binding happened once at startup — before Dota was running — and
+        never again. The user should never have to pick a window: Dota's
+        title is exact, so when it appears it is unambiguous.
+        """
+        if self.requested_title is not None:
+            return                      # the user asked for a specific one
+        if self.session.capture_title == DOTA_TITLE:
+            return
+        now = time.monotonic()
+        if now - self._last_rebind < self.REBIND_EVERY:
+            return
+        self._last_rebind = now
+        from ..capture.window import find_dota_window_title
+        try:
+            if find_dota_window_title() is None:
+                return
+        except Exception:
+            return                      # not Windows, or enumeration failed
+        self.rebind(None)
 
 
 class ReplayProvider(SessionProvider):
@@ -248,8 +280,9 @@ class GsiProvider:
             snap.warning = (
                 "no data from Dota yet — "
                 + (self.install_hint or
-                   "install GSI from the Capture menu and add "
-                   "-gamestateintegration to Dota's launch options"))
+                   "run Setup ▸ Set up game data (GSI), add "
+                   "-gamestateintegration to Dota's launch options, and "
+                   "restart Dota"))
             snap.needs_manual = True
             snap.left = merge([], self.manual.entered("ally"))
             snap.right = merge([], self.manual.entered("enemy"))

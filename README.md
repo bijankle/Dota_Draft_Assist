@@ -144,27 +144,30 @@ PATH" ticked.
 Everything that used to be a separate script is a menu item that runs inside
 the app, with live progress and readable errors.
 
-| Menu | Action | When |
+| Where | Action | When |
 | --- | --- | --- |
-| **Data** | Update statistics and portraits | First run, then ~daily and after patches |
-| **Data** | Statistics bracket | Choose which ranks the numbers come from |
-| **Data** | Reload data and library (F5) | After editing files by hand |
-| **Game** | Set up game data (GSI) | Once, before first use |
+| **Toolbar** | Record / Stop, Auto | Auto records every draft by itself; Record is for a session by hand |
+| **Toolbar** | Recordings, Report | The archive, and the newest session's report |
+| **Setup** | Update statistics and portraits | First run, then ~daily and after patches |
+| **Setup** | Statistics bracket | Which ranks the numbers come from |
+| **Setup** | Set up game data (GSI) | Once, before first use |
+| **Setup** | Settings (Ctrl+,) | What the app reads: game data, the screen, auto-record, overlay |
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
-| **Game** | Game data status | To see exactly what Dota is reporting |
-| **Toolbar** | Auto | Records every draft by itself — on by default, nothing to press |
-| **Toolbar** | Record / Stop | Start or end a session by hand |
-| **Toolbar** | Report | Opens the newest recording's report — one document for the whole session |
-| **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
-| **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
-| **Game** | Replay recorded game data | Replay real payloads from a past match |
+| **Game** | Game data status | What Dota is reporting right now |
 | **Game** | Clear manual draft | Between games |
-| **Capture** | Use game data / Use screen capture | Switching source at runtime |
-| **Capture** | Capture source ▸, Bind to Dota client, Force recognition | Screen-capture fallback only |
+| **Game** | Simulate / Replay | Test the whole app with Dota closed |
 | **View** | Draft overlay (Ctrl+O) | A small badge over Dota that expands into the picks |
-| **Tools** | Save debug snapshot (Ctrl+S) | Grabs the Dota window with the slot boxes drawn on it |
-| **Tools** | Edit / reload item rules | Tweaking `rules/items.yaml` |
+| **View** | Reload data and library (F5) | After editing files by hand |
 | **Help** | Update application | Pull the latest code from GitHub |
+| **Help ▸ Advanced** | Tune recognition, capture probe, debug snapshot, item rules, folders | Diagnosing the app itself |
+
+**Settings** (Ctrl+,) holds the two sources as tick boxes, both on by
+default. They are not alternatives — the game feed says *when* a draft is
+happening and *which side* you are on, the screen says *what* the picks are
+— so turning one off is a debugging step, never a mode. There is no
+capture-source menu: capture binds itself to the window titled exactly
+`Dota 2` as soon as that window appears, and rebinds if it was pointed
+somewhere else.
 
 The window opens even before anything is downloaded and tells you what to do
 next. It also opens when Dota is not running: capture is simply unbound, and
@@ -322,7 +325,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 241 tests: normalisation math, scoring views, item
+pytest            # 250 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

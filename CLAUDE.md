@@ -14,8 +14,17 @@ vision pipeline until the minimap starts carrying them at strategy time.
 Hand-entered slots fill whatever neither produced.
 
 Precedence is strict and never blended: game-reported line-ups > screen >
-hand entry > unknown. `HybridProvider` is the default; `--no-vision` and
-`--vision` isolate either half for debugging.
+hand entry > unknown. `HybridProvider` is the default. The two sources are
+tick boxes in Settings (`use_gsi`, `use_vision`, both on) rather than
+mutually exclusive menu commands — they answer different questions, so
+turning one off is a debugging step, never a mode. `--no-vision` and
+`--vision` do the same from the command line.
+
+**Capture binds itself.** `LiveProvider` re-looks for the window titled
+exactly `Dota 2` every few seconds whenever it is not bound to it, because
+binding once at startup left a real session capturing a File Explorer
+window called "Dota_Draft_Assist" for a whole draft. A title the user
+asked for explicitly is never overridden.
 
 ## Non-negotiable boundary
 

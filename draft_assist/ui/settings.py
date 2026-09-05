@@ -23,6 +23,11 @@ DEFAULTS = {
     # expecting, and remembering to press Record before queueing is
     # exactly the thing that gets forgotten.
     "auto_record": True,
+    # Both sources on by default: they answer different
+    # questions and the app wants both. Turning one off is a
+    # debugging step, never a mode.
+    "use_gsi": True,
+    "use_vision": True,
 }
 
 

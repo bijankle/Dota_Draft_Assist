@@ -1239,3 +1239,68 @@ def test_calibration_saves_and_resets(window, monkeypatch, tmp_path):
     assert window.layout_spec.slot_w == layout_mod.DraftLayout().slot_w
     assert window.cal_spins["slot_w"].value() == pytest.approx(
         layout_mod.DraftLayout().slot_w)
+
+
+# ---- the settings dialog replaces the source-switching menu items -------
+
+def test_menus_no_longer_offer_a_source_mode(window):
+    """"Use game data" and "Use screen capture" were mutually exclusive
+    commands from when the two were alternatives. They are not."""
+    labels = []
+    for action in window.menuBar().actions():
+        menu = action.menu()
+        if menu is None:
+            continue
+        for item in menu.actions():
+            labels.append(item.text().replace("&", ""))
+            if item.menu() is not None:
+                labels += [b.text().replace("&", "")
+                           for b in item.menu().actions()]
+    assert not any("Use screen capture" in text for text in labels)
+    assert not any("Use game data" in text for text in labels)
+    assert not any("Capture source" in text for text in labels)
+    assert "Settings…" in labels
+
+
+def test_the_menu_bar_stays_small(window):
+    titles = [a.text().replace("&", "") for a in window.menuBar().actions()
+              if a.menu() is not None]
+    assert titles == ["Setup", "Game", "View", "Help"]
+    for action in window.menuBar().actions():
+        menu = action.menu()
+        if menu is not None:
+            visible = [a for a in menu.actions() if not a.isSeparator()]
+            assert len(visible) <= 7, f"{action.text()} has {len(visible)}"
+
+
+def test_both_sources_are_on_by_default():
+    from draft_assist.ui import settings as ui_settings
+
+    defaults = ui_settings.load()
+    assert defaults["use_gsi"] is True
+    assert defaults["use_vision"] is True
+    assert defaults["auto_record"] is True
+
+
+def test_settings_dialog_round_trips_the_switches(qapp):
+    from draft_assist.ui.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog({"use_gsi": True, "use_vision": False,
+                             "auto_record": True, "overlay_enabled": False})
+    assert dialog.boxes["use_vision"].isChecked() is False
+    dialog.boxes["use_vision"].setChecked(True)
+    dialog.boxes["use_gsi"].setChecked(False)
+    values = dialog.values()
+    assert values["use_vision"] is True and values["use_gsi"] is False
+
+
+def test_turning_a_source_off_rebuilds_the_provider(window, monkeypatch):
+    from draft_assist.ui.providers import ManualProvider
+
+    swapped = []
+    monkeypatch.setattr(window, "_swap_provider", swapped.append)
+    monkeypatch.setattr("draft_assist.ui.app._capture_session", lambda: None)
+    window.settings.update({"use_gsi": False, "use_vision": False})
+    window._apply_sources()
+    assert len(swapped) == 1
+    assert isinstance(swapped[0], ManualProvider)

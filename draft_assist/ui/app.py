@@ -34,7 +34,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPixmap
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
+                             QDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
                              QDoubleSpinBox, QLayout, QListWidget,
@@ -156,67 +157,36 @@ class MainWindow(QMainWindow):
     def _build_menus(self) -> None:
         bar = self.menuBar()
 
-        data_menu = bar.addMenu("&Data")
-        self._act(data_menu, "&Update statistics and portraits…",
+        setup_menu = bar.addMenu("&Setup")
+        self._act(setup_menu, "&Update statistics and portraits…",
                   lambda: self.run_task("update_data"), "Ctrl+U",
                   "Download the latest hero statistics and portraits")
-        self._act(data_menu, "&Tune recognition…",
-                  lambda: self.run_task("tune"), None,
-                  "Search for recognition settings that never misidentify")
-        data_menu.addSeparator()
-        self._act(data_menu, "Statistics &bracket…", self._choose_brackets,
+        self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
                   None, "Which ranks the statistics are drawn from")
-        data_menu.addSeparator()
-        self._act(data_menu, "&Reload data and library", self.reload_backend,
-                  "F5", "Re-read the downloaded data from disk")
-        self._act(data_menu, "Open data &folder",
-                  lambda: open_folder(REPO_ROOT / "data_cache"))
+        setup_menu.addSeparator()
+        self._act(setup_menu, "&Set up game data (GSI)…", self._install_gsi,
+                  None, "Install Dota's Game State Integration config")
+        self._act(setup_menu, "S&ettings…", self._open_settings, "Ctrl+,",
+                  "What the app reads, and what it does with it")
 
         game_menu = bar.addMenu("&Game")
-        self._act(game_menu, "&Set up game data (GSI)…", self._install_gsi,
-                  None, "Install Dota's Game State Integration config")
         self._act(game_menu, "&Diagnose game data…", self._diagnose_gsi,
                   "Ctrl+G",
                   "Check every requirement and name the one that is failing")
         self._act(game_menu, "Game data &status…", self._gsi_status,
                   None, "What the game is actually reporting right now")
+        self._act(game_menu, "&Clear manual draft", self._clear_manual,
+                  "Ctrl+Shift+C", "Empty every hand-entered slot")
+        game_menu.addSeparator()
         self._act(game_menu, "Si&mulate a draft — full teams…",
                   lambda: self.run_task("simulate_gsi"), None,
                   "Both line-ups fill in — the best way to see the app work")
         self._act(game_menu, "Simulate a draft — only your hero…",
                   lambda: self.run_task("simulate_gsi_real"), None,
                   "Shows the real GSI limitation: enemy slots stay empty")
-        self._act(game_menu, "Replay recorded game data…",
+        self._act(game_menu, "&Replay recorded game data…",
                   lambda: self.run_task("replay_gsi"), None,
                   "Replay payloads archived from a real match")
-        game_menu.addSeparator()
-        self._act(game_menu, "&Clear manual draft", self._clear_manual,
-                  "Ctrl+Shift+C", "Empty every hand-entered slot")
-
-        cap_menu = bar.addMenu("&Capture")
-        self._act(cap_menu, "Use screen capture (&fallback)",
-                  self._switch_to_vision, None,
-                  "Read the draft from pixels instead of game data")
-        self._act(cap_menu, "Use &game data (GSI)", self._switch_to_gsi)
-        cap_menu.addSeparator()
-        self.source_menu = cap_menu.addMenu("Capture &source")
-        self.source_menu.aboutToShow.connect(self._populate_source_menu)
-        self._act(cap_menu, "Bind to &Dota client",
-                  lambda: self._bind_title(None), "Ctrl+D",
-                  "Capture the window titled exactly 'Dota 2'")
-        cap_menu.addSeparator()
-        self.force_action = QAction("&Force recognition", self)
-        self.force_action.setCheckable(True)
-        self.force_action.setShortcut(QKeySequence("Ctrl+F"))
-        self.force_action.setStatusTip(
-            "Recognise every frame even when the draft gate does not trip")
-        self.force_action.toggled.connect(self._set_forced)
-        cap_menu.addAction(self.force_action)
-        cap_menu.addSeparator()
-        self._act(cap_menu, "&List capture sources…",
-                  lambda: self.run_task("list_windows"))
-        self._act(cap_menu, "Run capture &probe…",
-                  lambda: self.run_task("probe"))
 
         view_menu = bar.addMenu("&View")
         self.overlay_action = QAction("Draft &overlay", self)
@@ -229,21 +199,44 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.overlay_action)
         self._act(view_menu, "&Reset overlay position",
                   self._reset_overlay_position)
+        view_menu.addSeparator()
+        self._act(view_menu, "Re&load data and library", self.reload_backend,
+                  "F5", "Re-read the downloaded data from disk")
 
-        tools_menu = bar.addMenu("&Tools")
-        self._act(tools_menu, "&Save debug snapshot", self._save_snapshot,
-                  "Ctrl+S", "Write the current frame, crops and matches to disk")
-        self._act(tools_menu, "Open &debug folder",
-                  lambda: open_folder(DEBUG_OUT))
-        tools_menu.addSeparator()
-        self._act(tools_menu, "Edit &item rules", self._edit_rules,
-                  None, "Open rules/items.yaml in your text editor")
-        self._act(tools_menu, "Re&load item rules", self._reload_rules)
+        # Force recognition is a real control, but it belongs beside the
+        # picture it affects (Debug ▸ Live) rather than in the menu bar.
+        self.force_action = QAction("&Force recognition", self)
+        self.force_action.setCheckable(True)
+        self.force_action.setShortcut(QKeySequence("Ctrl+F"))
+        self.force_action.toggled.connect(self._set_forced)
+        self.addAction(self.force_action)
 
         help_menu = bar.addMenu("&Help")
         self._act(help_menu, "&Update application…",
                   lambda: self.run_task("update_app"), None,
                   "Pull the latest code from GitHub")
+        # Everything under Advanced diagnoses the app itself. It is
+        # occasionally necessary and it is not what a menu bar is for.
+        advanced = help_menu.addMenu("&Advanced")
+        self._act(advanced, "&Tune recognition…",
+                  lambda: self.run_task("tune"), None,
+                  "Search for recognition settings that never misidentify")
+        self._act(advanced, "&List capture sources…",
+                  lambda: self.run_task("list_windows"))
+        self._act(advanced, "Run capture &probe…",
+                  lambda: self.run_task("probe"))
+        advanced.addSeparator()
+        self._act(advanced, "&Save debug snapshot", self._save_snapshot,
+                  "Ctrl+S",
+                  "Write the current frame, crops and matches to disk")
+        self._act(advanced, "Edit &item rules", self._edit_rules)
+        self._act(advanced, "Re&load item rules", self._reload_rules)
+        advanced.addSeparator()
+        self._act(advanced, "Open &data folder",
+                  lambda: open_folder(REPO_ROOT / "data_cache"))
+        self._act(advanced, "Open de&bug folder",
+                  lambda: open_folder(DEBUG_OUT))
+        help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
 
     # ---- widgets -----------------------------------------------------
@@ -1342,23 +1335,6 @@ class MainWindow(QMainWindow):
             widget.blockSignals(False)
         self.provider.set_forced(on)
 
-    def _populate_source_menu(self) -> None:
-        self.source_menu.clear()
-        if not hasattr(self.provider, "available_sources"):
-            self.source_menu.addAction("(live capture only)").setEnabled(False)
-            return
-        group = QActionGroup(self)
-        current = getattr(getattr(self.provider, "session", None),
-                          "capture_title", None)
-        for title in self.provider.available_sources():
-            action = QAction(title, self)
-            action.setCheckable(True)
-            action.setChecked(title == current)
-            action.triggered.connect(
-                lambda _checked, t=title: self._bind_title(t))
-            group.addAction(action)
-            self.source_menu.addAction(action)
-
     def _set_calibration(self, field: str, value: float) -> None:
         """Live: the next frame is cropped with the new numbers, so the
         boxes in the picture move as the spin box turns."""
@@ -1387,6 +1363,61 @@ class MainWindow(QMainWindow):
             spin.blockSignals(False)
         self._set_calibration("y", self.layout_spec.y)   # push and redraw
         self.cal_label.setText("reset to defaults — not saved")
+
+    def _open_settings(self) -> None:
+        from .settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self.settings, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        before = dict(self.settings)
+        self.settings.update(dialog.values())
+        ui_settings.save(self.settings)
+
+        self.auto_record_check.setChecked(
+            bool(self.settings.get("auto_record", True)))
+        if self.settings.get("overlay_enabled") != before.get(
+                "overlay_enabled"):
+            self.overlay_action.setChecked(
+                bool(self.settings.get("overlay_enabled")))
+        if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
+                before.get("use_gsi"), before.get("use_vision")):
+            self._apply_sources()
+
+    def _apply_sources(self) -> None:
+        """Rebuild the draft source from the settings.
+
+        The two used to be mutually exclusive menu commands, from when they
+        were alternatives. They are not — the game feed says WHEN and
+        WHOSE, the screen says WHAT — so this composes whichever are on.
+        """
+        from ..gsi import install as gsi_install
+        from ..gsi.server import GsiServer
+        from .providers import GsiProvider, HybridProvider, LiveProvider
+
+        use_gsi = bool(self.settings.get("use_gsi", True))
+        use_vision = bool(self.settings.get("use_vision", True))
+        session = _capture_session() if use_vision else None
+        if use_vision and session is None:
+            QMessageBox.information(
+                self, "Settings",
+                "Reading the screen needs the portrait library — run "
+                "Setup ▸ Update statistics and portraits first.")
+        vision = LiveProvider(session) if session is not None else None
+
+        if not use_gsi:
+            if vision is not None:
+                self._swap_provider(vision)
+            else:
+                from .providers import ManualProvider
+                self._swap_provider(ManualProvider(self.manual))
+            return
+
+        server = GsiServer(gsi_install.DEFAULT_PORT,
+                           token=gsi_install.read_installed_token())
+        gsi = GsiProvider(self.ds, server, self.manual)
+        self._swap_provider(
+            HybridProvider(gsi, vision) if vision is not None else gsi)
 
     def _refresh_sources(self) -> None:
         if not hasattr(self.provider, "available_sources"):

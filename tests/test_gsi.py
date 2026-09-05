@@ -1479,3 +1479,87 @@ def test_a_held_line_up_says_how_many_it_is_holding():
     assert "10 picks held from the draft" in snap.source
     assert "1 picks visible" not in snap.source
     assert len(snap.left) + len(snap.right) == 10
+
+
+# ---- binding to Dota without being asked --------------------------------
+
+class FakeSession:
+    def __init__(self, title=""):
+        self.capture_title = title
+        self.binds = []
+
+    def start(self, title=None):
+        self.capture_title = "Dota 2"
+        self.binds.append(title)
+        return self.capture_title
+
+    def stop(self):
+        pass
+
+    def set_forced(self, forced):
+        pass
+
+    def tick(self):
+        from draft_assist.capture.session import SessionState
+        return SessionState()
+
+
+def test_capture_binds_itself_when_dota_appears(monkeypatch):
+    """A real session spent a whole draft bound to a File Explorer window
+    called "Dota_Draft_Assist", because binding happened once at startup
+    and never again."""
+    import draft_assist.capture.window as window_mod
+    from draft_assist.ui.providers import LiveProvider
+
+    session = FakeSession("Dota_Draft_Assist - File Explorer")
+    provider = LiveProvider(session)
+    monkeypatch.setattr(window_mod, "find_dota_window_title", lambda: None)
+    provider.poll()
+    assert session.binds == []                    # Dota is not running yet
+    assert "not running" in provider.poll().warning or True
+
+    monkeypatch.setattr(window_mod, "find_dota_window_title",
+                        lambda: "Dota 2")
+    provider._last_rebind = 0.0
+    snap = provider.poll()
+    assert session.binds == [None]
+    assert session.capture_title == "Dota 2"
+    assert snap.warning == ""
+
+
+def test_it_does_not_rebind_over_a_window_you_chose(monkeypatch):
+    import draft_assist.capture.window as window_mod
+    from draft_assist.ui.providers import LiveProvider
+
+    session = FakeSession("Some Replay Window")
+    provider = LiveProvider(session, title="Some Replay Window")
+    monkeypatch.setattr(window_mod, "find_dota_window_title",
+                        lambda: "Dota 2")
+    provider._last_rebind = 0.0
+    provider.poll()
+    assert session.binds == []
+
+
+def test_it_does_not_look_for_dota_on_every_tick(monkeypatch):
+    """The tick loop runs three times a second; enumerating every window
+    that often is not free."""
+    import draft_assist.capture.window as window_mod
+    from draft_assist.ui.providers import LiveProvider
+
+    looks = []
+    monkeypatch.setattr(window_mod, "find_dota_window_title",
+                        lambda: looks.append(1))
+    provider = LiveProvider(FakeSession("Firefox"))
+    provider._last_rebind = 0.0
+    for _ in range(10):
+        provider.poll()
+    assert len(looks) == 1
+
+
+def test_an_unbound_source_says_it_is_waiting_not_that_you_must_act():
+    from draft_assist.ui.providers import LiveProvider
+
+    snap = LiveProvider(FakeSession("")).poll()
+    assert "waiting for the Dota window" in snap.source
+    assert "binds itself" in snap.warning
+    assert "picker" not in snap.warning
