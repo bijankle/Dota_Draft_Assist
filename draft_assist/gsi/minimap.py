@@ -14,23 +14,26 @@ minimap carries all ten, in a shape two recorded matches agree on
   * Which run is yours is decided by **where your own hero is**. Nothing
     else identifies it.
 
-Two things that look like signal and are not:
+**The `team` field is not usable.** Every object in every recording says
+`team 2`, with the player on Dire in one and Radiant in another. Constant,
+so it distinguishes nothing.
 
-  * **The `team` field.** Every object in both recordings said `team 2`,
-    once while the player was on Dire and once on Radiant. It is constant,
-    so it distinguishes nothing.
-  * **The lane positions.** An earlier version verified the split by
-    pairing heroes across the five xpos/ypos values, and reported "5 of 5
-    confirm". That was a coincidence of the first match: in the second,
-    (176,-370) holds pudge AND axe, both from the same run, because a lane
-    can hold two heroes from one team. Positions are lane assignments, not
-    ally/enemy pairs, and the check has been removed rather than left to
-    reject good data.
+**The lane positions ARE the check, and refusing is the point.** The five
+xpos/ypos values are strategy-map lane slots, and each holds exactly one
+hero from each run — one of yours, one of theirs. A third recording has all
+five pairs consistent; the second has two positions holding both heroes
+from the SAME run, which cannot happen if the runs are teams. This was
+briefly read as "positions are lane assignments, so drop the check". That
+was backwards: the contradiction is the data saying the run split is wrong
+for that payload, and the honest response is to produce nothing. A wrong
+line-up is worse than none, because the app then advises against heroes on
+your own team.
 
-So the guards are the ones that hold in both recordings: exactly ten
-non-origin objects, exactly ten distinct heroes, all resolvable, and the
-player's own hero in exactly one run. A failed check yields NOTHING rather
-than a guess.
+Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
+real units rather than strategy-map slots, and the object order means
+something else: one recorded session produced a correct split at 16s and a
+scrambled one at 43s from the same match. The caller latches the first
+complete reading so a later payload cannot overwrite it.
 """
 
 from dataclasses import dataclass, field
@@ -38,6 +41,7 @@ from dataclasses import dataclass, field
 HERO_PREFIX = "npc_dota_hero_"
 TEAM_SIZE = 5
 ORIGIN = (0, 0)
+STRATEGY_STATE = "STRATEGY_TIME"
 
 
 @dataclass
@@ -58,7 +62,7 @@ def _index(key: str) -> int:
 
 
 def hero_entries(payload: dict, drop_origin: bool = True):
-    """(object index, hero internal name) in object order.
+    """(object index, hero internal name, position) in object order.
 
     Origin entries are dropped by default: they are duplicates of your own
     hero and counting them makes ten objects look like thirteen.
@@ -75,23 +79,29 @@ def hero_entries(payload: dict, drop_origin: bool = True):
             continue
         if drop_origin and (obj.get("xpos"), obj.get("ypos")) == ORIGIN:
             continue
-        entries.append((_index(key), name))
+        entries.append((_index(key), name,
+                        (obj.get("xpos"), obj.get("ypos"))))
     entries.sort()
     return entries
 
 
 def read_lineups(payload: dict, name_to_id: dict[str, int],
-                 my_hero_id: int | None) -> Lineups:
+                 my_hero_id: int | None, game_state: str = "") -> Lineups:
     """Both teams from the minimap, or nothing with a reason why not."""
     out = Lineups()
-    names = [name for _index, name in hero_entries(payload)]
-    if not names:
+    if STRATEGY_STATE not in str(game_state or ""):
+        return out                       # only the strategy map is readable
+
+    entries = hero_entries(payload)
+    if not entries:
         return out
+    names = [name for _i, name, _p in entries]
+    positions = {name: position for _i, name, position in entries}
 
     if len(names) != 2 * TEAM_SIZE:
         out.notes.append(
             f"minimap carried {len(names)} placed heroes, not ten — too "
-            "early in the phase, or not the shape this reads")
+            "early in the phase for a full line-up")
         return out
     if len(set(names)) != len(names):
         out.notes.append(
@@ -114,13 +124,53 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
 
     first, second = ids[:TEAM_SIZE], ids[TEAM_SIZE:]
     if my_hero_id in first:
-        out.allies, out.enemies = first, second
+        allies, enemies = first, second
     elif my_hero_id in second:
-        out.allies, out.enemies = second, first
+        allies, enemies = second, first
     else:
         out.notes.append(
             "minimap named ten heroes but not the one the feed says is "
             "yours — refusing to guess which five are your team")
         return out
-    out.notes.append("line-ups read from the minimap")
+
+    matched, contradicted = _lane_pairs(names[:TEAM_SIZE], positions)
+    if contradicted or matched != TEAM_SIZE:
+        # The lane slots disagree with the run split. Whatever the runs
+        # mean in this payload, they are not the two teams, and a wrong
+        # line-up is worse than none: the app would advise against heroes
+        # on the user's own side.
+        out.notes.append(
+            f"minimap line-up REFUSED: {matched} of {TEAM_SIZE} lane slots "
+            f"back the split and {contradicted} contradict it, so these ten "
+            "heroes cannot be split into teams from this payload")
+        return out
+
+    out.allies, out.enemies = allies, enemies
+    out.notes.append("line-ups read from the minimap "
+                     f"({matched} of {TEAM_SIZE} lane slots agree)")
     return out
+
+
+def _lane_pairs(first_run: list[str],
+                positions: dict[str, tuple]) -> tuple[int, int]:
+    """(lane slots backing the run split, slots contradicting it).
+
+    Each strategy-map slot should hold one hero from each run — one of
+    yours and one of theirs. A slot holding two from the SAME run says the
+    runs are not the teams, and outweighs any number of slots that agree.
+    """
+    run_one = set(first_run)
+    slots: dict[tuple, list[str]] = {}
+    for name, position in positions.items():
+        if position in (None, ORIGIN, (None, None)):
+            continue
+        slots.setdefault(position, []).append(name)
+    matched = contradicted = 0
+    for names in slots.values():
+        if len(names) != 2:
+            contradicted += 1            # not a pair at all
+        elif len({name in run_one for name in names}) == 2:
+            matched += 1
+        else:
+            contradicted += 1
+    return matched, contradicted

@@ -199,7 +199,8 @@ def parse(payload: dict, dataset) -> GsiState:
         from . import minimap as gsi_minimap
 
         lineups = gsi_minimap.read_lineups(payload, name_to_id,
-                                           state.my_hero_id)
+                                           state.my_hero_id,
+                                           state.game_state)
         state.notes.extend(lineups.notes)
         if lineups.complete:
             state.allies, state.enemies = lineups.allies, lineups.enemies

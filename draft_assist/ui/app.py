@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
                              QLayout, QListWidget, QPushButton,
-                             QSplitter,
+                             QScrollArea, QSplitter,
                              QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
@@ -369,11 +369,22 @@ class MainWindow(QMainWindow):
         llay.addWidget(self.table, 1)
         split.addWidget(left)
 
+        # The right column holds four stacked cards. On a short window their
+        # combined minimum exceeds the height available, and Qt resolves
+        # that by crushing them — which is what sheared the bottom off the
+        # hero names. A scroll area means the column keeps its proper size
+        # and the window scrolls instead.
         right = QWidget()
         rlay = QVBoxLayout(right)
         rlay.setContentsMargins(0, 0, 0, 0)
         rlay.setSpacing(10)
-        split.addWidget(right)
+        right_scroll = QScrollArea()
+        right_scroll.setWidget(right)
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        split.addWidget(right_scroll)
         split.setSizes([660, 560])
 
         teams_card, tlay = card("Draft")

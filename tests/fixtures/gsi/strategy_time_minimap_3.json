@@ -1,0 +1,136 @@
+{
+  "_comment": "Real payload gsi_00034.json, match 8983xxxxx, recorded by the user 2026-09-05. STRATEGY_TIME; Bijson played Lion on Radiant. All five lane slots hold one hero from each run of five, which is what makes the split readable \u2014 unlike the second fixture, where two slots hold both heroes from the same run.",
+  "map": {
+    "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
+    "matchid": "0"
+  },
+  "player": {
+    "name": "Bijson",
+    "team_name": "radiant"
+  },
+  "hero": {
+    "facet": 0,
+    "id": 26,
+    "name": "npc_dota_hero_lion"
+  },
+  "draft": {},
+  "minimap": {
+    "o0": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lion",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o1": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lion",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o2": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lion",
+      "visionrange": 0,
+      "xpos": 0,
+      "yaw": 0,
+      "ypos": 0
+    },
+    "o3": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lion",
+      "visionrange": 0,
+      "xpos": 1088,
+      "yaw": 25,
+      "ypos": 0
+    },
+    "o4": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_drow_ranger",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": 9,
+      "ypos": 144
+    },
+    "o5": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_viper",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 0,
+      "ypos": -370
+    },
+    "o6": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_lich",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 19,
+      "ypos": 370
+    },
+    "o7": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_axe",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": -5,
+      "ypos": -144
+    },
+    "o8": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_warlock",
+      "visionrange": 0,
+      "xpos": 1088,
+      "yaw": 25,
+      "ypos": 0
+    },
+    "o9": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_juggernaut",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 19,
+      "ypos": 370
+    },
+    "o10": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_vengefulspirit",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": 9,
+      "ypos": 144
+    },
+    "o11": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_dragon_knight",
+      "visionrange": 0,
+      "xpos": 752,
+      "yaw": -5,
+      "ypos": -144
+    },
+    "o12": {
+      "image": "minimap_plaincircle",
+      "team": 2,
+      "unitname": "npc_dota_hero_zuus",
+      "visionrange": 0,
+      "xpos": 176,
+      "yaw": 0,
+      "ypos": -370
+    }
+  }
+}

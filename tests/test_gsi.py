@@ -1084,10 +1084,15 @@ def minimap_dataset():
              72: "gyrocopter", 11: "nevermore", 47: "viper", 22: "zuus",
              35: "sniper", 136: "marci",
              # the second recorded match
-             76: "obsidian_destroyer", 26: "lion", 31: "lich",
-             28: "slardar", 44: "phantom_assassin", 123: "hoodwink",
+             76: "obsidian_destroyer", 26: "lion",
+             31: "lich_unused", 28: "slardar",
+             44: "phantom_assassin", 123: "hoodwink",
              54: "life_stealer", 14: "pudge", 2: "axe",
-             112: "winter_wyvern"}
+             112: "winter_wyvern",
+             # the third recorded match
+             25: "lich", 6: "drow_ranger", 47: "viper", 2: "axe",
+             37: "warlock", 8: "juggernaut", 20: "vengefulspirit",
+             49: "dragon_knight", 22: "zuus"}
     heroes = {hid: {"name": name.title(),
                     "internal_name": f"npc_dota_hero_{name}",
                     "roles": []}
@@ -1146,12 +1151,13 @@ def test_minimap_is_not_read_when_your_hero_is_unknown():
                for n in parsed.notes)
 
 
-def test_lane_positions_are_not_ally_enemy_pairs():
-    """An earlier version verified the split by pairing heroes across the
-    five lane positions and reported "5 of 5 confirm". The second recorded
-    match disproves it: one position holds pudge AND axe, both on the same
-    team, because a lane can hold two heroes from one side. The reading
-    must survive that."""
+def test_a_split_the_lane_slots_contradict_is_refused():
+    """The second recorded match has two slots holding both heroes from the
+    same run, which cannot happen if the runs are teams. A wrong line-up is
+    worse than none — the app would advise against your own team — so it
+    produces nothing."""
+    from draft_assist.gsi import minimap as gsi_minimap
+
     ds = minimap_dataset()
     payload = real_strategy_payload(2)
     positions = {}
@@ -1161,30 +1167,75 @@ def test_lane_positions_are_not_ally_enemy_pairs():
     assert sorted(positions[(176, -370)]) == [
         "npc_dota_hero_axe", "npc_dota_hero_pudge"]
 
+    name_to_id = {info["internal_name"]: hid
+                  for hid, info in ds.heroes.items()}
+    out = gsi_minimap.read_lineups(
+        payload, name_to_id, 76, "DOTA_GAMERULES_STATE_STRATEGY_TIME")
+    assert not out.complete
+    assert any("REFUSED" in note for note in out.notes)
+
     parsed = gsi_state.parse(payload, ds)
+    assert parsed.lineup_source == ""
+    assert parsed.enemies == []
+
+
+def test_a_split_every_lane_slot_backs_is_accepted():
+    """The third recorded match: five slots, each holding one hero from
+    each run. Lion is the player's, on Radiant."""
+    ds = minimap_dataset()
+    parsed = gsi_state.parse(real_strategy_payload(3), ds)
     assert parsed.lineup_source == "minimap"
-    assert ds.name(parsed.my_hero_id) in [ds.name(h) for h in parsed.allies]
-    assert sorted(ds.name(h) for h in parsed.enemies) == [
-        "Axe", "Hoodwink", "Life_Stealer", "Pudge", "Winter_Wyvern"]
+    assert [ds.name(h) for h in parsed.allies] == [
+        "Lion", "Drow_Ranger", "Viper", "Lich", "Axe"]
+    assert [ds.name(h) for h in parsed.enemies] == [
+        "Warlock", "Juggernaut", "Vengefulspirit", "Dragon_Knight", "Zuus"]
+
+
+def test_only_the_strategy_map_is_read():
+    """One recorded session read a correct split at 16s and a scrambled one
+    at 43s from the same match: after strategy time the minimap holds real
+    units and the object order means something else."""
+    ds = minimap_dataset()
+    payload = real_strategy_payload(3)
+    for state in ("DOTA_GAMERULES_STATE_TEAM_SHOWCASE",
+                  "DOTA_GAMERULES_STATE_PRE_GAME",
+                  "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS",
+                  "DOTA_GAMERULES_STATE_HERO_SELECTION"):
+        payload["map"]["game_state"] = state
+        parsed = gsi_state.parse(payload, ds)
+        assert parsed.lineup_source == "", state
+        assert parsed.enemies == [], state
 
 
 def test_origin_duplicates_are_dropped_before_counting():
-    """Both recordings put three copies of the player's own hero at (0,0).
-    Counted, ten placed heroes look like thirteen and nothing parses."""
+    """Both recordings put copies of the player's own hero at (0,0).
+    Counted, ten placed heroes look like more and nothing parses."""
     from draft_assist.gsi import minimap as gsi_minimap
 
     payload = real_strategy_payload(2)
     with_origin = gsi_minimap.hero_entries(payload, drop_origin=False)
     without = gsi_minimap.hero_entries(payload)
     assert len(with_origin) == 13 and len(without) == 10
-    assert {name for _i, name in without} == {
-        obj["unitname"] for obj in payload["minimap"].values()}
 
 
-def test_both_recorded_matches_read_the_same_way():
-    """Two matches, two different players, opposite sides — one rule."""
+def test_minimap_is_not_read_when_your_hero_is_unknown():
+    """Without your own hero there is nothing to anchor the split to, and
+    a coin flip between two line-ups is worse than none."""
     ds = minimap_dataset()
-    for which, hero in ((1, "Rubick"), (2, "Obsidian_Destroyer")):
+    payload = real_strategy_payload()
+    payload.pop("hero")
+    parsed = gsi_state.parse(payload, ds)
+    assert not parsed.allies and not parsed.enemies
+    assert any("which five are your team is unknown" in n
+               for n in parsed.notes)
+
+
+def test_the_readable_matches_read_the_same_way():
+    """Two matches, two players, opposite sides — one rule. The third
+    recording is deliberately absent: its lane slots contradict the split
+    and it is refused."""
+    ds = minimap_dataset()
+    for which, hero in ((1, "Rubick"), (3, "Lion")):
         parsed = gsi_state.parse(real_strategy_payload(which), ds)
         assert parsed.lineup_source == "minimap", which
         assert len(parsed.allies) == 5 and len(parsed.enemies) == 5
@@ -1201,7 +1252,8 @@ def test_minimap_ignores_a_payload_with_fewer_than_ten_heroes():
     payload = real_strategy_payload()
     for key in ("o12", "o11"):
         payload["minimap"].pop(key)
-    out = gsi_minimap.read_lineups(payload, name_to_id, my_hero_id=86)
+    out = gsi_minimap.read_lineups(
+        payload, name_to_id, 86, "DOTA_GAMERULES_STATE_STRATEGY_TIME")
     assert not out.complete
     assert any("not ten" in note for note in out.notes)
 
@@ -1366,3 +1418,42 @@ def test_forcing_recognition_reaches_the_capture_session():
     provider, _ds = hybrid(hero_selection_payload(), radiant=[75])
     provider.set_forced(True)
     assert provider.vision.forced
+
+
+def test_a_good_reading_is_held_when_a_later_one_scrambles():
+    """A real session read the teams correctly at 16s and scrambled them at
+    43s from the same match. The first complete reading wins."""
+    ds = minimap_dataset()
+    manual = ManualDraft()
+    server = FakeServer(real_strategy_payload(3))
+    provider = GsiProvider(ds, server, manual)
+
+    snap = provider.poll()
+    assert snap.lineup_source == "minimap"
+    good = (list(snap.left), list(snap.right))
+    assert [ds.name(h) for h in snap.left][0] == "Lion"
+
+    # the same match, now past strategy time: no reading is produced
+    later = real_strategy_payload(3)
+    later["map"]["game_state"] = "DOTA_GAMERULES_STATE_TEAM_SHOWCASE"
+    server._reception.payload = later
+    snap = provider.poll()
+    assert (snap.left, snap.right) == good
+    assert snap.lineup_source == "minimap"
+    assert not snap.needs_manual
+
+
+def test_a_new_draft_clears_the_held_line_up():
+    """Otherwise last game's teams would show through this game's draft."""
+    ds = minimap_dataset()
+    server = FakeServer(real_strategy_payload(3))
+    provider = GsiProvider(ds, server, ManualDraft())
+    assert provider.poll().lineup_source == "minimap"
+
+    server._reception.payload = {
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "player": {"name": "Bijson", "team_name": "dire"},
+        "draft": {}, "minimap": {}}
+    snap = provider.poll()
+    assert snap.left == [] and snap.right == []
+    assert snap.needs_manual

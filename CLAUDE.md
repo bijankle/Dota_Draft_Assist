@@ -103,19 +103,30 @@ credentials, and put the account at risk. Do not go there.
   - Which run is yours is decided by **where your own hero is**, never by
     order. No own hero, no reading.
   - Guards: exactly ten non-origin objects, ten distinct heroes, all
-    resolvable, own hero in exactly one run. A failed check yields
-    **nothing**, never a guess.
+    resolvable, own hero in exactly one run, and the lane check below. A
+    failed check yields **nothing**, never a guess.
 
-  Two things that look like signal and are NOT:
-  - **The `team` field.** Every object in both recordings said `team 2` —
-    once with the player on Dire, once on Radiant. Constant, so it
-    distinguishes nothing. Believing it puts all ten on one side.
-  - **The lane positions.** An earlier version paired heroes across the five
-    xpos/ypos values to verify the split and reported "5 of 5 confirm".
-    That was a coincidence of the first match. In the second, `(176,-370)`
-    holds pudge AND axe, both on the same team, because a lane can hold two
-    heroes from one side. Positions are lane assignments, not ally/enemy
-    pairs. The check was removed; do not reintroduce it.
+  The lane slots are the **check, and refusing is the point**. The five
+  xpos/ypos values are strategy-map slots, each holding one hero from each
+  run — one of yours, one of theirs. Recordings 1 and 3 have all five
+  consistent; recording 2 has two slots holding both heroes from the SAME
+  run, which cannot happen if the runs are teams. That was briefly read as
+  "positions are lane assignments, so drop the check" — backwards. The
+  contradiction is the data saying the run split is wrong for that payload,
+  and a wrong line-up is worse than none because the app then advises
+  against heroes on the user's own side. Require five agreeing slots and
+  zero contradictions, or produce nothing.
+
+  **Only `STRATEGY_TIME` is read**, and the first complete reading is
+  latched for the match by `GsiProvider`. After strategy time the minimap
+  holds real units rather than strategy-map slots and the object order
+  means something else: one recorded session produced a correct split at
+  16s and a scrambled one at 43s from the same match. The latch clears on
+  a new `HERO_SELECTION` or a new match id.
+
+  **The `team` field is not usable.** Every object in every recording says
+  `team 2` — with the player on Dire in one and Radiant in others.
+  Constant, so it distinguishes nothing.
 
   `GsiState.lineup_source` says which of these produced the picks, and the
   UI shows it. `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to

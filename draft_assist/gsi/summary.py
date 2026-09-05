@@ -350,9 +350,12 @@ def format_report(report: Report, archive: Path | None = None) -> str:
     lines += ["", "VERDICT"]
     if report.draft_block_seen and report.best_picks >= 9:
         lines += [
-            "  GSI DOES report the full draft in your own games.",
-            "  Manual entry is unnecessary — tell Claude and the app can "
-            "rely on it entirely.",
+            "  Both line-ups were read — but from the MINIMAP at strategy "
+            "time, not from the draft block,",
+            "  which is empty as always. That is after the picking is over: "
+            "in time for items and lane",
+            "  matchups, too late to choose a hero. The picks during hero "
+            "selection still come from the screen.",
         ]
     elif report.draft_key_present and _weight(report.draft_sample) == 0:
         lines += [

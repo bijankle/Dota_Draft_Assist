@@ -198,6 +198,12 @@ class GsiProvider:
         self.manual = manual if manual is not None else ManualDraft()
         self.install_hint = install_hint
         self.last_state = None
+        # A complete minimap line-up is kept for the rest of the match. One
+        # recorded session read a correct split at 16s and a scrambled one
+        # at 43s from the same game: after strategy time the minimap holds
+        # real units, so the first good reading is the one to trust.
+        self.latched: tuple[list[int], list[int]] | None = None
+        self.latched_match = ""
         # A failed bind must be sticky, not a status message that scrolls
         # away: an unbound listener looks exactly like Dota being silent.
         self.bind_error = ""
@@ -258,12 +264,25 @@ class GsiProvider:
         snap.my_team = parsed.my_team
         snap.gsi_notes = parsed.notes
         snap.gsi_capabilities = parsed.capabilities
-        snap.lineup_source = parsed.lineup_source
         snap.source = f"game data (GSI) · {parsed.summary()}"
 
-        snap.left = merge(parsed.allies, self.manual.entered("ally"))
-        snap.right = merge(parsed.enemies, self.manual.entered("enemy"))
-        snap.needs_manual = not parsed.has_full_draft
+        allies, enemies = parsed.allies, parsed.enemies
+        source = parsed.lineup_source
+        if parsed.game_state.endswith("HERO_SELECTION") or (
+                parsed.match_id and parsed.match_id != self.latched_match):
+            self.latched, self.latched_match = None, parsed.match_id
+        if source == "minimap" and len(allies) + len(enemies) >= 10:
+            self.latched = (list(allies), list(enemies))
+            self.latched_match = parsed.match_id
+        elif self.latched is not None:
+            allies, enemies = self.latched
+            source = "minimap"
+            snap.source = f"game data (GSI) · {parsed.summary()} (held)"
+
+        snap.lineup_source = source
+        snap.left = merge(allies, self.manual.entered("ally"))
+        snap.right = merge(enemies, self.manual.entered("enemy"))
+        snap.needs_manual = len(snap.left) + len(snap.right) < 9
         snap.mode = "draft" if parsed.drafting else (
             "manual" if not self.manual.is_empty else "idle")
 

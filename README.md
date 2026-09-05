@@ -25,11 +25,14 @@ splits by phase:
 
 The `draft` block is empty (`{}`) in every payload ever recorded, at every
 game state, so the picks do not arrive that way. But from strategy time the
-minimap names all ten, and the app reads both line-ups out of it: origin
-duplicates are dropped, the remaining ten arrive as two runs of five, and
-which five are yours is decided by where your own hero sits. Ten distinct
-heroes and your own among them are required; a failed check fills nothing
-rather than guessing.
+minimap names all ten during strategy time, and the app reads both line-ups
+out of it: origin duplicates are dropped, the remaining ten arrive as two
+runs of five, and which five are yours is decided by where your own hero
+sits. The split is then checked against the five strategy-map lane slots,
+each of which should hold one hero from each run — if any slot holds two
+from the same run, the reading is **refused**, because a wrong line-up is
+worse than none. The first accepted reading is held for the rest of the
+match.
 
 So the app uses **both**, and that is the default — neither is sufficient
 alone:
@@ -312,7 +315,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 229 tests: normalisation math, scoring views, item
+pytest            # 233 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
