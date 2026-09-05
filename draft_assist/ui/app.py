@@ -197,9 +197,6 @@ class MainWindow(QMainWindow):
         self._act(game_menu, "Simulate a draft — only your hero…",
                   lambda: self.run_task("simulate_gsi_real"), None,
                   "Shows the real GSI limitation: enemy slots stay empty")
-        self._act(game_menu, "&Replay recorded game data…",
-                  lambda: self.run_task("replay_gsi"), None,
-                  "Replay payloads archived from a real match")
 
         view_menu = bar.addMenu("&View")
         self.overlay_action = QAction("Draft &overlay", self)
@@ -351,7 +348,9 @@ class MainWindow(QMainWindow):
         search_row = QHBoxLayout()
         search_row.addWidget(QLabel("Filter:"))
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Type a hero name…")
+        self.search_box.setPlaceholderText(
+            "Filter the list below — type any part of a hero's name")
+        self.search_box.setClearButtonEnabled(True)
         self.search_box.textChanged.connect(self._apply_filter)
         search_row.addWidget(self.search_box, 1)
         llay.addLayout(search_row)
@@ -469,6 +468,9 @@ class MainWindow(QMainWindow):
             "The game names all ten heroes but not which five are yours. "
             "If the two rows are the wrong way round, this flips them for "
             "the rest of the match.")
+        # Accent-styled because it is not decoration: while the sides are
+        # a guess, this is the control that makes the draft correct.
+        self.swap_button.setProperty("accent", True)
         self.swap_button.clicked.connect(self._swap_sides)
         self.swap_button.setVisible(False)
         quick.addWidget(self.swap_button)
@@ -493,7 +495,7 @@ class MainWindow(QMainWindow):
         # The draft and the role controls live on the LEFT, beside the
         # hero list, so the right column is free for the breakdown and
         # the counters rather than squeezing all four into one strip.
-        llay.insertWidget(1, teams_card)
+        llay.insertWidget(0, teams_card)
 
         controls_card, clay = card()
         row1 = QHBoxLayout()
@@ -522,7 +524,7 @@ class MainWindow(QMainWindow):
         self.lock_check.toggled.connect(self._refresh_views)
         row2.addWidget(self.lock_check)
         clay.addLayout(row2)
-        llay.insertWidget(2, controls_card)
+        llay.insertWidget(1, controls_card)
 
         detail_card, dlay2 = card("Why this score")
         # The breakdown is the panel that catches a plausible total reached
@@ -714,6 +716,12 @@ class MainWindow(QMainWindow):
         self.copy_report_button.setProperty("accent", True)
         self.copy_report_button.clicked.connect(self._copy_session_report)
         buttons.addWidget(self.copy_report_button)
+        replay = QPushButton("Replay this session")
+        replay.setToolTip(
+            "Send this session's payloads back through the app exactly as "
+            "Dota sent them — the highest-fidelity test there is")
+        replay.clicked.connect(self._replay_session)
+        buttons.addWidget(replay)
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
         buttons.addWidget(open_session)
@@ -773,13 +781,26 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(text)
         self.status.showMessage("Report copied to the clipboard", 5000)
 
+    def _replay_session(self) -> None:
+        """Replay the selected recording. It lives here rather than in a
+        menu because it is one more thing you do WITH a recording, and the
+        recording is what you already have selected."""
+        folder = self._current_session()
+        if folder is None or not (folder / "gsi").is_dir():
+            self.status.showMessage(
+                "Select a recording with game data first", 6000)
+            return
+        self.run_task("replay_gsi", str(folder / "gsi"))
+
     def _open_session_folder(self) -> None:
         folder = self._current_session()
         open_folder(folder if folder is not None else RECORDINGS_DIR)
 
     # ---- maintenance tasks --------------------------------------------
-    def run_task(self, key: str) -> None:
+    def run_task(self, key: str, argument: str = "") -> None:
         task = TASKS[key]
+        if argument:
+            task = task.with_argument(argument)
         dialog = TaskDialog(task, self)
         if task.modeless:
             # A feeding task drives the main window, so it must not sit on

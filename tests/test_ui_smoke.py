@@ -1643,3 +1643,60 @@ def test_a_new_match_forgets_moved_heroes(qapp):
         assert window.side_overrides == {}
     finally:
         window.close()
+
+
+def test_the_filter_sits_directly_above_the_list_it_filters(window):
+    """It was stranded at the top of the column after the draft card moved
+    in above it, filtering a table three cards away."""
+    left = window.table.parent().layout()
+    order = []
+    for i in range(left.count()):
+        item = left.itemAt(i)
+        widget = item.widget()
+        if widget is window.table:
+            order.append("table")
+        elif widget is not None:
+            order.append("card")
+        elif item.layout() is not None and any(
+                item.layout().itemAt(j).widget() is window.search_box
+                for j in range(item.layout().count())):
+            order.append("filter")
+    assert order.index("filter") == order.index("table") - 1
+
+
+def test_replaying_a_session_is_a_button_on_the_recording(qapp, monkeypatch,
+                                                          tmp_path):
+    """It was a Game menu item that replayed "the newest" archive. It is
+    one more thing you do WITH a recording, so it lives with them."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        folder = tmp_path / "2026-09-05_1724"
+        (folder / "gsi").mkdir(parents=True)
+        (folder / "state.jsonl").write_text("")
+        window._refresh_sessions()
+
+        ran = {}
+        monkeypatch.setattr(window, "run_task",
+                            lambda key, arg="": ran.update(key=key, arg=arg))
+        window._replay_session()
+        assert ran["key"] == "replay_gsi"
+        assert ran["arg"] == str(folder / "gsi")
+
+        labels = []
+        for action in window.menuBar().actions():
+            menu = action.menu()
+            if menu is not None:
+                labels += [a.text().replace("&", "") for a in menu.actions()]
+        assert not any("Replay recorded" in text for text in labels)
+    finally:
+        window.close()
+
+
+def test_a_task_argument_reaches_the_command_line():
+    from draft_assist.ui.tasks import TASKS
+
+    task = TASKS["replay_gsi"].with_argument("/tmp/session/gsi")
+    assert task.steps[-1][-1] == "/tmp/session/gsi"
+    assert "{arg}" not in " ".join(task.steps[-1])
+    # the original is untouched
+    assert "{arg}" in " ".join(TASKS["replay_gsi"].steps[-1])

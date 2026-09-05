@@ -81,7 +81,10 @@ it instead of being guessed at.
 one archive made every count meaningless, which is the single thing that most
 confused earlier debugging.
 
-**Debug ▸ Recordings** lists past sessions and shows each one's report — and
+**Debug ▸ Recordings** is where everything about a past session lives:
+the list, its report, **Copy report**, **Open this folder**, and **Replay
+this session** — which sends that recording's payloads back through the app
+exactly as Dota sent them. It lists past sessions and shows each one's report — and
 it is **one report**, because Record starts the screen and the game feed
 together. It covers, in order: what the app concluded tick by tick, where
 each reading came from, why it declined when it declined, how the screen's
@@ -153,7 +156,8 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | What Dota is reporting right now |
 | **Game** | Clear manual draft | Between games |
-| **Game** | Simulate / Replay | Test the whole app with Dota closed |
+| **Game** | Simulate a draft | Test the whole app with Dota closed |
+| **Debug ▸ Recordings** | Replay this session | Send a real recording back through the app |
 | **View** | Draft overlay (Ctrl+O) | A small badge over Dota that expands into the picks |
 | **View** | Reload data and library (F5) | After editing files by hand |
 | **Help** | Update application | Pull the latest code from GitHub |
@@ -349,7 +353,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 272 tests: normalisation math, scoring views, item
+pytest            # 275 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

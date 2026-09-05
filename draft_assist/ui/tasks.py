@@ -41,6 +41,14 @@ class Task:
     modeless: bool = False
     env: dict = field(default_factory=dict)
 
+    def with_argument(self, value: str) -> "Task":
+        """A copy with {arg} filled in — for tasks that act on a thing the
+        user selected, like replaying one recording."""
+        from dataclasses import replace
+        return replace(self, steps=[[part.replace("{arg}", value)
+                                     for part in step]
+                                    for step in self.steps])
+
 
 PY = "{py}"
 
@@ -119,10 +127,11 @@ TASKS = {
     "replay_gsi": Task(
         key="replay_gsi",
         title="Replay recorded game data",
-        steps=[[PY, "tools/simulate_gsi.py", "--from"]],
-        blurb=("Replays real payloads previously archived by Record game "
-               "data, exactly as Dota sent them. This is the highest-"
-               "fidelity test available without launching the game."),
+        steps=[[PY, "tools/simulate_gsi.py", "--from", "{arg}"]],
+        blurb=("Replays this recording's payloads exactly as Dota sent "
+               "them. The highest-fidelity test available without "
+               "launching the game: nothing is modelled, so it can find "
+               "faults a simulated draft cannot."),
         cancellable=True,
         modeless=True,
     ),
