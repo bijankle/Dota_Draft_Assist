@@ -1605,3 +1605,85 @@ def test_two_drafts_in_one_session_are_both_dumped(tmp_path):
     assert "npc_dota_hero_ursa" in text
     assert "npc_dota_hero_bristleback" in text
     assert "gsi_00000.json" in text and "gsi_00001.json" in text
+
+
+# ---- the lane-pair split ------------------------------------------------
+
+def test_the_ten_are_split_by_the_five_lane_slots():
+    """The strategy map puts your five where you chose and theirs where you
+    predicted, so each of the five slots holds one of each. Splitting on
+    that cannot produce a 4-1 team, which the run split could and did."""
+    ds = minimap_dataset()
+    parsed = gsi_state.parse(real_strategy_payload(), ds)
+    assert parsed.lineup_source == "minimap"
+    assert len(parsed.allies) == len(parsed.enemies) == 5
+    # Every lane slot contributed exactly one hero to each side.
+    from draft_assist.gsi import minimap
+    entries = minimap.hero_entries(real_strategy_payload())
+    slots = {}
+    for index, name, position in entries:
+        slots.setdefault(position, []).append(name)
+    assert len(slots) == 5
+    assert all(len(members) == 2 for members in slots.values())
+    by_name = {ds.name(h): h for h in parsed.allies + parsed.enemies}
+    ally_ids = set(parsed.allies)
+    for members in slots.values():
+        sides = [by_name[ds.name(_hero_id(ds, name))] in ally_ids
+                 for name in members]
+        assert sides.count(True) == 1, \
+            f"lane slot {members} did not split one to each side"
+
+
+def _hero_id(ds, internal_name):
+    for hid, entry in ds.heroes.items():
+        if entry.get("internal_name") == internal_name:
+            return hid
+    raise KeyError(internal_name)
+
+
+def test_a_short_lineup_falls_back_to_object_order_rather_than_guessing():
+    """One recording had nine placed because a player chose no lane, so one
+    slot held a single hero and nothing could pair. Falling back beats
+    refusing, but the note has to say which rule ran."""
+    from draft_assist.gsi import minimap
+    entries = [(3, "npc_dota_hero_lion", (176, -370)),
+               (4, "npc_dota_hero_axe", (176, -370)),
+               (5, "npc_dota_hero_zuus", (752, 144))]
+    assert minimap._split_by_lane_pairs(
+        entries, {"npc_dota_hero_lion": 26, "npc_dota_hero_axe": 2,
+                  "npc_dota_hero_zuus": 22}) is None
+
+
+def test_the_note_says_which_rule_produced_the_split():
+    """A reading whose provenance is not stated cannot be argued with."""
+    ds = minimap_dataset()
+    parsed = gsi_state.parse(real_strategy_payload(), ds)
+    assert any("lane slots" in note for note in parsed.notes), parsed.notes
+    assert not parsed.sides_certain      # still not verified against truth
+
+
+def test_the_first_complete_minimap_reading_is_the_one_that_sticks():
+    """Re-latching every payload let the reading wobble for the whole of
+    strategy time: a real recording moved heroes between teams eight times
+    in thirty seconds while the user was reading it."""
+    import copy
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import GsiProvider
+
+    ds = minimap_dataset()
+    payload = real_strategy_payload()
+    provider = GsiProvider(ds, FakeServer(payload), ManualDraft())
+    first = provider.poll()
+    assert len(first.left) == 5
+
+    # A later payload with the objects in a different order must not move
+    # anyone: the minimap's object order is not stable within a phase.
+    shuffled = copy.deepcopy(payload)
+    block = shuffled["minimap"]
+    keys = list(block)
+    shuffled["minimap"] = {k: block[v] for k, v in
+                           zip(keys, list(reversed(keys)))}
+    provider.server._reception.payload = shuffled
+    later = provider.poll()
+    assert later.left == first.left
+    assert later.right == first.right

@@ -193,11 +193,30 @@ credentials, and put the account at risk. Do not go there.
     distinct heroes, all resolvable, own hero among them. A failed check
     yields **nothing**, never a guess.
 
-  **The lane slots are NOT a check.** They are where a hero was placed on
-  the strategy map — yours in the lane you chose, theirs in the lane you
-  predicted — and two team-mates can share a lane (pudge with axe, dragon
-  knight with juggernaut in two recordings). Two attempts at using them to
-  validate the split were both wrong. Do not reintroduce it.
+  **The lane slots ARE the split, which reverses this file's earlier
+  conclusion.** Across all five recordings the placed heroes stand in
+  exactly five positions — `(176,-370)`, `(176,370)`, `(752,-144)`,
+  `(752,144)`, `(1088,0)` — with exactly TWO heroes in each. That is the
+  strategy map: your five where you put them, theirs where you predicted.
+  `minimap._split_by_lane_pairs` groups by position, orders each pair by
+  object index, and takes the set holding the player's own hero. It cannot
+  produce a 4-1 team, which is what the run split kept doing.
+
+  The earlier claim that "two team-mates can share a lane (pudge with axe,
+  dragon knight with juggernaut)" was read OFF THE RUN SPLIT — the very
+  thing in question — so it never was evidence, and the previous attempt's
+  failures are explained without the pairing being wrong: recording 4 had
+  only nine placed (one player chose no lane) so a slot held one hero, and
+  recording 2's pairs contradict the runs, which is evidence against the
+  runs.
+
+  **Still not verified against a labelled match.** The PAIRING is solid
+  across five recordings; which half of each pair is yours rests on object
+  index order being consistent between slots, and nothing has proved that.
+  So `sides_certain` stays False, the note names the rule that produced the
+  split ("lane pairs" or the "object order" fallback), and the drag
+  correction stays. When the positions do not pair cleanly it falls back to
+  the runs rather than refusing.
 
   **Only `STRATEGY_TIME` is read**, and the first complete reading is
   latched for the match by `GsiProvider`. After strategy time the minimap
@@ -205,6 +224,11 @@ credentials, and put the account at risk. Do not go there.
   means something else: one recorded session produced a correct split at
   16s and a scrambled one at 43s from the same match. The latch clears on
   a new `HERO_SELECTION` or a new match id.
+  **The FIRST complete reading, and only the first.** Re-latching on every
+  payload that carried ten let the reading wobble for the whole of strategy
+  time — one real recording moved heroes between teams eight times in
+  thirty seconds while the user was reading it. The guard is
+  `self.latched is None`, not just "ten are present".
 
   **The `team` field is not usable AT STRATEGY TIME**, where every object
   in every recording says `team 2` — with the player on Dire in one and
@@ -303,6 +327,23 @@ credentials, and put the account at risk. Do not go there.
   the panel exists to show. Tests must actually RENDER every tile state:
   the portrait branch shipped once with a mistyped Qt enum and nothing
   caught it, because no test had a portrait on disk to take that branch.
+- **The item strip lives under the draft and is live from the first enemy
+  pick** (`ui/item_row.py`, `ui/item_icons.py`). It was a paragraph of
+  prose in a side panel gated behind locking your own hero, so on the
+  screen where items matter it was blank, and by the time it filled the
+  decision it informed was made. Icons rather than names because the strip
+  is read in the corner of the eye — a player recognises a BKB by its shape
+  long before reading the words — with the strongest trigger's severity as
+  a colour bar and the whole reasoning in the tooltip, since a strip that
+  explained itself in place would be the paragraph again. Icons are
+  downloaded with the portraits into `assets/items/`, named by a slug of
+  the DISPLAY name so `rules/items.yaml` can go on saying "Black King Bar"
+  the way a person writes it; a missing icon draws the name and is normal,
+  not an error. Role and own-hero filtering still apply once known — they
+  just no longer gate the panel.
+- **There is no hero-entry bar.** Typing a pick, the ally/enemy toggle and
+  Undo are gone at the user's request; a pick is entered by clicking a slot
+  and using the picker. `_taken_heroes()` still refuses duplicates.
 - **Fixing the draft by hand is a DRAG** (`HeroTile.dropped_on`,
   `_on_slot_dropped`). Onto the other team, it EXCHANGES the two heroes,
   because a 5v5 cannot become 4v6 and a hero on the wrong side almost

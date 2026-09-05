@@ -309,7 +309,13 @@ class GsiProvider:
         if parsed.game_state.endswith("HERO_SELECTION") or (
                 parsed.match_id and parsed.match_id != self.latched_match):
             self.latched, self.latched_match = None, parsed.match_id
-        if source == "minimap" and len(allies) + len(enemies) >= 10:
+        if (source == "minimap" and len(allies) + len(enemies) >= 10
+                and self.latched is None):
+            # The FIRST complete reading, and only the first. Re-latching on
+            # every payload let the split and the order wobble tick to tick
+            # for the whole of strategy time — one real recording showed the
+            # reading changing eight times in thirty seconds, moving heroes
+            # between teams while the user was looking at it.
             self.latched = (list(allies), list(enemies))
             self.latched_match = parsed.match_id
         elif self.latched is not None:

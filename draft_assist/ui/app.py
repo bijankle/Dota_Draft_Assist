@@ -58,11 +58,11 @@ from .. import record as record_mod
 from . import theme
 from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
+from .item_row import ItemRow
 from .manual import ManualDraft
 from .overlay import DraftOverlay
 from .portrait_overlay import PortraitOverlay
-from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
-                     ValueItem)
+from .tables import BreakdownPanel, MatrixTable, ValueItem
 from .task_dialog import TaskDialog
 from .teams import TeamPanel
 from .tasks import TASKS
@@ -80,7 +80,6 @@ ROLE_LABELS = [("(no role)", None), ("Carry (1)", "carry"), ("Mid (2)", "mid"),
                ("Offlane (3)", "offlane"), ("Soft support (4)", "soft_support"),
                ("Hard support (5)", "hard_support")]
 HIGHLIGHT = QColor(theme.HIGHLIGHT_ROW)
-SEV_COLORS = {3: theme.BAD, 2: theme.WARN, 1: theme.TEXT_DIM}
 
 
 def open_folder(path: Path) -> None:
@@ -135,10 +134,6 @@ class MainWindow(QMainWindow):
         session = getattr(provider, "session", None)
         self.layout_spec = (getattr(session, "layout", None)
                             or layout_mod.load_layout())
-        self.quick_side = "enemy"
-        # (side, index) in the order they were typed, so Undo
-        # removes the last pick rather than an arbitrary one.
-        self._entry_order: list[tuple[str, int]] = []
         self.rules, self.rules_meta = rules, rules_meta
         self.manual = manual if manual is not None else getattr(
             provider, "manual", None) or ManualDraft()
@@ -389,37 +384,7 @@ class MainWindow(QMainWindow):
             teams_row.addWidget(panel, 1)
         outer.addLayout(teams_row)
 
-        # Typing the draft in is the normal way the other nine picks
-        # arrive, so it gets a keyboard path: type a few letters, Enter
-        # fills the next empty slot on the active side and leaves the box
-        # ready for the next. Tab is left alone so it walks the slots.
         entry_card, elay = card()
-        quick = QHBoxLayout()
-        quick.setSpacing(6)
-        self.quick_side_button = QPushButton("Enemy")
-        self.quick_side_button.setToolTip(
-            "Which team the next entry goes to (Ctrl+Tab flips it)")
-        self.quick_side_button.setFixedWidth(78)
-        self.quick_side_button.clicked.connect(self._flip_quick_side)
-        quick.addWidget(self.quick_side_button)
-        self.quick_entry = QuickEntry()
-        self.quick_entry.setPlaceholderText(
-            "Type a hero and press Enter to add the pick…")
-        self.quick_entry.returnPressed.connect(self._quick_add)
-        # Ctrl+Tab, not Tab: Tab has to walk the draft slots.
-        flip = QAction("Flip entry side", self)
-        flip.setShortcut(QKeySequence("Ctrl+Tab"))
-        flip.triggered.connect(self._flip_quick_side)
-        self.addAction(flip)
-        quick.addWidget(self.quick_entry, 1)
-        self.quick_undo = QPushButton("Undo")
-        self.quick_undo.setFixedWidth(64)
-        self.quick_undo.setToolTip("Remove the last hand-entered pick")
-        self.quick_undo.clicked.connect(self._quick_undo)
-        quick.addWidget(self.quick_undo)
-
-        elay.addLayout(quick)
-
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("My role:"))
         self.role_combo = QComboBox()
@@ -455,6 +420,15 @@ class MainWindow(QMainWindow):
         status_row.addWidget(self.manual_hint, 1)
         elay.addLayout(status_row)
         outer.addWidget(entry_card)
+
+        # Items sit between the draft and the grids: they are about the ten
+        # heroes above, and they were unreadable in a side panel gated
+        # behind locking your own pick — blank on the screen where they
+        # matter, and late by the time they filled.
+        items_card, ilay = card("Items · hand-authored rules")
+        self.item_row = ItemRow()
+        ilay.addWidget(self.item_row)
+        outer.addWidget(items_card)
 
         # ----- the grids, beneath the teams they describe
         grids = QHBoxLayout()
@@ -569,12 +543,6 @@ class MainWindow(QMainWindow):
             "candidates, not picks in this game.")
         clay2.addWidget(self.counters)
         rlay.addWidget(counters_card, 2)
-
-        items_card, ilay = card("Items · hand-authored rules")
-        self.items_view = QTextBrowser()
-        self.items_view.setMinimumHeight(140)
-        ilay.addWidget(self.items_view)
-        rlay.addWidget(items_card, 2)
 
         tabs.addTab(analysis, "Analysis")
 
@@ -1288,7 +1256,6 @@ class MainWindow(QMainWindow):
 
     def _clear_manual(self) -> None:
         self.manual.clear()
-        self._entry_order.clear()
         self.last_draft_key = None
         self.status.showMessage("Cleared hand-entered draft slots", 5000)
 
@@ -1536,8 +1503,6 @@ class MainWindow(QMainWindow):
 
     def _clear_slot(self, side: str, index: int) -> None:
         self.manual.set_slot(side, index, None)
-        self._entry_order[:] = [entry for entry in self._entry_order
-                                if entry != (side, index)]
         self.last_draft_key = None
         self.refresh()
 
@@ -1554,11 +1519,6 @@ class MainWindow(QMainWindow):
         if snap is not None:
             taken |= set(snap.left) | set(snap.right)
         return taken
-
-    def _flip_quick_side(self) -> None:
-        self.quick_side = "ally" if self.quick_side == "enemy" else "enemy"
-        self.quick_side_button.setText(self.quick_side.title())
-        self.quick_entry.setFocus()
 
     def resolve_hero(self, text: str, exclude: set[int] | None = None):
         """Text a user typed under time pressure -> hero id, or None.
@@ -1585,47 +1545,6 @@ class MainWindow(QMainWindow):
             if hits:
                 return None          # ambiguous: make the user type more
         return None
-
-    def _quick_add(self) -> None:
-        text = self.quick_entry.text().strip()
-        if not text:
-            return
-        if self.ds.is_empty:
-            self.status.showMessage(
-                "No hero data yet — Data ▸ Update statistics", 6000)
-            return
-        hero_id = self.resolve_hero(text, exclude=self._taken_heroes())
-        if hero_id is None:
-            self.status.showMessage(
-                f"'{text}' matches no single undrafted hero — keep typing",
-                4000)
-            return
-        side = self.quick_side
-        slots = self.manual.allies if side == "ally" else self.manual.enemies
-        if None not in slots:
-            self.status.showMessage(f"{side.title()} team is already full",
-                                    4000)
-            return
-        index = slots.index(None)
-        self.manual.set_slot(side, index, hero_id)
-        self._entry_order.append((side, index))
-        self.quick_entry.clear()
-        self.last_draft_key = None
-        self.status.showMessage(
-            f"{self.ds.name(hero_id)} → {side} slot {index + 1}", 4000)
-        self.refresh()
-        # Straight on to the next pick: a draft is thirty seconds long and
-        # reaching for the mouse between heroes is the whole cost.
-        self.quick_entry.setFocus()
-
-    def _quick_undo(self) -> None:
-        if not self._entry_order:
-            self.status.showMessage("Nothing hand-entered to undo", 4000)
-            return
-        side, index = self._entry_order.pop()
-        self.manual.set_slot(side, index, None)
-        self.last_draft_key = None
-        self.refresh()
 
     def _edit_slot(self, side: str, index: int) -> None:
         """Fill, change or clear a draft slot by hand."""
@@ -2168,35 +2087,27 @@ class MainWindow(QMainWindow):
             empty="No matchup data for this hero yet.")
 
     def _update_items(self, draft: scoring.DraftState) -> None:
-        if draft.my_hero is None:
-            self.items_view.setHtml(
-                f"<p style='color:{theme.TEXT_DIM}'>Lock your pick (choose it "
-                "above and tick <b>Locked in</b>) to see item flags.</p>")
-            return
+        """The strip is live from the first enemy pick.
+
+        It used to wait until the user's own hero was locked in, which made
+        it blank for the whole of the draft — the one stretch where knowing
+        that their line-up demands a Nullifier would change what you pick.
+        Role and own-hero filtering still apply once those are known; they
+        just no longer gate the whole panel.
+        """
         enemy_names = [self.ds.name(h) for h in draft.enemies]
         ally_names = [self.ds.name(h) for h in draft.allies
                       if h != draft.my_hero]
+        if not enemy_names and not ally_names:
+            self.item_row.show_items([], "Items appear as the draft fills in.")
+            return
         advice = items_mod.recommend(
             self.rules, enemy_names, ally_names, draft.my_role,
             self.rules_meta.get("current_patch", "0.0"))
-        if not advice:
-            self.items_view.setHtml(
-                f"<p style='color:{theme.TEXT_DIM}'>Nothing urgent flagged "
-                "for this lineup — silence is a valid answer.</p>")
-            return
-        html = []
-        for a in advice:
-            color = SEV_COLORS.get(a.triggers[0].severity, theme.TEXT_DIM)
-            stale = (" <b>[unverified this patch]</b>" if a.any_stale else "")
-            html.append(f"<p style='margin:4px 0'><font color='{color}'>"
-                        f"<b>{a.item}</b></font> "
-                        f"<font color='{theme.TEXT_DIM}'>weight "
-                        f"{a.score:.1f}</font>{stale}<br>")
-            for t in a.triggers:
-                html.append(f"<font color='{theme.TEXT_DIM}'>&nbsp;&nbsp;sev "
-                            f"{t.severity}:</font> {t.reason}<br>")
-            html.append("</p>")
-        self.items_view.setHtml("".join(html))
+        self.item_row.show_items(
+            advice,
+            "Nothing urgent flagged for this line-up — silence is a valid "
+            "answer.")
 
     # ---- status / debug ------------------------------------------------
     def _update_status(self, snap) -> None:

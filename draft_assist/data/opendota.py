@@ -166,3 +166,29 @@ def fetch_matchups(hero_ids: list[int]) -> dict[int, dict]:
         if n % 10 == 0 or n == len(hero_ids):
             print(f"  matchups: {n}/{len(hero_ids)} heroes")
     return out
+
+
+def fetch_items() -> dict[str, str]:
+    """Display name -> CDN image path, from /constants/items.
+
+    Only the two fields the icon download needs. Keyed by the DISPLAY name
+    (`dname`) because that is what the hand-authored rules in
+    `rules/items.yaml` say — the rules are written by a person, for a
+    person, and making them carry internal keys would be making the file
+    worse to serve the loader.
+    """
+    raw = _get("constants/items", "opendota_constants_items.json")
+    require(isinstance(raw, dict) and len(raw) > 100, "OpenDota constants/items",
+            f"expected a dict of 100+ items, got {type(raw).__name__} "
+            f"len {len(raw) if hasattr(raw, '__len__') else '?'}")
+    out: dict[str, str] = {}
+    for key, entry in raw.items():
+        if not isinstance(entry, dict):
+            continue
+        name, img = entry.get("dname"), entry.get("img")
+        if isinstance(name, str) and isinstance(img, str) and img:
+            out[name] = img
+    require(len(out) > 100, "OpenDota constants/items",
+            f"only {len(out)} items had both 'dname' and 'img'; the fields "
+            "may have been renamed — check the raw dump")
+    return out

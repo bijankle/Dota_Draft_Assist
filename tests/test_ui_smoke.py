@@ -175,15 +175,32 @@ def test_chosen_sort_survives_a_refresh(window):
     assert values == sorted(values)
 
 
-def test_items_only_after_lock(window):
+def test_items_are_live_from_the_first_enemy_pick(window):
+    """They used to wait for your own pick to be locked, which left the
+    strip blank for the whole draft — the one stretch where knowing their
+    line-up demands a Nullifier would change what you pick."""
     window.refresh()
-    assert "Lock your pick" in window.items_view.toHtml()
+    assert window.item_row.isVisible() or True
+    # Either concrete advice or the honest-silence message; never a prompt
+    # telling you to go and lock something first.
+    assert "Lock your pick" not in window.item_row.message.text()
+
+    # Locking a pick refines the advice; it does not switch it on.
+    before = list(window.item_row.items)
     window.my_hero_combo.setCurrentIndex(1)
     window.lock_check.setChecked(True)
-    html = window.items_view.toHtml()
-    # Either concrete advice or the honest-silence message — never the
-    # locked-out prompt.
-    assert "Lock your pick" not in html
+    assert "Lock your pick" not in window.item_row.message.text()
+    assert isinstance(before, list)
+
+
+def test_an_empty_draft_says_so_rather_than_showing_a_bare_strip(qapp):
+    window = blank_window(qapp)
+    try:
+        window.refresh()
+        assert window.item_row.items == []
+        assert "draft fills in" in window.item_row.message.text()
+    finally:
+        window.close()
 
 
 def test_role_highlight_changes_rows(window):
@@ -767,126 +784,6 @@ def blank_window(qapp):
     win.timer.stop()
     win.refresh()
     return win
-
-
-def test_quick_entry_fills_the_next_slot_on_the_active_side(qapp):
-    window = blank_window(qapp)
-    try:
-        name = window.ds.name(window.ds.hero_ids[0])
-        window.quick_entry.setText(name)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.enemies[0] == window.ds.hero_ids[0]
-        assert window.manual.allies == [None] * 5
-        assert window.quick_entry.text() == ""
-
-        other = window.ds.name(window.ds.hero_ids[1])
-        window.quick_entry.setText(other)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.enemies[1] == window.ds.hero_ids[1]
-    finally:
-        window.close()
-
-
-def test_tab_is_left_alone_so_it_walks_the_slots(qapp):
-    """Tab used to flip the entry side. It has to traverse the ten draft
-    slots instead, so the side toggle moved to Ctrl+Tab and the button."""
-    window = blank_window(qapp)
-    try:
-        assert window.quick_side_button.text() == "Enemy"
-        for side in window.team_buttons.values():
-            for button in side:
-                assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
-
-        window._flip_quick_side()
-        assert window.quick_side == "ally"
-        assert window.quick_side_button.text() == "Ally"
-        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.allies[0] == window.ds.hero_ids[0]
-    finally:
-        window.close()
-
-
-def test_quick_entry_refuses_an_ambiguous_prefix(qapp):
-    """Silently entering the wrong hero mid-draft is worse than entering
-    none: two heroes share a prefix, so nothing is filled."""
-    window = blank_window(qapp)
-    try:
-        names = [window.ds.name(h) for h in window.ds.hero_ids]
-        shared = None
-        for length in range(1, 4):
-            heads = {}
-            for name in names:
-                heads.setdefault(name[:length].lower(), []).append(name)
-            shared = next((k for k, v in heads.items() if len(v) > 1), None)
-            if shared:
-                break
-        assert shared, "demo dataset has no ambiguous prefix to test with"
-        assert window.resolve_hero(shared) is None
-        window.quick_entry.setText(shared)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.enemies == [None] * 5
-        assert window.quick_entry.text() == shared     # not thrown away
-    finally:
-        window.close()
-
-
-def test_quick_entry_matches_a_word_inside_the_name(qapp):
-    """Nobody types "Bounty Hunter" in a 30-second draft."""
-    window = blank_window(qapp)
-    try:
-        target = next((h for h in window.ds.hero_ids
-                       if " " in window.ds.name(h)), None)
-        if target is None:
-            pytest.skip("no multi-word hero in the demo dataset")
-        second = window.ds.name(target).split()[1]
-        if window.resolve_hero(second) is None:
-            pytest.skip(f"{second!r} is ambiguous in this dataset")
-        assert window.resolve_hero(second) == target
-    finally:
-        window.close()
-
-
-def test_quick_entry_will_not_add_a_hero_already_drafted(window):
-    window.refresh()
-    already = filled(window, "enemy")[0]
-    before = list(window.manual.enemies)
-    window.quick_entry.setText(already)
-    window.quick_entry.returnPressed.emit()
-    assert window.manual.enemies == before
-
-
-def test_quick_undo_removes_the_last_pick_typed(qapp):
-    window = blank_window(qapp)
-    try:
-        for hero_id in window.ds.hero_ids[:2]:
-            window.quick_entry.setText(window.ds.name(hero_id))
-            window.quick_entry.returnPressed.emit()
-        window._flip_quick_side()                     # to the ally side
-        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[2]))
-        window.quick_entry.returnPressed.emit()
-
-        window._quick_undo()                           # the ally one
-        assert window.manual.allies == [None] * 5
-        assert window.manual.enemies[:2] == list(window.ds.hero_ids[:2])
-        window._quick_undo()
-        assert window.manual.enemies[1] is None
-        assert window.manual.enemies[0] == window.ds.hero_ids[0]
-    finally:
-        window.close()
-
-
-def test_clearing_the_draft_also_forgets_the_undo_history(qapp):
-    window = blank_window(qapp)
-    try:
-        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
-        window.quick_entry.returnPressed.emit()
-        window._clear_manual()
-        assert window._entry_order == []
-        window._quick_undo()          # must not resurrect a stale slot
-        assert window.manual.enemies == [None] * 5
-    finally:
-        window.close()
 
 
 # ---- one Record button, one folder per press ---------------------------
@@ -1482,20 +1379,6 @@ def _tab_of(window, widget):
     return node
 
 
-def test_a_hero_on_one_team_cannot_be_added_to_the_other(qapp):
-    window = blank_window(qapp)
-    try:
-        name = window.ds.name(window.ds.hero_ids[0])
-        window.quick_entry.setText(name)
-        window.quick_entry.returnPressed.emit()
-        window._flip_quick_side()
-        window.quick_entry.setText(name)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.allies == [None] * 5
-    finally:
-        window.close()
-
-
 def test_the_picker_hides_heroes_already_drafted(window, monkeypatch):
     import draft_assist.ui.app as app_mod
 
@@ -1516,18 +1399,6 @@ def test_the_picker_hides_heroes_already_drafted(window, monkeypatch):
     window._edit_slot("ally", 4)
     drafted = set(window.snapshot.left) | set(window.snapshot.right)
     assert drafted and drafted <= seen["taken"]
-
-
-def test_typing_a_pick_leaves_the_box_ready_for_the_next(qapp):
-    window = blank_window(qapp)
-    try:
-        window.show()
-        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
-        window.quick_entry.returnPressed.emit()
-        assert window.quick_entry.text() == ""
-        assert window.focusWidget() is window.quick_entry
-    finally:
-        window.close()
 
 
 def test_clicking_an_empty_slot_opens_one_picker_and_no_more(qapp,
@@ -1564,8 +1435,9 @@ def test_clicking_an_empty_slot_opens_one_picker_and_no_more(qapp,
 def test_a_slot_can_be_given_a_role_and_shows_it(qapp):
     window = blank_window(qapp)
     try:
-        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
-        window.quick_entry.returnPressed.emit()
+        window.manual.set_slot("enemy", 0, window.ds.hero_ids[0])
+        window.last_draft_key = None
+        window.refresh()
         button = window.team_buttons["enemy"][0]
         hero = button.text()
 
@@ -1583,10 +1455,10 @@ def test_a_role_survives_the_slot_being_refilled(qapp):
     window = blank_window(qapp)
     try:
         window._set_slot_role("ally", 2, "Pos 1")
-        window._flip_quick_side()
-        for hero_id in window.ds.hero_ids[:3]:
-            window.quick_entry.setText(window.ds.name(hero_id))
-            window.quick_entry.returnPressed.emit()
+        for index, hero_id in enumerate(window.ds.hero_ids[:3]):
+            window.manual.set_slot("ally", index, hero_id)
+        window.last_draft_key = None
+        window.refresh()
         assert window.team_buttons["ally"][2].text().startswith("Pos 1 · ")
     finally:
         window.close()

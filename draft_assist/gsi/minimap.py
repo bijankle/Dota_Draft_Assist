@@ -26,25 +26,39 @@ minimap carries all ten, in a shape two recorded matches agree on
 `team 2`, with the player on Dire in one and Radiant in another. Constant,
 so it distinguishes nothing.
 
-**The lane positions are NOT a check, and two attempts at using them as one
-were wrong.** They are where each hero sits on the strategy map: your five
-in the lanes you chose, theirs in the lanes you predicted. Nothing stops
-two heroes from the same team sharing a lane, and recordings 2 and 4 both
-do exactly that — pudge with axe, dragon knight with juggernaut. Requiring
-the five slots to pair one-from-each-run passed on recordings 1 and 3 by
-coincidence and refused 2 and 4 outright. It is gone for good.
+**The lane positions ARE structure, which reverses an earlier conclusion in
+this file.** Across all five recordings the placed heroes occupy exactly
+five distinct positions — `(176,-370)`, `(176,370)`, `(752,-144)`,
+`(752,144)`, `(1088,0)` — and each holds exactly TWO heroes. That is the
+strategy map: your five in the lanes you chose, theirs in the lanes you
+predicted, so a slot holds one of yours and one of theirs.
 
-**Which ten heroes is solid. Which five are yours is not.** The run split
-anchored on the player's own hero looked right on four recordings and then
-came out INVERTED on a fifth: the app put the player with four heroes from
-the other team. Nothing in the payload has yet been shown to distinguish
-the sides — the `team` field is constant, the lane slots are placements,
-and the run order is not reliably team order.
+An earlier attempt tested this as "the pairs must straddle the run
+boundary", and it failed on recordings 2 and 4. Both failures are now
+explained without the pairing being wrong: recording 4 had only NINE placed
+(one player chose no lane), so one slot held a single hero and no pairing
+could straddle anything; and recording 2's pairs disagree with the RUN
+split, which is evidence against the runs, not against the pairs. The note
+above about "pudge with axe, dragon knight with juggernaut" being
+team-mates was read off the run split — the very thing in question — so it
+never was evidence.
 
-So the split is offered, never asserted: `Lineups.sides_certain` is False,
-the note says so, and the UI carries a Swap teams control that flips it for
-the match. A wrong line-up asserted silently is the worst outcome
-available, because the app then advises against the user's own team.
+**So the split is now taken from the pairs**: group the ten by position,
+order each pair by object index, and the set holding the player's own hero
+is the player's team. Two things this buys that the runs never could — it
+cannot produce a 4-1 team, since every slot contributes exactly one hero
+to each side, and it degrades honestly, falling back to the runs when the
+positions do not pair cleanly.
+
+**It is still NOT verified against a labelled match.** The pairing itself
+is solid across five recordings; which HALF of each pair is yours rests on
+object-index order being consistent between slots, and nothing has proved
+that. So `Lineups.sides_certain` stays False, the note says which rule
+produced the split, and the UI keeps the drag correction. A wrong line-up
+asserted silently is the worst outcome available, because the app then
+advises against the user's own team. The screen settles it outright when
+vision has a frame (`vision/lineup.py`); this is the fallback for when it
+does not.
 
 Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
 real units rather than strategy-map slots, and the object order means
@@ -71,6 +85,9 @@ class Lineups:
     # other team. Until a signal is found that settles it, the split is
     # offered and labelled, never asserted, and the UI can flip it.
     sides_certain: bool = False
+    # "lane pairs" or "object order" — which rule produced the split, so
+    # the session report can grade one against the other.
+    split_rule: str = ""
 
     @property
     def complete(self) -> bool:
@@ -166,7 +183,14 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
             "is yours, so which five are your team is unknown")
         return out
 
-    first, second = ids[:TEAM_SIZE], ids[TEAM_SIZE:]
+    by_id = dict(zip(names, ids))
+    split = _split_by_lane_pairs(entries, by_id)
+    how = "lane pairs"
+    if split is None:
+        split = (ids[:TEAM_SIZE], ids[TEAM_SIZE:])
+        how = "object order"
+
+    first, second = split
     if my_hero_id in first:
         allies, enemies = first, second
     elif my_hero_id in second:
@@ -178,8 +202,52 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
         return out
 
     out.allies, out.enemies = allies, enemies
-    out.notes.append(
-        "ten heroes read from the minimap; which five are yours is a "
-        "GUESS from the object order — one recorded match came out "
-        "inverted, so check it and use Swap teams if it is reversed")
+    out.split_rule = how
+    if how == "lane pairs":
+        out.notes.append(
+            "ten heroes read from the minimap, split by the five strategy-"
+            "map lane slots — each slot holds one of yours and one of "
+            "theirs, so the teams cannot come out 4-1. Which half of each "
+            "pair is yours is not yet verified against a known match: "
+            "check it once and drag a hero across if it is wrong")
+    else:
+        out.notes.append(
+            "ten heroes read from the minimap, but they did not fall into "
+            "five lane pairs, so the split fell back to object order — "
+            "that has come out INVERTED on a real match, so check it and "
+            "drag heroes across if it is wrong")
     return out
+
+
+def _split_by_lane_pairs(entries, by_id: dict[str, int]
+                         ) -> tuple[list[int], list[int]] | None:
+    """Two candidate teams from the strategy map's lane slots.
+
+    Ten heroes standing in exactly five positions, two to a position, is
+    the strategy map: your five where you put them, theirs where you
+    predicted. Ordering each pair by object index and taking one from each
+    gives two sets of five that cannot be 4-1 whatever else is wrong.
+
+    Returns None — not a guess — when the positions do not pair cleanly,
+    which is what a short line-up looks like (one recording had nine placed
+    because a player chose no lane).
+    """
+    slots: dict[tuple, list[tuple[int, str]]] = {}
+    for index, name, position in entries:
+        slots.setdefault(position, []).append((index, name))
+    if len(slots) != TEAM_SIZE:
+        return None
+    if any(len(members) != 2 for members in slots.values()):
+        return None
+    lower, upper = [], []
+    for members in slots.values():
+        members.sort()
+        lower.append((members[0][0], by_id[members[0][1]]))
+        upper.append((members[1][0], by_id[members[1][1]]))
+    # Each side back into object order. The slots are a set, so iterating
+    # them would order the teams by whichever lane happened to be seen
+    # first — object order at least matches what every other reading here
+    # uses, and it is what the screen will overwrite anyway.
+    lower.sort()
+    upper.sort()
+    return ([hid for _i, hid in lower], [hid for _i, hid in upper])
