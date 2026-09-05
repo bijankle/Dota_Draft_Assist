@@ -191,3 +191,98 @@ def test_sessions_are_listed_newest_first(tmp_path):
 
 def test_listing_a_missing_folder_is_not_an_error(tmp_path):
     assert record.sessions(tmp_path / "nope") == []
+
+
+# ---- one report, because Record starts both sources at once ------------
+
+def test_the_report_includes_what_dota_sent(tmp_path):
+    """Splitting the screen's account from the game's meant neither
+    answered a question on its own."""
+    folder = session(tmp_path, [
+        row(20, "HERO_SELECTION", "screen", ["Rubick"], [])])
+    (folder / "gsi" / "gsi_00001.json").write_text(json.dumps({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
+                "matchid": "8983179556"},
+        "player": {"name": "Bijson"}, "draft": {}}), encoding="utf-8")
+    text = record.format_session_report(folder)
+    assert "WHAT DOTA ACTUALLY SENT" in text
+    assert "Payloads examined: 1" in text
+    assert "8983179556" in text
+    assert "empty draft block" in text
+    # and the session's own account is still there, above it
+    assert text.index("TIMELINE") < text.index("WHAT DOTA ACTUALLY SENT")
+
+
+def test_the_report_survives_a_session_with_no_payloads(tmp_path):
+    folder = session(tmp_path, [
+        row(20, "HERO_SELECTION", "screen", ["Rubick"], [])])
+    assert "No game-data payloads" in record.format_session_report(folder)
+
+
+def test_reaching_strategy_time_without_a_lineup_says_so(tmp_path):
+    """The real session that prompted this said "the game never reached
+    strategy time" when the timeline plainly showed it did. The reason has
+    to be the true one, or it sends the reader after the wrong bug."""
+    folder = session(tmp_path, [
+        row(20, "HERO_SELECTION", "screen", ["Rubick"], []),
+        row(116, "STRATEGY_TIME", "none", ["Rubick"], []),
+    ])
+    result = record.compare_sources(record.read_states(folder))
+    assert not result["comparable"]
+    assert "DID reach strategy time" in result["reason"]
+    assert "never reached" not in result["reason"]
+
+
+def test_never_reaching_strategy_time_still_says_that(tmp_path):
+    folder = session(tmp_path, [
+        row(20, "HERO_SELECTION", "screen", ["Rubick"], [])])
+    result = record.compare_sources(record.read_states(folder))
+    assert "never reached strategy time" in result["reason"]
+
+
+def test_the_report_says_where_each_reading_came_from(tmp_path):
+    folder = session(tmp_path, [
+        dict(row(10, "HERO_SELECTION", "none", [], []), has_frame=False),
+        dict(row(20, "HERO_SELECTION", "screen", ["Rubick"], []),
+             has_frame=True, recognised=True),
+        dict(row(30, "HERO_SELECTION", "screen", ["Rubick"], []),
+             has_frame=True, recognised=True),
+    ])
+    text = record.format_session_report(folder)
+    assert "WHERE EACH READING CAME FROM" in text
+    assert "2 ticks  screen" in text
+    assert "1 ticks  none" in text
+    assert "2 ticks had a captured frame, 2 of them recognised" in text
+
+
+def test_a_captured_but_unrecognised_frame_is_named_as_such(tmp_path):
+    """Capture working and recognition failing is a different bug from
+    capture never running, and the report must not blur them."""
+    folder = session(tmp_path, [
+        dict(row(20, "HERO_SELECTION", "none", [], []),
+             has_frame=True, recognised=False)])
+    text = record.format_session_report(folder)
+    assert "nothing was recognised" in text
+    assert "not a capture one" in text
+
+
+def test_no_frame_at_all_is_named_as_such(tmp_path):
+    folder = session(tmp_path, [
+        dict(row(20, "HERO_SELECTION", "none", [], []), has_frame=False)])
+    assert "No frame was ever captured" in record.format_session_report(folder)
+
+
+def test_the_reasons_the_app_declined_are_in_the_report(tmp_path):
+    """A session of source "none" is unreadable without them: the log
+    records the failure but not why."""
+    folder = session(tmp_path, [
+        dict(row(20, "STRATEGY_TIME", "none", [], []),
+             notes=["minimap carried 3 placed heroes, not ten"]),
+        dict(row(30, "STRATEGY_TIME", "none", [], []),
+             notes=["minimap carried 3 placed heroes, not ten"],
+             warning="Dota has stopped sending data"),
+    ])
+    text = record.format_session_report(folder)
+    assert "WHAT THE APP SAID ABOUT ITS OWN READING" in text
+    assert "2x  minimap carried 3 placed heroes, not ten" in text
+    assert "WARNING: Dota has stopped sending data" in text

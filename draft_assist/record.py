@@ -24,6 +24,7 @@ is thousands of images that answer nothing.
 
 import json
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -155,8 +156,19 @@ class Recorder:
 
 
 def snapshot_record(snap, allies, enemies, dataset) -> dict:
-    """What the app concluded this tick, in names a human can read back."""
+    """What the app concluded this tick, in names a human can read back.
+
+    The notes matter as much as the picks. A session where every tick says
+    source "none" is unreadable without them: the reason the minimap
+    declined, or the screen never recognised anything, is exactly what has
+    to come back — otherwise the log records the failure without recording
+    why.
+    """
     return {
+        "notes": list(getattr(snap, "gsi_notes", []) or []),
+        "capture": getattr(snap, "source", ""),
+        "has_frame": getattr(snap, "frame", None) is not None,
+        "recognised": getattr(snap, "read", None) is not None,
         "game_state": getattr(snap, "game_state", ""),
         "source": getattr(snap, "lineup_source", "") or "none",
         "mode": getattr(snap, "mode", ""),
@@ -209,11 +221,18 @@ def compare_sources(states: list[dict]) -> dict:
         if state.get("source") == "screen":
             screen = state
     if truth is None or screen is None:
-        return {"comparable": False,
-                "reason": ("no minimap line-up in this session — the game "
-                           "never reached strategy time"
-                           if truth is None else
-                           "the screen never read a pick in this session")}
+        reached = any("STRATEGY_TIME" in str(s.get("game_state", ""))
+                      for s in states)
+        if truth is None and reached:
+            reason = ("the game DID reach strategy time but no line-up was "
+                      "read from the minimap — see the notes below, which "
+                      "say why it declined")
+        elif truth is None:
+            reason = ("no minimap line-up: the session never reached "
+                      "strategy time")
+        else:
+            reason = "the screen never read a pick in this session"
+        return {"comparable": False, "reason": reason}
 
     out = {"comparable": True, "swapped": False}
     truth_sides = {"allies": set(truth.get("allies", [])),
@@ -247,8 +266,15 @@ def compare_sources(states: list[dict]) -> dict:
     return out
 
 
-def format_session_report(folder: Path) -> str:
-    """A whole session as text a human can read and paste back."""
+def format_session_report(folder: Path, dataset=None) -> str:
+    """A whole session as one report.
+
+    Recording starts the screen and the game feed together, so the account
+    of it is one document: what the app concluded tick by tick, why it
+    declined when it declined, how the screen's reading scored against the
+    game's, and what the raw payloads contained. Splitting those across two
+    tools meant neither answered a question on its own.
+    """
     lines = [f"RECORDING  {folder.name}", "=" * 64]
     meta_path = folder / "meta.json"
     if meta_path.is_file():
@@ -266,7 +292,7 @@ def format_session_report(folder: Path) -> str:
     states = read_states(folder)
     if not states:
         lines += ["", "No state log — nothing was recorded."]
-        return "\n".join(lines)
+        return "\n".join(lines) + _payload_section(folder, dataset)
 
     lines += ["", "TIMELINE (only where the reading changed)", "-" * 64]
     previous = None
@@ -285,11 +311,36 @@ def format_session_report(folder: Path) -> str:
             f"allies={', '.join(state.get('allies', [])) or '—'} | "
             f"enemies={', '.join(state.get('enemies', [])) or '—'}")
 
+    lines += ["", "WHERE EACH READING CAME FROM", "-" * 64]
+    sources = Counter(str(s.get("source", "")) or "none" for s in states)
+    for name, count in sources.most_common():
+        lines.append(f"  {count:6d} ticks  {name}")
+    recognised = sum(1 for s in states if s.get("recognised"))
+    framed = sum(1 for s in states if s.get("has_frame"))
+    lines.append(f"  {framed:6d} ticks had a captured frame, "
+                 f"{recognised} of them recognised something")
+    if framed and not recognised:
+        lines.append("  The window was captured but nothing was recognised "
+                     "— a crop or library problem, not a capture one.")
+    elif not framed:
+        lines.append("  No frame was ever captured: screen reading was off, "
+                     "unbound, or bound to the wrong window.")
+
+    notes = Counter()
+    for state in states:
+        notes.update(state.get("notes", []) or [])
+        if state.get("warning"):
+            notes[f"WARNING: {state['warning']}"] += 1
+    if notes:
+        lines += ["", "WHAT THE APP SAID ABOUT ITS OWN READING", "-" * 64]
+        for note, count in notes.most_common(15):
+            lines.append(f"  {count:6d}x  {note}")
+
     lines += ["", "SCREEN vs GAME", "-" * 64]
     comparison = compare_sources(states)
     if not comparison["comparable"]:
         lines.append(f"Not comparable: {comparison['reason']}")
-        return "\n".join(lines)
+        return "\n".join(lines) + _payload_section(folder, dataset)
 
     if comparison["swapped"]:
         lines.append("SIDES WERE SWAPPED: the screen reading matches the "
@@ -312,7 +363,31 @@ def format_session_report(folder: Path) -> str:
     if comparison["wrong"]:
         lines.append("A WRONG hero is the serious one: the app advised "
                      "against a hero that was never in the game.")
-    return "\n".join(lines)
+    return "\n".join(lines) + _payload_section(folder, dataset)
+
+
+def _payload_section(folder: Path, dataset) -> str:
+    """The raw game feed, analysed, appended to the same report.
+
+    This used to be a separate tool over a separate archive. Recording
+    starts both sources at once, so the account of them belongs together.
+    """
+    gsi_dir = folder / "gsi"
+    if not gsi_dir.is_dir():
+        return ""
+    from .data import store
+    from .gsi import summary as gsi_summary
+
+    if dataset is None:
+        dataset = store.load_or_empty()
+    try:
+        report = gsi_summary.from_directory(gsi_dir, dataset)
+    except OSError as exc:
+        return f"\n\nCould not read {gsi_dir}: {exc}"
+    if not report.payloads:
+        return "\n\nNo game-data payloads in this session."
+    return ("\n\n" + "=" * 64 + "\nWHAT DOTA ACTUALLY SENT\n"
+            + gsi_summary.format_report(report, gsi_dir))
 
 
 def sessions(root: Path) -> list[Path]:

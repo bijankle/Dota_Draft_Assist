@@ -267,13 +267,13 @@ class MainWindow(QMainWindow):
             lambda: open_folder(RECORDINGS_DIR))
         toolbar.addWidget(self.open_recordings_button)
 
-        self.inspect_button = QPushButton("What did it contain?")
-        self.inspect_button.setMinimumHeight(32)
-        self.inspect_button.setToolTip(
-            "Read the last recording back and say what the game really sent")
-        self.inspect_button.clicked.connect(
-            lambda: self.run_task("inspect_recording"))
-        toolbar.addWidget(self.inspect_button)
+        self.report_button = QPushButton("Report")
+        self.report_button.setMinimumHeight(32)
+        self.report_button.setToolTip(
+            "Open the last recording's report — everything the session saw, "
+            "in one document")
+        self.report_button.clicked.connect(self._show_latest_report)
+        toolbar.addWidget(self.report_button)
 
         toolbar.addSeparator()
         self.force_check = QCheckBox("Force recognition")
@@ -293,6 +293,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.data_pill)
 
         tabs = QTabWidget()
+        self.tabs = tabs
         self.setCentralWidget(tabs)
 
         # ----- Draft tab
@@ -541,6 +542,7 @@ class MainWindow(QMainWindow):
         # The Debug tab is two jobs: what the app is looking at RIGHT NOW,
         # and what a past session recorded. They want different screens.
         debug_tabs = QTabWidget()
+        self.debug_tabs = debug_tabs
         debug_tabs.addTab(dbg, "Live")
         debug_tabs.addTab(self._build_sessions_tab(), "Recordings")
         tabs.addTab(debug_tabs, "Debug")
@@ -588,6 +590,17 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
         return page
 
+    def _show_latest_report(self) -> None:
+        """Jump to the newest session's report. One button, one document —
+        the screen's reading and the game's payloads were never two
+        separate questions."""
+        self._refresh_sessions()
+        self.tabs.setCurrentIndex(1)
+        self.debug_tabs.setCurrentIndex(1)
+        if not self.sessions:
+            self.status.showMessage(
+                "No recordings yet — press Record before a game", 8000)
+
     def _refresh_sessions(self) -> None:
         self.sessions = record_mod.sessions(RECORDINGS_DIR)
         self.session_list.clear()
@@ -611,7 +624,7 @@ class MainWindow(QMainWindow):
         # crash never got one written.
         try:
             self.session_report.setPlainText(
-                record_mod.format_session_report(folder))
+                record_mod.format_session_report(folder, self.ds))
         except OSError as exc:
             self.session_report.setPlainText(f"Could not read {folder}:\n{exc}")
 
@@ -1074,7 +1087,6 @@ class MainWindow(QMainWindow):
         self.record_button.setProperty("recording", recording)
         self.record_button.style().unpolish(self.record_button)
         self.record_button.style().polish(self.record_button)
-        self.inspect_button.setEnabled(not recording)
         if not recording:
             self.recording_label.setText("")
 

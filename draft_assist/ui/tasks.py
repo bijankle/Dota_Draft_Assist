@@ -126,16 +126,6 @@ TASKS = {
         cancellable=True,
         modeless=True,
     ),
-    "inspect_recording": Task(
-        key="inspect_recording",
-        title="What did the recording contain?",
-        steps=[[PY, "tools/inspect_recording.py"]],
-        blurb=("Reads the newest recording back and reports which "
-               "components Dota actually sent, per phase and per match — "
-               "including whether the enemy line-up was ever among them.\n\n"
-               "It reads files only: you do NOT need to be in a game, and "
-               "it is safe to run while the app is listening."),
-    ),
     "probe": Task(
         key="probe",
         title="Run capture probe",

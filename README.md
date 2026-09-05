@@ -73,8 +73,12 @@ it instead of being guessed at.
 one archive made every count meaningless, which is the single thing that most
 confused earlier debugging.
 
-**Debug ▸ Recordings** lists past sessions with their reports, and copies one
-to the clipboard in a click.
+**Debug ▸ Recordings** lists past sessions and shows each one's report — and
+it is **one report**, because Record starts the screen and the game feed
+together. It covers, in order: what the app concluded tick by tick, where
+each reading came from, why it declined when it declined, how the screen's
+reading scored against the game's, and what the raw payloads contained.
+**Copy report** puts the lot on the clipboard.
 
 #### The report grades recognition against the game itself
 
@@ -136,7 +140,7 @@ the app, with live progress and readable errors.
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
 | **Toolbar** | Record / Stop | Captures one game: payloads, frames, and the app's own reading |
-| **Toolbar** | What did it contain? | Reads the newest recording back, per phase and per match |
+| **Toolbar** | Report | Opens the newest recording's report — one document for the whole session |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
@@ -297,7 +301,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 206 tests: normalisation math, scoring views, item
+pytest            # 214 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
@@ -307,8 +311,8 @@ python -m draft_assist.ui.app --manual           # hand-entered draft
 python -m draft_assist.ui.app --vision           # screen-capture fallback
 python -m draft_assist.ui.app --demo             # UI on a scripted draft
 python tools/probe_gsi.py --minutes 10           # what does GSI really send?
-python tools/inspect_recording.py               # ...and what did it send?
-python tools/inspect_recording.py --match 8981992551   # one game only
+python tools/inspect_recording.py               # the newest session's report
+python tools/inspect_recording.py --from recordings/2026-09-05_2031
 ```
 
 See `CLAUDE.md` for the domain invariants (normalised deltas, fractional

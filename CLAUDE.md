@@ -122,8 +122,8 @@ credentials, and put the account at risk. Do not go there.
   what to look for, never a claim about what arrives: the same recordings
   carried `buildings`, `minimap`, `roshan`, `couriers` and `neutralitems`
   in a player's own feed, which this file had listed as spectator-only.
-  The toolbar's **What did it contain?** re-derives all of the above from a
-  recording, per phase and per match.
+  All of the above is re-derived from a recording, per phase and per match,
+  as one section of the session report.
 - **Recording is one button and one folder per press** (`record.py`,
   `recordings/<timestamp>/`): payloads, draft frames, and `state.jsonl` — one
   line per tick saying what the app concluded and which source produced it.
@@ -134,7 +134,13 @@ credentials, and put the account at risk. Do not go there.
   in the game) from a MISSED one, and both from swapped sides, which is a
   mapping fault rather than a recognition one. Recorder writes are
   failure-tolerant by design: a full disk costs the recording, never the
-  draft window.
+  draft window. **The report is ONE document** — screen and game feed start
+  together, so their accounts belong together: timeline, where each reading
+  came from, the notes explaining every decline, the screen-vs-game score,
+  then the raw payload analysis. A session of `source: none` is unreadable
+  without the notes, so `snapshot_record` logs them along with whether a
+  frame was captured and whether anything was recognised — capture failing
+  and recognition failing are different bugs.
 - **Bracket comparisons across sites are not apples to apples.** Stratz buckets
   whole matches by average rank; OpenDota counts each player at their own rank.
   That makes cross-source win rates disagree slightly even when tier labels are
