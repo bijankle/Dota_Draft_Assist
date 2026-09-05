@@ -1,34 +1,46 @@
-"""Application palette and stylesheet.
+"""Application palette and stylesheet — Discord's dark theme.
 
-One dark theme, chosen because the app is read at a glance while a draft
-timer runs: high contrast for the numbers that matter, muted chrome for
-everything else, and colour reserved for meaning (good/bad deltas, severity,
-warnings) rather than decoration.
+Deliberately borrowed rather than invented: the app is read at a glance
+while a draft timer runs, and a palette the user already reads fluently
+every day costs no attention to parse. Discord's greys are also unusually
+well tuned for exactly this job — a dense dark surface where the only
+saturated colour is meaning.
+
+Colour is reserved for meaning: green and red for signed deltas, blurple
+for the one action a screen wants, amber for warnings. Everything else is
+grey, so a number in colour is always worth reading.
 """
 
-BG = "#15181d"
-BG_ELEVATED = "#1c2027"
-BG_INPUT = "#232833"
-BORDER = "#2e3542"
-TEXT = "#e6e9ef"
-TEXT_DIM = "#98a2b3"
-ACCENT = "#4f8cc9"
-GOOD = "#5fbf7f"
-BAD = "#e06c6c"
-WARN = "#e0a955"
-ROW_ALT = "#191d24"
-HIGHLIGHT_ROW = "#1e3a2a"
+# Discord's dark theme, by role rather than by name.
+BG = "#313338"            # main content
+BG_ELEVATED = "#2b2d31"   # chrome: menus, toolbar, cards
+BG_DEEP = "#1e1f22"       # the darkest surface, behind everything
+BG_INPUT = "#383a40"      # inputs and unselected buttons
+BG_HOVER = "#404249"
+BORDER = "#3f4147"
+TEXT = "#dbdee1"
+TEXT_STRONG = "#f2f3f5"
+TEXT_DIM = "#949ba4"
+ACCENT = "#5865f2"        # blurple
+ACCENT_HOVER = "#4752c4"
+GOOD = "#23a55a"
+BAD = "#f23f43"
+WARN = "#f0b232"
+ROW_ALT = "#2e3035"
+HIGHLIGHT_ROW = "#28352c"
+# Discord ships "gg sans"; anyone who has the client has it installed.
+FONT_STACK = '"gg sans", "Noto Sans", "Inter", "Segoe UI", system-ui, sans-serif'
 
 STYLESHEET = f"""
 QWidget {{
     background: {BG};
     color: {TEXT};
-    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-family: {FONT_STACK};
     font-size: 13px;
 }}
 QMainWindow::separator {{ background: {BORDER}; width: 1px; height: 1px; }}
 
-QMenuBar {{ background: {BG_ELEVATED}; border-bottom: 1px solid {BORDER}; }}
+QMenuBar {{ background: {BG_DEEP}; border-bottom: 1px solid {BG_DEEP}; }}
 QMenuBar::item {{ padding: 6px 12px; background: transparent; }}
 QMenuBar::item:selected {{ background: {BG_INPUT}; }}
 QMenu {{ background: {BG_ELEVATED}; border: 1px solid {BORDER}; padding: 4px; }}
@@ -37,13 +49,14 @@ QMenu::item:selected {{ background: {ACCENT}; color: #ffffff; }}
 QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 8px; }}
 
 QToolBar {{
-    background: {BG_ELEVATED};
+    background: {BG_DEEP};
     border-bottom: 1px solid {BORDER};
     padding: 6px;
     spacing: 8px;
 }}
 
 QTabWidget::pane {{ border: none; background: {BG}; }}
+QTabBar {{ background: {BG_DEEP}; }}
 QTabBar::tab {{
     background: transparent;
     color: {TEXT_DIM};
@@ -55,25 +68,40 @@ QTabBar::tab:hover {{ color: {TEXT}; }}
 
 QPushButton {{
     background: {BG_INPUT};
-    border: 1px solid {BORDER};
-    border-radius: 5px;
-    padding: 6px 12px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 7px 14px;
+    color: {TEXT};
+    font-weight: 500;
 }}
-QPushButton:hover {{ border-color: {ACCENT}; }}
-QPushButton:pressed {{ background: {BORDER}; }}
-QPushButton:disabled {{ color: #5b6472; background: {BG_ELEVATED}; }}
+QPushButton:hover {{ background: {BG_HOVER}; border-color: {BG_HOVER}; }}
+QPushButton:pressed {{ background: {BG_DEEP}; }}
+QPushButton:disabled {{ color: {TEXT_DIM}; background: {BG_ELEVATED}; }}
 QPushButton[accent="true"] {{
     background: {ACCENT}; border-color: {ACCENT}; color: #ffffff;
     font-weight: 600;
 }}
-QPushButton[accent="true"]:hover {{ background: #5f9cd9; }}
+QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
     background: #c2453f; border-color: #c2453f; color: #ffffff;
     font-weight: 700;
 }}
 QPushButton[recording="true"]:hover {{ background: #d4544e; }}
-QPushButton[slot="true"] {{ text-align: left; padding: 8px 10px; }}
+QPushButton[slot="true"] {{
+    text-align: left; padding: 8px 11px; background: {BG_INPUT};
+    border-left: 3px solid {BG_INPUT};
+}}
+/* An empty slot is an invitation, not a pick: it reads as a dashed hole. */
+QPushButton[slot="true"][filled="false"] {{
+    background: transparent; color: {TEXT_DIM};
+    border: 1px dashed {BORDER}; border-left: 3px solid transparent;
+}}
+/* The hero whose relations every other slot is currently showing. */
+QPushButton[slot="true"][focused="true"] {{
+    background: {BG_HOVER}; color: {TEXT_STRONG};
+    border-left: 3px solid {ACCENT}; font-weight: 600;
+}}
 
 QComboBox {{
     background: {BG_INPUT};
@@ -121,14 +149,14 @@ QTextBrowser, QPlainTextEdit {{
 }}
 QScrollBar:vertical {{ background: transparent; width: 11px; margin: 0; }}
 QScrollBar::handle:vertical {{
-    background: #39414f; border-radius: 5px; min-height: 28px;
+    background: {BG_DEEP}; border-radius: 5px; min-height: 28px;
 }}
-QScrollBar::handle:vertical:hover {{ background: #4a5464; }}
+QScrollBar::handle:vertical:hover {{ background: #111214; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar:horizontal {{ background: transparent; height: 11px; }}
-QScrollBar::handle:horizontal {{ background: #39414f; border-radius: 5px; }}
+QScrollBar::handle:horizontal {{ background: {BG_DEEP}; border-radius: 5px; }}
 
-QStatusBar {{ background: {BG_ELEVATED}; border-top: 1px solid {BORDER}; }}
+QStatusBar {{ background: {BG_DEEP}; border-top: 1px solid {BG_DEEP}; }}
 QStatusBar::item {{ border: none; }}
 
 QProgressBar {{
@@ -143,22 +171,27 @@ QFrame[card="true"] {{
     border-radius: 8px;
 }}
 QFrame[banner="true"] {{
-    background: #2a2318;
+    background: #3d3524;
     border: 1px solid {WARN};
     border-radius: 8px;
 }}
-QLabel[heading="true"] {{ font-size: 15px; font-weight: 600; }}
+QLabel[heading="true"] {{ font-size: 15px; font-weight: 600; color: {TEXT_STRONG}; }}
+/* Discord's section labels: small, upper, wide-tracked, muted. */
+QLabel[eyebrow="true"] {{
+    font-size: 11px; font-weight: 700; color: {TEXT_DIM};
+    letter-spacing: 1px;
+}}
 QLabel[dim="true"] {{ color: {TEXT_DIM}; }}
 QLabel[pill="true"] {{
     background: {BG_INPUT}; border: 1px solid {BORDER};
     border-radius: 9px; padding: 2px 9px; color: {TEXT_DIM};
 }}
 QLabel[pill="warn"] {{
-    background: #33291a; border: 1px solid {WARN};
+    background: #3d3524; border: 1px solid {WARN};
     border-radius: 9px; padding: 2px 9px; color: {WARN};
 }}
 QLabel[pill="good"] {{
-    background: #1b2f22; border: 1px solid {GOOD};
+    background: #1f3327; border: 1px solid {GOOD};
     border-radius: 9px; padding: 2px 9px; color: {GOOD};
 }}
 """

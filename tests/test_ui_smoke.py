@@ -1442,9 +1442,27 @@ def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
         window.close()
 
 
-def test_the_matrix_tab_exists_and_is_not_the_debug_tab(window):
+def test_the_draft_tab_carries_the_teams_and_both_matrices(window):
+    """The matrices moved onto the draft screen: the grid explaining the
+    ten picks belongs beside the ten picks, not behind a tab."""
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "Matrix", "Debug"]
+    assert titles == ["Draft", "Analysis", "Debug"]
+    draft_tab = window.tabs.widget(0)
+    for widget in (window.matchup_matrix, window.synergy_matrix,
+                   window.team_columns["ally"], window.team_columns["enemy"]):
+        assert window.tabs.indexOf(_tab_of(window, widget)) == 0, \
+            f"{widget} is not on the draft tab"
+    assert window.tabs.indexOf(_tab_of(window, window.table)) == 1
+    assert draft_tab is not None
+
+
+def _tab_of(window, widget):
+    """Walk up to whichever top-level tab page holds this widget."""
+    pages = {window.tabs.widget(i) for i in range(window.tabs.count())}
+    node = widget
+    while node is not None and node not in pages:
+        node = node.parentWidget()
+    return node
 
 
 def test_no_swap_offered_while_you_are_still_picking(qapp):
@@ -1748,3 +1766,128 @@ def test_a_measuring_failure_never_takes_the_app_down(window, monkeypatch):
     window._measure_calibration()
     assert "measuring failed" in window.cal_label.text()
     assert window.measure_button.isEnabled()
+
+
+# ---- clicking a hero: the matrix read one row at a time -----------------
+
+def _delta_text(window, side, index):
+    return window.team_columns[side].slots[index].delta.text()
+
+
+def test_clicking_an_ally_answers_both_questions(window):
+    """An ally is judged twice over — how it fits with your four and how it
+    fares against their five — so clicking one shows synergy above the
+    allies AND matchup above the enemies."""
+    window.refresh()
+    window.team_buttons["ally"][0].click()
+
+    assert window.focus is not None and window.focus[0] == "ally"
+    assert _delta_text(window, "ally", 0) == ""          # the clicked hero
+    for i in range(1, 5):
+        assert "vs" not in _delta_text(window, "ally", i), \
+            "an ally-to-ally pairing is synergy, not a matchup"
+        assert _delta_text(window, "ally", i) != ""
+    for i in range(len(window._current_draft().enemies)):
+        assert "vs" in _delta_text(window, "enemy", i)
+
+
+def test_clicking_an_enemy_answers_only_the_matchup(window):
+    """Their pair-ups with each other are their business: clicking an enemy
+    says how YOUR five fare against it and nothing else."""
+    window.refresh()
+    window.team_buttons["enemy"][2].click()
+
+    assert window.focus[0] == "enemy"
+    for i in range(5):
+        assert "vs" in _delta_text(window, "ally", i)
+    for i in range(len(window._current_draft().enemies)):
+        if i != 2:
+            assert _delta_text(window, "enemy", i) == ""
+
+
+def test_clicking_the_same_hero_again_clears_the_view(window):
+    """The way out is the same gesture as the way in."""
+    window.refresh()
+    button = window.team_buttons["ally"][1]
+    button.click()
+    assert window.focus is not None
+    button.click()
+    assert window.focus is None
+    assert all(_delta_text(window, side, i) == ""
+               for side in ("ally", "enemy") for i in range(5))
+
+
+def test_the_numbers_read_from_your_side_whichever_portrait_they_sit_under(
+        window):
+    """Green under an enemy must mean the same thing as green under an
+    ally — good for you — or the view teaches the wrong reflex."""
+    from draft_assist.model import scoring
+    window.refresh()
+    draft = window._current_draft()
+    enemy = draft.enemies[0]
+    relations = scoring.relations_to(window.ds, enemy, draft)
+    for rel in relations:
+        expected = float(window.ds.delta_vs[window.ds.index[rel.hero_id],
+                                            window.ds.index[enemy]])
+        assert rel.delta == pytest.approx(expected)
+
+
+def test_a_hero_leaving_the_draft_drops_the_focus(window):
+    window.refresh()
+    window.team_buttons["ally"][0].click()
+    assert window.focus is not None
+    window._on_draft_changed([], [], 10)
+    assert window.focus is None
+
+
+# ---- the overlay toggle drives both overlays ----------------------------
+
+def test_the_overlay_tick_brings_the_in_game_numbers_too(window):
+    """One tick, one feature: the badge and the numbers under the portraits
+    are the same thing to the person using them."""
+    window.refresh()
+    window._set_overlay(True)
+    try:
+        assert window.portrait_overlay is not None
+        assert window.portrait_overlay.isVisible()
+    finally:
+        window._set_overlay(False)
+    assert not window.portrait_overlay.isVisible()
+
+
+def test_hiding_the_overlay_relocks_the_anchors(window):
+    """An overlay put away while unlocked would come back swallowing clicks
+    that belong to Dota."""
+    window.refresh()
+    window._set_overlay(True)
+    window.unlock_anchors_action.setChecked(True)
+    assert window.portrait_overlay.unlocked
+    window._set_overlay(False)
+    assert not window.portrait_overlay.unlocked
+    assert not window.unlock_anchors_action.isChecked()
+
+
+def test_unlocking_with_no_overlay_says_so_rather_than_doing_nothing(window):
+    window.refresh()
+    assert window.portrait_overlay is None
+    window.unlock_anchors_action.setChecked(True)
+    assert not window.unlock_anchors_action.isChecked()
+
+
+def test_the_in_game_numbers_follow_the_screen_banks_not_the_teams(window):
+    """left/right is a fact about pixels; ally/enemy is a fact about the
+    draft. The overlay hangs off the crop boxes, so it has to use the
+    former — putting your team's numbers over their portraits would be
+    worse than showing none."""
+    window.refresh()
+    window._set_overlay(True)
+    try:
+        snap = window.snapshot
+        window.team_buttons["ally"][0].click()
+        overlay = window.portrait_overlay
+        for bank, ids in ((overlay.left, snap.left),
+                          (overlay.right, snap.right)):
+            assert len(bank) == 5
+            assert sum(v is not None for v in bank) <= len(ids)
+    finally:
+        window._set_overlay(False)

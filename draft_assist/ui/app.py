@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
-                             QDoubleSpinBox, QLayout, QListWidget,
+                             QDoubleSpinBox, QListWidget,
                              QPushButton,
                              QScrollArea, QSplitter,
                              QTableWidget,
@@ -59,9 +59,11 @@ from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
 from .overlay import DraftOverlay
+from .portrait_overlay import PortraitOverlay
 from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
                      ValueItem)
 from .task_dialog import TaskDialog
+from .teams import TeamColumn
 from .tasks import TASKS
 
 # Loose mapping from queued position to OpenDota hero role tags, used ONLY
@@ -140,9 +142,14 @@ class MainWindow(QMainWindow):
             provider, "manual", None) or ManualDraft()
         self.snapshot = None
         self.last_draft_key = None
+        # The hero whose relations the other nine slots are showing, as
+        # (side, hero id). Clicking it again clears it; it survives a
+        # refresh but not the hero leaving the draft.
+        self.focus: tuple[str, int] | None = None
         self.scored: list[scoring.ScoredHero] = []
         self.settings = ui_settings.load()
         self.overlay: DraftOverlay | None = None
+        self.portrait_overlay: PortraitOverlay | None = None
         self.setWindowTitle("Dota Draft Assist")
         self.resize(1240, 820)
         self._build_menus()
@@ -203,12 +210,23 @@ class MainWindow(QMainWindow):
         self.overlay_action.setCheckable(True)
         self.overlay_action.setShortcut(QKeySequence("Ctrl+O"))
         self.overlay_action.setStatusTip(
-            "A small always-on-top badge over Dota that expands into the "
-            "recommendations")
+            "Over Dota: the recommendation badge, and the synergy and "
+            "counter numbers under the ten portraits")
         self.overlay_action.toggled.connect(self._set_overlay)
         view_menu.addAction(self.overlay_action)
+        # The crop boxes are calibrated per user and can be out, so the
+        # numbers that hang off them have to be movable by hand.
+        self.unlock_anchors_action = QAction("&Unlock overlay anchors", self)
+        self.unlock_anchors_action.setCheckable(True)
+        self.unlock_anchors_action.setStatusTip(
+            "Drag the in-game numbers into place. While unlocked the "
+            "overlay takes the mouse instead of passing it to Dota.")
+        self.unlock_anchors_action.toggled.connect(self._set_unlock_anchors)
+        view_menu.addAction(self.unlock_anchors_action)
         self._act(view_menu, "&Reset overlay position",
                   self._reset_overlay_position)
+        self._act(view_menu, "Reset in-game &number position",
+                  self._reset_portrait_anchors)
         view_menu.addSeparator()
         self._act(view_menu, "Re&load data and library", self.reload_backend,
                   "F5", "Re-read the downloaded data from disk")
@@ -319,7 +337,13 @@ class MainWindow(QMainWindow):
         self.tabs = tabs
         self.setCentralWidget(tabs)
 
-        # ----- Draft tab
+        # ----- Draft tab: the two teams, and the grids under them.
+        # The whole tab answers one question — what does this ten-hero
+        # board look like — so nothing else lives on it. Your five sit on
+        # the left and theirs on the right because that is where they are
+        # on the pick bar, and the matrices sit directly underneath the
+        # side they describe: counters under the two teams they compare,
+        # synergy under your own.
         draft_widget = QWidget()
         outer = QVBoxLayout(draft_widget)
         outer.setContentsMargins(12, 12, 12, 12)
@@ -338,8 +362,132 @@ class MainWindow(QMainWindow):
         blay.addWidget(self.banner_button)
         outer.addWidget(self.banner)
 
+        teams_row = QHBoxLayout()
+        teams_row.setSpacing(10)
+        self.team_columns = {}
+        self.team_buttons = {}
+        self.team_captions = {}
+        for side, caption in (("ally", "Your team"), ("enemy", "Enemy team")):
+            column = TeamColumn(side, caption)
+            self.team_columns[side] = column
+            self.team_buttons[side] = column.buttons
+            self.team_captions[side] = column.caption
+            for index, slot in enumerate(column.slots):
+                b = slot.button
+                b.setToolTip("Click to set this pick; click a filled slot "
+                             "and every other hero shows what it is worth "
+                             "beside or against it. Right-click to change "
+                             "it, clear it, or give it a role.")
+                b.clicked.connect(self._on_slot_clicked)
+                b.setContextMenuPolicy(
+                    Qt.ContextMenuPolicy.CustomContextMenu)
+                b.customContextMenuRequested.connect(
+                    lambda pos, side=side, i=index:
+                        self._slot_menu(side, i, pos))
+            teams_row.addWidget(column, 1)
+        outer.addLayout(teams_row)
+
+        # Typing the draft in is the normal way the other nine picks
+        # arrive, so it gets a keyboard path: type a few letters, Enter
+        # fills the next empty slot on the active side and leaves the box
+        # ready for the next. Tab is left alone so it walks the slots.
+        entry_card, elay = card()
+        quick = QHBoxLayout()
+        quick.setSpacing(6)
+        self.quick_side_button = QPushButton("Enemy")
+        self.quick_side_button.setToolTip(
+            "Which team the next entry goes to (Ctrl+Tab flips it)")
+        self.quick_side_button.setFixedWidth(78)
+        self.quick_side_button.clicked.connect(self._flip_quick_side)
+        quick.addWidget(self.quick_side_button)
+        self.quick_entry = QuickEntry()
+        self.quick_entry.setPlaceholderText(
+            "Type a hero and press Enter to add the pick…")
+        self.quick_entry.returnPressed.connect(self._quick_add)
+        # Ctrl+Tab, not Tab: Tab has to walk the draft slots.
+        flip = QAction("Flip entry side", self)
+        flip.setShortcut(QKeySequence("Ctrl+Tab"))
+        flip.triggered.connect(self._flip_quick_side)
+        self.addAction(flip)
+        quick.addWidget(self.quick_entry, 1)
+        self.quick_undo = QPushButton("Undo")
+        self.quick_undo.setFixedWidth(64)
+        self.quick_undo.setToolTip("Remove the last hand-entered pick")
+        self.quick_undo.clicked.connect(self._quick_undo)
+        quick.addWidget(self.quick_undo)
+
+        self.swap_button = QPushButton("⇅ Swap teams")
+        self.swap_button.setToolTip(
+            "The game names all ten heroes but not which five are yours. "
+            "If the two columns are the wrong way round, this flips them "
+            "for the rest of the match.")
+        # Accent-styled because it is not decoration: while the sides are
+        # a guess, this is the control that makes the draft correct.
+        self.swap_button.setProperty("accent", True)
+        self.swap_button.clicked.connect(self._swap_sides)
+        self.swap_button.setVisible(False)
+        quick.addWidget(self.swap_button)
+        elay.addLayout(quick)
+
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("My role:"))
+        self.role_combo = QComboBox()
+        for label, _ in ROLE_LABELS:
+            self.role_combo.addItem(label)
+        self.role_combo.currentIndexChanged.connect(self._refresh_views)
+        row1.addWidget(self.role_combo, 1)
+        row1.addWidget(QLabel("My pick:"))
+        self.my_hero_combo = QComboBox()
+        self.my_hero_combo.currentIndexChanged.connect(self._refresh_views)
+        row1.addWidget(self.my_hero_combo, 1)
+        self.lock_check = QCheckBox("Locked in")
+        self.lock_check.toggled.connect(self._refresh_views)
+        row1.addWidget(self.lock_check)
+        # Only meaningful when the source is pixels: the two banks are then
+        # just screen positions. Game data reports player.team_name, so
+        # asking would be asking about something already known.
+        self.side_label = QLabel("My team:")
+        row1.addWidget(self.side_label)
+        self.side_combo = QComboBox()
+        self.side_combo.addItems(["left bank", "right bank"])
+        self.side_combo.currentIndexChanged.connect(self._force_redraw)
+        row1.addWidget(self.side_combo)
+        elay.addLayout(row1)
+
+        status_row = QHBoxLayout()
+        self.unknown_label = QLabel("")
+        self.unknown_label.setProperty("dim", True)
+        status_row.addWidget(self.unknown_label)
+        self.manual_hint = QLabel("")
+        self.manual_hint.setWordWrap(True)
+        self.manual_hint.setProperty("dim", True)
+        status_row.addWidget(self.manual_hint, 1)
+        elay.addLayout(status_row)
+        outer.addWidget(entry_card)
+
+        # ----- the grids, beneath the teams they describe
+        grids = QHBoxLayout()
+        grids.setSpacing(10)
+        vs_card, vslay = card("Counters · your team against theirs")
+        self.matchup_matrix = MatrixTable()
+        vslay.addWidget(self.matchup_matrix)
+        grids.addWidget(vs_card, 1)
+        with_card, withlay = card("Synergy · your team with itself")
+        self.synergy_matrix = MatrixTable()
+        withlay.addWidget(self.synergy_matrix)
+        grids.addWidget(with_card, 1)
+        outer.addLayout(grids, 1)
+
+        tabs.addTab(draft_widget, "Draft")
+
+        # ----- Analysis tab: everything that ranks heroes NOT in the game.
+        # It was on the draft screen and competed with it: a list of 120
+        # candidates next to the ten picks made the ten harder to read.
+        analysis = QWidget()
+        alay = QVBoxLayout(analysis)
+        alay.setContentsMargins(12, 12, 12, 12)
         split = QSplitter()
-        outer.addWidget(split, 1)
+        alay.addWidget(split, 1)
 
         left = QWidget()
         llay = QVBoxLayout(left)
@@ -380,11 +528,11 @@ class MainWindow(QMainWindow):
         llay.addWidget(self.table, 1)
         split.addWidget(left)
 
-        # The right column holds four stacked cards. On a short window their
-        # combined minimum exceeds the height available, and Qt resolves
-        # that by crushing them — which is what sheared the bottom off the
-        # hero names. A scroll area means the column keeps its proper size
-        # and the window scrolls instead.
+        # The right column holds three stacked cards. On a short window
+        # their combined minimum exceeds the height available, and Qt
+        # resolves that by crushing them — which is what sheared the bottom
+        # off the hero names. A scroll area means the column keeps its
+        # proper size and the window scrolls instead.
         right = QWidget()
         rlay = QVBoxLayout(right)
         rlay.setContentsMargins(0, 0, 0, 0)
@@ -398,134 +546,6 @@ class MainWindow(QMainWindow):
         split.addWidget(right_scroll)
         split.setSizes([780, 520])
 
-        teams_card, tlay = card("Draft")
-        self.team_buttons = {}
-        self.team_captions = {}
-        for side, caption in (("ally", "Your team"), ("enemy", "Enemy team")):
-            label = QLabel(caption)
-            label.setProperty("dim", True)
-            tlay.addWidget(label)
-            self.team_captions[side] = label
-            row = QHBoxLayout()
-            row.setSpacing(6)
-            buttons = []
-            for index in range(5):
-                b = QPushButton("+")
-                b.setProperty("slot", True)
-                # The card below is allowed to shrink, and a hero name
-                # sheared in half is the result. Font metrics, not a
-                # guessed pixel count, because the user's Windows font is
-                # not this machine's and may be scaled.
-                b.setMinimumHeight(b.fontMetrics().height() + 16)
-                b.setProperty("side", side)
-                b.setProperty("slot_index", index)
-                b.setToolTip("Click to set this pick; click a filled slot to "
-                             "see what beats it. Right-click to change it, "
-                             "clear it, or give it a role.")
-                # Focusable so Tab walks the ten slots in order.
-                b.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-                b.clicked.connect(self._on_slot_clicked)
-                b.setContextMenuPolicy(
-                    Qt.ContextMenuPolicy.CustomContextMenu)
-                b.customContextMenuRequested.connect(
-                    lambda pos, side=side, i=index:
-                        self._slot_menu(side, i, pos))
-                row.addWidget(b)
-                buttons.append(b)
-            self.team_buttons[side] = buttons
-            tlay.addLayout(row)
-        # Typing the draft in is the normal way the other nine picks
-        # arrive, so it gets a keyboard path: type a few letters, Enter
-        # fills the next empty slot on the active side and leaves the box
-        # ready for the next. Tab is left alone so it walks the slots.
-        quick = QHBoxLayout()
-        quick.setSpacing(6)
-        self.quick_side_button = QPushButton("Enemy")
-        self.quick_side_button.setToolTip(
-            "Which team the next entry goes to (Ctrl+Tab flips it)")
-        self.quick_side_button.setFixedWidth(78)
-        self.quick_side_button.clicked.connect(self._flip_quick_side)
-        quick.addWidget(self.quick_side_button)
-        self.quick_entry = QuickEntry()
-        self.quick_entry.setPlaceholderText(
-            "Type a hero and press Enter to add the pick…")
-        self.quick_entry.returnPressed.connect(self._quick_add)
-        # Ctrl+Tab, not Tab: Tab has to walk the draft slots.
-        flip = QAction("Flip entry side", self)
-        flip.setShortcut(QKeySequence("Ctrl+Tab"))
-        flip.triggered.connect(self._flip_quick_side)
-        self.addAction(flip)
-        quick.addWidget(self.quick_entry, 1)
-        self.quick_undo = QPushButton("Undo")
-        self.quick_undo.setFixedWidth(64)
-        self.quick_undo.setToolTip("Remove the last hand-entered pick")
-        self.quick_undo.clicked.connect(self._quick_undo)
-        quick.addWidget(self.quick_undo)
-        tlay.addLayout(quick)
-
-        self.swap_button = QPushButton("⇅ Swap teams")
-        self.swap_button.setToolTip(
-            "The game names all ten heroes but not which five are yours. "
-            "If the two rows are the wrong way round, this flips them for "
-            "the rest of the match.")
-        # Accent-styled because it is not decoration: while the sides are
-        # a guess, this is the control that makes the draft correct.
-        self.swap_button.setProperty("accent", True)
-        self.swap_button.clicked.connect(self._swap_sides)
-        self.swap_button.setVisible(False)
-        quick.addWidget(self.swap_button)
-
-        self.unknown_label = QLabel("")
-        self.unknown_label.setProperty("dim", True)
-        tlay.addWidget(self.unknown_label)
-        self.manual_hint = QLabel("")
-        self.manual_hint.setWordWrap(True)
-        self.manual_hint.setProperty("dim", True)
-        tlay.addWidget(self.manual_hint)
-        # Maximum let the layout squeeze the card below its own minimum
-        # when the right-hand column got tight, which sheared the bottom off
-        # the hero names. SetMinimumSize pins the card's minimum to what its
-        # contents actually need — a wrapping hint label needs more height
-        # than the card's sizeHint alone reports, so a policy derived from
-        # sizeHint is not enough. The draft is the thing you read: it keeps
-        # its height and the panels below it give way instead.
-        tlay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
-        teams_card.setSizePolicy(teams_card.sizePolicy().horizontalPolicy(),
-                                 teams_card.sizePolicy().Policy.Fixed)
-        # The draft and the role controls live on the LEFT, beside the
-        # hero list, so the right column is free for the breakdown and
-        # the counters rather than squeezing all four into one strip.
-        llay.insertWidget(0, teams_card)
-
-        controls_card, clay = card()
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("My role:"))
-        self.role_combo = QComboBox()
-        for label, _ in ROLE_LABELS:
-            self.role_combo.addItem(label)
-        self.role_combo.currentIndexChanged.connect(self._refresh_views)
-        row1.addWidget(self.role_combo, 1)
-        # Only meaningful when the source is pixels: the two banks are then
-        # just screen positions. Game data reports player.team_name, so
-        # asking would be asking about something already known.
-        self.side_label = QLabel("My team:")
-        row1.addWidget(self.side_label)
-        self.side_combo = QComboBox()
-        self.side_combo.addItems(["left bank", "right bank"])
-        self.side_combo.currentIndexChanged.connect(self._force_redraw)
-        row1.addWidget(self.side_combo, 1)
-        clay.addLayout(row1)
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("My pick:"))
-        self.my_hero_combo = QComboBox()
-        self.my_hero_combo.currentIndexChanged.connect(self._refresh_views)
-        row2.addWidget(self.my_hero_combo, 1)
-        self.lock_check = QCheckBox("Locked in")
-        self.lock_check.toggled.connect(self._refresh_views)
-        row2.addWidget(self.lock_check)
-        clay.addLayout(row2)
-        llay.insertWidget(1, controls_card)
-
         detail_card, dlay2 = card("Why this score")
         # The breakdown is the panel that catches a plausible total reached
         # for poor reasons, so it gets real estate rather than two lines,
@@ -533,6 +553,11 @@ class MainWindow(QMainWindow):
         # never buried under a dozen near-zeroes.
         self.detail = BreakdownPanel()
         self.detail.setMinimumHeight(190)
+        self.detail.show_message(
+            "Pick a hero from the list",
+            "…and every term behind its score appears here, split into "
+            "allies and enemies and sorted by how much it moved the "
+            "number.")
         dlay2.addWidget(self.detail)
         rlay.addWidget(detail_card, 3)
 
@@ -560,7 +585,7 @@ class MainWindow(QMainWindow):
         ilay.addWidget(self.items_view)
         rlay.addWidget(items_card, 2)
 
-        tabs.addTab(draft_widget, "Draft")
+        tabs.addTab(analysis, "Analysis")
 
         # ----- Debug tab: the picture answers what a log never will
         dbg = QWidget()
@@ -670,21 +695,6 @@ class MainWindow(QMainWindow):
 
         # The Debug tab is two jobs: what the app is looking at RIGHT NOW,
         # and what a past session recorded. They want different screens.
-        # ----- Matrix tab: the grid the summed score hides
-        matrix_page = QWidget()
-        mlay = QVBoxLayout(matrix_page)
-        mlay.setContentsMargins(12, 12, 12, 12)
-        mlay.setSpacing(10)
-        vs_card, vslay = card("Your team against theirs")
-        self.matchup_matrix = MatrixTable()
-        vslay.addWidget(self.matchup_matrix)
-        mlay.addWidget(vs_card, 1)
-        with_card, withlay = card("Your team with itself")
-        self.synergy_matrix = MatrixTable()
-        withlay.addWidget(self.synergy_matrix)
-        mlay.addWidget(with_card, 1)
-        tabs.addTab(matrix_page, "Matrix")
-
         debug_tabs = QTabWidget()
         self.debug_tabs = debug_tabs
         debug_tabs.addTab(dbg, "Live")
@@ -960,12 +970,89 @@ class MainWindow(QMainWindow):
                               int(self.settings.get("overlay_y", 40)))
         if self.overlay is not None:
             self.overlay.setVisible(enabled)
+        self._set_portrait_overlay(enabled)
         self.settings["overlay_enabled"] = bool(enabled)
         ui_settings.save(self.settings)
         if self.overlay_action.isChecked() != enabled:
             self.overlay_action.blockSignals(True)
             self.overlay_action.setChecked(enabled)
             self.overlay_action.blockSignals(False)
+
+    # ---- the in-game numbers under the portraits ------------------------
+    def _set_portrait_overlay(self, enabled: bool) -> None:
+        """Created lazily and torn down with the badge overlay: the two are
+        one feature to the user, so one tick controls both."""
+        if enabled and self.portrait_overlay is None:
+            self.portrait_overlay = PortraitOverlay(
+                self.layout_spec,
+                offset=(float(self.settings.get("portrait_dx", 0.0)),
+                        float(self.settings.get("portrait_dy", 0.0))))
+            self.portrait_overlay.anchors_moved.connect(
+                self._remember_portrait_anchors)
+        if self.portrait_overlay is not None:
+            if not enabled:
+                # Leaving it unlocked while hidden would mean it came back
+                # swallowing clicks that belong to Dota.
+                self.portrait_overlay.set_unlocked(False)
+                self.unlock_anchors_action.setChecked(False)
+            self.portrait_overlay.setVisible(enabled)
+            if enabled:
+                self._position_portrait_overlay()
+                self._update_relations()
+
+    def _position_portrait_overlay(self) -> None:
+        overlay = self.portrait_overlay
+        if overlay is None or not overlay.isVisible():
+            return
+        from ..capture.window import DOTA_TITLE, find_dota_window_title
+        from ..capture.window import window_rect
+        title = find_dota_window_title() or DOTA_TITLE
+        overlay.set_window_rect(window_rect(title))
+
+    def _update_portrait_overlay(self, values: dict[int, float]) -> None:
+        """Map hero ids onto the two SCREEN banks.
+
+        `snapshot.left` / `.right` are the pick bar's left and right banks
+        in screen order, which is the only ordering the overlay can use —
+        ally/enemy is a fact about the draft, left/right is a fact about
+        where the pixels are.
+        """
+        overlay = self.portrait_overlay
+        if overlay is None or not overlay.isVisible():
+            return
+        snap = self.snapshot
+        left_ids = list(getattr(snap, "left", None) or [])
+        right_ids = list(getattr(snap, "right", None) or [])
+        overlay.set_values([values.get(h) for h in left_ids],
+                           [values.get(h) for h in right_ids])
+
+    def _set_unlock_anchors(self, unlocked: bool) -> None:
+        if self.portrait_overlay is None or not self.portrait_overlay.isVisible():
+            if unlocked:
+                self.unlock_anchors_action.setChecked(False)
+                self.status.showMessage(
+                    "Turn the overlay on first — there is nothing to drag "
+                    "while it is hidden", 6000)
+            return
+        self.portrait_overlay.set_unlocked(unlocked)
+        self.status.showMessage(
+            "Anchors unlocked — drag the numbers into place, then untick "
+            "this to make the overlay click-through again" if unlocked
+            else "Anchors locked; the overlay is click-through again", 8000)
+
+    def _remember_portrait_anchors(self, dx: float, dy: float) -> None:
+        self.settings["portrait_dx"] = float(dx)
+        self.settings["portrait_dy"] = float(dy)
+        ui_settings.save(self.settings)
+
+    def _reset_portrait_anchors(self) -> None:
+        self.settings["portrait_dx"] = 0.0
+        self.settings["portrait_dy"] = 0.0
+        ui_settings.save(self.settings)
+        if self.portrait_overlay is not None:
+            self.portrait_overlay.set_offset(0.0, 0.0)
+        self.status.showMessage(
+            "In-game numbers moved back onto the crop boxes", 5000)
 
     def _remember_overlay_position(self, x: int, y: int) -> None:
         self.settings["overlay_x"] = int(x)
@@ -1694,6 +1781,9 @@ class MainWindow(QMainWindow):
         if self.overlay is not None and self.overlay.isVisible():
             self.overlay.update_content(snap, self.scored,
                                         self._current_draft())
+        # The Dota window can move or change resolution mid-session, so the
+        # anchor rectangle is re-read rather than taken once at startup.
+        self._position_portrait_overlay()
 
     def _update_team_captions(self, snap) -> None:
         """Say who the app thinks you are, using what the game reported,
@@ -1820,6 +1910,14 @@ class MainWindow(QMainWindow):
                     # gets entered when the game does not report it.
                     b.setText(prefix + "+" if prefix else "+")
                     b.setProperty("hero_id", None)
+                b.setProperty("filled", i < len(ids))
+                b.style().unpolish(b)
+                b.style().polish(b)
+        # A hero that left the draft cannot be the one everything else is
+        # measured against.
+        if self.focus is not None and self.focus[1] not in (
+                set(allies) | set(enemies)):
+            self.focus = None
         self.unknown_label.setText(
             f"{unknown} slot(s) unresolved — scoring uses only confident "
             "slots" if unknown else "")
@@ -1877,6 +1975,7 @@ class MainWindow(QMainWindow):
         self._apply_filter()
         self._update_matrices(draft)
         self._update_items(draft)
+        self._update_relations()
 
     def _update_matrices(self, draft: scoring.DraftState) -> None:
         self.matchup_matrix.show_matrix(
@@ -1933,10 +2032,53 @@ class MainWindow(QMainWindow):
     def _on_slot_clicked(self) -> None:
         b = self.sender()
         hid = b.property("hero_id")
+        side = b.property("side")
         if hid is None:
-            self._edit_slot(b.property("side"), b.property("slot_index"))
+            self._edit_slot(side, b.property("slot_index"))
             return
-        self._show_counters(hid, b.property("side"))
+        # Clicking the focused hero again clears the view, so the way out
+        # is the same gesture as the way in.
+        self.focus = None if self.focus == (side, hid) else (side, hid)
+        self._update_relations()
+        self._show_counters(hid, side)
+
+    def _update_relations(self) -> None:
+        """Write the signed numbers above the other nine slots.
+
+        This is the matrix read one row at a time, which is how the
+        question actually arrives mid-draft: not "show me the grid" but
+        "what does THIS hero do to everything else".
+        """
+        for column in self.team_columns.values():
+            column.clear_deltas()
+        values: dict[int, float] = {}
+        draft = self._current_draft()
+        if self.focus is None:
+            # Nothing clicked: the main window stays quiet, but the in-game
+            # overlay still says what each pick is worth overall — a number
+            # under every portrait is the whole point of it being there.
+            self._update_portrait_overlay(
+                scoring.net_contributions(self.ds, draft))
+            return
+        side, hid = self.focus
+        relations = {r.hero_id: r for r in
+                     scoring.relations_to(self.ds, hid, draft)}
+        for column in self.team_columns.values():
+            for slot in column.slots:
+                other = slot.button.property("hero_id")
+                if other is None:
+                    continue
+                if other == hid and column.side == side:
+                    slot.set_focused(True)
+                    continue
+                rel = relations.get(other)
+                if rel is None:
+                    # Clicking an enemy says nothing about the other
+                    # enemies — that pairing is their synergy, not ours.
+                    continue
+                slot.show_delta(rel.delta, rel.kind)
+                values[other] = rel.delta
+        self._update_portrait_overlay(values)
 
     def _on_drafted_clicked(self) -> None:
         """Kept for callers that click a slot expecting the counters view."""

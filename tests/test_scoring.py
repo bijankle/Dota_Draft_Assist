@@ -74,3 +74,61 @@ def test_counters_column_view():
     # Excluding drafted heroes works.
     counters = scoring.counters_to(ds, 9, exclude={1})
     assert all(hid != 1 for hid, _, _ in counters)
+
+
+# ---- one hero against the other nine ------------------------------------
+
+def test_relations_to_an_ally_covers_both_teams():
+    """Clicking an ally asks two questions at once: synergy with the rest
+    of your team, matchup against all of theirs."""
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1, 5], enemies=[9])
+    rels = {(r.hero_id, r.kind): r.delta
+            for r in scoring.relations_to(ds, 1, draft)}
+    assert set(rels) == {(5, "with"), (9, "vs")}
+    assert rels[(5, "with")] == pytest.approx(
+        float(ds.delta_with[ds.index[1], ds.index[5]]))
+    assert rels[(9, "vs")] == pytest.approx(
+        float(ds.delta_vs[ds.index[1], ds.index[9]]))
+
+
+def test_relations_to_an_enemy_stay_on_our_side_of_the_board():
+    """Their pair-ups with each other are their synergy, not ours — the
+    view says nothing about them."""
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1, 5], enemies=[9, 12])
+    rels = scoring.relations_to(ds, 9, draft)
+    assert {r.hero_id for r in rels} == {1, 5}
+    assert all(r.kind == "vs" for r in rels)
+
+
+def test_every_relation_reads_positive_as_good_for_you():
+    """Green under an enemy portrait has to mean the same thing as green
+    under an ally's, or the overlay teaches the wrong reflex."""
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1, 5], enemies=[9])
+    from_ally = scoring.relations_to(ds, 1, draft)
+    from_enemy = scoring.relations_to(ds, 9, draft)
+    ally_vs_enemy = next(r.delta for r in from_ally if r.hero_id == 9)
+    enemy_vs_ally = next(r.delta for r in from_enemy if r.hero_id == 1)
+    assert ally_vs_enemy == pytest.approx(enemy_vs_ally)
+
+
+def test_net_contributions_sum_the_right_halves():
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1, 5], enemies=[9, 12])
+    net = scoring.net_contributions(ds, draft)
+    assert set(net) == {1, 5, 9, 12}
+    expected_ally = (float(ds.delta_with[ds.index[1], ds.index[5]])
+                     + float(ds.delta_vs[ds.index[1], ds.index[9]])
+                     + float(ds.delta_vs[ds.index[1], ds.index[12]]))
+    assert net[1] == pytest.approx(expected_ally)
+    expected_enemy = (float(ds.delta_vs[ds.index[1], ds.index[9]])
+                      + float(ds.delta_vs[ds.index[5], ds.index[9]]))
+    assert net[9] == pytest.approx(expected_enemy)
+
+
+def test_relations_to_a_hero_not_in_the_data_are_empty_not_a_crash():
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1], enemies=[9])
+    assert scoring.relations_to(ds, 99999, draft) == []

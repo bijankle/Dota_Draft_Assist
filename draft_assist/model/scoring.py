@@ -166,3 +166,74 @@ def synergy_matrix(ds: Dataset, draft: DraftState) -> Matrix:
                   caption="Your team with itself. Each pair appears once — "
                           "synergy is symmetric, so the lower half would "
                           "only repeat the upper.")
+
+
+@dataclass
+class Relation:
+    """One hero's interaction with the hero the user clicked."""
+    hero_id: int
+    name: str
+    delta: float
+    kind: str          # "with" (synergy) or "vs" (matchup)
+
+
+def relations_to(ds: Dataset, focus: int, draft: DraftState) -> list[Relation]:
+    """Every drafted hero's interaction with `focus`, context-aware.
+
+    Clicking an ALLY asks two different questions at once — how it fits with
+    the rest of your team, and how it fares against theirs — so both are
+    answered: synergy for the other allies, matchup for all five enemies.
+    Clicking an ENEMY asks only one, so each ally gets its matchup against it.
+
+    Every number is read from YOUR team's point of view: positive is good for
+    you whichever hero it sits under. Without that rule a green number under
+    an enemy would mean the opposite of a green number under an ally, which
+    is exactly the misreading this view exists to prevent.
+    """
+    if focus not in ds.index:
+        return []
+    out: list[Relation] = []
+    if focus in draft.allies:
+        for hid in draft.allies:
+            if hid != focus and hid in ds.index:
+                out.append(Relation(
+                    hid, ds.name(hid),
+                    float(ds.delta_with[ds.index[focus], ds.index[hid]]),
+                    "with"))
+        for hid in draft.enemies:
+            if hid in ds.index:
+                out.append(Relation(
+                    hid, ds.name(hid),
+                    float(ds.delta_vs[ds.index[focus], ds.index[hid]]),
+                    "vs"))
+    else:
+        for hid in draft.allies:
+            if hid in ds.index:
+                out.append(Relation(
+                    hid, ds.name(hid),
+                    float(ds.delta_vs[ds.index[hid], ds.index[focus]]),
+                    "vs"))
+    return out
+
+
+def net_contributions(ds: Dataset, draft: DraftState) -> dict[int, float]:
+    """What each drafted hero is worth to your team, summed.
+
+    An ally's figure is its synergy with the rest of your team plus its
+    matchups against theirs; an enemy's is how well your five fare against
+    it. Same sign convention as `relations_to`: positive favours you, so a
+    green number under an enemy portrait means that enemy is handled.
+    """
+    allies = [h for h in draft.allies if h in ds.index]
+    enemies = [h for h in draft.enemies if h in ds.index]
+    out: dict[int, float] = {}
+    for hid in allies:
+        i = ds.index[hid]
+        total = sum(float(ds.delta_with[i, ds.index[o]])
+                    for o in allies if o != hid)
+        total += sum(float(ds.delta_vs[i, ds.index[e]]) for e in enemies)
+        out[hid] = total
+    for hid in enemies:
+        j = ds.index[hid]
+        out[hid] = sum(float(ds.delta_vs[ds.index[a], j]) for a in allies)
+    return out

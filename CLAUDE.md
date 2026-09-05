@@ -216,15 +216,40 @@ credentials, and put the account at risk. Do not go there.
   slots (they are `StrongFocus`), so the entry side moved to Ctrl+Tab.
   Roles (Pos 1-5) are assigned per SLOT, not per hero, and survive the hero
   changing: a slot is a lane. Vision reads the ranked-role icons but is not
-  wired to these yet — that waits on the crop geometry being right.
-- **The Matrix tab is the grid a summed score hides**
-  (`scoring.matchup_matrix` / `synergy_matrix`, `tables.MatrixTable`). A
-  comfortable total can conceal one lane losing badly. The synergy grid
-  fills only the upper triangle: synergy is symmetric, so the lower half
-  would repeat it and the diagonal means nothing. "Why this score" names
-  only heroes in the current game; the counters list — candidates nobody
-  has picked — lives in its own panel, because mixing the two made the
-  breakdown look wrong.
+  wired to these yet — that waits on the crop geometry being right. Each
+  slot reserves a line ABOVE it for the click view's signed number whether
+  or not one is showing: slots that grew by a text height on every click
+  made the column restless, and a draft panel that moves under the cursor
+  is one you misclick.
+- **The Draft tab is the whole board and nothing else.** Your five on the
+  left, theirs on the right (`ui/teams.py`), because that is where they sit
+  on the pick bar, with the two grids directly under the sides they
+  describe: counters (`scoring.matchup_matrix`) on the left, synergy
+  (`scoring.synergy_matrix`) on the right. A comfortable total can conceal
+  one lane losing badly, which is what the grids exist to show; the synergy
+  grid fills only the upper triangle, since synergy is symmetric and the
+  diagonal means nothing. Everything that ranks heroes NOT in the game —
+  the ranked list, the filter, "Why this score", the counters list and the
+  items panel — moved to the **Analysis** tab, because 120 candidates
+  beside the ten picks made the ten harder to read. There is no longer a
+  separate Matrix tab.
+- **Clicking a pick is the matrix read one row at a time**
+  (`scoring.relations_to`, `MainWindow.focus` / `_update_relations`). It is
+  context-aware, because an ally and an enemy are different questions: an
+  ally shows synergy above your other four AND matchup above all five
+  enemies; an enemy shows matchup above your five and says nothing about
+  the other enemies — their pair-ups are their synergy, not ours. Clicking
+  the focused hero again clears it, so the way out is the way in.
+  **Every number reads from YOUR team's point of view**: positive is good
+  for you whichever portrait it sits under. Without that rule a green
+  number under an enemy would mean the opposite of a green number under an
+  ally, which is the misreading the view exists to prevent.
+- **The palette is Discord's dark theme, deliberately borrowed**
+  (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
+  a palette the user already parses fluently every day costs no attention.
+  Colour is reserved for meaning — green/red for signed deltas, blurple for
+  the one action a screen wants, amber for warnings — and everything else
+  is grey, so a number in colour is always worth reading.
 - **Recording needs no interaction at all** (`record.py`,
   `recordings/<timestamp>/`). With `auto_record` on (the default),
   `_consider_auto_record` starts a session the moment `game_state` reaches a
@@ -267,6 +292,24 @@ credentials, and put the account at risk. Do not go there.
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   Item panel shows at most 5 items above a severity floor, only after the
   user's pick is locked. Silence in many games is correct — do not tune it away.
+- **The in-game numbers hang off the crop boxes** (`ui/portrait_overlay.py`).
+  The click view again, painted under the ten portraits where the eye
+  already is. No panel and no background — a halo (a dark stroke around the
+  glyphs) is what makes text legible over an arbitrary screen, and a filled
+  box over the pick bar would hide the thing it annotates. It uses
+  `snapshot.left` / `.right`, the SCREEN banks, never ally/enemy: left and
+  right are facts about pixels, ally and enemy are facts about the draft,
+  and putting your team's numbers over their portraits would be worse than
+  showing none. With nothing clicked it falls back to
+  `scoring.net_contributions` so every portrait still carries a figure.
+  Locked it is click-through (`WA_TransparentForMouseEvents` plus
+  `WindowTransparentForInput`) — an overlay strip that ate clicks meant for
+  Dota would be worse than no overlay — and View ▸ Unlock overlay anchors
+  takes the mouse so the numbers can be dragged, saving a FRACTIONAL nudge
+  (`portrait_dx` / `portrait_dy`), in the same units as every other
+  coordinate here. Hiding the overlay re-locks it, or it would come back
+  swallowing clicks. One tick controls it and the badge together: they are
+  one feature to the person using them.
 - **The overlay sits OVER Dota, never inside it.** `ui/overlay.py` is an
   ordinary frameless always-on-top window: no DLL injection, no hooking of the
   present chain, no input sent to the game — which is what keeps it on the
