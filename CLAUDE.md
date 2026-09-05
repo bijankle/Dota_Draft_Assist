@@ -124,8 +124,14 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
-- **Recording is one button and one folder per press** (`record.py`,
-  `recordings/<timestamp>/`): payloads, draft frames, and `state.jsonl` — one
+- **Recording is one button, one folder per press, and ends itself**
+  (`record.py`, `recordings/<timestamp>/`). Press before queueing and never
+  touch it again: frames start at the press (the queue and loading screen are
+  where a capture-binding fault shows up), and `Recorder.observe()` stops the
+  session `POST_DRAFT_GRACE` after the game leaves the drafting states, with
+  `MAX_SESSION` as a backstop for a press with no game behind it. A blank
+  `game_state` is Dota going quiet, never the draft ending, and re-entering a
+  drafting state cancels the countdown. Contents: payloads, draft frames, and `state.jsonl` — one
   line per tick saying what the app concluded and which source produced it.
   Sessions are never pooled; two matches in one archive made every count in
   the report meaningless. The session report grades the screen's reading

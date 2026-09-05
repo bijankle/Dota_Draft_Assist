@@ -28,12 +28,20 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# A draft lasts a minute or two; one frame every couple of seconds is
-# plenty to see what recognition was looking at, and 600 is a hard stop so
-# a session left running overnight cannot fill the disk.
+# One frame every couple of seconds is plenty to see what recognition was
+# looking at, and the cap is a hard stop so a session left running cannot
+# fill the disk. Frames start at the button press, not at the draft: the
+# queue and the loading screen are where a capture-binding fault shows up,
+# and by the time hero selection starts it is too late to notice.
 FRAME_INTERVAL = 2.0
 MAX_FRAMES = 600
 DRAFT_STATES = ("HERO_SELECTION", "STRATEGY_TIME")
+# Stop by itself a minute after the draft ends. Nothing after that answers
+# a question, and the alternative is remembering to press Stop mid-game.
+POST_DRAFT_GRACE = 60.0
+# And stop regardless after this long, so a press with no game behind it
+# does not run until the disk fills.
+MAX_SESSION = 1800.0
 
 
 @dataclass
@@ -43,6 +51,9 @@ class Recorder:
     started_at: float = 0.0
     frames: int = 0
     states: int = 0
+    saw_draft: bool = False
+    left_draft_at: float = 0.0
+    stop_reason: str = ""
     _last_frame: float = 0.0
     _errors: list[str] = field(default_factory=list)
 
@@ -75,12 +86,15 @@ class Recorder:
         self.folder = folder
         self.started_at = time.monotonic()
         self.frames = self.states = 0
+        self.saw_draft = False
+        self.left_draft_at = 0.0
         self._last_frame = 0.0
         self._errors = []
         self._write_meta(finished=False)
         return folder
 
-    def stop(self) -> Path | None:
+    def stop(self, reason: str = "") -> Path | None:
+        self.stop_reason = reason
         folder = self.folder
         if folder is not None:
             self._write_meta(finished=True)
@@ -104,18 +118,57 @@ class Recorder:
                 "payloads": payloads,
                 "frames": self.frames,
                 "states": self.states,
+                "stopped": self.stop_reason or "stopped by hand",
                 "errors": self._errors[:20],
             }, indent=2), encoding="utf-8"))
 
     # -- per-tick capture ------------------------------------------------
 
-    def wants_frame(self, game_state: str) -> bool:
-        """Frames only while drafting, and not faster than the interval."""
+    def wants_frame(self) -> bool:
+        """From the button press onward, no faster than the interval."""
         if not self.active or self.frames >= MAX_FRAMES:
             return False
-        if not any(state in game_state for state in DRAFT_STATES):
-            return False
         return time.monotonic() - self._last_frame >= FRAME_INTERVAL
+
+    def observe(self, game_state: str) -> str:
+        """Watch the phase and say when the session should end itself.
+
+        Returns a reason to stop, or "" to keep going. The draft is what
+        the session is for, so once the game has left it and a grace period
+        has passed there is nothing more to record — and pressing Stop is
+        one more thing to remember at exactly the moment the game starts.
+        """
+        if not self.active:
+            return ""
+        if self.elapsed >= MAX_SESSION:
+            return (f"stopped automatically after "
+                    f"{MAX_SESSION / 60:.0f} minutes")
+        state = str(game_state or "")
+        if any(name in state for name in DRAFT_STATES):
+            self.saw_draft = True
+            self.left_draft_at = 0.0
+            return ""
+        if not state or not self.saw_draft:
+            # A blank state is Dota going quiet for a moment, not the draft
+            # ending; and before a draft has been seen there is nothing to
+            # have left.
+            return ""
+        now = time.monotonic()
+        if not self.left_draft_at:
+            self.left_draft_at = now
+            return ""
+        if now - self.left_draft_at >= POST_DRAFT_GRACE:
+            return (f"stopped automatically {POST_DRAFT_GRACE:.0f}s after "
+                    "the draft ended")
+        return ""
+
+    @property
+    def auto_stop_in(self) -> float:
+        """Seconds until the session ends itself, or 0 when not counting."""
+        if not self.active or not self.left_draft_at:
+            return 0.0
+        return max(0.0, POST_DRAFT_GRACE
+                   - (time.monotonic() - self.left_draft_at))
 
     def save_frame(self, frame) -> Path | None:
         if not self.active or frame is None:
@@ -283,7 +336,7 @@ def format_session_report(folder: Path, dataset=None) -> str:
         except ValueError:
             meta = {}
         for key in ("started", "seconds", "payloads", "frames", "states",
-                    "finished"):
+                    "finished", "stopped"):
             if key in meta:
                 lines.append(f"{key + ':':<12}{meta[key]}")
         for error in meta.get("errors", []):

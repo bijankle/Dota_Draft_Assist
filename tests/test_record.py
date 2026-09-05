@@ -127,24 +127,24 @@ def test_the_timeline_collapses_ticks_that_changed_nothing(tmp_path):
 
 # ---- the recorder itself ------------------------------------------------
 
-def test_frames_are_taken_only_while_drafting(tmp_path):
+def test_frames_start_at_the_button_press_not_at_the_draft(tmp_path):
+    """The queue and the loading screen are where a capture-binding fault
+    shows up; by hero selection it is too late to notice."""
     recorder = record.Recorder(tmp_path)
     recorder.start()
-    assert recorder.wants_frame("DOTA_GAMERULES_STATE_HERO_SELECTION")
-    assert not recorder.wants_frame("DOTA_GAMERULES_STATE_GAME_IN_PROGRESS")
-    assert not recorder.wants_frame("")
+    assert recorder.wants_frame()
 
 
 def test_frames_are_rate_limited_and_capped(tmp_path, monkeypatch):
     recorder = record.Recorder(tmp_path)
     recorder.start()
-    assert recorder.wants_frame("DOTA_GAMERULES_STATE_HERO_SELECTION")
+    assert recorder.wants_frame()
     recorder._last_frame = time.monotonic()
-    assert not recorder.wants_frame("DOTA_GAMERULES_STATE_HERO_SELECTION")
+    assert not recorder.wants_frame()
     recorder._last_frame = time.monotonic() - record.FRAME_INTERVAL - 0.1
-    assert recorder.wants_frame("DOTA_GAMERULES_STATE_HERO_SELECTION")
+    assert recorder.wants_frame()
     recorder.frames = record.MAX_FRAMES
-    assert not recorder.wants_frame("DOTA_GAMERULES_STATE_HERO_SELECTION")
+    assert not recorder.wants_frame()
 
 
 def test_two_sessions_in_the_same_second_do_not_collide(tmp_path,
@@ -286,3 +286,86 @@ def test_the_reasons_the_app_declined_are_in_the_report(tmp_path):
     assert "WHAT THE APP SAID ABOUT ITS OWN READING" in text
     assert "2x  minimap carried 3 placed heroes, not ten" in text
     assert "WARNING: Dota has stopped sending data" in text
+
+
+# ---- ending itself ------------------------------------------------------
+
+def drafting(recorder, ticks=1):
+    for _ in range(ticks):
+        assert recorder.observe("DOTA_GAMERULES_STATE_HERO_SELECTION") == ""
+
+
+def test_the_session_ends_a_minute_after_the_draft(tmp_path):
+    """Pressing Stop is one more thing to remember at exactly the moment
+    the game starts."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    drafting(recorder, 3)
+    assert recorder.observe("DOTA_GAMERULES_STATE_STRATEGY_TIME") == ""
+
+    assert recorder.observe("DOTA_GAMERULES_STATE_PRE_GAME") == ""
+    assert 0 < recorder.auto_stop_in <= record.POST_DRAFT_GRACE
+    recorder.left_draft_at -= record.POST_DRAFT_GRACE + 1
+    reason = recorder.observe("DOTA_GAMERULES_STATE_GAME_IN_PROGRESS")
+    assert "after the draft ended" in reason
+    assert recorder.auto_stop_in == 0
+
+
+def test_it_does_not_stop_before_a_draft_has_happened(tmp_path):
+    """Record is pressed before queueing, so minutes of menu must not be
+    read as a draft that ended."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    for _ in range(5):
+        assert recorder.observe("") == ""
+        assert recorder.observe("DOTA_GAMERULES_STATE_GAME_IN_PROGRESS") == ""
+    assert recorder.auto_stop_in == 0
+
+
+def test_a_moment_of_silence_is_not_the_draft_ending(tmp_path):
+    """The real session logged a tick with no game state at all mid-match;
+    a blank state is Dota going quiet, not a phase change."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    drafting(recorder)
+    assert recorder.observe("") == ""
+    assert recorder.auto_stop_in == 0
+    drafting(recorder)
+
+
+def test_going_back_into_the_draft_cancels_the_countdown(tmp_path):
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    drafting(recorder)
+    recorder.observe("DOTA_GAMERULES_STATE_PRE_GAME")
+    assert recorder.auto_stop_in > 0
+    drafting(recorder)
+    assert recorder.auto_stop_in == 0
+
+
+def test_a_press_with_no_game_behind_it_still_ends(tmp_path):
+    """Otherwise a stray press runs until the disk fills."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    recorder.started_at -= record.MAX_SESSION + 1
+    assert "minutes" in recorder.observe("")
+
+
+def test_a_stopped_recorder_asks_for_nothing(tmp_path):
+    recorder = record.Recorder(tmp_path)
+    assert recorder.observe("DOTA_GAMERULES_STATE_HERO_SELECTION") == ""
+    assert not recorder.wants_frame()
+
+
+def test_why_it_stopped_is_recorded(tmp_path):
+    recorder = record.Recorder(tmp_path)
+    folder = recorder.start()
+    recorder.stop("stopped automatically 60s after the draft ended")
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["stopped"].startswith("stopped automatically")
+    assert "stopped:" in (folder / "report.txt").read_text()
+
+    folder = recorder.start()
+    recorder.stop()
+    assert json.loads((folder / "meta.json").read_text())["stopped"] == \
+        "stopped by hand"

@@ -252,7 +252,9 @@ class MainWindow(QMainWindow):
         self.record_button.setMinimumHeight(32)
         self.record_button.setToolTip(
             "Record everything for this game — the data Dota sends, the "
-            "draft on screen, and what the app made of both")
+            "draft on screen, and what the app made of both.\n"
+            "Press it before you queue; it stops itself a minute after the "
+            "draft ends.")
         self.record_button.clicked.connect(self._toggle_recording)
         toolbar.addWidget(self.record_button)
 
@@ -1066,12 +1068,12 @@ class MainWindow(QMainWindow):
         self._update_record_button()
         self.status.showMessage(f"Recording to {folder.name}", 6000)
 
-    def _stop_recording(self) -> None:
+    def _stop_recording(self, reason: str = "") -> None:
         server = self._gsi_server()
         if server is not None:
             server.set_archive_dir(None)
         frames, states = self.recorder.frames, self.recorder.states
-        folder = self.recorder.stop()
+        folder = self.recorder.stop(reason)
         self._update_record_button()
         if folder is None:
             return
@@ -1079,7 +1081,7 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
         self.status.showMessage(
             f"Saved {folder.name}: {payloads} payloads, {frames} frames, "
-            f"{states} states", 12000)
+            f"{states} states" + (f" — {reason}" if reason else ""), 15000)
 
     def _update_record_button(self) -> None:
         recording = self.recorder.active
@@ -1091,23 +1093,39 @@ class MainWindow(QMainWindow):
             self.recording_label.setText("")
 
     def _capture_recording(self, snap, allies, enemies) -> None:
-        """Called every tick while recording. A failed write must never
-        interrupt a draft, so the recorder swallows them and reports them
-        in the session's meta.json instead."""
+        """Called every tick while recording, and does the whole job on its
+        own: the state log, a frame every couple of seconds, and ending the
+        session once the draft is over. Nothing here needs a keypress.
+
+        A failed write must never interrupt a draft, so the recorder
+        swallows them and reports them in the session's meta.json.
+        """
         if not self.recorder.active:
             return
         self.recorder.log_state(
             record_mod.snapshot_record(snap, allies, enemies, self.ds))
-        if self.recorder.wants_frame(snap.game_state):
+        if self.recorder.wants_frame():
             frame = snap.frame
             if frame is None:
-                frame = self._grab_dota_frame()
+                try:
+                    frame = self._grab_dota_frame()
+                except Exception:
+                    frame = None      # Dota closed, or capture unavailable
             self.recorder.save_frame(frame)
+
+        reason = self.recorder.observe(snap.game_state)
+        if reason:
+            self._stop_recording(reason)
+            return
+
         seconds = int(self.recorder.elapsed)
         payloads = getattr(snap, "frames_arrived", 0)
+        countdown = self.recorder.auto_stop_in
+        tail = (f"  ·  auto-stop in {countdown:.0f}s" if countdown
+                else "  ·  auto-stops after the draft")
         self.recording_label.setText(
             f"REC {seconds // 60}:{seconds % 60:02d}  ·  {payloads} payloads "
-            f"·  {self.recorder.frames} frames")
+            f"·  {self.recorder.frames} frames{tail}")
 
     # -- quick keyboard entry --------------------------------------------
 

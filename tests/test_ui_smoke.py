@@ -1014,3 +1014,76 @@ def test_sessions_tab_says_what_to_do_when_there_is_nothing(qapp,
         assert "Press Record" in window.session_report.toPlainText()
     finally:
         window.close()
+
+
+def test_the_window_stops_the_recording_by_itself(qapp, monkeypatch,
+                                                  tmp_path):
+    """The whole point: press Record before queueing and never touch it
+    again. The tick loop, not a keypress, ends the session."""
+    from draft_assist import record as record_mod
+
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.record_button.click()
+        assert window.recorder.active
+
+        window.recorder.observe("DOTA_GAMERULES_STATE_HERO_SELECTION")
+        window.recorder.observe("DOTA_GAMERULES_STATE_PRE_GAME")
+        window.recorder.left_draft_at -= record_mod.POST_DRAFT_GRACE + 1
+
+        class Snap:
+            game_state = "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"
+            frame = None
+            frames_arrived = 12
+        window._capture_recording(Snap(), [], [])
+
+        assert not window.recorder.active
+        assert window.record_button.text() == "● Record"
+        assert "after the draft ended" in window.status.currentMessage()
+    finally:
+        window.close()
+
+
+def test_a_frame_grab_that_throws_does_not_stop_the_recording(qapp,
+                                                              monkeypatch,
+                                                              tmp_path):
+    """Dota closing mid-session must cost a frame, not the session."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.record_button.click()
+
+        def explode():
+            raise RuntimeError("No Dota 2 window found")
+
+        monkeypatch.setattr(window, "_grab_dota_frame", explode)
+
+        class Snap:
+            game_state = "DOTA_GAMERULES_STATE_HERO_SELECTION"
+            frame = None
+            frames_arrived = 3
+        window._capture_recording(Snap(), [], [])
+        assert window.recorder.active
+        assert window.recorder.frames == 0
+    finally:
+        window.close()
+
+
+def test_the_label_counts_down_to_the_automatic_stop(qapp, monkeypatch,
+                                                     tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.record_button.click()
+
+        class Snap:
+            game_state = "DOTA_GAMERULES_STATE_HERO_SELECTION"
+            frame = None
+            frames_arrived = 5
+        window._capture_recording(Snap(), [], [])
+        assert "auto-stops after the draft" in window.recording_label.text()
+
+        Snap.game_state = "DOTA_GAMERULES_STATE_PRE_GAME"
+        window._capture_recording(Snap(), [], [])
+        window._capture_recording(Snap(), [], [])
+        assert "auto-stop in" in window.recording_label.text()
+    finally:
+        window.close()

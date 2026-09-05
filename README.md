@@ -51,8 +51,10 @@ alone:
 
 ### Recording — one button
 
-**Record** in the toolbar captures everything for one game into its own
-folder, and **Stop** ends it:
+Press **Record** before you queue. That is the whole interaction — it takes
+frames from the moment you press it, and **stops itself a minute after the
+draft ends**. Stop is there if you want it, and there is nothing to press
+mid-game. Everything for that game lands in its own folder:
 
 ```
 recordings/2026-09-05_2031/
@@ -106,10 +108,13 @@ A reading that matches the *other* team better than its own is reported as
 **SIDES WERE SWAPPED** — a mapping fault, not a recognition one, and the two
 want different fixes.
 
-Frames are taken only while the game says a draft is on, at most one every
-two seconds and 600 in total, so a session left running cannot fill the disk.
-A failed write costs the recording, never the draft window: errors are
-swallowed and reported in `meta.json`.
+Frames start at the button press rather than at hero selection — the queue
+and the loading screen are where a capture-binding fault shows up, and by the
+draft it is too late to notice. One every two seconds, 600 at most. A press
+with no game behind it gives up after thirty minutes, so nothing runs until
+the disk fills. A failed write costs the recording, never the draft window:
+errors are swallowed and reported in `meta.json`, along with why the session
+ended.
 
 **Game ▸ What did the recording contain?** re-derives all of this from your
 own archive — per phase, per match — so none of it has to be taken on trust.
@@ -301,7 +306,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 214 tests: normalisation math, scoring views, item
+pytest            # 224 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
