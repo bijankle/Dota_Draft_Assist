@@ -5,12 +5,17 @@ HERO_SELECTION the feed names no hero but your own. From STRATEGY_TIME the
 minimap carries all ten, in a shape two recorded matches agree on
 (`tests/fixtures/gsi/`):
 
-  * Some objects sit at the origin, (0,0). Three of them are duplicates of
-    the player's own hero, which also appears in its lane. But an origin
-    entry is NOT always a duplicate: recording 4 has Sven there, in no
-    other slot, because no lane had been chosen for it yet. Dropping every
-    origin entry lost Sven and left nine heroes, so only origin entries
-    whose hero appears elsewhere are dropped.
+  * The heroes that matter are the ones PLACED in a lane slot. Ten placed
+    is the whole line-up and the origin is then ignored entirely.
+  * Objects at the origin, (0,0), are a mixed bag and must not be trusted:
+    duplicates of the player's own hero, and — in recording 6 — Faceless
+    Void, which was in no lane and not in the match at all (a hovered pick,
+    or a leftover). Keeping every origin entry that was not placed
+    elsewhere gave ELEVEN heroes and refused a perfectly good line-up.
+  * They are only drawn on when fewer than ten are placed, which happens
+    when a player has chosen no lane (recording 4's Sven, nine placed).
+    Then origin-only heroes are added in object order until exactly ten,
+    and if that cannot land on exactly ten the reading is refused.
   * What remains is exactly ten objects in object order (`o3`…`o12` in one
     match, `o0`…`o12` minus the origin in the other), one per player, and
     they arrive as **two runs of five**.
@@ -81,10 +86,10 @@ def _index(key: str) -> int:
 def hero_entries(payload: dict, drop_origin: bool = True):
     """(object index, hero internal name, position) in object order.
 
-    Origin entries whose hero is ALSO placed somewhere else are duplicates
-    and are dropped — counting them makes ten heroes look like thirteen.
-    An origin entry for a hero placed nowhere else is a real player with no
-    lane chosen yet, and is kept: dropping it left one recording with nine.
+    Placed heroes first, in object order. Origin entries are drawn on only
+    to make up a short line-up: they hold duplicates of your own hero AND,
+    in one recording, a hero that was not in the match, so trusting them
+    when ten heroes are already placed turned a good reading into eleven.
     """
     block = payload.get("minimap")
     if not isinstance(block, dict):
@@ -101,15 +106,26 @@ def hero_entries(payload: dict, drop_origin: bool = True):
     entries.sort()
     if not drop_origin:
         return entries
-    placed = {name for _i, name, position in entries if position != ORIGIN}
+
     kept, seen = [], set()
     for index, name, position in entries:
-        if position == ORIGIN and name in placed:
-            continue                      # a duplicate of a placed hero
-        if name in seen:
-            continue                      # same hero at two origin slots
+        if position == ORIGIN or name in seen:
+            continue
         seen.add(name)
         kept.append((index, name, position))
+    if len(kept) >= 2 * TEAM_SIZE:
+        return kept
+    # Short: a player with no lane chosen sits at the origin. Take those in
+    # object order, but only enough to reach ten -- the origin also holds
+    # heroes that are not in the match.
+    for index, name, position in entries:
+        if position != ORIGIN or name in seen:
+            continue
+        seen.add(name)
+        kept.append((index, name, position))
+        if len(kept) == 2 * TEAM_SIZE:
+            break
+    kept.sort()
     return kept
 
 

@@ -16,6 +16,9 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 from draft_assist.config import RULES_FILE  # noqa: E402
 from draft_assist.model import items as items_mod  # noqa: E402
 from draft_assist.ui.app import MainWindow  # noqa: E402
+from draft_assist.ui.hero_picker import (  # noqa: E402
+    HeroPickerDialog as _Picker)
+HeroPickerDialogCode = _Picker.DialogCode
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
 from draft_assist.ui.tables import SORT_ROLE  # noqa: E402
@@ -781,11 +784,17 @@ def test_quick_entry_fills_the_next_slot_on_the_active_side(qapp):
         window.close()
 
 
-def test_tab_flips_the_side_without_losing_focus(qapp):
+def test_tab_is_left_alone_so_it_walks_the_slots(qapp):
+    """Tab used to flip the entry side. It has to traverse the ten draft
+    slots instead, so the side toggle moved to Ctrl+Tab and the button."""
     window = blank_window(qapp)
     try:
-        assert window.quick_side == "enemy"
-        window.quick_entry.tab_pressed.emit()
+        assert window.quick_side_button.text() == "Enemy"
+        for side in window.team_buttons.values():
+            for button in side:
+                assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+
+        window._flip_quick_side()
         assert window.quick_side == "ally"
         assert window.quick_side_button.text() == "Ally"
         window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
@@ -850,7 +859,7 @@ def test_quick_undo_removes_the_last_pick_typed(qapp):
         for hero_id in window.ds.hero_ids[:2]:
             window.quick_entry.setText(window.ds.name(hero_id))
             window.quick_entry.returnPressed.emit()
-        window.quick_entry.tab_pressed.emit()          # to the ally side
+        window._flip_quick_side()                     # to the ally side
         window.quick_entry.setText(window.ds.name(window.ds.hero_ids[2]))
         window.quick_entry.returnPressed.emit()
 
@@ -1448,5 +1457,142 @@ def test_no_swap_offered_while_you_are_still_picking(qapp):
         payload["map"]["game_state"] = "DOTA_GAMERULES_STATE_HERO_SELECTION"
         window.refresh()
         assert window.swap_button.isHidden()
+    finally:
+        window.close()
+
+
+# ---- a hero cannot be in two slots -------------------------------------
+
+def test_the_same_hero_cannot_be_entered_twice(qapp):
+    window = blank_window(qapp)
+    try:
+        name = window.ds.name(window.ds.hero_ids[0])
+        window.quick_entry.setText(name)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.enemies[0] == window.ds.hero_ids[0]
+
+        window.quick_entry.setText(name)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.enemies[1] is None
+        assert "no single undrafted hero" in window.status.currentMessage()
+    finally:
+        window.close()
+
+
+def test_a_hero_on_one_team_cannot_be_added_to_the_other(qapp):
+    window = blank_window(qapp)
+    try:
+        name = window.ds.name(window.ds.hero_ids[0])
+        window.quick_entry.setText(name)
+        window.quick_entry.returnPressed.emit()
+        window._flip_quick_side()
+        window.quick_entry.setText(name)
+        window.quick_entry.returnPressed.emit()
+        assert window.manual.allies == [None] * 5
+    finally:
+        window.close()
+
+
+def test_the_picker_hides_heroes_already_drafted(window, monkeypatch):
+    import draft_assist.ui.app as app_mod
+
+    seen = {}
+
+    class FakePicker:
+        DialogCode = HeroPickerDialogCode
+
+        def __init__(self, ds, taken=frozenset(), current=None, title="",
+                     parent=None):
+            seen["taken"] = set(taken)
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(app_mod, "HeroPickerDialog", FakePicker)
+    window.refresh()
+    window._edit_slot("ally", 4)
+    drafted = set(window.snapshot.left) | set(window.snapshot.right)
+    assert drafted and drafted <= seen["taken"]
+
+
+def test_typing_a_pick_leaves_the_box_ready_for_the_next(qapp):
+    window = blank_window(qapp)
+    try:
+        window.show()
+        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
+        window.quick_entry.returnPressed.emit()
+        assert window.quick_entry.text() == ""
+        assert window.focusWidget() is window.quick_entry
+    finally:
+        window.close()
+
+
+def test_clicking_an_empty_slot_opens_one_picker_and_no_more(qapp,
+                                                             monkeypatch):
+    """Clicking is deliberate, one slot at a time — unlike typing, it must
+    not chain into the next."""
+    import draft_assist.ui.app as app_mod
+
+    opened = []
+
+    class FakePicker:
+        DialogCode = HeroPickerDialogCode
+
+        def __init__(self, ds, taken=frozenset(), current=None, title="",
+                     parent=None):
+            opened.append(title)
+            self.selected = ds.hero_ids[0]
+            self.cleared = False
+
+        def exec(self):
+            return HeroPickerDialogCode.Accepted
+
+    monkeypatch.setattr(app_mod, "HeroPickerDialog", FakePicker)
+    window = blank_window(qapp)
+    try:
+        window.team_buttons["enemy"][0].click()
+        assert len(opened) == 1
+    finally:
+        window.close()
+
+
+# ---- roles on the slots -------------------------------------------------
+
+def test_a_slot_can_be_given_a_role_and_shows_it(qapp):
+    window = blank_window(qapp)
+    try:
+        window.quick_entry.setText(window.ds.name(window.ds.hero_ids[0]))
+        window.quick_entry.returnPressed.emit()
+        button = window.team_buttons["enemy"][0]
+        hero = button.text()
+
+        window._set_slot_role("enemy", 0, "Pos 3")
+        assert window.team_buttons["enemy"][0].text() == f"Pos 3 · {hero}"
+
+        window._set_slot_role("enemy", 0, None)
+        assert window.team_buttons["enemy"][0].text() == hero
+    finally:
+        window.close()
+
+
+def test_a_role_survives_the_slot_being_refilled(qapp):
+    """The role belongs to the lane, not to whoever is standing in it."""
+    window = blank_window(qapp)
+    try:
+        window._set_slot_role("ally", 2, "Pos 1")
+        window._flip_quick_side()
+        for hero_id in window.ds.hero_ids[:3]:
+            window.quick_entry.setText(window.ds.name(hero_id))
+            window.quick_entry.returnPressed.emit()
+        assert window.team_buttons["ally"][2].text().startswith("Pos 1 · ")
+    finally:
+        window.close()
+
+
+def test_an_empty_slot_with_a_role_still_shows_it(qapp):
+    window = blank_window(qapp)
+    try:
+        window._set_slot_role("ally", 0, "Pos 5")
+        assert window.team_buttons["ally"][0].text() == "Pos 5 · +"
     finally:
         window.close()

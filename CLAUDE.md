@@ -109,9 +109,14 @@ credentials, and put the account at risk. Do not go there.
 
   How the minimap is read, and what is still unsettled. Five recorded
   matches; none of this is documented by Valve:
-  - Origin `(0,0)` entries that duplicate a hero placed elsewhere are
-    dropped; an origin entry for a hero placed nowhere else is a real
-    player with no lane chosen and is kept.
+  - **The PLACED heroes are the line-up.** Ten placed and the origin is
+    ignored entirely. Origin `(0,0)` entries are a mixed bag: duplicates of
+    the player's own hero, and in one recording Faceless Void, which was in
+    no lane and not in the match at all. Keeping every origin entry that
+    was not placed elsewhere gave ELEVEN and refused a good reading.
+    Origin entries are drawn on only when fewer than ten are placed (a
+    player with no lane chosen), in object order, until exactly ten; if
+    that cannot land on ten the reading is refused.
   - What remains is exactly ten heroes. **That part is solid.**
   - **WHICH FIVE ARE YOURS IS NOT SOLVED — but only after the draft.**
     While picking, the picks come from the SCREEN, where Radiant is always
@@ -162,6 +167,15 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
+- **The draft panel is keyboard-first and refuses duplicates.** A hero
+  already in the draft cannot be entered again on either side —
+  `_taken_heroes()` is the single source for that, so typing and the picker
+  cannot disagree. Enter leaves focus in the entry box for the next pick;
+  clicking a slot opens one picker and never chains. Tab walks the ten
+  slots (they are `StrongFocus`), so the entry side moved to Ctrl+Tab.
+  Roles (Pos 1-5) are assigned per SLOT, not per hero, and survive the hero
+  changing: a slot is a lane. Vision reads the ranked-role icons but is not
+  wired to these yet — that waits on the crop geometry being right.
 - **The Matrix tab is the grid a summed score hides**
   (`scoring.matchup_matrix` / `synergy_matrix`, `tables.MatrixTable`). A
   comfortable total can conceal one lane losing badly. The synergy grid

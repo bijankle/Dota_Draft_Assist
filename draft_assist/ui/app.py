@@ -118,6 +118,11 @@ class MainWindow(QMainWindow):
         # Flipped by hand when the minimap's guess at the sides is wrong;
         # cleared when the match changes.
         self.swap_sides = False
+        # Position 1-5 per slot, assigned by hand. Vision reads the
+        # ranked-role icons, but not until the crop geometry is right,
+        # so nothing sets these automatically yet.
+        self.slot_roles = {"ally": [None] * 5,
+                           "enemy": [None] * 5}
         self._swap_match = ""
         from ..vision import layout as layout_mod
         session = getattr(provider, "session", None)
@@ -389,7 +394,7 @@ class MainWindow(QMainWindow):
         right_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         split.addWidget(right_scroll)
-        split.setSizes([660, 560])
+        split.setSizes([780, 520])
 
         teams_card, tlay = card("Draft")
         self.team_buttons = {}
@@ -413,26 +418,29 @@ class MainWindow(QMainWindow):
                 b.setProperty("side", side)
                 b.setProperty("slot_index", index)
                 b.setToolTip("Click to set this pick; click a filled slot to "
-                             "see what beats it. Right-click to change or "
-                             "clear.")
+                             "see what beats it. Right-click to change it, "
+                             "clear it, or give it a role.")
+                # Focusable so Tab walks the ten slots in order.
+                b.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
                 b.clicked.connect(self._on_slot_clicked)
                 b.setContextMenuPolicy(
                     Qt.ContextMenuPolicy.CustomContextMenu)
                 b.customContextMenuRequested.connect(
-                    lambda _pos, side=side, i=index: self._edit_slot(side, i))
+                    lambda pos, side=side, i=index:
+                        self._slot_menu(side, i, pos))
                 row.addWidget(b)
                 buttons.append(b)
             self.team_buttons[side] = buttons
             tlay.addLayout(row)
-        # Typing the draft in is not a fallback any more, it is the normal
-        # way the other nine picks arrive, so it gets a keyboard path: type
-        # a few letters, Enter fills the next empty slot on the active side,
-        # Tab flips sides. A draft is 30 seconds long.
+        # Typing the draft in is the normal way the other nine picks
+        # arrive, so it gets a keyboard path: type a few letters, Enter
+        # fills the next empty slot on the active side and leaves the box
+        # ready for the next. Tab is left alone so it walks the slots.
         quick = QHBoxLayout()
         quick.setSpacing(6)
         self.quick_side_button = QPushButton("Enemy")
         self.quick_side_button.setToolTip(
-            "Which team the next entry goes to (Tab flips it)")
+            "Which team the next entry goes to (Ctrl+Tab flips it)")
         self.quick_side_button.setFixedWidth(78)
         self.quick_side_button.clicked.connect(self._flip_quick_side)
         quick.addWidget(self.quick_side_button)
@@ -440,7 +448,11 @@ class MainWindow(QMainWindow):
         self.quick_entry.setPlaceholderText(
             "Type a hero and press Enter to add the pick…")
         self.quick_entry.returnPressed.connect(self._quick_add)
-        self.quick_entry.tab_pressed.connect(self._flip_quick_side)
+        # Ctrl+Tab, not Tab: Tab has to walk the draft slots.
+        flip = QAction("Flip entry side", self)
+        flip.setShortcut(QKeySequence("Ctrl+Tab"))
+        flip.triggered.connect(self._flip_quick_side)
+        self.addAction(flip)
         quick.addWidget(self.quick_entry, 1)
         self.quick_undo = QPushButton("Undo")
         self.quick_undo.setFixedWidth(64)
@@ -475,7 +487,10 @@ class MainWindow(QMainWindow):
         tlay.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         teams_card.setSizePolicy(teams_card.sizePolicy().horizontalPolicy(),
                                  teams_card.sizePolicy().Policy.Fixed)
-        rlay.addWidget(teams_card)
+        # The draft and the role controls live on the LEFT, beside the
+        # hero list, so the right column is free for the breakdown and
+        # the counters rather than squeezing all four into one strip.
+        llay.insertWidget(1, teams_card)
 
         controls_card, clay = card()
         row1 = QHBoxLayout()
@@ -504,7 +519,7 @@ class MainWindow(QMainWindow):
         self.lock_check.toggled.connect(self._refresh_views)
         row2.addWidget(self.lock_check)
         clay.addLayout(row2)
-        rlay.addWidget(controls_card)
+        llay.insertWidget(2, controls_card)
 
         detail_card, dlay2 = card("Why this score")
         # The breakdown is the panel that catches a plausible total reached
@@ -1275,6 +1290,61 @@ class MainWindow(QMainWindow):
 
     # -- quick keyboard entry --------------------------------------------
 
+    def _slot_menu(self, side: str, index: int, pos) -> None:
+        """Right-click: change the hero, clear it, or give the slot a role.
+
+        Roles live on the slot rather than on the hero because a slot is
+        what a lane is: the same hero in a different game is a different
+        position.
+        """
+        from PyQt6.QtWidgets import QMenu
+
+        button = self.team_buttons[side][index]
+        menu = QMenu(self)
+        menu.addAction("Change hero…").triggered.connect(
+            lambda: self._edit_slot(side, index))
+        clear = menu.addAction("Clear slot")
+        clear.setEnabled(button.property("hero_id") is not None)
+        clear.triggered.connect(lambda: self._clear_slot(side, index))
+        role_menu = menu.addMenu("Role")
+        for label in ("Pos 1", "Pos 2", "Pos 3", "Pos 4", "Pos 5"):
+            action = role_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self.slot_roles[side][index] == label)
+            action.triggered.connect(
+                lambda _checked, name=label:
+                    self._set_slot_role(side, index, name))
+        role_menu.addSeparator()
+        role_menu.addAction("No role").triggered.connect(
+            lambda: self._set_slot_role(side, index, None))
+        menu.exec(button.mapToGlobal(pos))
+
+    def _set_slot_role(self, side: str, index: int, role: str | None) -> None:
+        self.slot_roles[side][index] = role
+        self.last_draft_key = None
+        self.refresh()
+
+    def _clear_slot(self, side: str, index: int) -> None:
+        self.manual.set_slot(side, index, None)
+        self._entry_order[:] = [entry for entry in self._entry_order
+                                if entry != (side, index)]
+        self.last_draft_key = None
+        self.refresh()
+
+    def _taken_heroes(self) -> set[int]:
+        """Every hero already in the draft, either side.
+
+        A hero cannot be in two slots — not on both teams and not twice on
+        one — so every entry point filters against this rather than each
+        checking its own corner.
+        """
+        taken = set(self.manual.entered("ally")) | set(
+            self.manual.entered("enemy"))
+        snap = self.snapshot
+        if snap is not None:
+            taken |= set(snap.left) | set(snap.right)
+        return taken
+
     def _swap_sides(self) -> None:
         self.swap_sides = not self.swap_sides
         self.last_draft_key = None
@@ -1322,9 +1392,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(
                 "No hero data yet — Data ▸ Update statistics", 6000)
             return
-        snap = self.snapshot
-        taken = (set(snap.left) | set(snap.right)) if snap else set()
-        hero_id = self.resolve_hero(text, exclude=taken)
+        hero_id = self.resolve_hero(text, exclude=self._taken_heroes())
         if hero_id is None:
             self.status.showMessage(
                 f"'{text}' matches no single undrafted hero — keep typing",
@@ -1344,6 +1412,9 @@ class MainWindow(QMainWindow):
         self.status.showMessage(
             f"{self.ds.name(hero_id)} → {side} slot {index + 1}", 4000)
         self.refresh()
+        # Straight on to the next pick: a draft is thirty seconds long and
+        # reaching for the mouse between heroes is the whole cost.
+        self.quick_entry.setFocus()
 
     def _quick_undo(self) -> None:
         if not self._entry_order:
@@ -1361,10 +1432,7 @@ class MainWindow(QMainWindow):
                 self, "Choose hero",
                 "Download the hero data first: Data ▸ Update statistics.")
             return
-        snap = self.snapshot
-        taken = set()
-        if snap is not None:
-            taken = set(snap.left) | set(snap.right)
+        taken = self._taken_heroes()
         slots = (self.manual.allies if side == "ally" else self.manual.enemies)
         current = slots[index] if index < len(slots) else None
         caption = ("Your team" if side == "ally" else "Enemy team")
@@ -1614,13 +1682,15 @@ class MainWindow(QMainWindow):
     def _on_draft_changed(self, allies, enemies, unknown) -> None:
         for side, ids in (("ally", allies), ("enemy", enemies)):
             for i, b in enumerate(self.team_buttons[side]):
+                role = self.slot_roles[side][i]
+                prefix = f"{role} · " if role else ""
                 if i < len(ids):
-                    b.setText(self.ds.name(ids[i]))
+                    b.setText(prefix + self.ds.name(ids[i]))
                     b.setProperty("hero_id", ids[i])
                 else:
                     # Empty slots stay enabled: clicking one is how a pick
                     # gets entered when the game does not report it.
-                    b.setText("+")
+                    b.setText(prefix + "+" if prefix else "+")
                     b.setProperty("hero_id", None)
         self.unknown_label.setText(
             f"{unknown} slot(s) unresolved — scoring uses only confident "

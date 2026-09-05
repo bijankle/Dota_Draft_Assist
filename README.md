@@ -171,10 +171,21 @@ The window opens even before anything is downloaded and tells you what to do
 next. It also opens when Dota is not running: capture is simply unbound, and
 the Capture menu lets you pick a source.
 
-**Draft tab** — the full ranked hero list (never filtered by role; heroes
-matching your queued role are highlighted), a filter box, your team and the
-enemy team as clickable slots, and the item panel once your pick is locked.
-Two panels sit below, kept apart on purpose:
+**Draft tab** — the draft itself and the role/pick controls sit on the LEFT
+with the ranked hero list (never filtered by role; heroes matching your
+queued role are highlighted) and a filter box, leaving the right column to
+the panels below.
+
+Entering picks: type a few letters and press **Enter** — the pick lands in
+the next empty slot on the active side and the box stays focused for the
+next one. **Ctrl+Tab** flips between Enemy and Ally; plain **Tab** walks the
+ten slots. Clicking an empty slot opens the picker for that slot only and
+never chains into the next. A hero already in the draft cannot be entered
+again, on either team. **Right-click a slot** to change it, clear it, or
+give it a role (Pos 1–5), which then shows on the slot — the role belongs to
+the lane, so it survives the hero being replaced.
+
+Two panels sit on the right, kept apart on purpose:
 
 - **Why this score** — the selected candidate's terms against the heroes in
   *this* game, allies in one bank and enemies in the other.
@@ -335,7 +346,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 261 tests: normalisation math, scoring views, item
+pytest            # 269 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
