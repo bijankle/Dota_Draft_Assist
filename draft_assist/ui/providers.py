@@ -298,3 +298,113 @@ class ManualProvider:
                         right=self.manual.entered("enemy"),
                         mode="manual", source="manual entry",
                         needs_manual=True, sides_known=True)
+
+
+class HybridProvider:
+    """Game data for the phase and your identity; the screen for the picks.
+
+    This is the shape the evidence forces. Recordings of real matches show
+    that during HERO_SELECTION the GSI feed names no hero anywhere at all —
+    so a GSI-only app is blind for the whole of the draft, which is the
+    only moment the advice is worth anything. Reading the screen is the one
+    remaining source, and it is what the vision pipeline was built for.
+
+    GSI does not become useless; it removes the two hardest parts of the
+    vision problem:
+
+    * WHEN. `game_state` says a draft is happening, so nothing has to be
+      inferred from pixels about whether the pick screen is up. The gate
+      stops being a guess.
+    * WHOSE. `player.team_name` says which side you are on, so the left and
+      right banks map to ally and enemy without ever asking the user.
+
+    Precedence is strict, and never a blend: what the game reports outright
+    (minimap line-ups) wins; the screen fills what the game did not report;
+    hand-entered slots fill what the screen could not read. Whatever is
+    still unknown stays unknown.
+    """
+
+    def __init__(self, gsi: "GsiProvider", vision: SessionProvider | None):
+        self.gsi = gsi
+        self.vision = vision
+        self.manual = gsi.manual
+        self.forced = False
+
+    # The Debug tab and the capture menu reach for these.
+    @property
+    def session(self):
+        return getattr(self.vision, "session", None)
+
+    def start(self) -> str:
+        message = self.gsi.start()
+        if self.vision is not None:
+            bound = self.vision.start()
+            return f"{message}; {bound}"
+        return message
+
+    def stop(self) -> None:
+        self.gsi.stop()
+        if self.vision is not None:
+            self.vision.stop()
+
+    def set_forced(self, forced: bool) -> None:
+        self.forced = forced
+        if self.vision is not None:
+            self.vision.set_forced(forced)
+
+    def rebind(self, title: str | None) -> str:
+        if self.vision is None or not hasattr(self.vision, "rebind"):
+            return "screen capture is not available"
+        return self.vision.rebind(title)
+
+    def available_sources(self) -> list[str]:
+        if self.vision is None or not hasattr(self.vision, "available_sources"):
+            return []
+        return self.vision.available_sources()
+
+    def poll(self) -> Snapshot:
+        snap = self.gsi.poll()
+        if self.vision is None:
+            return snap
+
+        screen = self.vision.poll()
+        # Always carry the frame and the read: the Debug tab is how a
+        # recognition problem gets diagnosed, and it must show what the app
+        # is looking at even when the picks came from somewhere else.
+        snap.frame = screen.frame
+        snap.read = screen.read
+        snap.read_raw = screen.read_raw
+        snap.gate_score = screen.gate_score
+        snap.stalled = screen.stalled
+        snap.frames_arrived = max(snap.frames_arrived, screen.frames_arrived)
+        if screen.warning and not snap.warning:
+            snap.warning = screen.warning
+
+        if snap.lineup_source:
+            return snap                      # the game told us outright
+
+        read = screen.read
+        if read is None:
+            return snap
+
+        radiant, dire = read.team_ids("radiant"), read.team_ids("dire")
+        if not radiant and not dire:
+            return snap
+        # my_team is what makes the banks mean ally and enemy. Without it
+        # the sides are still a question, so say so rather than pick one.
+        if snap.my_team == "dire":
+            allies, enemies = dire, radiant
+        elif snap.my_team == "radiant":
+            allies, enemies = radiant, dire
+        else:
+            snap.sides_known = False
+            allies, enemies = radiant, dire
+
+        snap.left = merge(allies, self.manual.entered("ally"))
+        snap.right = merge(enemies, self.manual.entered("enemy"))
+        snap.unknown = read.unknown_count()
+        snap.lineup_source = "screen"
+        snap.needs_manual = len(snap.left) + len(snap.right) < 9
+        snap.mode = "forced" if self.forced else (
+            "draft" if snap.game_state or snap.left or snap.right else "idle")
+        return snap

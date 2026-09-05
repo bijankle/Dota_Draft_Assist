@@ -1178,3 +1178,134 @@ def test_hero_selection_payloads_still_yield_nothing():
     assert not parsed.allies and not parsed.enemies
     assert not parsed.has_full_draft
     assert parsed.lineup_source == ""
+
+
+# ---- game data for the phase, the screen for the picks ------------------
+
+class FakeVision:
+    """Stands in for the capture session, which needs Windows and Dota."""
+
+    def __init__(self, radiant=(), dire=(), unknown=0):
+        from draft_assist.ui.providers import Snapshot
+        self.snap = Snapshot(source="capturing 'Dota 2'")
+        self.radiant, self.dire, self.unknown = (list(radiant), list(dire),
+                                                 unknown)
+        self.forced = False
+        self.started = False
+
+    class _Read:
+        def __init__(self, radiant, dire, unknown):
+            self._r, self._d, self._u = radiant, dire, unknown
+
+        def team_ids(self, team):
+            return list(self._r if team == "radiant" else self._d)
+
+        def unknown_count(self):
+            return self._u
+
+    def start(self):
+        self.started = True
+        return "capturing window 'Dota 2'"
+
+    def stop(self):
+        pass
+
+    def set_forced(self, forced):
+        self.forced = forced
+
+    def poll(self):
+        snap = self.snap
+        snap.read = self._Read(self.radiant, self.dire, self.unknown)
+        snap.read_raw = snap.read
+        return snap
+
+
+def hybrid(payload, radiant=(), dire=(), unknown=0, manual=None):
+    from draft_assist.ui.providers import HybridProvider
+    ds = minimap_dataset()
+    manual = manual if manual is not None else ManualDraft()
+    gsi = GsiProvider(ds, FakeServer(payload), manual)
+    return HybridProvider(gsi, FakeVision(radiant, dire, unknown)), ds
+
+
+def hero_selection_payload(team="dire"):
+    return {"map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+            "player": {"name": "Bijson", "team_name": team},
+            "draft": {}, "minimap": {}}
+
+
+def test_screen_fills_the_picks_gsi_never_sends_during_hero_selection():
+    """The whole point: GSI names no hero while picking, so without the
+    screen the app is blind for the only moment that matters."""
+    provider, ds = hybrid(hero_selection_payload("dire"),
+                          radiant=[75, 21], dire=[86, 102])
+    snap = provider.poll()
+    assert snap.lineup_source == "screen"
+    assert snap.game_state.endswith("HERO_SELECTION")
+    # dire is the player's side, so the dire bank is the ally bank
+    assert snap.left == [86, 102]
+    assert snap.right == [75, 21]
+    assert snap.sides_known
+
+
+def test_the_game_says_which_bank_is_yours():
+    """Same screen read, the other side: the banks swap without the user
+    ever being asked which side they are on."""
+    provider, _ds = hybrid(hero_selection_payload("radiant"),
+                           radiant=[75, 21], dire=[86, 102])
+    snap = provider.poll()
+    assert snap.left == [75, 21] and snap.right == [86, 102]
+
+
+def test_sides_stay_a_question_when_the_game_has_not_said():
+    payload = hero_selection_payload("")
+    payload["player"] = {"name": "Bijson"}
+    provider, _ds = hybrid(payload, radiant=[75], dire=[86])
+    snap = provider.poll()
+    assert not snap.sides_known
+
+
+def test_game_reported_lineups_beat_the_screen():
+    """Precedence is strict and never a blend: what the game reports
+    outright wins over pixels."""
+    provider, ds = hybrid(real_strategy_payload(),
+                          radiant=[999], dire=[998])
+    snap = provider.poll()
+    assert snap.lineup_source == "minimap"
+    assert [ds.name(h) for h in snap.left] == [
+        "Silencer", "Rubick", "Windrunner", "Abaddon", "Gyrocopter"]
+
+
+def test_hand_entered_slots_fill_what_the_screen_could_not_read():
+    manual = ManualDraft()
+    manual.set_slot("enemy", 0, 47)
+    provider, _ds = hybrid(hero_selection_payload("dire"),
+                           radiant=[75], dire=[86], manual=manual)
+    snap = provider.poll()
+    assert snap.right == [75, 47]          # screen first, then the typed one
+    assert snap.left == [86]
+
+
+def test_the_debug_view_still_sees_the_frame_when_picks_came_elsewhere():
+    """A recognition problem is diagnosed from the Debug tab, so it must
+    show what the app is looking at even when the picks came from GSI."""
+    provider, _ds = hybrid(real_strategy_payload(), radiant=[75], dire=[86])
+    snap = provider.poll()
+    assert snap.lineup_source == "minimap"
+    assert snap.read is not None
+
+
+def test_without_a_capture_session_it_behaves_exactly_like_gsi_alone():
+    from draft_assist.ui.providers import HybridProvider
+    ds = minimap_dataset()
+    gsi = GsiProvider(ds, FakeServer(hero_selection_payload()), ManualDraft())
+    provider = HybridProvider(gsi, None)
+    snap = provider.poll()
+    assert snap.lineup_source == ""
+    assert snap.needs_manual
+
+
+def test_forcing_recognition_reaches_the_capture_session():
+    provider, _ds = hybrid(hero_selection_payload(), radiant=[75])
+    provider.set_forced(True)
+    assert provider.vision.forced

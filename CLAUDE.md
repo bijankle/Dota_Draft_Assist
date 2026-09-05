@@ -4,12 +4,18 @@ Personal-use Windows desktop app that reads the current Dota 2 draft and
 shows hero/item recommendations in its own ordinary window. Single user, no
 distribution, no installers.
 
-**Draft state comes from Dota's Game State Integration (GSI) first**, with
-hand-entered slots filling anything GSI does not report, and screen capture
-retained only as an opt-in fallback (`--vision`). GSI is Valve's own
-documented channel: a config file in the Dota install asks the game to POST
-JSON to a local port, so the game volunteers its state. No pixels are
-interpreted, no per-frame compute, nothing to misrecognise.
+**Draft state comes from GSI and the screen together, because measurement
+showed neither is sufficient alone** (see the GSI evidence below). GSI —
+Valve's own channel, a config file asking the game to POST JSON to a local
+port — supplies the phase and your identity, which is what tells the app a
+draft is happening and which bank is yours. It names no hero during hero
+selection, so the picks themselves are read from the Dota window by the
+vision pipeline until the minimap starts carrying them at strategy time.
+Hand-entered slots fill whatever neither produced.
+
+Precedence is strict and never blended: game-reported line-ups > screen >
+hand entry > unknown. `HybridProvider` is the default; `--no-vision` and
+`--vision` isolate either half for debugging.
 
 ## Non-negotiable boundary
 

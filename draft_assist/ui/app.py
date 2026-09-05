@@ -1154,18 +1154,24 @@ class MainWindow(QMainWindow):
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
         the app should never leave the user guessing why a slot is empty."""
+        source = getattr(snap, "lineup_source", "")
         if not snap.needs_manual:
-            source = getattr(snap, "lineup_source", "")
             self.manual_hint.setText(
-                f"Both line-ups came from the game's {source}." if source
-                else "")
+                {"screen": "Both line-ups read from the Dota window.",
+                 "minimap": "Both line-ups came from the game's own data.",
+                 }.get(source, "" if not source else
+                       f"Both line-ups came from the {source}."))
             return
-        if snap.game_state:
+        if source == "screen":
             self.manual_hint.setText(
-                "During hero selection the game reports your own hero and "
-                "match state and nothing about the other nine picks — type "
-                "them into the box above, or click a slot. Both line-ups "
-                "arrive on their own once the game reaches strategy time.")
+                "Reading the picks from the Dota window — type or click in "
+                "anything it has not recognised yet.")
+        elif snap.game_state:
+            self.manual_hint.setText(
+                "The game itself reports no picks during hero selection, so "
+                "the app reads them off the Dota window. If nothing appears, "
+                "check the Debug tab is bound to Dota — or type them into "
+                "the box above.")
         else:
             self.manual_hint.setText(
                 "Click the empty slots to enter the draft by hand.")
@@ -1528,36 +1534,34 @@ class MainWindow(QMainWindow):
 def make_provider(args, ds: Dataset, manual: ManualDraft):
     """Choose the draft source.
 
-    Game data (GSI) is the default: Dota reports its own state through a
-    Valve-supported channel, with no pixel interpretation and no per-frame
-    compute. Screen capture remains available behind --vision as a fallback
-    for anything GSI turns out not to report.
+    The default is BOTH, because neither is sufficient alone. Recordings of
+    real matches show GSI names no hero at all during hero selection, so a
+    GSI-only app is blind for the whole draft — the only moment the advice
+    matters. Screen capture reads the picks; GSI says when a draft is
+    happening and which side you are on, which is what makes the pixels
+    interpretable without asking the user anything.
+
+    `--no-vision` for game data alone, `--vision` for the screen alone.
     """
-    from .providers import (DemoProvider, GsiProvider, LiveProvider,
-                            ManualProvider, ReplayProvider)
+    from .providers import (DemoProvider, GsiProvider, HybridProvider,
+                            LiveProvider, ManualProvider, ReplayProvider)
     if args.demo:
         return DemoProvider(ds)
     if args.manual:
         return ManualProvider(manual)
 
-    if args.vision or args.replay:
-        from ..capture.session import CaptureSession
-        from ..vision import library
-        from ..vision.layout import load_layout
-        params = library.load_params()
-        try:
-            lib = library.load(expected_hash_size=params.hash_size)
-        except FileNotFoundError:
-            # No portraits downloaded yet: an empty library still lets the
-            # app open and offer Data > Update statistics.
-            import numpy as np
-            from ..vision.library import Library
-            lib = Library(bits=np.zeros((0, params.bits), dtype=np.uint8),
-                          hero_ids=np.zeros(0, dtype=np.int32), labels=[],
-                          hash_size=params.hash_size)
-        session = CaptureSession(load_layout(), lib, params)
-        if args.replay:
-            return ReplayProvider(session, Path(args.replay))
+    if args.replay:
+        session = _capture_session()
+        if session is None:
+            raise SystemExit("replay needs the portrait library — run "
+                             "Data > Update statistics first")
+        return ReplayProvider(session, Path(args.replay))
+
+    if args.vision:
+        session = _capture_session()
+        if session is None:
+            raise SystemExit("screen capture needs the portrait library — "
+                             "run Data > Update statistics first")
         return LiveProvider(session, title=args.window)
 
     from ..gsi import install as gsi_install
@@ -1569,7 +1573,28 @@ def make_provider(args, ds: Dataset, manual: ManualDraft):
         hint = ("Dota install not found — use Game ▸ Set up game data once "
                 "Dota is installed")
     server = GsiServer(args.port, token=gsi_install.read_installed_token())
-    return GsiProvider(ds, server, manual, install_hint=hint)
+    gsi = GsiProvider(ds, server, manual, install_hint=hint)
+    if args.no_vision:
+        return gsi
+    session = _capture_session()
+    if session is None:
+        return gsi          # no portraits yet; the banner says to fetch them
+    return HybridProvider(gsi, LiveProvider(session, title=args.window))
+
+
+def _capture_session():
+    """A capture session, or None when there are no portraits to match
+    against. Missing portraits must not stop the app opening — the first
+    run has none, and the banner exists to say so."""
+    from ..capture.session import CaptureSession
+    from ..vision import library
+    from ..vision.layout import load_layout
+    try:
+        params = library.load_params()
+        lib = library.load(expected_hash_size=params.hash_size)
+    except FileNotFoundError:
+        return None
+    return CaptureSession(load_layout(), lib, params)
 
 
 CRASH_LOG = DEBUG_OUT / "crash.log"
@@ -1619,6 +1644,9 @@ def _main() -> None:
     parser.add_argument("--window", metavar="TITLE",
                         help="capture this window title instead of finding "
                              "the Dota client (also selectable in the app)")
+    parser.add_argument("--no-vision", action="store_true",
+                        help="game data only — do not read the screen "
+                             "during hero selection")
     parser.add_argument("--vision", action="store_true",
                         help="use screen capture instead of game data")
     parser.add_argument("--manual", action="store_true",

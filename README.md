@@ -30,15 +30,23 @@ are yours is decided by where your own hero sits, and the split is checked
 against the lane positions before it is believed. A failed check fills
 nothing rather than guessing.
 
-So, in practice:
+So the app uses **both**, and that is the default — neither is sufficient
+alone:
 
-- **While picking**, type the picks in: the quick-entry bar above the draft
-  slots takes a few letters and Enter, Tab flips between enemy and ally,
-  Undo removes the last one. An ambiguous prefix fills nothing rather than
-  risk the wrong hero. Clicking a slot still opens the full picker.
-- **Once the game starts**, both line-ups fill in on their own, and the app
-  says which part of the feed they came from.
-- Screen capture remains available behind `--vision`.
+- **Game data says WHEN and WHOSE.** `game_state` means the app knows a draft
+  is happening without inferring it from pixels, and `team_name` means the
+  left and right banks map to ally and enemy without ever asking you which
+  side you are on. Those were the two hardest parts of reading the screen.
+- **The screen says WHAT.** During hero selection the picks come from the
+  Dota window, via the portrait pipeline.
+- **From strategy time**, the minimap line-ups take over — they need no
+  pixels at all.
+- **Typing still fills the rest.** Precedence is strict and never blended:
+  what the game reports outright wins, the screen fills what the game did
+  not report, hand-entered slots fill what the screen could not read, and
+  whatever is still unknown stays unknown.
+
+`--no-vision` for game data only, `--vision` for the screen only.
 
 **Game ▸ What did the recording contain?** re-derives all of this from your
 own archive — per phase, per match — so none of it has to be taken on trust.
@@ -231,7 +239,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 174 tests: normalisation math, scoring views, item
+pytest            # 182 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests
