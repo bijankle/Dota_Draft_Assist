@@ -756,7 +756,9 @@ def test_recording_verdict_reports_a_real_draft_block(tmp_path):
     report = gsi_summary.from_directory(tmp_path, ds)
     assert report.draft_block_seen
     assert report.best_picks >= 9
-    assert "GSI DOES report the full draft" in gsi_summary.format_report(report)
+    text = gsi_summary.format_report(report)
+    assert "from the MINIMAP at strategy time" in text
+    assert "too late to choose a hero" in text
 
 
 def test_recording_verdict_survives_a_corrupt_file(tmp_path):
