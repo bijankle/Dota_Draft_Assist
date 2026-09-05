@@ -240,14 +240,15 @@ class DraftOverlay(QWidget):
             name = entry.name
             if highlight:
                 name = f"<b>{name}</b>"
-            delta = entry.vs_total + entry.with_total
-            colour = theme.GOOD if delta >= 0 else theme.BAD
+            # One definition of score across the app: draft fit, no win
+            # rate. The overlay and the main window cannot disagree about
+            # which hero is best if they are showing the same number.
+            colour = theme.GOOD if entry.score >= 0 else theme.BAD
             label.setText(
                 f"<table width='100%'><tr>"
                 f"<td>{name}</td>"
-                f"<td align='right'>{entry.score * 100:.1f}%</td>"
-                f"<td align='right' width='46'>"
-                f"<font color='{colour}'>{delta * 100:+.1f}</font></td>"
+                f"<td align='right' width='52'>"
+                f"<font color='{colour}'>{entry.score * 100:+.1f}</font></td>"
                 f"</tr></table>")
             label.setVisible(True)
             shown += 1

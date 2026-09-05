@@ -13,14 +13,17 @@ width available, clamped, and the leftover space goes to the margins. The art
 is then scaled to FIT that square rather than to fill it, so the whole
 portrait is visible and nothing is ever distorted by the window's aspect.
 
-Name across the top, shrunk (and wrapped to two lines if that is what it
-takes) so it fits the tile it belongs to; the signed number sits in the
-bottom-right corner, out of the portrait's face and out of the name's way.
+The name gets its OWN strip above the art rather than sitting on top of it:
+a label over a portrait hides the half of the portrait you recognise the
+hero by, and the point of drawing the art at all is that it is quicker to
+read than the name. The signed number sits in a small tinted badge in the
+bottom-right corner — the same treatment as the name strip, cut to the size
+of the number, so it reads over whatever is behind it without covering more
+than it needs.
 """
 
 from PyQt6.QtCore import QMimeData, QPoint, QRect, QRectF, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import (QColor, QDrag, QFont, QFontMetricsF, QPainter,
-                         QPainterPath, QPen)
+from PyQt6.QtGui import QColor, QDrag, QFont, QFontMetricsF, QPainter, QPen
 from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
                              QSizePolicy, QVBoxLayout)
 
@@ -48,11 +51,11 @@ NAME_MAX_PT = 11
 NAME_MIN_PT = 7
 NUMBER_PT = 11
 
-# The portrait is background, not subject: the text has to win. A flat scrim
-# plus a band behind the name is enough without turning the art into mud.
-SCRIM = QColor(0, 0, 0, 90)
-NAME_BAND = QColor(0, 0, 0, 165)
-HALO = QColor(0, 0, 0, 220)
+# The name strip and the number badge share one tint, so the two pieces of
+# text read as the same layer sitting over the art rather than two ideas.
+CHROME = QColor(0, 0, 0, 165)
+BADGE_PAD_X = 5
+BADGE_PAD_Y = 2
 
 
 class HeroTile(QAbstractButton):
@@ -210,25 +213,30 @@ class HeroTile(QAbstractButton):
         box = self.rect().adjusted(0, 0, -1, -1)
         painter.fillRect(box, QColor(theme.BG_DEEP))
 
-        art = portrait(self.property("hero_id"))
-        if art is not None:
-            # FIT, not fill: the whole portrait, at the tile's own aspect,
-            # so nothing is cropped off and nothing is ever stretched.
-            scaled = art.scaled(box.size(),
-                                Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation)
-            painter.drawPixmap(
-                box.left() + (box.width() - scaled.width()) // 2,
-                box.top() + (box.height() - scaled.height()) // 2, scaled)
-            painter.fillRect(box, SCRIM)
-
         if not self.filled:
             self._paint_empty(painter, box)
             self._paint_border(painter, box)
             painter.end()
             return
 
-        self._paint_name(painter, box)
+        # The name owns a strip of its own; the art gets everything under
+        # it, so nothing is drawn over the face.
+        band = QRect(box.left(), box.top(), box.width(),
+                     self._band_height(box))
+        art_box = QRect(box.left(), band.bottom() + 1, box.width(),
+                        box.bottom() - band.bottom())
+        art = portrait(self.property("hero_id"))
+        if art is not None and art_box.height() > 4:
+            scaled = art.scaled(art_box.size(),
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap(
+                art_box.left() + (art_box.width() - scaled.width()) // 2,
+                art_box.top() + (art_box.height() - scaled.height()) // 2,
+                scaled)
+
+        painter.fillRect(band, CHROME)
+        self._paint_name(painter, band)
         self._paint_number(painter, box)
         if self.role:
             painter.setFont(self._font(8))
@@ -239,19 +247,20 @@ class HeroTile(QAbstractButton):
         self._paint_border(painter, box)
         painter.end()
 
-    def _paint_name(self, painter: QPainter, box: QRect) -> None:
+    def _band_height(self, box: QRect) -> int:
+        return max(20, int(box.height() * 0.28))
+
+    def _paint_name(self, painter: QPainter, band: QRect) -> None:
         """Shrink to fit, then wrap to two lines, then elide.
 
         A hero name sheared in half or spilling past its tile is the one
         thing the panel exists to show, so the font gives way before the
-        text does — but the band's height is fixed, so two lines only
+        text does — but the strip's height is fixed, so two lines only
         happen at a size where two lines still fit.
         """
         name = self.hero_name or ""
-        avail = box.width() - 8
-        band_h = max(22, int(box.height() * 0.32))
-        band = QRect(box.left(), box.top(), box.width(), band_h)
-        painter.fillRect(band, NAME_BAND)
+        avail = band.width() - 8
+        band_h = band.height()
 
         size, lines = self._fit_name(name, avail, band_h)
         painter.setFont(self._font(size, bold=True))
@@ -283,25 +292,27 @@ class HeroTile(QAbstractButton):
         return NAME_MIN_PT, _split(name)
 
     def _paint_number(self, painter: QPainter, box: QRect) -> None:
-        """Bottom-right, haloed. Over an arbitrary portrait a stroke around
-        the glyphs is what makes a number legible; a panel behind it would
-        hide the art it is annotating."""
+        """A badge in the bottom-right, cut to the size of the number.
+
+        Same tint as the name strip so the two read as one layer over the
+        art, and no bigger than the digits need — a full-width bar there
+        would hide as much of the portrait as the name used to.
+        """
         if not self._delta:
             return
         painter.setFont(self._font(NUMBER_PT, bold=True))
         metrics = QFontMetricsF(painter.font())
-        path = QPainterPath()
-        path.addText(box.right() - 5 - metrics.horizontalAdvance(self._delta),
-                     box.bottom() - 5 - metrics.descent(),
-                     painter.font(), self._delta)
-        painter.setPen(QPen(HALO, 2.5, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap,
-                            Qt.PenJoinStyle.RoundJoin))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(path)
+        text_w = metrics.horizontalAdvance(self._delta)
+        badge = QRectF(
+            box.right() - 3 - text_w - 2 * BADGE_PAD_X,
+            box.bottom() - 3 - metrics.height() - 2 * BADGE_PAD_Y,
+            text_w + 2 * BADGE_PAD_X, metrics.height() + 2 * BADGE_PAD_Y)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(self._delta_colour))
-        painter.drawPath(path)
+        painter.setBrush(CHROME)
+        painter.drawRoundedRect(badge, 3, 3)
+        painter.setPen(QColor(self._delta_colour))
+        painter.drawText(badge, int(Qt.AlignmentFlag.AlignCenter),
+                         self._delta)
 
     def _paint_border(self, painter: QPainter, box: QRect) -> None:
         if self._drop_target:

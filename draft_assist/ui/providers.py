@@ -394,6 +394,11 @@ class HybridProvider:
         self.vision = vision
         self.manual = gsi.manual
         self.forced = False
+        # Screen-read line-ups, latched per (match, the ten heroes): the
+        # search path costs seconds, and the answer cannot change while the
+        # same ten are on the same bar.
+        self._sight: dict[tuple, object] = {}
+        self._searched: set[tuple] = set()
 
     # The Debug tab and the capture menu reach for these.
     @property
@@ -427,6 +432,52 @@ class HybridProvider:
             return []
         return self.vision.available_sources()
 
+    def _resolve_sides_by_sight(self, snap) -> None:
+        """Put the game's ten heroes into their positions on the pick bar.
+
+        The minimap is reliable about WHICH ten and unreliable about whose
+        five are whose; the screen is the other way round, because Radiant
+        is always the left bank and `player.team_name` says which bank is
+        yours. Neither source alone settles it and together they do, so this
+        is a combination rather than a preference — hence the source name.
+
+        Silent on failure by design: a bad reading leaves the minimap's
+        guess exactly as it was, which is what the user was already
+        correcting by hand.
+        """
+        ten = list(snap.left) + list(snap.right)
+        if len(ten) != 10 or snap.my_team not in ("radiant", "dire"):
+            return
+        key = (snap.match_id or "", frozenset(ten))
+        read = self._sight.get(key)
+        if read is None:
+            if snap.frame is None:
+                return
+            from ..vision import lineup as lineup_mod
+            layout = getattr(getattr(self.vision, "session", None),
+                             "layout", None)
+            # The search path is hundreds of correlations at an unknown
+            # scale. Once per match; every later tick is the cheap path or
+            # nothing at all.
+            allow_search = key not in self._searched
+            self._searched.add(key)
+            found = lineup_mod.read_lineup(snap.frame, ten, layout,
+                                           allow_search=allow_search)
+            if not found.ok:
+                if allow_search:
+                    snap.gsi_notes = list(snap.gsi_notes) + [
+                        f"sides not readable from the screen: {found.note}"]
+                return
+            self._sight[key] = found
+            read = found
+        allies, enemies = read.sides_for(snap.my_team)
+        snap.left = merge(allies, self.manual.entered("ally"))
+        snap.right = merge(enemies, self.manual.entered("enemy"))
+        snap.sides_certain = True
+        snap.lineup_source = "minimap+screen"
+        snap.source = (f"game data + screen · ten heroes from the game, "
+                       f"sides read off the pick bar ({read.how})")
+
     def poll(self) -> Snapshot:
         snap = self.gsi.poll()
         if self.vision is None:
@@ -445,6 +496,8 @@ class HybridProvider:
         if screen.warning and not snap.warning:
             snap.warning = screen.warning
 
+        if snap.lineup_source == "minimap" and not snap.sides_certain:
+            self._resolve_sides_by_sight(snap)
         if snap.lineup_source:
             return snap                      # the game told us outright
 

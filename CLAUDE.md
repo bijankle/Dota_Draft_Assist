@@ -41,6 +41,19 @@ credentials, and put the account at risk. Do not go there.
 
 ## Domain facts not guessable from the code
 
+0. **The score is DRAFT FIT, and the hero's own win rate is not in it.**
+   `score_all` ranks on `vs_total + with_total` alone: zero means the ten
+   heroes on the board neither help nor hurt this candidate. The question
+   the list answers is "what does this draft do to this hero", never "is
+   this hero good" — a baseline term floats the strong heroes to the top of
+   every list regardless of the draft, which is the one thing the list is
+   not for. This is one definition used everywhere (ranked list, overlay
+   rows, breakdown subtitle) so two surfaces can never disagree about which
+   hero is best. The cost is real and is why `ScoredHero.baseline` is still
+   carried and still displayed, labelled as not scored: a weak hero with
+   good matchups now outranks a strong hero with neutral ones, and nothing
+   in the ordering will tell you so.
+
 1. **Matrices hold normalised deltas, never raw win rates.** Every matchup and
    synergy figure is converted at ingestion into a delta relative to what the
    two heroes' individual baseline win rates would predict. Raw rates are
@@ -142,12 +155,40 @@ credentials, and put the account at risk. Do not go there.
     putting the player with four heroes from the other team. Nothing found
     so far distinguishes the sides: the `team` field is constant, the lane
     slots are placements (two team-mates share one), and object order is
-    not reliably team order. So `Lineups.sides_certain` is False, the note
-    says the split is a guess, and the UI carries two corrections, both
-    reset on a new match id: **Swap teams** flips the whole reading, and a
-    slot's **Move to the other team** exchanges one hero with its opposite
-    number (an exchange, never one-way — a 5v5 cannot become 4v6). Do not
-    re-assert the split as fact without evidence that settles it.
+    not reliably team order. So `Lineups.sides_certain` is False and the
+    note says the split is a guess. Do not re-assert it as fact without
+    evidence that settles it.
+
+    **The rule is still unsolved, but the app no longer needs it**
+    (`vision/lineup.py`). The minimap is reliable about WHICH ten and
+    unreliable about whose five; the screen is the other way round, because
+    Radiant is always the left bank of the pick bar and `player.team_name`
+    says which bank is yours. So `HybridProvider._resolve_sides_by_sight`
+    takes the ten from the game and their POSITIONS from the picture, and
+    the answer stops being a guess: `sides_certain` becomes True and
+    `lineup_source` becomes `minimap+screen`. This is easier than
+    recognition proper — the question is "which of THESE TEN is in this
+    box", with the answer guaranteed to be a permutation, so a mistake
+    needs two heroes to out-match each other in each other's slots rather
+    than one hero to beat 125 rivals. Two paths: **placed** scores the ten
+    calibrated crop boxes against the ten candidates (a hundred small
+    correlations, milliseconds) and **searched** hunts each across the top
+    strip at unknown scale (`autocal.locate`, hundreds of correlations), so
+    the search runs at most ONCE PER MATCH and the result is latched per
+    (match, the ten). Anything short of ten confident distinct heroes in
+    two banks of five returns `ok is False` with a reason and the caller
+    keeps the guess it had — a wrong split asserted confidently is worse
+    than a guess the user is already correcting.
+
+    Corrections stay, and they are all per-match, cleared on a new match id:
+    **drag a hero onto the other team** exchanges it with whatever it is
+    dropped on (an exchange, never one-way — a 5v5 cannot become 4v6), and
+    **drag within a team** swaps two positions, because the order is meant
+    to be the pick bar's and the feed does not reliably give that.
+    **Swap teams is gone**, and so is the correction-pattern memory that
+    briefly replaced it: flipping all ten was useless for the case that
+    actually happens (own hero right, the other four wrong), and a habit
+    learned from corrections is not evidence — reading the screen is.
   - Guards on the ten: exactly ten entries after de-duplication, ten
     distinct heroes, all resolvable, own hero among them. A failed check
     yields **nothing**, never a guess.
@@ -243,6 +284,12 @@ credentials, and put the account at risk. Do not go there.
   portrait is NORMAL, not an error: a fresh install has none and the tile
   draws plain. `text()` still reads "Pos 3 · Necrophos", so the tile is a
   drop-in for the button it replaced.
+  **The name does not sit on the art**: it gets its own strip above it,
+  because a label over a portrait hides the half of the portrait you
+  recognise the hero by, and the art is only worth drawing because it is
+  quicker to read than the name. The number sits in a small tinted badge in
+  the bottom-right, the same tint as the strip and cut to the size of the
+  digits — a full-width bar there would hide as much as the name used to.
   **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
   _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
   leftover width at a fixed height meant full-screening the window
@@ -256,21 +303,19 @@ credentials, and put the account at risk. Do not go there.
   the panel exists to show. Tests must actually RENDER every tile state:
   the portrait branch shipped once with a mistyped Qt enum and nothing
   caught it, because no test had a portrait on disk to take that branch.
-- **Fixing a wrong team split is a DRAG** (`HeroTile.dropped_on`,
-  `_on_slot_dropped`): drop a hero on the other panel and it exchanges with
-  whatever it landed on, because a 5v5 cannot become 4v6. Dropping inside
-  its own team does nothing — the order within a bank is the feed's, and a
-  hand-held order would quietly fight the next reading rather than correct
-  anything. Swap teams and the right-click menu both remain.
-- **The app remembers what the user keeps correcting** (`ui/split_memory.py`).
-  If the split comes out reversed three matches running, the fourth starts
-  already swapped and says so. It records ONLY the two verdicts that mean
-  something — the reading as given, or exactly reversed, compared as sets of
-  five — so a partial fiddle teaches it nothing rather than noise, and one
-  match is one verdict however much the user fiddles in it. A single
-  contradiction stops it. **This is a memory of one person's habit, not a
-  rule about what the minimap means**: `sides_certain` stays False, the swap
-  control stays on screen, and nothing in the section above is settled by it.
+- **Fixing the draft by hand is a DRAG** (`HeroTile.dropped_on`,
+  `_on_slot_dropped`). Onto the other team, it EXCHANGES the two heroes,
+  because a 5v5 cannot become 4v6 and a hero on the wrong side almost
+  always has an opposite number in the same boat. Within a team, it swaps
+  their two positions (`_swap_positions` → `slot_order`, applied by
+  `_apply_order`), because the order is meant to be the pick bar's and the
+  feed does not reliably give that. Both are per-match and cleared on a new
+  match id, and the order override is stored as an explicit list rather
+  than a permutation so a reading that changes underneath it degrades to a
+  partial order rather than dropping a pick. **Test the Qt drag path, not
+  just the handler**: the handler had tests and the machinery reaching it
+  did not, and a drag that never starts looks exactly like a feature that
+  does not exist.
 - **Captions are gone from the grids.** The card heading says which grid it
   is ("Counters", "Synergy") and the row and column headers say what the
   axes are; a paragraph repeating both only stands between the reader and

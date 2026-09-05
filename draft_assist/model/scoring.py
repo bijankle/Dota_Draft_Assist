@@ -1,8 +1,17 @@
 """Hero scoring: pure functions over the cached delta matrices.
 
-score(candidate) = baseline(candidate)
-                 + sum over resolved enemy slots of delta_vs[candidate, enemy]
-                 + sum over resolved ally slots  of delta_with[candidate, ally]
+fit(candidate) = sum over resolved enemy slots of delta_vs[candidate, enemy]
+               + sum over resolved ally slots  of delta_with[candidate, ally]
+
+**The score is DRAFT FIT and nothing else — the hero's own win rate is not
+in it.** Zero means the ten heroes on the board neither help nor hurt this
+candidate; the number answers "what does this draft do to this hero", not
+"is this hero good". That is deliberate and was asked for explicitly: a
+baseline term makes the strong heroes float to the top of every list
+regardless of the draft, which is the one thing the list is not for. The
+cost is real and is the reason `baseline` is still carried on every
+ScoredHero: a weak hero with good matchups now outranks a strong hero with
+neutral ones, and nothing in the ordering will tell you so.
 
 The linear sum assumes effects are independent and additive — a linearisation
 that holds for small perturbations and degrades where heroes interact
@@ -35,8 +44,8 @@ class DraftState:
 class ScoredHero:
     hero_id: int
     name: str
-    score: float          # baseline + interaction deltas
-    baseline: float
+    score: float          # draft fit: vs_total + with_total, no baseline
+    baseline: float       # the hero's own win rate — carried, never scored
     vs_total: float       # summed matchup deltas against resolved enemies
     with_total: float     # summed synergy deltas with resolved allies
 
@@ -55,11 +64,15 @@ def _side_vectors(ds: Dataset, draft: DraftState) -> tuple[np.ndarray, np.ndarra
 
 def score_all(ds: Dataset, draft: DraftState) -> list[ScoredHero]:
     """Full ranked list of every undrafted hero, best first. No role
-    filtering — the UI highlights the user's queued role instead."""
+    filtering — the UI highlights the user's queued role instead.
+
+    Ranked on draft fit alone: `ds.baseline` is read for the field but is
+    NOT added to the score (see the module docstring).
+    """
     ally_vec, enemy_vec = _side_vectors(ds, draft)
     vs_totals = ds.delta_vs @ enemy_vec
     with_totals = ds.delta_with @ ally_vec
-    totals = ds.baseline + vs_totals + with_totals
+    totals = vs_totals + with_totals
 
     drafted = set(draft.allies) | set(draft.enemies)
     out = [

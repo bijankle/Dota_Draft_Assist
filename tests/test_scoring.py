@@ -25,20 +25,36 @@ def fake_dataset() -> Dataset:
                    meta={"pulled_at": 0})
 
 
-def test_score_composition():
+def test_score_is_draft_fit_with_no_win_rate_in_it():
+    """The score answers "what does this draft do to this hero", not "is
+    this hero good" — a baseline term floats the strong heroes to the top
+    of every list regardless of the draft."""
     ds = fake_dataset()
     # Ally Hero5, enemy Hero9; candidates are Hero1 and Hero12.
     draft = scoring.DraftState(allies=[5], enemies=[9])
     ranked = scoring.score_all(ds, draft)
     by_id = {s.hero_id: s for s in ranked}
     assert set(by_id) == {1, 12}
-    # Hero1: 0.50 baseline + 0.04 vs Hero9 + 0.02 with Hero5 = 0.56.
-    assert by_id[1].score == pytest.approx(0.56)
+    # Hero1: 0.04 vs Hero9 + 0.02 with Hero5, and nothing else.
+    assert by_id[1].score == pytest.approx(0.06)
     assert by_id[1].vs_total == pytest.approx(0.04)
     assert by_id[1].with_total == pytest.approx(0.02)
-    # Hero12: 0.55 baseline + 0 + 0 = 0.55.
-    assert by_id[12].score == pytest.approx(0.55)
+    # Hero12 interacts with neither, so this draft does nothing to it —
+    # even though its 0.55 baseline is the best of the four.
+    assert by_id[12].score == pytest.approx(0.0)
+    assert by_id[12].baseline == pytest.approx(0.55)
     assert ranked[0].hero_id == 1  # sorted descending
+
+
+def test_the_baseline_is_still_reported_just_never_scored():
+    """The cost of dropping it is that a weak hero with good matchups now
+    outranks a strong one with neutral matchups, so the figure has to stay
+    readable somewhere."""
+    ds = fake_dataset()
+    ranked = scoring.score_all(ds, scoring.DraftState())
+    assert all(s.score == pytest.approx(0.0) for s in ranked)
+    assert {s.hero_id: round(s.baseline, 2) for s in ranked} == {
+        1: 0.50, 5: 0.52, 9: 0.48, 12: 0.55}
 
 
 def test_drafted_heroes_excluded():
@@ -54,7 +70,7 @@ def test_unknown_slots_do_not_poison_scoring():
     draft = scoring.DraftState(enemies=[9], unknown_slots=3)
     ranked = scoring.score_all(ds, draft)
     by_id = {s.hero_id: s for s in ranked}
-    assert by_id[1].score == pytest.approx(0.54)  # baseline + vs only
+    assert by_id[1].score == pytest.approx(0.04)  # the vs term alone
 
 
 def test_breakdown_terms_match_score():
@@ -64,7 +80,7 @@ def test_breakdown_terms_match_score():
     assert {(t.other_id, t.kind) for t in terms} == {(9, "vs"), (5, "with")}
     total = sum(t.delta for t in terms)
     by_id = {s.hero_id: s for s in scoring.score_all(ds, draft)}
-    assert by_id[1].score == pytest.approx(by_id[1].baseline + total)
+    assert by_id[1].score == pytest.approx(total)
 
 
 def test_counters_column_view():

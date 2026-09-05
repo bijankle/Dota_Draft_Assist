@@ -155,3 +155,69 @@ def test_a_long_name_shrinks_rather_than_overflowing(qapp):
 def test_a_name_that_cannot_fit_on_one_line_wraps_evenly(qapp):
     assert teams._split("Keeper of the Light") == ["Keeper of", "the Light"]
     assert teams._split("Lion") == ["Lion"]
+
+
+# ---- the real drag path, not just the handler ---------------------------
+
+def test_a_drag_actually_starts_and_a_drop_is_delivered(qapp):
+    """The handler had tests; the Qt machinery that reaches it did not, and
+    a drag that never starts looks exactly like a feature that does not
+    exist."""
+    from PyQt6.QtCore import QMimeData, QPoint, QPointF
+    from PyQt6.QtGui import QDropEvent, QMouseEvent
+
+    panel = teams.TeamPanel("ally", "Your team")
+    panel.resize(700, 200)
+    source, target = panel.slots[0], panel.slots[3]
+    source.set_pick("Necrophos", None, 36)
+    target.set_pick("Lion", None, 1)
+
+    seen = []
+    target.dropped_on.connect(
+        lambda fs, fi, ts, ti: seen.append((fs, fi, ts, ti)))
+
+    data = QMimeData()
+    data.setData(teams.SLOT_MIME, b"ally:0")
+    drop = QDropEvent(QPointF(5, 5), Qt.DropAction.MoveAction, data,
+                      Qt.MouseButton.LeftButton,
+                      Qt.KeyboardModifier.NoModifier)
+    target.dropEvent(drop)
+    assert seen == [("ally", 0, "ally", 3)]
+
+    # And the press-then-move that produces that mime data in the first
+    # place must be recognised as a drag rather than swallowed as a click.
+    press = QMouseEvent(QMouseEvent.Type.MouseButtonPress, QPointF(4, 4),
+                        QPointF(4, 4), Qt.MouseButton.LeftButton,
+                        Qt.MouseButton.LeftButton,
+                        Qt.KeyboardModifier.NoModifier)
+    source.mousePressEvent(press)
+    assert source._press == QPoint(4, 4)
+
+
+def test_an_empty_tile_is_not_draggable(qapp):
+    """There is nothing to move, and a drag from a '+' would exchange a
+    hero for a hole."""
+    panel = teams.TeamPanel("ally", "Your team")
+    empty = panel.slots[2]
+    empty.set_pick(None, None, None)
+    assert not empty.filled
+
+
+def test_a_drop_from_something_else_is_ignored(qapp):
+    """The tiles accept their own mime type and nothing else, so a file or
+    a browser selection dropped on the draft does not reach the handler."""
+    from PyQt6.QtCore import QMimeData, QPointF
+    from PyQt6.QtGui import QDropEvent
+
+    panel = teams.TeamPanel("enemy", "Enemy team")
+    tile = panel.slots[1]
+    tile.set_pick("Lion", None, 1)
+    seen = []
+    tile.dropped_on.connect(lambda *a: seen.append(a))
+
+    data = QMimeData()
+    data.setText("some text from elsewhere")
+    tile.dropEvent(QDropEvent(QPointF(5, 5), Qt.DropAction.MoveAction, data,
+                              Qt.MouseButton.LeftButton,
+                              Qt.KeyboardModifier.NoModifier))
+    assert seen == []

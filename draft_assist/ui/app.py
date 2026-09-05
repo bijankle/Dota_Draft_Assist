@@ -63,7 +63,6 @@ from .overlay import DraftOverlay
 from .portrait_overlay import PortraitOverlay
 from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
                      ValueItem)
-from . import split_memory
 from .task_dialog import TaskDialog
 from .teams import TeamPanel
 from .tasks import TASKS
@@ -119,18 +118,16 @@ class MainWindow(QMainWindow):
         # Set when the user stops a session by hand during a draft,
         # so auto does not immediately start another one.
         self._auto_blocked = False
-        # Flipped by hand when the minimap's guess at the sides is wrong;
-        # cleared when the match changes.
-        self.swap_sides = False
+        # Per-match hand corrections to the reading, cleared when the match
+        # changes: which heroes were moved across, and the order the user
+        # dragged each bank into.
+        self.slot_order: dict[str, list[int]] = {"ally": [], "enemy": []}
         # Position 1-5 per slot, assigned by hand. Vision reads the
         # ranked-role icons, but not until the crop geometry is right,
         # so nothing sets these automatically yet.
         self.slot_roles = {"ally": [None] * 5,
                            "enemy": [None] * 5}
         self._swap_match = ""
-        # True when this match's swap came from the remembered pattern
-        # rather than from the user pressing the button this game.
-        self._swap_was_automatic = False
         # hero id -> "ally"/"enemy", for one hero put on the wrong
         # side. Cleared with the swap when the match changes.
         self.side_overrides: dict[int, str] = {}
@@ -421,17 +418,6 @@ class MainWindow(QMainWindow):
         self.quick_undo.clicked.connect(self._quick_undo)
         quick.addWidget(self.quick_undo)
 
-        self.swap_button = QPushButton("⇅ Swap teams")
-        self.swap_button.setToolTip(
-            "The game names all ten heroes but not which five are yours. "
-            "If the two columns are the wrong way round, this flips them "
-            "for the rest of the match.")
-        # Accent-styled because it is not decoration: while the sides are
-        # a guess, this is the control that makes the draft correct.
-        self.swap_button.setProperty("accent", True)
-        self.swap_button.clicked.connect(self._swap_sides)
-        self.swap_button.setVisible(False)
-        quick.addWidget(self.swap_button)
         elay.addLayout(quick)
 
         row1 = QHBoxLayout()
@@ -513,9 +499,9 @@ class MainWindow(QMainWindow):
         search_row.addWidget(self.search_box, 1)
         llay.addLayout(search_row)
 
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
-            ["Hero", "Score", "Base", "vs enemies", "with allies"])
+            ["Hero", "Fit", "vs enemies", "with allies"])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -532,7 +518,7 @@ class MainWindow(QMainWindow):
         header = self.table.horizontalHeader()
         header.setSortIndicatorShown(True)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col in range(1, 5):
+        for col in range(1, 4):
             header.setSectionResizeMode(
                 col, QHeaderView.ResizeMode.ResizeToContents)
         llay.addWidget(self.table, 1)
@@ -1494,23 +1480,20 @@ class MainWindow(QMainWindow):
 
     def _on_slot_dropped(self, from_side: str, from_index: int,
                          to_side: str, to_index: int) -> None:
-        """Drag a pick onto the other team to put it there.
+        """Drag one pick onto another.
 
-        Within a team it reorders; across teams it EXCHANGES with whatever
-        it was dropped on, because a 5v5 cannot become 4v6 and a hero on
-        the wrong side almost always has an opposite number in the same
-        boat.
+        Across teams it EXCHANGES the two, because a 5v5 cannot become 4v6
+        and a hero on the wrong side almost always has an opposite number
+        in the same boat. Within a team it swaps their two positions, which
+        is how the order is put right when the feed's order is not the
+        screen's.
         """
         moved = self.team_buttons[from_side][from_index].property("hero_id")
         if moved is None:
             return
         landed = self.team_buttons[to_side][to_index].property("hero_id")
         if from_side == to_side:
-            # Same team: nothing to fix. The order within a bank is the
-            # feed's, and inventing a hand-held order here would quietly
-            # fight the next reading rather than correct anything.
-            self.status.showMessage(
-                "Drag a hero onto the OTHER team to move it across", 4000)
+            self._swap_positions(from_side, moved, landed)
             return
         self.side_overrides[moved] = to_side
         if landed is not None:
@@ -1521,30 +1504,30 @@ class MainWindow(QMainWindow):
             "teams" if landed is not None
             else f"{self.ds.name(moved)} moved to the other team", 6000)
         self.refresh()
-        self._note_split_correction()
 
-    def _note_split_correction(self) -> None:
-        """Remember what the correction implies about the raw reading.
+    def _swap_positions(self, side: str, moved: int,
+                        landed: int | None) -> None:
+        """Two picks change places within their own bank.
 
-        Only the two verdicts that mean something are recorded — the
-        reading as given, or exactly reversed — so a partial fiddle teaches
-        the app nothing rather than teaching it noise.
+        The order matters because it is meant to be the order on Dota's
+        pick bar, and the game's feed does not reliably give that. Stored
+        as an explicit list for the match rather than as a permutation, so
+        a reading that changes underneath it degrades gracefully.
         """
-        snap = self.snapshot
-        if snap is None or getattr(snap, "sides_certain", True):
+        if landed is None or landed == moved:
             return
-        if getattr(snap, "lineup_source", "") != "minimap":
+        allies, enemies = self._sides(self.snapshot)
+        current = list(allies if side == "ally" else enemies)
+        if moved not in current or landed not in current:
             return
-        allies, enemies = self._sides(snap)
-        verdict = split_memory.verdict_for(
-            list(snap.left), list(snap.right), allies, enemies)
-        if verdict is None:
-            return
-        history = list(self.settings.get("split_history", []))
-        history = split_memory.record(
-            history, getattr(snap, "match_id", "") or "", verdict)
-        self.settings["split_history"] = history
-        ui_settings.save(self.settings)
+        i, j = current.index(moved), current.index(landed)
+        current[i], current[j] = current[j], current[i]
+        self.slot_order[side] = current
+        self.last_draft_key = None
+        self.status.showMessage(
+            f"{self.ds.name(moved)} and {self.ds.name(landed)} swapped "
+            "places", 5000)
+        self.refresh()
 
     def _set_slot_role(self, side: str, index: int, role: str | None) -> None:
         self.slot_roles[side][index] = role
@@ -1571,16 +1554,6 @@ class MainWindow(QMainWindow):
         if snap is not None:
             taken |= set(snap.left) | set(snap.right)
         return taken
-
-    def _swap_sides(self) -> None:
-        self.swap_sides = not self.swap_sides
-        self._swap_was_automatic = False
-        self.last_draft_key = None
-        self.status.showMessage(
-            "Teams swapped for this match" if self.swap_sides
-            else "Teams back as the game reported them", 6000)
-        self.refresh()
-        self._note_split_correction()
 
     def _flip_quick_side(self) -> None:
         self.quick_side = "ally" if self.quick_side == "enemy" else "enemy"
@@ -1899,38 +1872,15 @@ class MainWindow(QMainWindow):
         if match != self._swap_match:
             self._swap_match = match
             self.side_overrides.clear()
-            # If this user has corrected the same way three matches running,
-            # start the next one already corrected. It is a memory of what
-            # they keep doing, not a claim about what the minimap means:
-            # `sides_certain` stays False and the control stays on screen.
-            self.swap_sides = split_memory.should_pre_swap(
-                self.settings.get("split_history", []))
-            self._swap_was_automatic = self.swap_sides
-        # Never during the draft. There the picks come from the screen,
-        # where Radiant is always the left bank and Dire the right, and the
-        # game has already said which of those is yours — so the sides are
-        # known, and offering a swap would only invite getting them wrong.
-        # HERO_SELECTION specifically, not the whole drafting window:
-        # strategy time is after the picking and is where the minimap
-        # reading (and so the guess) lives.
-        picking = "HERO_SELECTION" in str(getattr(snap, "game_state", ""))
-        uncertain = (bool(source) and not picking
-                     and not getattr(snap, "sides_certain", True))
-        self.swap_button.setVisible(uncertain)
+            self.slot_order = {"ally": [], "enemy": []}
         if not snap.needs_manual:
             if source == "minimap":
-                run = split_memory.streak(
-                    self.settings.get("split_history", []))
-                if self._swap_was_automatic and self.swap_sides:
-                    self.manual_hint.setText(
-                        f"Teams pre-swapped — your last {run} corrections "
-                        "were all reversals. Swap teams undoes it.")
-                elif self.swap_sides:
-                    self.manual_hint.setText("Teams swapped for this match.")
-                else:
-                    self.manual_hint.setText(
-                        "Which five are yours is a guess — drag a hero to "
-                        "the other side, or press Swap teams.")
+                self.manual_hint.setText(
+                    "Which five are yours is a guess — drag a hero onto the "
+                    "other team to fix it.")
+            elif source == "minimap+screen":
+                self.manual_hint.setText(
+                    "Ten heroes from the game, sides read off the pick bar.")
             elif source == "screen":
                 self.manual_hint.setText("Picks read from the Dota window.")
             else:
@@ -1959,13 +1909,25 @@ class MainWindow(QMainWindow):
             # The minimap gives ten heroes but not, reliably, which five are
             # yours — one real match came out inverted. So corrections are
             # allowed HERE, where the game itself has not settled it.
-            left, right = snap.left, snap.right
-            if self.swap_sides and not getattr(snap, "sides_certain", True):
-                left, right = right, left
-            return self._apply_side_overrides(left, right)
-        mine_right = self.side_combo.currentIndex() == 1
-        return ((snap.right, snap.left) if mine_right
-                else (snap.left, snap.right))
+            allies, enemies = self._apply_side_overrides(
+                snap.left, snap.right)
+        else:
+            mine_right = self.side_combo.currentIndex() == 1
+            allies, enemies = ((snap.right, snap.left) if mine_right
+                               else (snap.left, snap.right))
+        return (self._apply_order("ally", allies),
+                self._apply_order("enemy", enemies))
+
+    def _apply_order(self, side: str, ids: list[int]) -> list[int]:
+        """Put the bank into the order the user dragged it into.
+
+        Only heroes still in the reading are honoured, and anything the
+        override does not mention keeps its place at the end — so a stale
+        order from earlier in the same match degrades to a partial one
+        rather than dropping a pick.
+        """
+        wanted = [h for h in self.slot_order.get(side, []) if h in ids]
+        return wanted + [h for h in ids if h not in wanted]
 
     def _apply_side_overrides(self, allies, enemies):
         """Move individually corrected heroes across, keeping order."""
@@ -2041,20 +2003,21 @@ class MainWindow(QMainWindow):
         for row, s in enumerate(self.scored):
             hero_roles = set(self.ds.heroes.get(s.hero_id, {})
                              .get("roles", []))
-            cells = [(s.name, None), (f"{s.score * 100:.1f}%", s.score),
-                     (f"{s.baseline * 100:.1f}%", s.baseline),
+            # Every column is a signed interaction term now. The hero's own
+            # win rate is not one of them and is not shown: it is not in the
+            # score, and a percentage beside these numbers invited reading
+            # the two as the same kind of thing.
+            cells = [(s.name, None),
+                     (f"{s.score * 100:+.1f}", s.score),
                      (f"{s.vs_total * 100:+.1f}", s.vs_total),
                      (f"{s.with_total * 100:+.1f}", s.with_total)]
             for col, (text, value) in enumerate(cells):
                 item = (QTableWidgetItem(text) if value is None
                         else ValueItem(text, value))
                 item.setData(Qt.ItemDataRole.UserRole, s.hero_id)
-                if col == 3 and s.vs_total:
-                    item.setForeground(QColor(theme.GOOD if s.vs_total > 0
-                                              else theme.BAD))
-                if col == 4 and s.with_total:
-                    item.setForeground(QColor(theme.GOOD if s.with_total > 0
-                                              else theme.BAD))
+                if col and value:
+                    item.setForeground(
+                        QColor(theme.GOOD if value > 0 else theme.BAD))
                 if tags and tags & hero_roles:
                     item.setBackground(HIGHLIGHT)
                 self.table.setItem(row, col, item)
@@ -2114,8 +2077,8 @@ class MainWindow(QMainWindow):
         s = by_id.get(hid)
         subtitle = ""
         if s:
-            subtitle = (f"baseline {s.baseline * 100:.1f}%  →  total "
-                        f"{s.score * 100:.1f}%")
+            subtitle = (f"draft fit {s.score * 100:+.1f} "
+                        f"(win rate {s.baseline * 100:.1f}%, not scored)")
         banks = [("With ally", [(t.other_name, t.delta) for t in terms
                                 if t.kind != "vs"]),
                  ("Vs enemy", [(t.other_name, t.delta) for t in terms

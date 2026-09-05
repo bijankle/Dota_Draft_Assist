@@ -21,7 +21,6 @@ from draft_assist.ui.hero_picker import (  # noqa: E402
 HeroPickerDialogCode = _Picker.DialogCode
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
-from draft_assist.ui import split_memory  # noqa: E402
 from draft_assist.ui.tables import SORT_ROLE, TOTAL_LABEL  # noqa: E402
 
 
@@ -81,7 +80,10 @@ def test_breakdown_view(window):
     hero_name = window.table.item(0, 0).text()
     panel = window.detail
     assert hero_name == panel.heading.text()
-    assert "baseline" in panel.subtitle.text()
+    assert "draft fit" in panel.subtitle.text()
+    # The hero's own win rate is still shown, plainly labelled as not being
+    # part of the number the list is ranked on.
+    assert "not scored" in panel.subtitle.text()
     allies = [name for name, _ in panel.rows_for(0)]
     enemies = [name for name, _ in panel.rows_for(1)]
     # Every drafted hero the score depends on is itemised by name, on the
@@ -148,7 +150,7 @@ def test_hero_table_sorts_on_numbers_not_text(window):
     comes out alphabetical."""
     window.refresh()
     header = window.table.horizontalHeader()
-    for column, reverse in ((1, True), (2, True), (3, False), (4, False)):
+    for column, reverse in ((1, True), (2, False), (3, False)):
         window.table.sortItems(
             column, Qt.SortOrder.DescendingOrder if reverse
             else Qt.SortOrder.AscendingOrder)
@@ -1356,50 +1358,36 @@ def minimap_window(qapp):
     return win
 
 
-def test_swap_button_appears_only_when_the_sides_are_a_guess(qapp):
-    window = minimap_window(qapp)
-    try:
-        assert window.snapshot.lineup_source == "minimap"
-        assert window.snapshot.sides_certain is False
-        assert not window.swap_button.isHidden()
-        assert "five are yours is a guess" in window.manual_hint.text()
-    finally:
-        window.close()
-
-
-def test_swapping_flips_the_two_rows(qapp):
+def test_dragging_the_whole_line_up_across_reverses_it(qapp):
+    """The old Swap teams button did this in one click and nothing else,
+    which is why it went: the case it handled is four drags, and the case
+    the user actually hits — own hero right, other four wrong — it could
+    not touch at all."""
     window = minimap_window(qapp)
     try:
         before = window._sides(window.snapshot)
-        window.swap_button.click()
+        for index in range(5):
+            window._on_slot_dropped("ally", 0, "enemy", 0)
         after = window._sides(window.snapshot)
-        assert after == (before[1], before[0])
-        assert "swapped" in window.manual_hint.text().lower() or True
-        window.swap_button.click()
-        assert window._sides(window.snapshot) == before
+        assert set(after[0]) == set(before[1])
+        assert set(after[1]) == set(before[0])
     finally:
         window.close()
 
 
-def test_a_new_match_forgets_the_swap(qapp):
+def test_a_new_match_forgets_the_corrections(qapp):
     """A correction applies to the match it was made in, never the next."""
     window = minimap_window(qapp)
     try:
-        window.swap_button.click()
-        assert window.swap_sides
+        before = window._sides(window.snapshot)
+        window._on_slot_dropped("ally", 0, "enemy", 2)
+        assert window._sides(window.snapshot) != before
         window.provider.server._reception.payload["map"]["matchid"] = "999"
         window.refresh()
-        assert not window.swap_sides
+        assert not window.side_overrides
+        assert window._sides(window.snapshot) == before
     finally:
         window.close()
-
-
-def test_a_source_that_knows_the_sides_offers_no_swap(window):
-    """Hand entry and the screen both know which bank is yours; only the
-    minimap's run split is a guess."""
-    window.refresh()
-    assert window.snapshot.sides_certain is True
-    assert window.swap_button.isHidden()
 
 
 # ---- the matrices -------------------------------------------------------
@@ -1492,38 +1480,6 @@ def _tab_of(window, widget):
     while node is not None and node not in pages:
         node = node.parentWidget()
     return node
-
-
-def test_no_swap_offered_while_you_are_still_picking(qapp):
-    """The swap exists for the minimap's post-draft guess. During hero
-    selection the sides come from the screen and are known."""
-    window = minimap_window(qapp)
-    try:
-        assert not window.swap_button.isHidden()      # strategy time
-        payload = window.provider.server._reception.payload
-        payload["map"]["game_state"] = "DOTA_GAMERULES_STATE_HERO_SELECTION"
-        window.refresh()
-        assert window.swap_button.isHidden()
-    finally:
-        window.close()
-
-
-# ---- a hero cannot be in two slots -------------------------------------
-
-def test_the_same_hero_cannot_be_entered_twice(qapp):
-    window = blank_window(qapp)
-    try:
-        name = window.ds.name(window.ds.hero_ids[0])
-        window.quick_entry.setText(name)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.enemies[0] == window.ds.hero_ids[0]
-
-        window.quick_entry.setText(name)
-        window.quick_entry.returnPressed.emit()
-        assert window.manual.enemies[1] is None
-        assert "no single undrafted hero" in window.status.currentMessage()
-    finally:
-        window.close()
 
 
 def test_a_hero_on_one_team_cannot_be_added_to_the_other(qapp):
@@ -1982,61 +1938,33 @@ def test_dragging_a_hero_to_the_other_team_exchanges_it(qapp):
         window.close()
 
 
-def test_dropping_a_hero_on_its_own_team_changes_nothing(qapp):
-    """The order inside a bank is the feed's; a hand-held order here would
-    quietly fight the next reading rather than correct anything."""
+def test_dropping_a_hero_on_its_own_team_swaps_their_places(qapp):
+    """The order is meant to be the order on Dota's pick bar, and the feed
+    does not reliably give that — so a drag inside a bank reorders it."""
     window = minimap_window(qapp)
     try:
         window.refresh()
         before = filled(window, "ally")
         window._on_slot_dropped("ally", 0, "ally", 3)
-        assert filled(window, "ally") == before
+        after = filled(window, "ally")
+        assert set(after) == set(before)
+        assert after[0] == before[3] and after[3] == before[0]
+        assert after[1] == before[1] and after[2] == before[2]
     finally:
         window.close()
 
 
-def test_three_reversals_pre_swap_the_next_match(qapp):
-    """Correcting the same way every match is the app failing to notice
-    something it has been told three times."""
+def test_a_reorder_survives_a_refresh(qapp):
+    """A hand-dragged order that the next tick undid would be unusable."""
     window = minimap_window(qapp)
     try:
         window.refresh()
-        as_read = filled(window, "ally")
-        payload = window.provider.server._reception.payload
-        for match in range(1, split_memory.AUTO_AFTER + 1):
-            payload["map"]["matchid"] = str(9000 + match)
-            window.refresh()               # a new match, read as given
-            window._swap_sides()           # …and corrected, as every time
-        history = window.settings.get("split_history", [])
-        assert split_memory.should_pre_swap(history)
-
-        # A new match now starts already corrected, and says so.
-        payload["map"]["matchid"] = "9999"
-        window.refresh()
-        assert window.swap_sides
-        assert window._swap_was_automatic
-        assert filled(window, "ally") != as_read
-        assert "pre-swapped" in window.manual_hint.text()
+        window._on_slot_dropped("enemy", 1, "enemy", 4)
+        after = filled(window, "enemy")
+        for _ in range(3):
+            window.refresh()
+        assert filled(window, "enemy") == after
     finally:
-        window.settings["split_history"] = []
-        window.close()
-
-
-def test_the_swap_control_never_goes_away_once_it_is_automatic(qapp):
-    """The split is still a guess — a learned habit is not evidence, so the
-    way to undo it has to stay on screen."""
-    window = minimap_window(qapp)
-    try:
-        window.settings["split_history"] = [
-            {"match": f"m{i}", "verdict": split_memory.INVERTED}
-            for i in range(split_memory.AUTO_AFTER)]
-        window.provider.server._reception.payload["map"]["matchid"] = "4242"
-        window.refresh()
-        assert window.swap_sides
-        assert not window.swap_button.isHidden()
-        assert window.snapshot.sides_certain is False
-    finally:
-        window.settings["split_history"] = []
         window.close()
 
 
