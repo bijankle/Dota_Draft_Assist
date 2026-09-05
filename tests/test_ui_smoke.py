@@ -21,7 +21,7 @@ from draft_assist.ui.hero_picker import (  # noqa: E402
 HeroPickerDialogCode = _Picker.DialogCode
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
-from draft_assist.ui.tables import SORT_ROLE  # noqa: E402
+from draft_assist.ui.tables import SORT_ROLE, TOTAL_LABEL  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -1404,16 +1404,45 @@ def test_a_source_that_knows_the_sides_offers_no_swap(window):
 # ---- the matrices -------------------------------------------------------
 
 def test_matchup_matrix_is_allies_by_enemies(window):
+    """Plus one margin row and column: the grid says which pairing is bad,
+    the margins say which hero is."""
     window.refresh()
     allies, enemies = filled(window, "ally"), filled(window, "enemy")
     table = window.matchup_matrix.table
-    assert table.rowCount() == len(allies)
-    assert table.columnCount() == len(enemies)
+    assert table.rowCount() == len(allies) + 1
+    assert table.columnCount() == len(enemies) + 1
     assert [table.verticalHeaderItem(r).text()
-            for r in range(table.rowCount())] == allies
+            for r in range(table.rowCount())] == allies + [TOTAL_LABEL]
     assert [table.horizontalHeaderItem(c).text()
-            for c in range(table.columnCount())] == enemies
+            for c in range(table.columnCount())] == enemies + [TOTAL_LABEL]
     assert table.item(0, 0).text()          # every cell carries a value
+
+
+def test_matrix_totals_are_the_sums_of_what_is_drawn(window):
+    """A total nobody can check against the cells above it is worse than
+    no total at all."""
+    window.refresh()
+    for matrix in (window.matchup_matrix, window.synergy_matrix):
+        table = matrix.table
+        last_row, last_col = table.rowCount() - 1, table.columnCount() - 1
+        for row in range(last_row):
+            cells = [_cell_value(table, row, c) for c in range(last_col)]
+            assert _cell_value(table, row, last_col) == pytest.approx(
+                sum(v for v in cells if v is not None))
+        for col in range(last_col):
+            cells = [_cell_value(table, r, col) for r in range(last_row)]
+            assert _cell_value(table, last_row, col) == pytest.approx(
+                sum(v for v in cells if v is not None))
+        every = [_cell_value(table, r, c)
+                 for r in range(last_row) for c in range(last_col)]
+        assert _cell_value(table, last_row, last_col) == pytest.approx(
+            sum(v for v in every if v is not None))
+
+
+def _cell_value(table, row, col):
+    """The float behind a cell, or None where the pair has no meaning."""
+    item = table.item(row, col)
+    return None if item is None else item.data(SORT_ROLE)
 
 
 def test_synergy_matrix_shows_each_pair_once(window):
@@ -1422,12 +1451,11 @@ def test_synergy_matrix_shows_each_pair_once(window):
     window.refresh()
     allies = filled(window, "ally")
     table = window.synergy_matrix.table
-    assert table.rowCount() == table.columnCount() == len(allies)
-    filled_cells = [(r, c) for r in range(table.rowCount())
-                    for c in range(table.columnCount())
-                    if table.item(r, c).text()]
-    assert len(filled_cells) == len(allies) * (len(allies) - 1) // 2
-    assert all(c > r for r, c in filled_cells)
+    assert table.rowCount() == table.columnCount() == len(allies) + 1
+    pairs = [(r, c) for r in range(len(allies)) for c in range(len(allies))
+             if table.item(r, c).text()]
+    assert len(pairs) == len(allies) * (len(allies) - 1) // 2
+    assert all(c > r for r, c in pairs)
 
 
 def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
@@ -1449,7 +1477,7 @@ def test_the_draft_tab_carries_the_teams_and_both_matrices(window):
     assert titles == ["Draft", "Analysis", "Debug"]
     draft_tab = window.tabs.widget(0)
     for widget in (window.matchup_matrix, window.synergy_matrix,
-                   window.team_columns["ally"], window.team_columns["enemy"]):
+                   window.team_panels["ally"], window.team_panels["enemy"]):
         assert window.tabs.indexOf(_tab_of(window, widget)) == 0, \
             f"{widget} is not on the draft tab"
     assert window.tabs.indexOf(_tab_of(window, window.table)) == 1
@@ -1771,7 +1799,7 @@ def test_a_measuring_failure_never_takes_the_app_down(window, monkeypatch):
 # ---- clicking a hero: the matrix read one row at a time -----------------
 
 def _delta_text(window, side, index):
-    return window.team_columns[side].slots[index].delta.text()
+    return window.team_panels[side].slots[index].delta_text()
 
 
 def test_clicking_an_ally_answers_both_questions(window):
@@ -1813,7 +1841,11 @@ def test_clicking_the_same_hero_again_clears_the_view(window):
     assert window.focus is not None
     button.click()
     assert window.focus is None
-    assert all(_delta_text(window, side, i) == ""
+    # Back to the resting state: every tile shows its own net figure, so
+    # the numbers stay — what goes is the "with"/"vs" that marked them as
+    # being about the clicked hero.
+    assert all("with" not in _delta_text(window, side, i)
+               and "vs" not in _delta_text(window, side, i)
                for side in ("ally", "enemy") for i in range(5))
 
 
@@ -1889,5 +1921,41 @@ def test_the_in_game_numbers_follow_the_screen_banks_not_the_teams(window):
                           (overlay.right, snap.right)):
             assert len(bank) == 5
             assert sum(v is not None for v in bank) <= len(ids)
+    finally:
+        window._set_overlay(False)
+
+
+# ---- the badge is the mid-draft switch ----------------------------------
+
+def test_collapsing_the_badge_takes_the_in_game_numbers_with_it(window):
+    """The badge is the only part of the overlay visible from inside Dota,
+    so it has to be the switch — a menu tick you cannot see mid-draft is
+    not a toggle."""
+    window.refresh()
+    window._set_overlay(True)
+    try:
+        assert window.overlay.expanded
+        assert window.portrait_overlay.isVisible()
+        window.overlay.set_expanded(False)
+        assert not window.portrait_overlay.isVisible()
+        window.overlay.set_expanded(True)
+        assert window.portrait_overlay.isVisible()
+    finally:
+        window._set_overlay(False)
+
+
+def test_the_callout_carries_both_grids(window):
+    """Mid-draft the callout is the only surface being looked at, and a
+    ranked list does not answer which lane loses."""
+    window.refresh()
+    window._set_overlay(True)
+    try:
+        draft = window._current_draft()
+        assert window.overlay.matchup_matrix.table.rowCount() == \
+            len(draft.allies) + 1
+        assert window.overlay.synergy_matrix.table.columnCount() == \
+            len(draft.allies) + 1
+        # No caption: in the callout that space belongs to the grid.
+        assert window.overlay.matchup_matrix.caption.isHidden()
     finally:
         window._set_overlay(False)

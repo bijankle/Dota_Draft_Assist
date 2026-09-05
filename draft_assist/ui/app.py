@@ -63,7 +63,7 @@ from .portrait_overlay import PortraitOverlay
 from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
                      ValueItem)
 from .task_dialog import TaskDialog
-from .teams import TeamColumn
+from .teams import TeamPanel
 from .tasks import TASKS
 
 # Loose mapping from queued position to OpenDota hero role tags, used ONLY
@@ -364,16 +364,15 @@ class MainWindow(QMainWindow):
 
         teams_row = QHBoxLayout()
         teams_row.setSpacing(10)
-        self.team_columns = {}
+        self.team_panels = {}
         self.team_buttons = {}
         self.team_captions = {}
         for side, caption in (("ally", "Your team"), ("enemy", "Enemy team")):
-            column = TeamColumn(side, caption)
-            self.team_columns[side] = column
-            self.team_buttons[side] = column.buttons
-            self.team_captions[side] = column.caption
-            for index, slot in enumerate(column.slots):
-                b = slot.button
+            panel = TeamPanel(side, caption)
+            self.team_panels[side] = panel
+            self.team_buttons[side] = panel.buttons
+            self.team_captions[side] = panel.caption
+            for index, b in enumerate(panel.slots):
                 b.setToolTip("Click to set this pick; click a filled slot "
                              "and every other hero shows what it is worth "
                              "beside or against it. Right-click to change "
@@ -384,7 +383,7 @@ class MainWindow(QMainWindow):
                 b.customContextMenuRequested.connect(
                     lambda pos, side=side, i=index:
                         self._slot_menu(side, i, pos))
-            teams_row.addWidget(column, 1)
+            teams_row.addWidget(panel, 1)
         outer.addLayout(teams_row)
 
         # Typing the draft in is the normal way the other nine picks
@@ -970,18 +969,36 @@ class MainWindow(QMainWindow):
                               int(self.settings.get("overlay_y", 40)))
         if self.overlay is not None:
             self.overlay.setVisible(enabled)
-        self._set_portrait_overlay(enabled)
+            if enabled and self.snapshot is not None:
+                # Fill it now rather than on the next tick: an overlay that
+                # opens blank looks broken for the third of a second before
+                # the timer catches up.
+                self.overlay.update_content(self.snapshot, self.scored,
+                                            self._current_draft())
         self.settings["overlay_enabled"] = bool(enabled)
         ui_settings.save(self.settings)
         if self.overlay_action.isChecked() != enabled:
             self.overlay_action.blockSignals(True)
             self.overlay_action.setChecked(enabled)
             self.overlay_action.blockSignals(False)
+        self._sync_portrait_overlay()
 
     # ---- the in-game numbers under the portraits ------------------------
+    def _sync_portrait_overlay(self) -> None:
+        """Show the in-game numbers exactly when the callout is open.
+
+        The badge is the on/off switch the user reaches for mid-draft — it
+        is the one piece of the overlay always on screen — so collapsing it
+        has to take the numbers with it. A tick in a menu you cannot see
+        from inside Dota is not a toggle.
+        """
+        self._set_portrait_overlay(
+            bool(self.overlay_action.isChecked())
+            and (self.overlay is None or self.overlay.expanded))
+
     def _set_portrait_overlay(self, enabled: bool) -> None:
-        """Created lazily and torn down with the badge overlay: the two are
-        one feature to the user, so one tick controls both."""
+        """Created lazily; driven by `_sync_portrait_overlay`, never
+        directly, so the numbers and the callout can never disagree."""
         if enabled and self.portrait_overlay is None:
             self.portrait_overlay = PortraitOverlay(
                 self.layout_spec,
@@ -1062,6 +1079,7 @@ class MainWindow(QMainWindow):
     def _remember_overlay_expanded(self, expanded: bool) -> None:
         self.settings["overlay_expanded"] = bool(expanded)
         ui_settings.save(self.settings)
+        self._sync_portrait_overlay()
 
     def _reset_overlay_position(self) -> None:
         """Rescue for an overlay dragged off-screen or onto a monitor that
@@ -1899,20 +1917,12 @@ class MainWindow(QMainWindow):
     # ---- reactions -----------------------------------------------------
     def _on_draft_changed(self, allies, enemies, unknown) -> None:
         for side, ids in (("ally", allies), ("enemy", enemies)):
-            for i, b in enumerate(self.team_buttons[side]):
-                role = self.slot_roles[side][i]
-                prefix = f"{role} · " if role else ""
-                if i < len(ids):
-                    b.setText(prefix + self.ds.name(ids[i]))
-                    b.setProperty("hero_id", ids[i])
-                else:
-                    # Empty slots stay enabled: clicking one is how a pick
-                    # gets entered when the game does not report it.
-                    b.setText(prefix + "+" if prefix else "+")
-                    b.setProperty("hero_id", None)
-                b.setProperty("filled", i < len(ids))
-                b.style().unpolish(b)
-                b.style().polish(b)
+            for i, tile in enumerate(self.team_buttons[side]):
+                # Empty slots stay enabled: clicking one is how a pick gets
+                # entered when the game does not report it.
+                hid = ids[i] if i < len(ids) else None
+                tile.set_pick(self.ds.name(hid) if hid is not None else None,
+                              self.slot_roles[side][i], hid)
         # A hero that left the draft cannot be the one everything else is
         # measured against.
         if self.focus is not None and self.focus[1] not in (
@@ -2049,34 +2059,39 @@ class MainWindow(QMainWindow):
         question actually arrives mid-draft: not "show me the grid" but
         "what does THIS hero do to everything else".
         """
-        for column in self.team_columns.values():
-            column.clear_deltas()
+        for panel in self.team_panels.values():
+            panel.clear_deltas()
         values: dict[int, float] = {}
         draft = self._current_draft()
         if self.focus is None:
-            # Nothing clicked: the main window stays quiet, but the in-game
-            # overlay still says what each pick is worth overall — a number
-            # under every portrait is the whole point of it being there.
-            self._update_portrait_overlay(
-                scoring.net_contributions(self.ds, draft))
+            # Nothing clicked, so every tile says what that pick is worth
+            # overall rather than nothing at all — the tile has a line for
+            # a number either way, and an empty one wastes it.
+            net = scoring.net_contributions(self.ds, draft)
+            for panel in self.team_panels.values():
+                for tile in panel.slots:
+                    value = net.get(tile.property("hero_id"))
+                    if value is not None:
+                        tile.show_delta(value)
+            self._update_portrait_overlay(net)
             return
         side, hid = self.focus
         relations = {r.hero_id: r for r in
                      scoring.relations_to(self.ds, hid, draft)}
-        for column in self.team_columns.values():
-            for slot in column.slots:
-                other = slot.button.property("hero_id")
+        for panel in self.team_panels.values():
+            for tile in panel.slots:
+                other = tile.property("hero_id")
                 if other is None:
                     continue
-                if other == hid and column.side == side:
-                    slot.set_focused(True)
+                if other == hid and panel.side == side:
+                    tile.set_focused(True)
                     continue
                 rel = relations.get(other)
                 if rel is None:
                     # Clicking an enemy says nothing about the other
                     # enemies — that pairing is their synergy, not ours.
                     continue
-                slot.show_delta(rel.delta, rel.kind)
+                tile.show_delta(rel.delta, rel.kind)
                 values[other] = rel.delta
         self._update_portrait_overlay(values)
 

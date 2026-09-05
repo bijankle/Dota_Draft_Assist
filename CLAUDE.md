@@ -233,6 +233,30 @@ credentials, and put the account at risk. Do not go there.
   items panel — moved to the **Analysis** tab, because 120 candidates
   beside the ten picks made the ten harder to read. There is no longer a
   separate Matrix tab.
+- **Each pick is a TILE, not a row** (`teams.HeroTile`): the hero's own
+  portrait behind, the name across the top, the signed number under it,
+  five across per team. That is the shape the same ten picks have on Dota's
+  own pick bar, so the eye arrives knowing the layout, and it costs a fifth
+  of the height five full-width name buttons did. The art is the
+  recognition library's (`ui/portraits.py`, `assets/portraits/base/`), so
+  it costs nothing to draw — but a missing portrait is NORMAL, not an
+  error: a fresh install has none and the tile draws plain. `text()` still
+  reads "Pos 3 · Necrophos", so the tile is a drop-in for the button it
+  replaced. Tests must actually RENDER every tile state: the portrait
+  branch shipped once with a mistyped Qt enum and nothing caught it,
+  because no test had a portrait on disk to take that branch.
+- **Every grid carries its margins** (`Matrix.row_totals` / `col_totals` /
+  `total`, drawn as a Σ row and column). The grid says which PAIRING is
+  bad; the margins say which HERO is, which is the question you act on
+  while you still have a pick to make. The totals are the sum of what is
+  DRAWN, deliberately: in the synergy grid only the upper triangle is
+  filled, so a hero's row total and column total are each partial and
+  neither is its full synergy — consistency with the cells above the number
+  was chosen over completeness, because a total nobody can check against
+  the grid is worse than no total. The grand total sums the cells rather
+  than the margins, so each pair counts once in both grids. Main-window
+  columns STRETCH rather than fit their contents: the Σ column must never
+  be the one pushed off the right edge.
 - **Clicking a pick is the matrix read one row at a time**
   (`scoring.relations_to`, `MainWindow.focus` / `_update_relations`). It is
   context-aware, because an ally and an enemy are different questions: an
@@ -244,6 +268,12 @@ credentials, and put the account at risk. Do not go there.
   for you whichever portrait it sits under. Without that rule a green
   number under an enemy would mean the opposite of a green number under an
   ally, which is the misreading the view exists to prevent.
+  With nothing clicked the tiles rest on `scoring.net_contributions` — what
+  each pick is worth overall — rather than going blank, since the tile
+  reserves the line either way. An ALLY's figure is its synergy with your
+  four plus its matchups against their five; an ENEMY's is how your five
+  fare against it LESS its synergy with its own four, sign flipped, because
+  a hero that combos with their line-up is our problem, not their bonus.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
@@ -308,8 +338,14 @@ credentials, and put the account at risk. Do not go there.
   takes the mouse so the numbers can be dragged, saving a FRACTIONAL nudge
   (`portrait_dx` / `portrait_dy`), in the same units as every other
   coordinate here. Hiding the overlay re-locks it, or it would come back
-  swallowing clicks. One tick controls it and the badge together: they are
-  one feature to the person using them.
+  swallowing clicks.
+  **The badge is the switch, not the menu tick** (`_sync_portrait_overlay`):
+  collapsing the callout takes the numbers with it and expanding brings
+  them back, because the badge is the only part of the overlay visible from
+  inside Dota and a tick you cannot see mid-draft is not a toggle. The
+  badge is also the drag handle — an event filter turns a press into a drag
+  once it passes `DRAG_THRESHOLD` and then swallows the release, so moving
+  it never also flips the panel.
 - **The overlay sits OVER Dota, never inside it.** `ui/overlay.py` is an
   ordinary frameless always-on-top window: no DLL injection, no hooking of the
   present chain, no input sent to the game — which is what keeps it on the
@@ -317,6 +353,11 @@ credentials, and put the account at risk. Do not go there.
   and it is deliberately interactive (not click-through) because the badge has
   to be clickable and draggable. This reverses the original spec's "no
   overlay" decision, at the user's request; the main window is unchanged.
+  The callout carries the same two grids as the Draft tab, compact
+  (`MatrixTable.set_compact`: no caption, shortened names, fixed columns,
+  height fitted to the rows) — mid-draft it is the only surface being
+  looked at, and a ranked list of candidates does not answer which lane
+  loses.
 - **GSI carries no screen geometry.** It reports game state, not pixels (the
   only coordinates in it are hero world positions). So the overlay anchors
   itself to the Dota window rectangle, which Windows supplies from the window

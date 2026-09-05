@@ -184,6 +184,28 @@ class QuickEntry(QLineEdit):
         super().keyPressEvent(event)
 
 
+TOTAL_LABEL = "Σ"
+# The in-game callout has to fit beside Dota, not compete with it, so the
+# compact grid trades full hero names for a grid that fits without
+# scrolling. Anyone reading it is looking at the same five portraits.
+COMPACT_NAME = 7
+COMPACT_COLUMN = 72
+
+
+def short_name(name: str) -> str:
+    return name if len(name) <= COMPACT_NAME else name[:COMPACT_NAME] + "…"
+
+
+def _total_item(value: float) -> QTableWidgetItem:
+    """A margin figure: same colour rule as a cell, but bold, so the eye
+    can tell a summary apart from a pairing without reading the header."""
+    item = delta_item(value)
+    font = item.font()
+    font.setBold(True)
+    item.setFont(font)
+    return item
+
+
 class MatrixTable(QWidget):
     """A drafted-hero grid: allies against enemies, or allies with allies.
 
@@ -210,15 +232,42 @@ class MatrixTable(QWidget):
         self.empty_note.setProperty("dim", True)
         layout.addWidget(self.empty_note)
 
+    def _fit_height(self) -> None:
+        """Size the table to its rows.
+
+        In a scroll-free callout a table that guesses its own height either
+        clips the last row or leaves a gap; there are never more than six
+        rows here, so the exact number is cheap to compute.
+        """
+        rows = sum(self.table.rowHeight(r)
+                   for r in range(self.table.rowCount()))
+        self.table.setFixedHeight(
+            self.table.horizontalHeader().height() + rows
+            + 2 * self.table.frameWidth() + 2)
+
+    def set_compact(self, compact: bool = True) -> None:
+        """Drop the explanatory caption. For the in-game callout, where the
+        space it costs is space the grid itself needs and the reader has
+        already met the same grid in the main window."""
+        self._compact = compact
+        self.caption.setVisible(not compact)
+
     def show_matrix(self, matrix, empty_text: str = "") -> None:
         self.caption.setText(matrix.caption)
+        self.caption.setVisible(not getattr(self, "_compact", False))
         self.empty_note.setText("" if not matrix.empty else empty_text)
         self.empty_note.setVisible(bool(matrix.empty and empty_text))
         self.table.setVisible(not matrix.empty)
-        self.table.setRowCount(len(matrix.rows))
-        self.table.setColumnCount(len(matrix.cols))
-        self.table.setHorizontalHeaderLabels([n for _i, n in matrix.cols])
-        self.table.setVerticalHeaderLabels([n for _i, n in matrix.rows])
+        # One extra row and column for the totals: the grid says which
+        # pairing is bad, the margins say which HERO is, which is the
+        # question you act on when you still have a pick to make.
+        self.table.setRowCount(len(matrix.rows) + 1)
+        self.table.setColumnCount(len(matrix.cols) + 1)
+        label = short_name if getattr(self, "_compact", False) else (lambda n: n)
+        self.table.setHorizontalHeaderLabels(
+            [label(n) for _i, n in matrix.cols] + [TOTAL_LABEL])
+        self.table.setVerticalHeaderLabels(
+            [label(n) for _i, n in matrix.rows] + [TOTAL_LABEL])
         for row, line in enumerate(matrix.cells):
             for col, value in enumerate(line):
                 if value is None:
@@ -227,9 +276,28 @@ class MatrixTable(QWidget):
                 else:
                     item = delta_item(value)
                 self.table.setItem(row, col, item)
+        last_col, last_row = len(matrix.cols), len(matrix.rows)
+        for row, value in enumerate(matrix.row_totals):
+            self.table.setItem(row, last_col, _total_item(value))
+        for col, value in enumerate(matrix.col_totals):
+            self.table.setItem(last_row, col, _total_item(value))
+        self.table.setItem(last_row, last_col, _total_item(matrix.total))
         header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        compact = getattr(self, "_compact", False)
         for col in range(self.table.columnCount()):
-            header.setSectionResizeMode(
-                col, QHeaderView.ResizeMode.ResizeToContents)
+            if compact:
+                header.setSectionResizeMode(
+                    col, QHeaderView.ResizeMode.Fixed)
+                self.table.setColumnWidth(col, COMPACT_COLUMN)
+            else:
+                # Stretch, not fit-to-contents: the totals column is the
+                # one that must never be the one pushed off the right edge,
+                # and a name elided by a few pixels costs less than a
+                # horizontal scrollbar between the reader and the sum.
+                header.setSectionResizeMode(
+                    col, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents)
+        if compact:
+            self._fit_height()

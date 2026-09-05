@@ -15,14 +15,19 @@ Requires Dota in borderless windowed mode — an exclusive-fullscreen game
 draws above every other window, so no overlay of any kind can appear.
 """
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout, QWidget)
 
 from . import theme
+from ..model import scoring
+from .tables import MatrixTable
 
 BADGE_SIZE = 30
-PANEL_WIDTH = 290
+PANEL_WIDTH = 560
+# Far enough that a click with a shaky hand is still a click, close enough
+# that a deliberate drag starts immediately.
+DRAG_THRESHOLD = 5
 
 OVERLAY_STYLE = f"""
 QWidget#overlayRoot {{ background: transparent; }}
@@ -43,6 +48,10 @@ QPushButton#overlayBadge {{
 QPushButton#overlayBadge:hover {{ background: rgba(103, 163, 222, 250); }}
 QLabel {{ color: {theme.TEXT}; background: transparent; }}
 QLabel[dim="true"] {{ color: {theme.TEXT_DIM}; }}
+/* The callout grids run smaller than the main window's: the same numbers,
+   read at arm's length beside a game rather than studied. */
+QTableWidget {{ font-size: 11px; background: transparent; }}
+QHeaderView::section {{ font-size: 11px; }}
 """
 
 
@@ -59,6 +68,11 @@ class DraftOverlay(QWidget):
         self.ds = dataset
         self.rows = rows
         self._drag_offset: QPoint | None = None
+        # Badge drags are tracked separately: the badge is a button, so a
+        # press on it has to stay a click until it has clearly become a
+        # drag, or the overlay could never be picked up by its handle.
+        self._badge_press: QPoint | None = None
+        self._badge_dragging = False
 
         self.setObjectName("overlayRoot")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint
@@ -82,6 +96,7 @@ class DraftOverlay(QWidget):
         self.badge.setToolTip("Show or hide the recommendations · drag to move")
         self.badge.setCursor(Qt.CursorShape.OpenHandCursor)
         self.badge.clicked.connect(self.toggle)
+        self.badge.installEventFilter(self)
         badge_row.addWidget(self.badge)
         badge_row.addStretch(1)
         outer.addLayout(badge_row)
@@ -113,6 +128,20 @@ class DraftOverlay(QWidget):
         self.footer.setWordWrap(True)
         play.addWidget(self.footer)
 
+        # The same two grids as the main window. Mid-draft the callout is
+        # the only surface the user is looking at, and a ranked list of
+        # candidates does not answer "which of my lanes loses" — the grids
+        # do, and their margins say which hero is the problem.
+        for title, attr in (("Counters — us vs them", "matchup_matrix"),
+                            ("Synergy — us with us", "synergy_matrix")):
+            heading = QLabel(title)
+            heading.setProperty("dim", True)
+            play.addWidget(heading)
+            table = MatrixTable()
+            table.set_compact(True)
+            setattr(self, attr, table)
+            play.addWidget(table)
+
         outer.addWidget(self.panel)
         self.set_expanded(expanded)
 
@@ -139,6 +168,43 @@ class DraftOverlay(QWidget):
         return self.panel.isVisible()
 
     # ---- dragging -------------------------------------------------------
+    def eventFilter(self, obj, event):          # noqa: N802 - Qt naming
+        """Let the badge be both a button and the overlay's drag handle.
+
+        The badge is the only part of the overlay that is always on screen,
+        so it has to be what you pick the thing up by; but it is also the
+        toggle, so a press cannot become a drag until it has moved far
+        enough to mean one.
+        """
+        if obj is not self.badge:
+            return super().eventFilter(obj, event)
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton):
+            self._badge_press = event.globalPosition().toPoint()
+            self._badge_dragging = False
+            self._drag_offset = (self._badge_press
+                                 - self.frameGeometry().topLeft())
+        elif (event.type() == QEvent.Type.MouseMove
+                and self._badge_press is not None):
+            here = event.globalPosition().toPoint()
+            if ((here - self._badge_press).manhattanLength() > DRAG_THRESHOLD
+                    or self._badge_dragging):
+                self._badge_dragging = True
+                self.move(here - self._drag_offset)
+                return True
+        elif (event.type() == QEvent.Type.MouseButtonRelease
+                and self._badge_press is not None):
+            dragged = self._badge_dragging
+            self._badge_press = None
+            self._badge_dragging = False
+            self._drag_offset = None
+            if dragged:
+                self.moved.emit(self.x(), self.y())
+                # Swallowed, so the badge does not also toggle: you moved
+                # it, you did not press it.
+                return True
+        return super().eventFilter(obj, event)
+
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = (event.globalPosition().toPoint()
@@ -187,6 +253,13 @@ class DraftOverlay(QWidget):
             shown += 1
         for label in self.row_labels[shown:]:
             label.setVisible(False)
+
+        self.matchup_matrix.show_matrix(
+            scoring.matchup_matrix(self.ds, draft),
+            "Both teams needed before the grid means anything.")
+        self.synergy_matrix.show_matrix(
+            scoring.synergy_matrix(self.ds, draft),
+            "Your own team needed before the grid means anything.")
 
         self.footer.setText(self._footer(snapshot, scored))
         self.adjustSize()

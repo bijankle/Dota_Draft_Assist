@@ -127,6 +127,28 @@ class Matrix:
     def empty(self) -> bool:
         return not self.rows or not self.cols
 
+    @property
+    def row_totals(self) -> list[float]:
+        return [sum(v for v in line if v is not None) for line in self.cells]
+
+    @property
+    def col_totals(self) -> list[float]:
+        return [sum(line[col] for line in self.cells
+                    if line[col] is not None)
+                for col in range(len(self.cols))]
+
+    @property
+    def total(self) -> float:
+        """Every cell once.
+
+        Deliberately the sum of what is DRAWN, not of the row totals — in
+        the synergy grid only the upper triangle is filled, so the row and
+        column totals are each partial and adding them would count every
+        pair twice. Summing the cells gives the same answer for both grids
+        and matches what the eye can check.
+        """
+        return sum(v for line in self.cells for v in line if v is not None)
+
 
 def matchup_matrix(ds: Dataset, draft: DraftState) -> Matrix:
     """Every ally against every enemy, read from your side.
@@ -220,9 +242,12 @@ def net_contributions(ds: Dataset, draft: DraftState) -> dict[int, float]:
     """What each drafted hero is worth to your team, summed.
 
     An ally's figure is its synergy with the rest of your team plus its
-    matchups against theirs; an enemy's is how well your five fare against
-    it. Same sign convention as `relations_to`: positive favours you, so a
-    green number under an enemy portrait means that enemy is handled.
+    matchups against theirs. An enemy's is the mirror image — how well your
+    five fare against it, LESS how well it works with its own four, because
+    a hero that combos with their line-up is worth more to them than its
+    matchups alone say. Same sign convention as `relations_to`: positive
+    favours you, so a green number under an enemy portrait means that enemy
+    is handled.
     """
     allies = [h for h in draft.allies if h in ds.index]
     enemies = [h for h in draft.enemies if h in ds.index]
@@ -235,5 +260,12 @@ def net_contributions(ds: Dataset, draft: DraftState) -> dict[int, float]:
         out[hid] = total
     for hid in enemies:
         j = ds.index[hid]
-        out[hid] = sum(float(ds.delta_vs[ds.index[a], j]) for a in allies)
+        # Their synergy counts too, with the sign flipped: a pair that works
+        # well for THEM is a problem for you, and the whole view is read
+        # from your side. Without the flip the same green number would mean
+        # "good for us" over an ally and "good for them" over an enemy.
+        theirs = sum(float(ds.delta_with[j, ds.index[o]])
+                     for o in enemies if o != hid)
+        out[hid] = (sum(float(ds.delta_vs[ds.index[a], j]) for a in allies)
+                    - theirs)
     return out

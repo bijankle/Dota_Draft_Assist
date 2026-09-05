@@ -110,3 +110,69 @@ def test_values_are_padded_to_five_a_bank(overlay):
     overlay.set_values([0.01, -0.02], [])
     assert overlay.left == [0.01, -0.02, None, None, None]
     assert overlay.right == [None] * 5
+
+
+def test_the_badge_can_be_dragged_without_toggling(qapp):
+    """The badge is both the toggle and the handle: a press stays a click
+    until it has moved far enough to mean a drag, and a drag must not also
+    flip the panel open."""
+    from PyQt6.QtCore import QEvent, QPoint, QPointF
+    from PyQt6.QtGui import QMouseEvent
+
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.overlay import DraftOverlay
+
+    overlay = DraftOverlay(demo_dataset(), expanded=True)
+    try:
+        overlay.move(100, 100)
+        was_expanded = overlay.expanded
+        moves = []
+        overlay.moved.connect(lambda x, y: moves.append((x, y)))
+
+        def event(kind, gx, gy):
+            point = QPointF(4, 4)
+            return QMouseEvent(kind, point, QPointF(gx, gy),
+                               Qt.MouseButton.LeftButton,
+                               Qt.MouseButton.LeftButton,
+                               Qt.KeyboardModifier.NoModifier)
+
+        overlay.eventFilter(overlay.badge,
+                            event(QEvent.Type.MouseButtonPress, 110, 110))
+        overlay.eventFilter(overlay.badge,
+                            event(QEvent.Type.MouseMove, 170, 150))
+        swallowed = overlay.eventFilter(
+            overlay.badge, event(QEvent.Type.MouseButtonRelease, 170, 150))
+
+        assert swallowed, "a drag must not also reach the button as a click"
+        assert overlay.pos() == QPoint(160, 140)
+        assert moves and moves[-1] == (160, 140)
+        assert overlay.expanded is was_expanded
+    finally:
+        overlay.close()
+
+
+def test_a_press_that_does_not_move_is_still_a_click(qapp):
+    from PyQt6.QtCore import QEvent, QPointF
+    from PyQt6.QtGui import QMouseEvent
+
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.overlay import DraftOverlay
+
+    overlay = DraftOverlay(demo_dataset(), expanded=True)
+    try:
+        overlay.move(100, 100)
+
+        def event(kind, gx, gy):
+            point = QPointF(4, 4)
+            return QMouseEvent(kind, point, QPointF(gx, gy),
+                               Qt.MouseButton.LeftButton,
+                               Qt.MouseButton.LeftButton,
+                               Qt.KeyboardModifier.NoModifier)
+
+        overlay.eventFilter(overlay.badge,
+                            event(QEvent.Type.MouseButtonPress, 110, 110))
+        swallowed = overlay.eventFilter(
+            overlay.badge, event(QEvent.Type.MouseButtonRelease, 111, 110))
+        assert not swallowed, "a click must still reach the button"
+    finally:
+        overlay.close()
