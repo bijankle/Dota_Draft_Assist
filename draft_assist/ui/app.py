@@ -114,6 +114,10 @@ class MainWindow(QMainWindow):
         # Set when the user stops a session by hand during a draft,
         # so auto does not immediately start another one.
         self._auto_blocked = False
+        # Flipped by hand when the minimap's guess at the sides is wrong;
+        # cleared when the match changes.
+        self.swap_sides = False
+        self._swap_match = ""
         from ..vision import layout as layout_mod
         session = getattr(provider, "session", None)
         self.layout_spec = (getattr(session, "layout", None)
@@ -443,6 +447,15 @@ class MainWindow(QMainWindow):
         self.quick_undo.clicked.connect(self._quick_undo)
         quick.addWidget(self.quick_undo)
         tlay.addLayout(quick)
+
+        self.swap_button = QPushButton("⇅ Swap teams")
+        self.swap_button.setToolTip(
+            "The game names all ten heroes but not which five are yours. "
+            "If the two rows are the wrong way round, this flips them for "
+            "the rest of the match.")
+        self.swap_button.clicked.connect(self._swap_sides)
+        self.swap_button.setVisible(False)
+        quick.addWidget(self.swap_button)
 
         self.unknown_label = QLabel("")
         self.unknown_label.setProperty("dim", True)
@@ -1233,6 +1246,14 @@ class MainWindow(QMainWindow):
 
     # -- quick keyboard entry --------------------------------------------
 
+    def _swap_sides(self) -> None:
+        self.swap_sides = not self.swap_sides
+        self.last_draft_key = None
+        self.status.showMessage(
+            "Teams swapped for this match" if self.swap_sides
+            else "Teams back as the game reported them", 6000)
+        self.refresh()
+
     def _flip_quick_side(self) -> None:
         self.quick_side = "ally" if self.quick_side == "enemy" else "enemy"
         self.quick_side_button.setText(self.quick_side.title())
@@ -1482,12 +1503,25 @@ class MainWindow(QMainWindow):
         """Say plainly which picks the game reported and which need typing —
         the app should never leave the user guessing why a slot is empty."""
         source = getattr(snap, "lineup_source", "")
+        # A new match must not inherit the previous match's correction.
+        match = getattr(snap, "match_id", "") or ""
+        if match != self._swap_match:
+            self._swap_match = match
+            self.swap_sides = False
+        uncertain = bool(source) and not getattr(snap, "sides_certain", True)
+        self.swap_button.setVisible(uncertain)
         if not snap.needs_manual:
-            self.manual_hint.setText(
-                {"screen": "Both line-ups read from the Dota window.",
-                 "minimap": "Both line-ups came from the game's own data.",
-                 }.get(source, "" if not source else
-                       f"Both line-ups came from the {source}."))
+            if source == "minimap":
+                self.manual_hint.setText(
+                    "All ten heroes came from the game — but which five are "
+                    "yours is a guess. Check the top row against your own "
+                    "team and press Swap teams if it is reversed."
+                    + ("  (swapped)" if self.swap_sides else ""))
+            elif source == "screen":
+                self.manual_hint.setText(
+                    "Both line-ups read from the Dota window.")
+            else:
+                self.manual_hint.setText("")
             return
         if source == "screen":
             self.manual_hint.setText(
@@ -1511,6 +1545,11 @@ class MainWindow(QMainWindow):
         would let the user contradict the game.
         """
         if getattr(snap, "sides_known", False):
+            # The minimap gives ten heroes but not, reliably, which five are
+            # yours — one real match came out inverted. So a swap is allowed
+            # HERE, where the game itself has not settled it.
+            if self.swap_sides and not getattr(snap, "sides_certain", True):
+                return (snap.right, snap.left)
             return (snap.left, snap.right)
         mine_right = self.side_combo.currentIndex() == 1
         return ((snap.right, snap.left) if mine_right

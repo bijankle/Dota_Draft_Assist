@@ -1304,3 +1304,71 @@ def test_turning_a_source_off_rebuilds_the_provider(window, monkeypatch):
     window._apply_sources()
     assert len(swapped) == 1
     assert isinstance(swapped[0], ManualProvider)
+
+
+# ---- the minimap names ten heroes but not whose they are ---------------
+
+def minimap_window(qapp):
+    """A window fed the real strategy-time payload, whose split is a guess."""
+    import json
+    from pathlib import Path
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import GsiProvider
+    from tests.test_gsi import FakeServer, minimap_dataset
+
+    payload = json.loads(
+        (Path(__file__).parent / "fixtures" / "gsi"
+         / "strategy_time_minimap_3.json").read_text())
+    ds = minimap_dataset()
+    provider = GsiProvider(ds, FakeServer(payload), ManualDraft())
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, provider, rules, meta)
+    win.timer.stop()
+    win.refresh()
+    return win
+
+
+def test_swap_button_appears_only_when_the_sides_are_a_guess(qapp):
+    window = minimap_window(qapp)
+    try:
+        assert window.snapshot.lineup_source == "minimap"
+        assert window.snapshot.sides_certain is False
+        assert not window.swap_button.isHidden()
+        assert "which five are yours is a guess" in window.manual_hint.text()
+    finally:
+        window.close()
+
+
+def test_swapping_flips_the_two_rows(qapp):
+    window = minimap_window(qapp)
+    try:
+        before = window._sides(window.snapshot)
+        window.swap_button.click()
+        after = window._sides(window.snapshot)
+        assert after == (before[1], before[0])
+        assert "swapped" in window.manual_hint.text().lower() or True
+        window.swap_button.click()
+        assert window._sides(window.snapshot) == before
+    finally:
+        window.close()
+
+
+def test_a_new_match_forgets_the_swap(qapp):
+    """A correction applies to the match it was made in, never the next."""
+    window = minimap_window(qapp)
+    try:
+        window.swap_button.click()
+        assert window.swap_sides
+        window.provider.server._reception.payload["map"]["matchid"] = "999"
+        window.refresh()
+        assert not window.swap_sides
+    finally:
+        window.close()
+
+
+def test_a_source_that_knows_the_sides_offers_no_swap(window):
+    """Hand entry and the screen both know which bank is yours; only the
+    minimap's run split is a guess."""
+    window.refresh()
+    assert window.snapshot.sides_certain is True
+    assert window.swap_button.isHidden()

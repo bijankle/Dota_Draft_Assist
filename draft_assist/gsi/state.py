@@ -54,6 +54,9 @@ class GsiState:
     # Where allies/enemies came from: "draft" (never yet seen in
     # the wild), "minimap", or "" when only your own hero is known.
     lineup_source: str = ""
+    # False when the ten heroes are known but which five are
+    # yours is inferred rather than reported.
+    sides_certain: bool = True
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -219,6 +222,7 @@ def parse(payload: dict, dataset) -> GsiState:
         if lineups.complete:
             state.allies, state.enemies = lineups.allies, lineups.enemies
             state.lineup_source = "minimap"
+            state.sides_certain = lineups.sides_certain
 
     # Your own locked hero is a pick even when nothing else resolved.
     if state.my_hero_id and state.my_hero_id not in state.allies:

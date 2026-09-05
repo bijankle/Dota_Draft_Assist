@@ -29,11 +29,17 @@ do exactly that — pudge with axe, dragon knight with juggernaut. Requiring
 the five slots to pair one-from-each-run passed on recordings 1 and 3 by
 coincidence and refused 2 and 4 outright. It is gone for good.
 
-What remains is the run split anchored on your own hero. It matches the
-strategy screen itself, which has exactly two panels of five: CHOOSE YOUR
-LANE and PREDICT ENEMY LANES. The guards are structural — ten heroes, all
-distinct, all known, yours among them — and the session report prints the
-reading so a wrong one is visible rather than silent.
+**Which ten heroes is solid. Which five are yours is not.** The run split
+anchored on the player's own hero looked right on four recordings and then
+came out INVERTED on a fifth: the app put the player with four heroes from
+the other team. Nothing in the payload has yet been shown to distinguish
+the sides — the `team` field is constant, the lane slots are placements,
+and the run order is not reliably team order.
+
+So the split is offered, never asserted: `Lineups.sides_certain` is False,
+the note says so, and the UI carries a Swap teams control that flips it for
+the match. A wrong line-up asserted silently is the worst outcome
+available, because the app then advises against the user's own team.
 
 Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
 real units rather than strategy-map slots, and the object order means
@@ -55,6 +61,11 @@ class Lineups:
     allies: list[int] = field(default_factory=list)
     enemies: list[int] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # WHICH ten heroes is solid. WHICH FIVE ARE YOURS IS NOT: a real match
+    # came out inverted — the run holding the player's own hero was the
+    # other team. Until a signal is found that settles it, the split is
+    # offered and labelled, never asserted, and the UI can flip it.
+    sides_certain: bool = False
 
     @property
     def complete(self) -> bool:
@@ -151,5 +162,8 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
         return out
 
     out.allies, out.enemies = allies, enemies
-    out.notes.append("line-ups read from the minimap")
+    out.notes.append(
+        "ten heroes read from the minimap; which five are yours is a "
+        "GUESS from the object order — one recorded match came out "
+        "inverted, so check it and use Swap teams if it is reversed")
     return out

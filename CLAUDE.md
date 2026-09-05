@@ -107,35 +107,31 @@ credentials, and put the account at risk. Do not go there.
     `gsi/minimap.py` reads both line-ups out of it. Too late to choose a
     pick, in time for items and lane matchups.
 
-  How the minimap is read. Two recorded matches (fixtures
-  `strategy_time_minimap*.json`) agree on this and none of it is documented
-  by Valve:
+  How the minimap is read, and what is still unsettled. Five recorded
+  matches; none of this is documented by Valve:
   - Origin `(0,0)` entries that duplicate a hero placed elsewhere are
     dropped; an origin entry for a hero placed nowhere else is a real
-    player with no lane chosen and is kept (see below).
-  - What remains is exactly ten objects in object order, arriving as **two
-    runs of five**.
-  - Which run is yours is decided by **where your own hero is**, never by
-    order. No own hero, no reading.
-  - Guards: exactly ten entries after de-duplication, ten distinct heroes,
-    all resolvable, own hero in exactly one run. A failed check yields
-    **nothing**, never a guess.
+    player with no lane chosen and is kept.
+  - What remains is exactly ten heroes. **That part is solid.**
+  - **WHICH FIVE ARE YOURS IS NOT SOLVED.** Splitting the ten into two runs
+    of five in object order and taking the run holding the player's own
+    hero looked right on four recordings and came out INVERTED on a fifth,
+    putting the player with four heroes from the other team. Nothing found
+    so far distinguishes the sides: the `team` field is constant, the lane
+    slots are placements (two team-mates share one), and object order is
+    not reliably team order. So `Lineups.sides_certain` is False, the note
+    says the split is a guess, and the UI carries **Swap teams**, which
+    flips it for the match and resets on a new match id. Do not re-assert
+    the split as fact without evidence that settles it.
+  - Guards on the ten: exactly ten entries after de-duplication, ten
+    distinct heroes, all resolvable, own hero among them. A failed check
+    yields **nothing**, never a guess.
 
-  **The lane slots are NOT a check, and two attempts at using one were
-  wrong.** They are where a hero was placed on the strategy map — yours in
-  the lane you chose, theirs in the lane you predicted — and two team-mates
-  can share a lane. Recordings 2 and 4 both do (pudge with axe, dragon
-  knight with juggernaut); requiring each slot to hold one hero from each
-  run passed on 1 and 3 by coincidence and refused 2 and 4 outright. Gone
-  for good; do not reintroduce it in any form. What validates the split is
-  structural only — ten heroes, all distinct, all known, yours among them —
-  plus the session report printing the reading so a wrong one is visible.
-
-  **An origin entry is not always a duplicate.** Three copies of the
-  player's own hero sit at `(0,0)` alongside its real placement, but
-  recording 4 has Sven at the origin and nowhere else, because no lane had
-  been chosen for it. Dropping every origin entry lost a real player and
-  left nine. Only origin entries whose hero appears elsewhere are dropped.
+  **The lane slots are NOT a check.** They are where a hero was placed on
+  the strategy map — yours in the lane you chose, theirs in the lane you
+  predicted — and two team-mates can share a lane (pudge with axe, dragon
+  knight with juggernaut in two recordings). Two attempts at using them to
+  validate the split were both wrong. Do not reintroduce it.
 
   **Only `STRATEGY_TIME` is read**, and the first complete reading is
   latched for the match by `GsiProvider`. After strategy time the minimap
@@ -147,6 +143,12 @@ credentials, and put the account at risk. Do not go there.
   **The `team` field is not usable.** Every object in every recording says
   `team 2` — with the player on Dire in one and Radiant in others.
   Constant, so it distinguishes nothing.
+
+  **Open lead:** in `PRE_GAME` the minimap carries exactly five hero
+  objects (`o86`–`o90` in one recording, 163 payloads). Five, not ten, is
+  what vision-limited data looks like — so those five are plausibly the
+  player's own team, which would settle the split. Unverified; measure it
+  before building on it.
 
   `GsiState.lineup_source` says which of these produced the picks, and the
   UI shows it. `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to

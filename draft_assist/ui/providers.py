@@ -44,6 +44,10 @@ class Snapshot:
     # Which part of the feed the line-ups came out of, so the
     # UI can say so rather than leave it looking like magic.
     lineup_source: str = ""
+    # The ten heroes are known but the split between them is
+    # inferred; the UI offers a swap rather than asserting it.
+    sides_certain: bool = True
+    match_id: str = ""
     needs_manual: bool = False
 
 
@@ -292,6 +296,7 @@ class GsiProvider:
         parsed = gsi_state.parse(reception.payload, self.ds)
         self.last_state = parsed
         snap.game_state = parsed.game_state
+        snap.match_id = parsed.match_id
         snap.sides_known = True
         snap.player_name = parsed.my_name
         snap.my_team = parsed.my_team
@@ -319,6 +324,8 @@ class GsiProvider:
                            f"{held} picks held from the draft")
 
         snap.lineup_source = source
+        snap.sides_certain = (parsed.sides_certain if source != "minimap"
+                              else False)
         snap.left = merge(allies, self.manual.entered("ally"))
         snap.right = merge(enemies, self.manual.entered("enemy"))
         snap.needs_manual = len(snap.left) + len(snap.right) < 9
