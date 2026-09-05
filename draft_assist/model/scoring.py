@@ -113,3 +113,56 @@ def counters_to(ds: Dataset, target: int,
             if hid != target and hid not in exclude]
     rows.sort(key=lambda r: r[2], reverse=True)
     return rows
+
+
+@dataclass
+class Matrix:
+    """A grid of interaction deltas between two sets of drafted heroes."""
+    rows: list[tuple[int, str]]
+    cols: list[tuple[int, str]]
+    cells: list[list[float | None]]     # None = no pair (or the diagonal)
+    caption: str = ""
+
+    @property
+    def empty(self) -> bool:
+        return not self.rows or not self.cols
+
+
+def matchup_matrix(ds: Dataset, draft: DraftState) -> Matrix:
+    """Every ally against every enemy, read from your side.
+
+    Positive is good for you. The full grid is worth more than the summed
+    score it feeds: a comfortable total can hide one lane that loses badly,
+    and only the cells show that.
+    """
+    allies = [h for h in draft.allies if h in ds.index]
+    enemies = [h for h in draft.enemies if h in ds.index]
+    cells = [[float(ds.delta_vs[ds.index[a], ds.index[e]]) for e in enemies]
+             for a in allies]
+    return Matrix(rows=[(h, ds.name(h)) for h in allies],
+                  cols=[(h, ds.name(h)) for h in enemies],
+                  cells=cells,
+                  caption="Your team (rows) against theirs (columns), in "
+                          "percentage points. Positive favours you.")
+
+
+def synergy_matrix(ds: Dataset, draft: DraftState) -> Matrix:
+    """Your team with itself.
+
+    Synergy is symmetric — A with B is B with A — so only the upper triangle
+    carries information and the rest is left blank rather than repeated.
+    """
+    allies = [h for h in draft.allies if h in ds.index]
+    cells: list[list[float | None]] = []
+    for row, a in enumerate(allies):
+        line: list[float | None] = []
+        for col, b in enumerate(allies):
+            line.append(None if col <= row
+                        else float(ds.delta_with[ds.index[a], ds.index[b]]))
+        cells.append(line)
+    return Matrix(rows=[(h, ds.name(h)) for h in allies],
+                  cols=[(h, ds.name(h)) for h in allies],
+                  cells=cells,
+                  caption="Your team with itself. Each pair appears once — "
+                          "synergy is symmetric, so the lower half would "
+                          "only repeat the upper.")

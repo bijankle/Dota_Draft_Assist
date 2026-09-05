@@ -113,7 +113,12 @@ credentials, and put the account at risk. Do not go there.
     dropped; an origin entry for a hero placed nowhere else is a real
     player with no lane chosen and is kept.
   - What remains is exactly ten heroes. **That part is solid.**
-  - **WHICH FIVE ARE YOURS IS NOT SOLVED.** Splitting the ten into two runs
+  - **WHICH FIVE ARE YOURS IS NOT SOLVED — but only after the draft.**
+    While picking, the picks come from the SCREEN, where Radiant is always
+    the left bank of the top bar and Dire the right, and `player.team_name`
+    says which of those is yours: no ambiguity, and no swap is offered
+    during `HERO_SELECTION`. The problem is confined to the minimap reading
+    at strategy time, which is post-pick. Splitting the ten into two runs
     of five in object order and taking the run holding the player's own
     hero looked right on four recordings and came out INVERTED on a fifth,
     putting the player with four heroes from the other team. Nothing found
@@ -157,6 +162,14 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
+- **The Matrix tab is the grid a summed score hides**
+  (`scoring.matchup_matrix` / `synergy_matrix`, `tables.MatrixTable`). A
+  comfortable total can conceal one lane losing badly. The synergy grid
+  fills only the upper triangle: synergy is symmetric, so the lower half
+  would repeat it and the diagonal means nothing. "Why this score" names
+  only heroes in the current game; the counters list — candidates nobody
+  has picked — lives in its own panel, because mixing the two made the
+  breakdown look wrong.
 - **Recording needs no interaction at all** (`record.py`,
   `recordings/<timestamp>/`). With `auto_record` on (the default),
   `_consider_auto_record` starts a session the moment `game_state` reaches a

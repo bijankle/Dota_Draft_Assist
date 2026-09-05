@@ -173,8 +173,20 @@ the Capture menu lets you pick a source.
 
 **Draft tab** — the full ranked hero list (never filtered by role; heroes
 matching your queued role are highlighted), a filter box, your team and the
-enemy team as clickable slots, the component breakdown for whichever hero is
-selected, and the item panel once your pick is locked.
+enemy team as clickable slots, and the item panel once your pick is locked.
+Two panels sit below, kept apart on purpose:
+
+- **Why this score** — the selected candidate's terms against the heroes in
+  *this* game, allies in one bank and enemies in the other.
+- **Counters to a drafted hero** — click a filled slot and the heroes that
+  beat it are listed here. These are candidates, not picks in this game,
+  which is why they no longer share a panel with the breakdown.
+
+**Matrix tab** — what a summed score hides. **Your team against theirs** is
+every ally-versus-enemy pairing in a 5x5 grid, positive favouring you: a
+comfortable total can conceal one lane that loses badly, and only the cells
+show it. **Your team with itself** is the synergy grid, each pair appearing
+once — synergy is symmetric, so the lower half would only repeat the upper.
 
 Every table sorts on click, and on the **numbers behind** the cells rather
 than their text — sorted as text, `+9.0` lands above `+10.0` and a percentage
@@ -323,7 +335,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 250 tests: normalisation math, scoring views, item
+pytest            # 261 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

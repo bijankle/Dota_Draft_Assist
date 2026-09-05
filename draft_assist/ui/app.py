@@ -59,7 +59,8 @@ from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
 from .manual import ManualDraft
 from .overlay import DraftOverlay
-from .tables import BreakdownPanel, QuickEntry, ValueItem
+from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
+                     ValueItem)
 from .task_dialog import TaskDialog
 from .tasks import TASKS
 
@@ -515,6 +516,19 @@ class MainWindow(QMainWindow):
         dlay2.addWidget(self.detail)
         rlay.addWidget(detail_card, 3)
 
+        # Kept apart from "Why this score" on purpose: that panel is about
+        # heroes in THIS game, and mixing a ranked list of heroes nobody has
+        # picked into it made the breakdown look wrong.
+        counters_card, clay2 = card("Counters to a drafted hero")
+        self.counters = BreakdownPanel()
+        self.counters.setMinimumHeight(150)
+        self.counters.show_message(
+            "Click a filled draft slot",
+            "…and the heroes that beat it appear here. These are "
+            "candidates, not picks in this game.")
+        clay2.addWidget(self.counters)
+        rlay.addWidget(counters_card, 2)
+
         items_card, ilay = card("Items")
         note = QLabel("Hand-authored rules — asserted, not measured. "
                       "Hero scores above are measured.")
@@ -628,6 +642,21 @@ class MainWindow(QMainWindow):
 
         # The Debug tab is two jobs: what the app is looking at RIGHT NOW,
         # and what a past session recorded. They want different screens.
+        # ----- Matrix tab: the grid the summed score hides
+        matrix_page = QWidget()
+        mlay = QVBoxLayout(matrix_page)
+        mlay.setContentsMargins(12, 12, 12, 12)
+        mlay.setSpacing(10)
+        vs_card, vslay = card("Your team against theirs")
+        self.matchup_matrix = MatrixTable()
+        vslay.addWidget(self.matchup_matrix)
+        mlay.addWidget(vs_card, 1)
+        with_card, withlay = card("Your team with itself")
+        self.synergy_matrix = MatrixTable()
+        withlay.addWidget(self.synergy_matrix)
+        mlay.addWidget(with_card, 1)
+        tabs.addTab(matrix_page, "Matrix")
+
         debug_tabs = QTabWidget()
         self.debug_tabs = debug_tabs
         debug_tabs.addTab(dbg, "Live")
@@ -1508,7 +1537,16 @@ class MainWindow(QMainWindow):
         if match != self._swap_match:
             self._swap_match = match
             self.swap_sides = False
-        uncertain = bool(source) and not getattr(snap, "sides_certain", True)
+        # Never during the draft. There the picks come from the screen,
+        # where Radiant is always the left bank and Dire the right, and the
+        # game has already said which of those is yours — so the sides are
+        # known, and offering a swap would only invite getting them wrong.
+        # HERO_SELECTION specifically, not the whole drafting window:
+        # strategy time is after the picking and is where the minimap
+        # reading (and so the guess) lives.
+        picking = "HERO_SELECTION" in str(getattr(snap, "game_state", ""))
+        uncertain = (bool(source) and not picking
+                     and not getattr(snap, "sides_certain", True))
         self.swap_button.setVisible(uncertain)
         if not snap.needs_manual:
             if source == "minimap":
@@ -1639,7 +1677,17 @@ class MainWindow(QMainWindow):
         if selected is not None:
             self._select_hero_row(selected)
         self._apply_filter()
+        self._update_matrices(draft)
         self._update_items(draft)
+
+    def _update_matrices(self, draft: scoring.DraftState) -> None:
+        self.matchup_matrix.show_matrix(
+            scoring.matchup_matrix(self.ds, draft),
+            "Fill in both teams and every ally-versus-enemy pairing appears "
+            "here.")
+        self.synergy_matrix.show_matrix(
+            scoring.synergy_matrix(self.ds, draft),
+            "Fill in your own team and every pair's synergy appears here.")
 
     def _apply_filter(self) -> None:
         needle = self.search_box.text().strip().lower()
@@ -1704,7 +1752,7 @@ class MainWindow(QMainWindow):
         drafted = set(draft.allies) | set(draft.enemies)
         counters = scoring.counters_to(self.ds, hid, exclude=drafted)[:15]
         cap = "counters to" if side == "enemy" else "what beats your"
-        self.detail.show_banks(
+        self.counters.show_banks(
             f"Best against {self.ds.name(hid)}",
             f"{cap} {side} pick",
             [("Hero", [(name, delta) for _chid, name, delta in counters])],

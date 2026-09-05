@@ -1563,3 +1563,20 @@ def test_an_unbound_source_says_it_is_waiting_not_that_you_must_act():
     assert "waiting for the Dota window" in snap.source
     assert "binds itself" in snap.warning
     assert "picker" not in snap.warning
+
+
+def test_the_sides_are_never_a_guess_during_the_draft():
+    """Radiant is always the left bank of the top bar and Dire the right,
+    and the game says which is yours — so while picking, when the screen is
+    the source, the sides are known outright."""
+    provider, ds = hybrid(hero_selection_payload("dire"),
+                          radiant=[75, 21], dire=[86, 102])
+    snap = provider.poll()
+    assert snap.lineup_source == "screen"
+    assert snap.sides_certain is True
+    assert snap.sides_known is True
+    assert snap.left == [86, 102]          # dire bank, because you are Dire
+
+    provider, _ds = hybrid(hero_selection_payload("radiant"),
+                           radiant=[75, 21], dire=[86, 102])
+    assert provider.poll().left == [75, 21]

@@ -182,3 +182,54 @@ class QuickEntry(QLineEdit):
             self.tab_pressed.emit()
             return
         super().keyPressEvent(event)
+
+
+class MatrixTable(QWidget):
+    """A drafted-hero grid: allies against enemies, or allies with allies.
+
+    Reading a total tells you the draft is fine; reading the grid tells you
+    which lane is not. Cells are coloured by sign and blank where a pair has
+    no meaning (the diagonal, and the half a symmetric matrix would repeat).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.caption = QLabel("")
+        self.caption.setWordWrap(True)
+        self.caption.setProperty("dim", True)
+        layout.addWidget(self.caption)
+        self.table = QTableWidget(0, 0)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        layout.addWidget(self.table, 1)
+        self.empty_note = QLabel("")
+        self.empty_note.setWordWrap(True)
+        self.empty_note.setProperty("dim", True)
+        layout.addWidget(self.empty_note)
+
+    def show_matrix(self, matrix, empty_text: str = "") -> None:
+        self.caption.setText(matrix.caption)
+        self.empty_note.setText("" if not matrix.empty else empty_text)
+        self.empty_note.setVisible(bool(matrix.empty and empty_text))
+        self.table.setVisible(not matrix.empty)
+        self.table.setRowCount(len(matrix.rows))
+        self.table.setColumnCount(len(matrix.cols))
+        self.table.setHorizontalHeaderLabels([n for _i, n in matrix.cols])
+        self.table.setVerticalHeaderLabels([n for _i, n in matrix.rows])
+        for row, line in enumerate(matrix.cells):
+            for col, value in enumerate(line):
+                if value is None:
+                    item = QTableWidgetItem("")
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                else:
+                    item = delta_item(value)
+                self.table.setItem(row, col, item)
+        header = self.table.horizontalHeader()
+        for col in range(self.table.columnCount()):
+            header.setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)

@@ -107,14 +107,32 @@ def test_breakdown_banks_sort_by_size_and_independently(window):
     assert names == sorted(names, key=str.lower)
 
 
-def test_counters_view(window):
+def test_counters_go_to_their_own_panel(window):
+    """Mixing a ranked list of heroes nobody picked into "Why this score"
+    made the breakdown look wrong — it is about heroes in THIS game."""
     window.refresh()
+    window.table.selectRow(0)
+    breakdown_heading = window.detail.heading.text()
+
     button = window.team_buttons["enemy"][0]
     assert button.text() != EMPTY_SLOT_TEXT
     button.click()
-    assert "Best against" in window.detail.heading.text()
-    assert panel_values(window.detail, 0) == sorted(
-        panel_values(window.detail, 0), reverse=True)
+    assert "Best against" in window.counters.heading.text()
+    assert panel_values(window.counters, 0) == sorted(
+        panel_values(window.counters, 0), reverse=True)
+    # and the breakdown is untouched
+    assert window.detail.heading.text() == breakdown_heading
+    assert "Best against" not in window.detail.heading.text()
+
+
+def test_why_this_score_only_names_heroes_in_this_game(window):
+    window.refresh()
+    window.table.selectRow(0)
+    drafted = set(filled(window, "ally")) | set(filled(window, "enemy"))
+    named = {name for bank in (0, 1)
+             for name, _delta in window.detail.rows_for(bank)}
+    assert named <= drafted
+    assert named
 
 
 def panel_values(panel, bank):
@@ -1372,3 +1390,63 @@ def test_a_source_that_knows_the_sides_offers_no_swap(window):
     window.refresh()
     assert window.snapshot.sides_certain is True
     assert window.swap_button.isHidden()
+
+
+# ---- the matrices -------------------------------------------------------
+
+def test_matchup_matrix_is_allies_by_enemies(window):
+    window.refresh()
+    allies, enemies = filled(window, "ally"), filled(window, "enemy")
+    table = window.matchup_matrix.table
+    assert table.rowCount() == len(allies)
+    assert table.columnCount() == len(enemies)
+    assert [table.verticalHeaderItem(r).text()
+            for r in range(table.rowCount())] == allies
+    assert [table.horizontalHeaderItem(c).text()
+            for c in range(table.columnCount())] == enemies
+    assert table.item(0, 0).text()          # every cell carries a value
+
+
+def test_synergy_matrix_shows_each_pair_once(window):
+    """Synergy is symmetric, so the lower half would only repeat the upper
+    and the diagonal means nothing."""
+    window.refresh()
+    allies = filled(window, "ally")
+    table = window.synergy_matrix.table
+    assert table.rowCount() == table.columnCount() == len(allies)
+    filled_cells = [(r, c) for r in range(table.rowCount())
+                    for c in range(table.columnCount())
+                    if table.item(r, c).text()]
+    assert len(filled_cells) == len(allies) * (len(allies) - 1) // 2
+    assert all(c > r for r, c in filled_cells)
+
+
+def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
+    window = blank_window(qapp)
+    try:
+        window.refresh()
+        assert window.matchup_matrix.table.isHidden()
+        assert "Fill in both teams" in window.matchup_matrix.empty_note.text()
+        assert "Fill in your own team" in \
+            window.synergy_matrix.empty_note.text()
+    finally:
+        window.close()
+
+
+def test_the_matrix_tab_exists_and_is_not_the_debug_tab(window):
+    titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    assert titles == ["Draft", "Matrix", "Debug"]
+
+
+def test_no_swap_offered_while_you_are_still_picking(qapp):
+    """The swap exists for the minimap's post-draft guess. During hero
+    selection the sides come from the screen and are known."""
+    window = minimap_window(qapp)
+    try:
+        assert not window.swap_button.isHidden()      # strategy time
+        payload = window.provider.server._reception.payload
+        payload["map"]["game_state"] = "DOTA_GAMERULES_STATE_HERO_SELECTION"
+        window.refresh()
+        assert window.swap_button.isHidden()
+    finally:
+        window.close()
