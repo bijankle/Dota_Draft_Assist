@@ -212,6 +212,15 @@ class Recorder:
             return False
 
 
+def _heroes_in(read) -> int:
+    if read is None:
+        return 0
+    try:
+        return len(read.team_ids("radiant")) + len(read.team_ids("dire"))
+    except Exception:
+        return 0
+
+
 def snapshot_record(snap, allies, enemies, dataset) -> dict:
     """What the app concluded this tick, in names a human can read back.
 
@@ -225,7 +234,12 @@ def snapshot_record(snap, allies, enemies, dataset) -> dict:
         "notes": list(getattr(snap, "gsi_notes", []) or []),
         "capture": getattr(snap, "source", ""),
         "has_frame": getattr(snap, "frame", None) is not None,
-        "recognised": getattr(snap, "read", None) is not None,
+        # Whether the pipeline RAN is a different fact from whether it
+        # found anything. A session logged "106 of 206 recognised
+        # something" beside "the screen never read a pick", which is both
+        # true and useless.
+        "ran_recognition": getattr(snap, "read", None) is not None,
+        "read_heroes": _heroes_in(getattr(snap, "read", None)),
         "game_state": getattr(snap, "game_state", ""),
         "source": getattr(snap, "lineup_source", "") or "none",
         "mode": getattr(snap, "mode", ""),
@@ -372,16 +386,28 @@ def format_session_report(folder: Path, dataset=None) -> str:
     sources = Counter(str(s.get("source", "")) or "none" for s in states)
     for name, count in sources.most_common():
         lines.append(f"  {count:6d} ticks  {name}")
-    recognised = sum(1 for s in states if s.get("recognised"))
     framed = sum(1 for s in states if s.get("has_frame"))
-    lines.append(f"  {framed:6d} ticks had a captured frame, "
-                 f"{recognised} of them recognised something")
-    if framed and not recognised:
-        lines.append("  The window was captured but nothing was recognised "
-                     "— a crop or library problem, not a capture one.")
-    elif not framed:
+    ran = sum(1 for s in states if s.get("ran_recognition"))
+    found = sum(1 for s in states if s.get("read_heroes"))
+    best = max((s.get("read_heroes", 0) for s in states), default=0)
+    lines.append(f"  {framed:6d} ticks captured a frame")
+    lines.append(f"  {ran:6d} ticks ran recognition on one")
+    lines.append(f"  {found:6d} ticks found at least one hero "
+                 f"(best: {best} of 10)")
+    if not framed:
         lines.append("  No frame was ever captured: screen reading was off, "
                      "unbound, or bound to the wrong window.")
+    elif not ran:
+        lines.append("  Frames arrived but recognition never ran — the "
+                     "draft gate never opened.")
+    elif not found:
+        lines.append("  Recognition ran on every frame and found no hero at "
+                     "all. That is the crop boxes or the portrait library, "
+                     "not capture.")
+    elif best < 10:
+        lines.append(f"  Recognition never saw more than {best} of the ten "
+                     "slots — check the Debug tab's crop boxes against the "
+                     "pick screen.")
 
     notes = Counter()
     for state in states:

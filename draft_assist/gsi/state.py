@@ -74,6 +74,20 @@ class GsiState:
         """
         return len(self.allies) + len(self.enemies) >= 9
 
+    def short_summary(self) -> str:
+        """Phase and identity, without a pick count — for callers that
+        know more about the picks than this payload does."""
+        if not self.game_state:
+            return "connected, no match in progress"
+        bits = [self.game_state.replace("DOTA_GAMERULES_STATE_", "")]
+        if self.my_name:
+            bits.append(self.my_name)
+        if self.my_hero_name:
+            bits.append(f"you: {self.my_hero_name}")
+        if self.my_team:
+            bits.append(self.my_team)
+        return " · ".join(bits)
+
     def summary(self) -> str:
         if not self.game_state:
             return "connected, no match in progress"

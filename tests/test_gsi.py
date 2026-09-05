@@ -1459,3 +1459,23 @@ def test_a_new_draft_clears_the_held_line_up():
     snap = provider.poll()
     assert snap.left == [] and snap.right == []
     assert snap.needs_manual
+
+
+def test_a_held_line_up_says_how_many_it_is_holding():
+    """A real status bar read "1 picks visible (held)" while ten were being
+    held: the count came from the payload, which after strategy time
+    carries only your own hero."""
+    ds = minimap_dataset()
+    server = FakeServer(real_strategy_payload(3))
+    provider = GsiProvider(ds, server, ManualDraft())
+    provider.poll()
+
+    later = real_strategy_payload(3)
+    later["map"]["game_state"] = "DOTA_GAMERULES_STATE_PRE_GAME"
+    later["minimap"] = {"o0": {"unitname": "npc_dota_hero_lion", "team": 2,
+                               "xpos": 0, "ypos": 0}}
+    server._reception.payload = later
+    snap = provider.poll()
+    assert "10 picks held from the draft" in snap.source
+    assert "1 picks visible" not in snap.source
+    assert len(snap.left) + len(snap.right) == 10

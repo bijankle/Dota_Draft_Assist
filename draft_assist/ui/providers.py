@@ -277,7 +277,13 @@ class GsiProvider:
         elif self.latched is not None:
             allies, enemies = self.latched
             source = "minimap"
-            snap.source = f"game data (GSI) · {parsed.summary()} (held)"
+            # parsed.summary() counts what THIS payload carried, which is
+            # your own hero and nothing else once strategy time has passed.
+            # Printing that beside "(held)" read as "1 pick, held" when ten
+            # are being held.
+            held = len(allies) + len(enemies)
+            snap.source = (f"game data (GSI) · {parsed.short_summary()} · "
+                           f"{held} picks held from the draft")
 
         snap.lineup_source = source
         snap.left = merge(allies, self.manual.entered("ally"))

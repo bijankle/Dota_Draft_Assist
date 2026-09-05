@@ -244,15 +244,17 @@ def test_the_report_says_where_each_reading_came_from(tmp_path):
     folder = session(tmp_path, [
         dict(row(10, "HERO_SELECTION", "none", [], []), has_frame=False),
         dict(row(20, "HERO_SELECTION", "screen", ["Rubick"], []),
-             has_frame=True, recognised=True),
+             has_frame=True, ran_recognition=True, read_heroes=1),
         dict(row(30, "HERO_SELECTION", "screen", ["Rubick"], []),
-             has_frame=True, recognised=True),
+             has_frame=True, ran_recognition=True, read_heroes=4),
     ])
     text = record.format_session_report(folder)
     assert "WHERE EACH READING CAME FROM" in text
     assert "2 ticks  screen" in text
     assert "1 ticks  none" in text
-    assert "2 ticks had a captured frame, 2 of them recognised" in text
+    assert "2 ticks captured a frame" in text
+    assert "2 ticks found at least one hero (best: 4 of 10)" in text
+    assert "never saw more than 4 of the ten slots" in text
 
 
 def test_a_captured_but_unrecognised_frame_is_named_as_such(tmp_path):
@@ -260,10 +262,10 @@ def test_a_captured_but_unrecognised_frame_is_named_as_such(tmp_path):
     capture never running, and the report must not blur them."""
     folder = session(tmp_path, [
         dict(row(20, "HERO_SELECTION", "none", [], []),
-             has_frame=True, recognised=False)])
+             has_frame=True, ran_recognition=True, read_heroes=0)])
     text = record.format_session_report(folder)
-    assert "nothing was recognised" in text
-    assert "not a capture one" in text
+    assert "found no hero at all" in text
+    assert "not capture" in text
 
 
 def test_no_frame_at_all_is_named_as_such(tmp_path):
