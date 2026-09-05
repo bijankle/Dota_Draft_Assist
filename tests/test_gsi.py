@@ -8,6 +8,7 @@ correctly, so whichever one real payloads turn out to be, the app is right.
 """
 
 import json
+from pathlib import Path
 import urllib.request
 
 import pytest
@@ -1059,3 +1060,121 @@ def test_the_richest_payload_dump_names_its_file(tmp_path):
     assert "gsi_00007.json" in text
     assert "8981992551" in text
     assert '"xpos": -1000' in text      # the whole object, not just the name
+
+
+# ---- reading both line-ups out of the minimap ---------------------------
+
+def real_strategy_payload():
+    path = (Path(__file__).parent / "fixtures" / "gsi"
+            / "strategy_time_minimap.json")
+    return json.loads(path.read_text())
+
+
+def minimap_dataset():
+    """A dataset carrying exactly the ten heroes of the recorded match."""
+    # Real Dota hero ids: the payload's hero block says {"id": 86}, and the
+    # parser trusts that id directly, so a dataset with invented numbering
+    # would fail to find the player's own hero among the ten.
+    names = {75: "silencer", 86: "rubick", 21: "windrunner", 102: "abaddon",
+             72: "gyrocopter", 11: "nevermore", 47: "viper", 22: "zuus",
+             35: "sniper", 136: "marci"}
+    heroes = {hid: {"name": name.title(),
+                    "internal_name": f"npc_dota_hero_{name}",
+                    "roles": []}
+              for hid, name in names.items()}
+    ds = demo_dataset()
+    ds.heroes = heroes
+    return ds
+
+
+def test_both_lineups_read_from_a_real_strategy_time_payload():
+    """The payload is one the user actually recorded (match 8983145525).
+    They played Rubick on Dire; the minimap names all ten heroes."""
+    ds = minimap_dataset()
+    parsed = gsi_state.parse(real_strategy_payload(), ds)
+    assert parsed.lineup_source == "minimap"
+    assert parsed.has_full_draft
+    assert [ds.name(h) for h in parsed.allies] == [
+        "Silencer", "Rubick", "Windrunner", "Abaddon", "Gyrocopter"]
+    assert [ds.name(h) for h in parsed.enemies] == [
+        "Nevermore", "Viper", "Zuus", "Sniper", "Marci"]
+    # your own hero must not be duplicated into the ally list a second time
+    assert parsed.allies.count(parsed.my_hero_id) == 1
+
+
+def test_your_team_is_decided_by_your_own_hero_not_by_order():
+    """Same payload, read as a player on the other side: the run containing
+    your hero is yours, whichever run that is."""
+    ds = minimap_dataset()
+    payload = real_strategy_payload()
+    payload["hero"] = {"id": 22, "name": "npc_dota_hero_zuus"}
+    parsed = gsi_state.parse(payload, ds)
+    assert [ds.name(h) for h in parsed.allies] == [
+        "Nevermore", "Viper", "Zuus", "Sniper", "Marci"]
+    assert ds.name(parsed.enemies[0]) == "Silencer"
+
+
+def test_the_team_field_is_not_trusted():
+    """Every minimap object in the recorded payload says team 2 while the
+    player was on Dire. Believing it would put all ten on one side."""
+    payload = real_strategy_payload()
+    assert {o["team"] for o in payload["minimap"].values()} == {2}
+    assert payload["player"]["team_name"] == "dire"
+    parsed = gsi_state.parse(payload, minimap_dataset())
+    assert len(parsed.allies) == 5 and len(parsed.enemies) == 5
+
+
+def test_minimap_is_not_read_when_your_hero_is_unknown():
+    """Without your own hero there is nothing to anchor the split to, and
+    a coin flip between two line-ups is worse than none."""
+    ds = minimap_dataset()
+    payload = real_strategy_payload()
+    payload.pop("hero")
+    parsed = gsi_state.parse(payload, ds)
+    assert not parsed.allies and not parsed.enemies
+    assert any("which five are your team is unknown" in n
+               for n in parsed.notes)
+
+
+def test_minimap_refuses_a_split_the_positions_contradict():
+    """Two heroes from the same run sharing a lane position says the runs
+    are not teams. One contradiction is disqualifying."""
+    from draft_assist.gsi import minimap as gsi_minimap
+
+    ds = minimap_dataset()
+    name_to_id = {info["internal_name"]: hid
+                  for hid, info in ds.heroes.items()}
+    payload = real_strategy_payload()
+    # put silencer (run one) on top of windrunner (also run one)
+    payload["minimap"]["o0"]["xpos"] = 752
+    payload["minimap"]["o0"]["ypos"] = -144
+    payload["minimap"]["o9"]["xpos"] = 4242      # displace viper
+    out = gsi_minimap.read_lineups(payload, name_to_id, my_hero_id=86)
+    assert not out.complete
+    assert any("contradict it" in note for note in out.notes)
+
+
+def test_minimap_ignores_a_payload_with_fewer_than_ten_heroes():
+    from draft_assist.gsi import minimap as gsi_minimap
+
+    ds = minimap_dataset()
+    name_to_id = {info["internal_name"]: hid
+                  for hid, info in ds.heroes.items()}
+    payload = real_strategy_payload()
+    for key in ("o12", "o11"):
+        payload["minimap"].pop(key)
+    out = gsi_minimap.read_lineups(payload, name_to_id, my_hero_id=86)
+    assert not out.complete
+    assert any("not ten" in note for note in out.notes)
+
+
+def test_hero_selection_payloads_still_yield_nothing():
+    """58 recorded HERO_SELECTION payloads named no hero at all. The
+    minimap reader must not invent one from an empty block."""
+    parsed = gsi_state.parse({
+        "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
+        "player": {"name": "Bijson", "team_name": "dire"},
+        "draft": {}, "minimap": {}}, minimap_dataset())
+    assert not parsed.allies and not parsed.enemies
+    assert not parsed.has_full_draft
+    assert parsed.lineup_source == ""

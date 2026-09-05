@@ -13,35 +13,35 @@ misidentify.
 It never touches the game: no injection, no memory reading, no input
 automation, and no logging in as a second Steam client.
 
-### One caveat, measured rather than assumed
+### What the game does and does not tell you, measured
 
-GSI's `draft` component is a spectator/observer feature. Replaying 8493
-payloads recorded from a real match through the parser showed that across the
-**entire** hero-selection phase the feed reported **zero picks — including
-your own** (`hero` only appears at strategy time, once drafting is over).
-What it does reliably report is the phase, your name, your side and the match
-ID. So:
+Recordings of real matches (~17,000 payloads) settle it, and the answer
+splits by phase:
 
-- whatever the game reports is used automatically;
-- the picks are **typed in**: the quick-entry bar above the draft slots takes
-  a few letters and Enter, Tab flips between enemy and ally, Undo removes the
-  last one. An ambiguous prefix fills nothing rather than risk the wrong
-  hero. Clicking a slot still opens the full picker;
-- screen capture is still available behind `--vision` as a fallback.
+| Phase | What GSI gives you |
+| --- | --- |
+| Hero selection | Your name, your side, the match — and **no hero at all**, not even your own |
+| Strategy time onward | **All ten heroes**, read from the minimap |
 
-**Game ▸ Record game data** is a tick-box on the listener the app is already
-running, not a second program: ticking it starts archiving every payload Dota
-sends into `data_cache/gsi/`, and the status bar shows the count. (An earlier
-version launched a separate recorder, which could not work — two processes
-cannot hold the same port.) Replay what you record to settle what GSI really
-sends; if the draft block does arrive, the manual slots simply stop being
-needed and nothing else changes.
+The `draft` block is empty (`{}`) in every payload ever recorded, at every
+game state, so the picks do not arrive that way. But from strategy time the
+minimap names all ten, and the app reads both line-ups out of it: which five
+are yours is decided by where your own hero sits, and the split is checked
+against the lane positions before it is believed. A failed check fills
+nothing rather than guessing.
 
-Recording **while spectating or watching a replay** is worth doing: `draft` is
-believed to be a spectator-side component, so that is the context where it is
-most likely to show up. Note it is still the JSON feed being recorded — the
-app does not look at hero portraits in that mode. Portrait reading is the
-separate `--vision` path.
+So, in practice:
+
+- **While picking**, type the picks in: the quick-entry bar above the draft
+  slots takes a few letters and Enter, Tab flips between enemy and ally,
+  Undo removes the last one. An ambiguous prefix fills nothing rather than
+  risk the wrong hero. Clicking a slot still opens the full picker.
+- **Once the game starts**, both line-ups fill in on their own, and the app
+  says which part of the feed they came from.
+- Screen capture remains available behind `--vision`.
+
+**Game ▸ What did the recording contain?** re-derives all of this from your
+own archive — per phase, per match — so none of it has to be taken on trust.
 
 ## Install and run (Windows)
 
@@ -231,7 +231,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 167 tests: normalisation math, scoring views, item
+pytest            # 174 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

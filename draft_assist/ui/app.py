@@ -1155,12 +1155,17 @@ class MainWindow(QMainWindow):
         """Say plainly which picks the game reported and which need typing —
         the app should never leave the user guessing why a slot is empty."""
         if not snap.needs_manual:
-            self.manual_hint.setText("")
+            source = getattr(snap, "lineup_source", "")
+            self.manual_hint.setText(
+                f"Both line-ups came from the game's {source}." if source
+                else "")
             return
         if snap.game_state:
             self.manual_hint.setText(
-                "The game reports your own hero and match state, but not the "
-                "other line-up — click the empty slots to fill them in.")
+                "During hero selection the game reports your own hero and "
+                "match state and nothing about the other nine picks — type "
+                "them into the box above, or click a slot. Both line-ups "
+                "arrive on their own once the game reaches strategy time.")
         else:
             self.manual_hint.setText(
                 "Click the empty slots to enter the draft by hand.")

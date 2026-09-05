@@ -51,6 +51,9 @@ class GsiState:
     allies: list[int] = field(default_factory=list)
     enemies: list[int] = field(default_factory=list)
     capabilities: dict[str, bool] = field(default_factory=dict)
+    # Where allies/enemies came from: "draft" (never yet seen in
+    # the wild), "minimap", or "" when only your own hero is known.
+    lineup_source: str = ""
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -63,9 +66,12 @@ class GsiState:
 
     @property
     def has_full_draft(self) -> bool:
-        """True only when GSI really did hand us both line-ups. Until a real
-        payload proves otherwise this is expected to be False for a player's
-        own match."""
+        """True only when GSI really did hand us both line-ups.
+
+        The `draft` block never does — it is empty in every payload ever
+        recorded. The minimap does, but only from STRATEGY_TIME onward, so
+        during hero selection this is still False and the picks are typed.
+        """
         return len(self.allies) + len(self.enemies) >= 9
 
     def summary(self) -> str:
@@ -79,7 +85,9 @@ class GsiState:
         if self.my_team:
             bits.append(self.my_team)
         picks = len(self.allies) + len(self.enemies)
-        bits.append(f"{picks} picks visible")
+        bits.append(f"{picks} picks visible"
+                    + (f" (from the {self.lineup_source})"
+                       if self.lineup_source else ""))
         return " · ".join(bits)
 
 
@@ -181,7 +189,23 @@ def parse(payload: dict, dataset) -> GsiState:
             "line-ups (expected for a player's own match — the draft block "
             "is a spectator component)")
 
-    # Your own locked hero is a pick even when no draft block exists.
+    if state.allies or state.enemies:
+        state.lineup_source = "draft block"
+    else:
+        # The draft block has been empty in every payload ever recorded, but
+        # the minimap carries all ten heroes once the game reaches strategy
+        # time. It is read structurally and verified per payload; a failed
+        # check yields nothing rather than a guess.
+        from . import minimap as gsi_minimap
+
+        lineups = gsi_minimap.read_lineups(payload, name_to_id,
+                                           state.my_hero_id)
+        state.notes.extend(lineups.notes)
+        if lineups.complete:
+            state.allies, state.enemies = lineups.allies, lineups.enemies
+            state.lineup_source = "minimap"
+
+    # Your own locked hero is a pick even when nothing else resolved.
     if state.my_hero_id and state.my_hero_id not in state.allies:
         state.allies = [state.my_hero_id] + state.allies
 

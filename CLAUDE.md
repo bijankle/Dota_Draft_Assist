@@ -68,34 +68,42 @@ credentials, and put the account at risk. Do not go there.
   anything in this file. `tools/inspect_apis.py` dumps raw OpenDota/Stratz
   responses; parsing code validates its schema assumptions against real
   responses and fails loudly. Bracket index mappings are asserted, not assumed.
-- **What GSI reports during a draft is now settled by evidence, and the
-  answer is: almost nothing.** 8493 payloads recorded from one real Turbo All
-  Pick match were replayed through the parser. Across the entire
-  `HERO_SELECTION` phase every payload reported **zero picks — including the
-  player's own**. `hero` first appears at `STRATEGY_TIME`, i.e. after the
-  draft is over. A `draft` key WAS present throughout (the replay labels
-  distinguish an absent block from an empty one), but no picks could be read
-  out of it, and it is **not a JSON object** — the inspector found the key in
-  all 8493 payloads while finding no keys inside it. Whether it is empty, a
-  list, or something else is answered by `Game ▸ What did the recording
-  contain?`, which dumps the value's type and its fullest sample. Not guessed.
+- **What GSI reports is settled by evidence, and the answer splits by
+  phase.** Recordings of three real matches (~17,000 payloads, fixtures in
+  `tests/fixtures/gsi/`) say:
 
-  The same recording also disproved a second assumption in this file: the
-  feed carried `buildings`, `minimap`, `roshan`, `couriers` and
-  `neutralitems` in every payload. Those were listed here as
-  spectator-only components. A player's own feed evidently carries more than
-  expected, so `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to
-  what to look for, never a claim about what arrives — the report lists any
-  top-level key neither list knows about.
+  - The `draft` block is **`{}` in every payload ever recorded**, at every
+    game state. It is not a shape the parser misreads; there is nothing in
+    it. Community lore that `draft` is spectator-only is consistent with
+    this. Do not write code that expects it to fill.
+  - During `HERO_SELECTION` — 58 payloads in the cleanest recording — the
+    feed names **no hero anywhere at all**, not even the player's own.
+    Nothing can be recommended from GSI while picking; that is what the
+    quick-entry bar exists for.
+  - From `STRATEGY_TIME` onward the **minimap carries all ten heroes**, and
+    `gsi/minimap.py` reads both line-ups out of it. Too late to choose a
+    pick, in time for items and lane matchups.
 
-  The consequence is architectural: **GSI cannot drive recommendations during
-  a draft.** What it reliably gives is the phase (so the app knows a draft is
-  happening), the player's name and side, and the match id. The ten picks
-  come from hand entry (the quick-entry bar: type, Enter, Tab to flip side)
-  or from the `--vision` fallback reading the screen. `GsiState.capabilities`
-  still records what each payload carried, and the parser still never
-  fabricates a pick — if a future payload proves otherwise, the manual
-  overlay simply stops being needed and no other code changes.
+  How the minimap is read, and why each guard exists — all from the recorded
+  payload, none of it documented by Valve:
+  - Heroes arrive as two runs of five in object order (`o0`…`o12`), the
+    duplicates being the player's own hero parked at the origin.
+  - **The `team` field is not usable.** Every object said `team 2` while the
+    player was on Dire. Believing it puts all ten on one side.
+  - Which run is yours is decided by **where your own hero is**, never by
+    order. No own hero, no reading.
+  - The split is verified against positions: five lane slots each hold one
+    hero from each run. A single position holding two heroes from the same
+    run disqualifies the reading, and fewer than three confirming positions
+    rejects it. A failed check yields **nothing**, never a guess.
+
+  `GsiState.lineup_source` says which of these produced the picks, and the
+  UI shows it. `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to
+  what to look for, never a claim about what arrives: the same recordings
+  carried `buildings`, `minimap`, `roshan`, `couriers` and `neutralitems`
+  in a player's own feed, which this file had listed as spectator-only.
+  `Game ▸ What did the recording contain?` re-derives all of the above from
+  an archive, per phase and per match.
 - **Bracket comparisons across sites are not apples to apples.** Stratz buckets
   whole matches by average rank; OpenDota counts each player at their own rank.
   That makes cross-source win rates disagree slightly even when tier labels are

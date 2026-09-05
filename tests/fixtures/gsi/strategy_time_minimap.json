@@ -1,0 +1,22 @@
+{
+  "_comment": "Real payload gsi_00079.json, match 8983145525, recorded by the user 2026-09-05. Bijson played Rubick on Dire. STRATEGY_TIME. The draft block is empty, as it is in every payload ever recorded; the minimap carries all ten heroes.",
+  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8983145525"},
+  "player": {"name": "Bijson", "team_name": "dire"},
+  "hero": {"facet": 0, "id": 86, "name": "npc_dota_hero_rubick"},
+  "draft": {},
+  "minimap": {
+    "o0":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_silencer",   "visionrange": 0, "xpos": 176,  "yaw": 0,  "ypos": -370},
+    "o1":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_rubick",     "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o2":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_rubick",     "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o3":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_rubick",     "visionrange": 0, "xpos": 176,  "yaw": 19, "ypos": 370},
+    "o4":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_rubick",     "visionrange": 0, "xpos": 0,    "yaw": 0,  "ypos": 0},
+    "o5":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_windrunner", "visionrange": 0, "xpos": 752,  "yaw": -5, "ypos": -144},
+    "o6":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_abaddon",    "visionrange": 0, "xpos": 1088, "yaw": 25, "ypos": 0},
+    "o7":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_gyrocopter", "visionrange": 0, "xpos": 752,  "yaw": 9,  "ypos": 144},
+    "o8":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_nevermore",  "visionrange": 0, "xpos": 752,  "yaw": 9,  "ypos": 144},
+    "o9":  {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_viper",      "visionrange": 0, "xpos": 752,  "yaw": -5, "ypos": -144},
+    "o10": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_zuus",       "visionrange": 0, "xpos": 176,  "yaw": 19, "ypos": 370},
+    "o11": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_sniper",     "visionrange": 0, "xpos": 176,  "yaw": 0,  "ypos": -370},
+    "o12": {"image": "minimap_plaincircle", "team": 2, "unitname": "npc_dota_hero_marci",      "visionrange": 0, "xpos": 1088, "yaw": 25, "ypos": 0}
+  }
+}

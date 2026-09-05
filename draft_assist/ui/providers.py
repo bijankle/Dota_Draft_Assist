@@ -40,6 +40,9 @@ class Snapshot:
     gsi_live: bool = False
     gsi_notes: list[str] = field(default_factory=list)
     gsi_capabilities: dict = field(default_factory=dict)
+    # Which part of the feed the line-ups came out of, so the
+    # UI can say so rather than leave it looking like magic.
+    lineup_source: str = ""
     needs_manual: bool = False
 
 
@@ -255,6 +258,7 @@ class GsiProvider:
         snap.my_team = parsed.my_team
         snap.gsi_notes = parsed.notes
         snap.gsi_capabilities = parsed.capabilities
+        snap.lineup_source = parsed.lineup_source
         snap.source = f"game data (GSI) · {parsed.summary()}"
 
         snap.left = merge(parsed.allies, self.manual.entered("ally"))

@@ -359,7 +359,8 @@ def test_manual_hint_explains_missing_picks(qapp, monkeypatch):
     win.timer.stop()
     try:
         win.refresh()
-        assert "not the other line-up" in win.manual_hint.text()
+        assert "nothing about the other nine picks" in \
+            win.manual_hint.text()
         assert "HERO_SELECTION" in win.status.currentMessage()
 
         # Entering a pick by hand puts it straight into the draft.
