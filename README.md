@@ -267,11 +267,22 @@ occupy the middle 2560 pixels and a fraction of the full width lands 440
 pixels to the left. The app accounts for that, so one calibration holds
 across resolutions.
 
-If the crop boxes in **Debug ▸ Live** still do not sit on the portraits
-during hero selection, the **Crop boxes** panel underneath nudges them —
-left bank, right bank, top, width, height, spacing — and the boxes move on
-the picture as you turn the numbers. **Save** writes
-`calibration_local.json`; **Reset to defaults** undoes it.
+If the crop boxes in **Debug ▸ Live** do not sit on the portraits, press
+**Measure from this game** in the **Crop boxes** panel underneath — during
+**strategy time**, when the game has named all ten heroes. The app then
+searches the frame for those ten portraits and measures the boxes from
+where it finds them: bank starts, spacing, size and top edge, all at once.
+It takes about a minute and saves itself.
+
+That is the only calibration route this project can really offer, because
+the person who can see the screen and the code that sets the numbers are
+not in the same place. The six spin boxes are still there to nudge by hand
+— the boxes move on the picture as you turn them — with **Save** writing
+`calibration_local.json` and **Reset to defaults** undoing it.
+
+Nothing about recording or playing changes the portrait library. Only
+`tools/replay.py --harvest` adds to it, so a run of bot games cannot
+mistrain recognition.
 
 ### Statistics bracket
 
@@ -353,7 +364,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 275 tests: normalisation math, scoring views, item
+pytest            # 282 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

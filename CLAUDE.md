@@ -57,6 +57,19 @@ credentials, and put the account at risk. Do not go there.
    the top edge. Calibration nudges are fractional too, and are edited live
    in Debug ▸ Live with the boxes drawn on the picture.
 
+   **The layout is measured, not guessed** (`vision/autocal.py`). At
+   strategy time the app holds a frame AND the ten heroes the minimap named
+   in it, so it searches for those portraits by normalised cross-correlation
+   and reads the bank starts, pitch, size and top edge off where it finds
+   them. This exists because the person who can see the screen and the code
+   that sets the numbers are not in the same place — hand calibration
+   stalled for days with the boxes hundreds of pixels off and no way to see
+   it. Matching is sharply scale-sensitive (0.99 at the true size, 0.12 four
+   pixels out), so the size is found on a coarse width x height grid from
+   two heroes and then refined a pixel at a time; searching per hero would
+   be ten times the work for one answer. Round-trip tested to under a pixel
+   on synthetic pick bars at 16:9 and 21:9.
+
 3. **An unknown slot is a legitimate state, not an error.** Whether a slot is
    unresolved because GSI did not report it or because a portrait hash margin
    was too small, it is marked unknown and scoring proceeds using only the

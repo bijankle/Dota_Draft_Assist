@@ -634,6 +634,14 @@ class MainWindow(QMainWindow):
             grid.addLayout(column)
         callay.addLayout(grid)
         cal_buttons = QHBoxLayout()
+        self.measure_button = QPushButton("Measure from this game")
+        self.measure_button.setProperty("accent", True)
+        self.measure_button.setToolTip(
+            "At strategy time the game has named all ten heroes and the app "
+            "has a frame of them — so the boxes can be measured instead of "
+            "nudged. Takes about a minute.")
+        self.measure_button.clicked.connect(self._measure_calibration)
+        cal_buttons.addWidget(self.measure_button)
         save_cal = QPushButton("Save")
         save_cal.setProperty("accent", True)
         save_cal.clicked.connect(self._save_calibration)
@@ -1506,6 +1514,59 @@ class MainWindow(QMainWindow):
             widget.setChecked(on)
             widget.blockSignals(False)
         self.provider.set_forced(on)
+
+    def _measure_calibration(self) -> None:
+        """Measure the crop boxes from a frame whose heroes the game named.
+
+        This is the only way this project can calibrate: the person who
+        can see the screen and the person who can change the numbers are
+        not the same, so the app has to measure its own geometry.
+        """
+        snap = self.snapshot
+        frame = getattr(snap, "frame", None) if snap else None
+        if frame is None:
+            frame = self._grab_dota_frame()
+        heroes = list(getattr(snap, "left", [])) + list(
+            getattr(snap, "right", [])) if snap else []
+        if frame is None:
+            self.cal_label.setText(
+                "no frame — is Dota running in borderless windowed mode?")
+            return
+        if len(heroes) < 8:
+            self.cal_label.setText(
+                "the game has not named enough heroes yet — try this during "
+                "strategy time, when all ten are known")
+            return
+
+        from ..vision import autocal
+        portraits = autocal.base_portraits(heroes)
+        if len(portraits) < 8:
+            self.cal_label.setText(
+                "portraits are not downloaded — run Setup ▸ Update "
+                "statistics and portraits first")
+            return
+
+        self.measure_button.setEnabled(False)
+        self.cal_label.setText("measuring… (about a minute)")
+        QApplication.processEvents()
+        try:
+            result = autocal.calibrate(frame, portraits, self.layout_spec)
+        except Exception as exc:                 # never take the app down
+            self.cal_label.setText(f"measuring failed: {exc}")
+            self.measure_button.setEnabled(True)
+            return
+        self.measure_button.setEnabled(True)
+        if not result.ok:
+            self.cal_label.setText(result.note)
+            return
+        self.layout_spec = result.layout
+        for field, spin in self.cal_spins.items():
+            spin.blockSignals(True)
+            spin.setValue(getattr(result.layout, field))
+            spin.blockSignals(False)
+        self._set_calibration("y", result.layout.y)      # push and redraw
+        self._save_calibration()
+        self.cal_label.setText(f"{result.note} — saved")
 
     def _set_calibration(self, field: str, value: float) -> None:
         """Live: the next frame is cropped with the new numbers, so the

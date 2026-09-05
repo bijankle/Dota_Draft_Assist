@@ -153,3 +153,67 @@ def test_every_slot_stays_inside_the_frame_on_an_ultrawide():
         x, y, w, h = slot.to_pixels(3440, 1440)
         assert 0 <= x and x + w <= 3440
         assert 0 <= y and y + h <= 1440
+
+
+# ---- measuring the crop boxes from a frame the game has labelled -------
+
+def synthetic_pick_bar(layout, width=3440, height=1440, seed=11):
+    """A frame with ten portraits composited at a known layout."""
+    import cv2
+    rng = np.random.default_rng(seed)
+    portraits = {i: rng.integers(0, 255, (144, 80, 3), dtype=np.uint8)
+                 for i in range(1, 11)}
+    frame = np.full((height, width, 3), 24, np.uint8)
+    for slot, hero in zip(layout.slots(), portraits):
+        x, y, w, h = slot.to_pixels(width, height)
+        frame[y:y + h, x:x + w] = cv2.resize(portraits[hero], (w, h))
+    return frame, portraits
+
+
+def test_the_layout_can_be_measured_back_out_of_a_frame():
+    """The person who can see the screen and the one who can change the
+    numbers are not the same, so the app measures its own geometry."""
+    from draft_assist.vision import autocal
+    from draft_assist.vision.layout import DraftLayout
+
+    truth = DraftLayout(radiant_x=0.0700, dire_x=0.6400, y=0.0250,
+                        slot_w=0.0500, slot_h=0.0900, pitch=0.0620)
+    frame, portraits = synthetic_pick_bar(truth)
+    result = autocal.calibrate(frame, portraits)
+    assert result.ok, result.note
+    for field in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
+        assert getattr(result.layout, field) == pytest.approx(
+            getattr(truth, field), abs=0.002), field
+
+
+def test_measuring_works_on_a_16_9_display_too():
+    from draft_assist.vision import autocal
+    from draft_assist.vision.layout import DraftLayout
+
+    truth = DraftLayout(radiant_x=0.0600, dire_x=0.6300, y=0.0300,
+                        slot_w=0.0520, slot_h=0.0940, pitch=0.0650)
+    frame, portraits = synthetic_pick_bar(truth, 1920, 1080, seed=3)
+    result = autocal.calibrate(frame, portraits)
+    assert result.ok, result.note
+    assert result.layout.radiant_x == pytest.approx(truth.radiant_x,
+                                                    abs=0.003)
+    assert result.layout.pitch == pytest.approx(truth.pitch, abs=0.003)
+
+
+def test_it_refuses_a_frame_with_no_pick_bar():
+    from draft_assist.vision import autocal
+
+    rng = np.random.default_rng(5)
+    frame = rng.integers(0, 60, (1440, 3440, 3), dtype=np.uint8)
+    portraits = {i: rng.integers(0, 255, (144, 80, 3), dtype=np.uint8)
+                 for i in range(1, 11)}
+    result = autocal.calibrate(frame, portraits)
+    assert not result.ok
+    assert "not enough" in result.note or "two banks" in result.note
+
+
+def test_it_refuses_when_nothing_is_known():
+    from draft_assist.vision import autocal
+
+    assert not autocal.calibrate(None, {}).ok
+    assert "no frame" in autocal.calibrate(None, {}).note

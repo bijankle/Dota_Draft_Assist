@@ -1700,3 +1700,51 @@ def test_a_task_argument_reaches_the_command_line():
     assert "{arg}" not in " ".join(task.steps[-1])
     # the original is untouched
     assert "{arg}" in " ".join(TASKS["replay_gsi"].steps[-1])
+
+
+def test_measuring_needs_a_frame_and_named_heroes(window, monkeypatch):
+    """It says which half is missing rather than failing silently."""
+    monkeypatch.setattr(window, "_grab_dota_frame", lambda: None)
+    window.snapshot = None
+    window._measure_calibration()
+    assert "no frame" in window.cal_label.text()
+
+    import numpy as np
+    monkeypatch.setattr(window, "_grab_dota_frame",
+                        lambda: np.zeros((100, 100, 3), np.uint8))
+    window._measure_calibration()
+    assert "not named enough heroes" in window.cal_label.text()
+
+
+def test_measuring_says_when_portraits_are_missing(window, monkeypatch):
+    import numpy as np
+    import draft_assist.vision.autocal as autocal
+
+    monkeypatch.setattr(window, "_grab_dota_frame",
+                        lambda: np.zeros((100, 100, 3), np.uint8))
+    monkeypatch.setattr(autocal, "base_portraits", lambda ids: {})
+    window.refresh()
+    window.snapshot.frame = None
+    window._measure_calibration()
+    assert "portraits are not downloaded" in window.cal_label.text()
+
+
+def test_a_measuring_failure_never_takes_the_app_down(window, monkeypatch):
+    import numpy as np
+    import draft_assist.vision.autocal as autocal
+
+    monkeypatch.setattr(window, "_grab_dota_frame",
+                        lambda: np.zeros((100, 100, 3), np.uint8))
+    monkeypatch.setattr(autocal, "base_portraits",
+                        lambda ids: {h: np.zeros((10, 10, 3), np.uint8)
+                                     for h in ids})
+
+    def explode(*_a, **_k):
+        raise RuntimeError("cv2 exploded")
+
+    monkeypatch.setattr(autocal, "calibrate", explode)
+    window.refresh()
+    window.snapshot.frame = None
+    window._measure_calibration()
+    assert "measuring failed" in window.cal_label.text()
+    assert window.measure_button.isEnabled()
