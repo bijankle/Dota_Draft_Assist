@@ -37,18 +37,20 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPi
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit,
-                             QLayout, QPushButton, QSplitter,
+                             QLayout, QListWidget, QPushButton,
+                             QSplitter,
                              QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
 
-from ..config import (DEBUG_OUT, REPO_ROOT, RULES_FILE,
+from ..config import (DEBUG_OUT, RECORDINGS_DIR, REPO_ROOT, RULES_FILE,
                        save_target_brackets, target_brackets)
 from ..data import store
 from ..data.store import Dataset
 from ..model import items as items_mod
 from ..model import scoring
 from . import settings as ui_settings
+from .. import record as record_mod
 from . import theme
 from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
@@ -104,6 +106,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ds, self.provider = ds, provider
         self._open_tasks = []
+        self.recorder = record_mod.Recorder(RECORDINGS_DIR)
+        self.sessions: list = []
         self.quick_side = "enemy"
         # (side, index) in the order they were typed, so Undo
         # removes the last pick rather than an arbitrary one.
@@ -167,24 +171,6 @@ class MainWindow(QMainWindow):
                   "Check every requirement and name the one that is failing")
         self._act(game_menu, "Game data &status…", self._gsi_status,
                   None, "What the game is actually reporting right now")
-        self.record_action = QAction("&Record game data", self)
-        self.record_action.setCheckable(True)
-        self.record_action.setStatusTip(
-            "Archive every payload Dota sends, using the listener already "
-            "running — no second process, no port clash")
-        self.record_action.toggled.connect(self._set_recording)
-        game_menu.addAction(self.record_action)
-        self._act(game_menu, "Start a &fresh recording…",
-                  self._new_recording, None,
-                  "Move the existing recording aside so the next one is a "
-                  "single clean match")
-        self._act(game_menu, "What did the recording contain?…",
-                  lambda: self.run_task("inspect_recording"), None,
-                  "Read the archived payloads and say whether GSI ever "
-                  "reported the enemy picks")
-        self._act(game_menu, "Open &recordings folder",
-                  lambda: open_folder(REPO_ROOT / "data_cache" / "gsi"))
-        game_menu.addSeparator()
         self._act(game_menu, "Si&mulate a draft — full teams…",
                   lambda: self.run_task("simulate_gsi"), None,
                   "Both line-ups fill in — the best way to see the app work")
@@ -256,6 +242,40 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
+        # Recording is one button because it is one action. It used to be a
+        # menu tick for payloads, a separate probe for frames and Ctrl+S for
+        # snapshots, in three folders — so the evidence for any one game was
+        # scattered and usually incomplete.
+        self.record_button = QPushButton("● Record")
+        self.record_button.setProperty("accent", True)
+        self.record_button.setMinimumWidth(120)
+        self.record_button.setMinimumHeight(32)
+        self.record_button.setToolTip(
+            "Record everything for this game — the data Dota sends, the "
+            "draft on screen, and what the app made of both")
+        self.record_button.clicked.connect(self._toggle_recording)
+        toolbar.addWidget(self.record_button)
+
+        self.recording_label = QLabel("")
+        self.recording_label.setProperty("dim", True)
+        toolbar.addWidget(self.recording_label)
+
+        self.open_recordings_button = QPushButton("Recordings")
+        self.open_recordings_button.setMinimumHeight(32)
+        self.open_recordings_button.setToolTip("Open the recordings folder")
+        self.open_recordings_button.clicked.connect(
+            lambda: open_folder(RECORDINGS_DIR))
+        toolbar.addWidget(self.open_recordings_button)
+
+        self.inspect_button = QPushButton("What did it contain?")
+        self.inspect_button.setMinimumHeight(32)
+        self.inspect_button.setToolTip(
+            "Read the last recording back and say what the game really sent")
+        self.inspect_button.clicked.connect(
+            lambda: self.run_task("inspect_recording"))
+        toolbar.addWidget(self.inspect_button)
+
+        toolbar.addSeparator()
         self.force_check = QCheckBox("Force recognition")
         self.force_check.setToolTip(
             "Recognise every frame even when the draft gate does not trip")
@@ -517,9 +537,98 @@ class MainWindow(QMainWindow):
         self.snapshot_label.setProperty("dim", True)
         snap_row.addWidget(self.snapshot_label, 1)
         dlay.addLayout(snap_row)
-        tabs.addTab(dbg, "Debug")
+
+        # The Debug tab is two jobs: what the app is looking at RIGHT NOW,
+        # and what a past session recorded. They want different screens.
+        debug_tabs = QTabWidget()
+        debug_tabs.addTab(dbg, "Live")
+        debug_tabs.addTab(self._build_sessions_tab(), "Recordings")
+        tabs.addTab(debug_tabs, "Debug")
 
         self.status = self.statusBar()
+
+    def _build_sessions_tab(self) -> QWidget:
+        """Past recordings, each one discrete, with its report ready to
+        copy. Every Record press makes its own folder, so a session is a
+        single game and never a pool of several."""
+        page = QWidget()
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        left = QVBoxLayout()
+        left.addWidget(QLabel("Sessions (newest first)"))
+        self.session_list = QListWidget()
+        self.session_list.setMinimumWidth(220)
+        self.session_list.currentRowChanged.connect(self._show_session)
+        left.addWidget(self.session_list, 1)
+        refresh = QPushButton("Refresh")
+        refresh.clicked.connect(self._refresh_sessions)
+        left.addWidget(refresh)
+        layout.addLayout(left)
+
+        right = QVBoxLayout()
+        self.session_report = QPlainTextEdit()
+        self.session_report.setReadOnly(True)
+        self.session_report.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.NoWrap)
+        right.addWidget(self.session_report, 1)
+        buttons = QHBoxLayout()
+        self.copy_report_button = QPushButton("Copy report")
+        self.copy_report_button.setProperty("accent", True)
+        self.copy_report_button.clicked.connect(self._copy_session_report)
+        buttons.addWidget(self.copy_report_button)
+        open_session = QPushButton("Open this folder")
+        open_session.clicked.connect(self._open_session_folder)
+        buttons.addWidget(open_session)
+        buttons.addStretch(1)
+        right.addLayout(buttons)
+        layout.addLayout(right, 1)
+
+        self._refresh_sessions()
+        return page
+
+    def _refresh_sessions(self) -> None:
+        self.sessions = record_mod.sessions(RECORDINGS_DIR)
+        self.session_list.clear()
+        for folder in self.sessions:
+            self.session_list.addItem(folder.name)
+        if self.sessions:
+            self.session_list.setCurrentRow(0)
+        else:
+            self.session_report.setPlainText(
+                "No recordings yet.\n\nPress Record before a game and Stop "
+                "after the draft. Each press makes its own folder holding "
+                "the data Dota sent, the draft on screen, and what the app "
+                "made of both — plus a report scoring the screen reading "
+                "against what the game reported afterwards.")
+
+    def _show_session(self, row: int) -> None:
+        if not (0 <= row < len(self.sessions)):
+            return
+        folder = self.sessions[row]
+        # Re-derive rather than trusting report.txt: a session stopped by a
+        # crash never got one written.
+        try:
+            self.session_report.setPlainText(
+                record_mod.format_session_report(folder))
+        except OSError as exc:
+            self.session_report.setPlainText(f"Could not read {folder}:\n{exc}")
+
+    def _current_session(self):
+        row = self.session_list.currentRow()
+        return self.sessions[row] if 0 <= row < len(self.sessions) else None
+
+    def _copy_session_report(self) -> None:
+        text = self.session_report.toPlainText()
+        if not text:
+            return
+        QApplication.clipboard().setText(text)
+        self.status.showMessage("Report copied to the clipboard", 5000)
+
+    def _open_session_folder(self) -> None:
+        folder = self._current_session()
+        open_folder(folder if folder is not None else RECORDINGS_DIR)
 
     # ---- maintenance tasks --------------------------------------------
     def run_task(self, key: str) -> None:
@@ -789,35 +898,6 @@ class MainWindow(QMainWindow):
         box.exec()
         ticker.stop()
 
-    def _set_recording(self, on: bool) -> None:
-        """Toggle archiving on the live listener.
-
-        Recording used to spawn a second process, which could never work:
-        only one listener can hold the port, so the recorder collided with
-        the app that was already receiving everything.
-        """
-        from ..config import DATA_CACHE
-
-        server = getattr(self.provider, "server", None)
-        if server is None:
-            QMessageBox.information(
-                self, "Record game data",
-                "Recording needs the game-data source. Switch with "
-                "Capture ▸ Use game data (GSI).")
-            self.record_action.blockSignals(True)
-            self.record_action.setChecked(False)
-            self.record_action.blockSignals(False)
-            return
-        folder = DATA_CACHE / "gsi"
-        count = server.set_archive_dir(folder if on else None)
-        if on:
-            self.status.showMessage(
-                f"Recording game data to {folder} "
-                f"({count} payloads already there)", 8000)
-        else:
-            self.status.showMessage(
-                f"Stopped recording — {count} payloads in {folder}", 8000)
-
     def _gsi_status(self) -> None:
         """Report exactly what the game is sending — the evidence that
         settles what GSI can and cannot do."""
@@ -939,39 +1019,83 @@ class MainWindow(QMainWindow):
         self.last_draft_key = None
         self.status.showMessage("Cleared hand-entered draft slots", 5000)
 
-    def _new_recording(self) -> None:
-        """Set the current archive aside so the next recording is one match.
+    def _gsi_server(self):
+        """The live listener, whichever provider is wrapping it."""
+        provider = self.provider
+        server = getattr(provider, "server", None)
+        if server is None:
+            server = getattr(getattr(provider, "gsi", None), "server", None)
+        return server
 
-        Recording deliberately resumes past existing files, so a folder
-        accumulates games from different days and every per-phase count in
-        the report is then pooled across them. Renaming beats deleting:
-        the old payloads are still the only evidence about what GSI sends.
+    def _toggle_recording(self) -> None:
+        if self.recorder.active:
+            self._stop_recording()
+        else:
+            self._start_recording()
+
+    def _start_recording(self) -> None:
+        """One button, everything: payloads, frames and the app's reading.
+
+        Each press opens its own folder. Recording never appends to an
+        earlier session — pooling two matches made every count in the
+        report meaningless, and was what most confused reading the
+        evidence.
         """
-        folder = REPO_ROOT / "data_cache" / "gsi"
-        existing = sorted(folder.glob("gsi_*.json")) if folder.is_dir() else []
-        if not existing:
-            self.status.showMessage(
-                "No recording to set aside — the folder is already empty",
-                6000)
-            return
-        was_recording = self.record_action.isChecked()
-        if was_recording:
-            self.record_action.setChecked(False)   # release the files first
-        destination = folder.with_name(
-            "gsi_" + time.strftime("%Y%m%d_%H%M%S"))
         try:
-            folder.rename(destination)
+            folder = self.recorder.start()
         except OSError as exc:
-            QMessageBox.warning(
-                self, "Start a fresh recording",
-                f"Could not move the recording aside:\n\n{exc}")
+            QMessageBox.warning(self, "Record",
+                                f"Could not start recording:\n\n{exc}")
             return
-        finally:
-            if was_recording:
-                self.record_action.setChecked(True)
+        server = self._gsi_server()
+        if server is not None:
+            server.set_archive_dir(self.recorder.gsi_dir)
+        self._update_record_button()
+        self.status.showMessage(f"Recording to {folder.name}", 6000)
+
+    def _stop_recording(self) -> None:
+        server = self._gsi_server()
+        if server is not None:
+            server.set_archive_dir(None)
+        frames, states = self.recorder.frames, self.recorder.states
+        folder = self.recorder.stop()
+        self._update_record_button()
+        if folder is None:
+            return
+        payloads = len(list((folder / "gsi").glob("gsi_*.json")))
+        self._refresh_sessions()
         self.status.showMessage(
-            f"{len(existing)} payloads moved to {destination.name} — "
-            "the next recording starts clean", 8000)
+            f"Saved {folder.name}: {payloads} payloads, {frames} frames, "
+            f"{states} states", 12000)
+
+    def _update_record_button(self) -> None:
+        recording = self.recorder.active
+        self.record_button.setText("■ Stop" if recording else "● Record")
+        self.record_button.setProperty("recording", recording)
+        self.record_button.style().unpolish(self.record_button)
+        self.record_button.style().polish(self.record_button)
+        self.inspect_button.setEnabled(not recording)
+        if not recording:
+            self.recording_label.setText("")
+
+    def _capture_recording(self, snap, allies, enemies) -> None:
+        """Called every tick while recording. A failed write must never
+        interrupt a draft, so the recorder swallows them and reports them
+        in the session's meta.json instead."""
+        if not self.recorder.active:
+            return
+        self.recorder.log_state(
+            record_mod.snapshot_record(snap, allies, enemies, self.ds))
+        if self.recorder.wants_frame(snap.game_state):
+            frame = snap.frame
+            if frame is None:
+                frame = self._grab_dota_frame()
+            self.recorder.save_frame(frame)
+        seconds = int(self.recorder.elapsed)
+        payloads = getattr(snap, "frames_arrived", 0)
+        self.recording_label.setText(
+            f"REC {seconds // 60}:{seconds % 60:02d}  ·  {payloads} payloads "
+            f"·  {self.recorder.frames} frames")
 
     # -- quick keyboard entry --------------------------------------------
 
@@ -1127,6 +1251,7 @@ class MainWindow(QMainWindow):
         if draft_key != self.last_draft_key:
             self.last_draft_key = draft_key
             self._on_draft_changed(allies, enemies, snap.unknown)
+        self._capture_recording(snap, allies, enemies)
         self._update_status(snap)
         self._update_team_captions(snap)
         self._update_manual_hint(snap)

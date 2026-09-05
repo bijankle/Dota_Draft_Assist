@@ -108,8 +108,19 @@ credentials, and put the account at risk. Do not go there.
   what to look for, never a claim about what arrives: the same recordings
   carried `buildings`, `minimap`, `roshan`, `couriers` and `neutralitems`
   in a player's own feed, which this file had listed as spectator-only.
-  `Game ▸ What did the recording contain?` re-derives all of the above from
-  an archive, per phase and per match.
+  The toolbar's **What did it contain?** re-derives all of the above from a
+  recording, per phase and per match.
+- **Recording is one button and one folder per press** (`record.py`,
+  `recordings/<timestamp>/`): payloads, draft frames, and `state.jsonl` — one
+  line per tick saying what the app concluded and which source produced it.
+  Sessions are never pooled; two matches in one archive made every count in
+  the report meaningless. The session report grades the screen's reading
+  against the minimap line-ups from the same match — the only ground truth
+  available — and distinguishes a WRONG hero (advice given against a hero not
+  in the game) from a MISSED one, and both from swapped sides, which is a
+  mapping fault rather than a recognition one. Recorder writes are
+  failure-tolerant by design: a full disk costs the recording, never the
+  draft window.
 - **Bracket comparisons across sites are not apples to apples.** Stratz buckets
   whole matches by average rank; OpenDota counts each player at their own rank.
   That makes cross-source win rates disagree slightly even when tier labels are

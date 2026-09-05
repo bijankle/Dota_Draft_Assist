@@ -48,6 +48,64 @@ alone:
 
 `--no-vision` for game data only, `--vision` for the screen only.
 
+### Recording — one button
+
+**Record** in the toolbar captures everything for one game into its own
+folder, and **Stop** ends it:
+
+```
+recordings/2026-09-05_2031/
+    meta.json          when it ran and the totals
+    gsi/gsi_00001.json every payload Dota sent, verbatim
+    frames/00001.png   the Dota window during the draft
+    state.jsonl        one line per tick: what the app concluded, and
+                       WHICH SOURCE it came from
+    report.txt         the above, read back as text
+```
+
+The state log is what makes the rest worth keeping: a payload says what the
+game sent and a frame says what was on screen, but only the log says what
+the app *made* of them, so a wrong pick traces to the source that produced
+it instead of being guessed at.
+
+**Every press is its own folder.** Sessions are never pooled — two matches in
+one archive made every count meaningless, which is the single thing that most
+confused earlier debugging.
+
+**Debug ▸ Recordings** lists past sessions with their reports, and copies one
+to the clipboard in a click.
+
+#### The report grades recognition against the game itself
+
+During hero selection GSI names no hero, so screen reading cannot be checked
+at the time. From strategy time the minimap carries all ten heroes of the
+same match — which makes the last screen reading gradeable, hero by hero:
+
+```
+SCREEN vs GAME
+allies:
+  correct : Abaddon, Rubick, Silencer, Windrunner
+  missed  : Gyrocopter   (the game had them, the screen did not)
+  wrong   : -            (the screen had them, the game did not)
+enemies:
+  correct : Marci, Sniper, Viper, Zuus
+  missed  : Nevermore
+  wrong   : Pudge
+
+8/10 heroes read correctly (1 wrong, 2 missed)
+A WRONG hero is the serious one: the app advised against a hero that was
+never in the game.
+```
+
+A reading that matches the *other* team better than its own is reported as
+**SIDES WERE SWAPPED** — a mapping fault, not a recognition one, and the two
+want different fixes.
+
+Frames are taken only while the game says a draft is on, at most one every
+two seconds and 600 in total, so a session left running cannot fill the disk.
+A failed write costs the recording, never the draft window: errors are
+swallowed and reported in `meta.json`.
+
 **Game ▸ What did the recording contain?** re-derives all of this from your
 own archive — per phase, per match — so none of it has to be taken on trust.
 
@@ -76,9 +134,8 @@ the app, with live progress and readable errors.
 | **Game** | Set up game data (GSI) | Once, before first use |
 | **Game** | Diagnose game data (Ctrl+G) | When no data is arriving — names the failing step |
 | **Game** | Game data status | To see exactly what Dota is reporting |
-| **Game** | Record game data | Tick it to archive real payloads while you play |
-| **Game** | Start a fresh recording | Moves the old archive aside so the next one is a single clean match |
-| **Game** | What did the recording contain? | Reads the archive (no game needed) and says whether GSI ever sent the enemy picks |
+| **Toolbar** | Record / Stop | Captures one game: payloads, frames, and the app's own reading |
+| **Toolbar** | What did it contain? | Reads the newest recording back, per phase and per match |
 | **Game** | Simulate a draft — full teams | Test the whole app with Dota closed; both line-ups fill in |
 | **Game** | Simulate a draft — only your hero | The same minus the enemy picks GSI does not send, so slots stay empty |
 | **Game** | Replay recorded game data | Replay real payloads from a past match |
@@ -212,7 +269,7 @@ picks arrive. Closing the dialog stops the feed.
 Note the honest limit: modelled payloads are this codebase's own belief about the format
 echoed back, so they can confirm the app handles what it expects, but they
 cannot discover that a real field is shaped differently. Recording one real
-match with **Game ▸ Record game data** and replaying it is a strictly
+match with the toolbar's **Record** button and replaying it is a strictly
 stronger test.
 
 ## Self-training on real frames
@@ -239,7 +296,7 @@ coverage without repeatedly sending screenshots.
 
 ```
 pip install -r requirements.txt
-pytest            # 182 tests: normalisation math, scoring views, item
+pytest            # 203 tests: normalisation math, scoring views, item
                   # engine, GSI config/listener/parsing/provider/diagnostics,
                   # vision end-to-end on synthetic screens, gate & session
                   # state machine, overlay, and headless UI smoke tests

@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/
 ui_settings.json
 preferences.json
+
+# Recording sessions: payloads, frames and state logs from real games.
+recordings/

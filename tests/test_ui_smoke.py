@@ -2,6 +2,7 @@
 provider, offscreen Qt platform) — no Dota, no capture, no network."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -857,40 +858,159 @@ def test_clearing_the_draft_also_forgets_the_undo_history(qapp):
         window.close()
 
 
-def test_fresh_recording_moves_the_old_archive_aside(qapp, monkeypatch,
-                                                     tmp_path):
-    """Recording appends, so a folder ends up holding several matches and
-    every per-phase count in the report is pooled across them."""
+# ---- one Record button, one folder per press ---------------------------
+
+def recording_window(qapp, monkeypatch, tmp_path):
     import draft_assist.ui.app as app_mod
+    from draft_assist import record as record_mod
 
-    root = tmp_path / "repo"
-    (root / "data_cache" / "gsi").mkdir(parents=True)
-    for i in range(3):
-        (root / "data_cache" / "gsi" / f"gsi_{i:05d}.json").write_text("{}")
-    monkeypatch.setattr(app_mod, "REPO_ROOT", root)
-
+    monkeypatch.setattr(app_mod, "RECORDINGS_DIR", tmp_path)
     window = blank_window(qapp)
+    window.recorder = record_mod.Recorder(tmp_path)
+    window.sessions = []
+    return window
+
+
+def test_record_button_toggles_and_names_its_state(qapp, monkeypatch,
+                                                   tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
     try:
-        window._new_recording()
-        assert not (root / "data_cache" / "gsi").exists()
-        moved = [p for p in (root / "data_cache").iterdir()
-                 if p.name.startswith("gsi_")]
-        assert len(moved) == 1
-        assert len(list(moved[0].glob("gsi_*.json"))) == 3
-        assert "moved to" in window.status.currentMessage()
+        assert window.record_button.text() == "● Record"
+        window.record_button.click()
+        assert window.recorder.active
+        assert window.record_button.text() == "■ Stop"
+        assert window.record_button.property("recording") is True
+        window.record_button.click()
+        assert not window.recorder.active
+        assert window.record_button.text() == "● Record"
     finally:
         window.close()
 
 
-def test_fresh_recording_says_so_when_there_is_nothing_to_move(qapp,
-                                                               monkeypatch,
-                                                               tmp_path):
-    import draft_assist.ui.app as app_mod
-
-    monkeypatch.setattr(app_mod, "REPO_ROOT", tmp_path)
-    window = blank_window(qapp)
+def test_each_press_makes_its_own_discrete_folder(qapp, monkeypatch,
+                                                  tmp_path):
+    """Never append to an earlier session: pooling two matches made every
+    count in the report meaningless."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
     try:
-        window._new_recording()
-        assert "already empty" in window.status.currentMessage()
+        folders = []
+        for _ in range(3):
+            window.record_button.click()
+            folders.append(window.recorder.folder)
+            window.record_button.click()
+        assert len({f.name for f in folders}) == 3
+        for folder in folders:
+            assert (folder / "gsi").is_dir()
+            assert (folder / "frames").is_dir()
+            assert (folder / "meta.json").is_file()
+    finally:
+        window.close()
+
+
+def test_recording_routes_payloads_into_this_session(qapp, monkeypatch,
+                                                     tmp_path):
+    """One button covers game data as well as the screen, so the payload
+    archive has to follow the session rather than a fixed folder."""
+    class FakeServer:
+        def __init__(self):
+            self.archive = "never set"
+
+        def set_archive_dir(self, directory):
+            self.archive = directory
+            return 0
+
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    server = FakeServer()
+    monkeypatch.setattr(window, "_gsi_server", lambda: server)
+    try:
+        window.record_button.click()
+        assert server.archive == window.recorder.folder / "gsi"
+        window.record_button.click()
+        assert server.archive is None
+    finally:
+        window.close()
+
+
+def test_the_state_log_records_what_the_app_concluded(qapp, monkeypatch,
+                                                      tmp_path):
+    from draft_assist import record as record_mod
+
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.record_button.click()
+        window.refresh()
+        window.refresh()
+        folder = window.recorder.folder
+        window.record_button.click()
+        states = record_mod.read_states(folder)
+        assert len(states) >= 2
+        assert set(states[0]) >= {"game_state", "source", "allies",
+                                  "enemies", "at"}
+        assert (folder / "report.txt").is_file()
+    finally:
+        window.close()
+
+
+def test_a_write_failure_never_interrupts_the_draft(qapp, monkeypatch,
+                                                    tmp_path):
+    """A full disk mid-game must cost the recording, not the window."""
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window.record_button.click()
+        folder = window.recorder.folder
+
+        def explode(*_a, **_k):
+            raise OSError("No space left on device")
+
+        monkeypatch.setattr(Path, "open", explode)
+        window.refresh()                     # must not raise
+        monkeypatch.undo()
+        assert window.recorder._errors
+        window.record_button.click()
+        assert "No space left" in (folder / "meta.json").read_text()
+    finally:
+        window.close()
+
+
+def test_sessions_tab_lists_recordings_newest_first(qapp, monkeypatch,
+                                                    tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        for name in ("2026-09-01_1000", "2026-09-03_1200"):
+            folder = tmp_path / name
+            (folder / "gsi").mkdir(parents=True)
+            (folder / "state.jsonl").write_text("")
+        window._refresh_sessions()
+        assert [window.session_list.item(i).text()
+                for i in range(window.session_list.count())] == [
+            "2026-09-03_1200", "2026-09-01_1000"]
+        assert "RECORDING  2026-09-03_1200" in \
+            window.session_report.toPlainText()
+    finally:
+        window.close()
+
+
+def test_copying_a_report_puts_it_on_the_clipboard(qapp, monkeypatch,
+                                                   tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        folder = tmp_path / "2026-09-05_2031"
+        (folder / "gsi").mkdir(parents=True)
+        (folder / "state.jsonl").write_text("")
+        window._refresh_sessions()
+        window._copy_session_report()
+        assert "2026-09-05_2031" in QApplication.clipboard().text()
+    finally:
+        window.close()
+
+
+def test_sessions_tab_says_what_to_do_when_there_is_nothing(qapp,
+                                                            monkeypatch,
+                                                            tmp_path):
+    window = recording_window(qapp, monkeypatch, tmp_path)
+    try:
+        window._refresh_sessions()
+        assert "No recordings yet" in window.session_report.toPlainText()
+        assert "Press Record" in window.session_report.toPlainText()
     finally:
         window.close()

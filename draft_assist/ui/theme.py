@@ -67,6 +67,12 @@ QPushButton[accent="true"] {{
     font-weight: 600;
 }}
 QPushButton[accent="true"]:hover {{ background: #5f9cd9; }}
+/* Recording is the one state the eye must catch across the room. */
+QPushButton[recording="true"] {{
+    background: #c2453f; border-color: #c2453f; color: #ffffff;
+    font-weight: 700;
+}}
+QPushButton[recording="true"]:hover {{ background: #d4544e; }}
 QPushButton[slot="true"] {{ text-align: left; padding: 8px 10px; }}
 
 QComboBox {{

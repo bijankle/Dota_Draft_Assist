@@ -130,13 +130,11 @@ TASKS = {
         key="inspect_recording",
         title="What did the recording contain?",
         steps=[[PY, "tools/inspect_recording.py"]],
-        blurb=("Reads the payloads already archived by Record game data and "
-               "reports which components Dota actually sent — and whether "
-               "the enemy line-up was ever among them.\n\n"
-               "It reads files only: you do NOT need to be in a game, and it "
-               "is safe to run while the app is listening. It reports when "
-               "the recording was made and how many matches are in it, "
-               "because recording appends rather than replacing."),
+        blurb=("Reads the newest recording back and reports which "
+               "components Dota actually sent, per phase and per match — "
+               "including whether the enemy line-up was ever among them.\n\n"
+               "It reads files only: you do NOT need to be in a game, and "
+               "it is safe to run while the app is listening."),
     ),
     "probe": Task(
         key="probe",

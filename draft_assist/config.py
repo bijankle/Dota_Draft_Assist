@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_CACHE = REPO_ROOT / "data_cache"
 RAW_DUMP_DIR = DATA_CACHE / "raw"
+# One folder per recording session: payloads, frames and the app's
+# own reading of both, kept together so one game is one piece of
+# evidence rather than three scattered ones.
+RECORDINGS_DIR = REPO_ROOT / "recordings"
 CAPTURES_DIR = REPO_ROOT / "captures"
 DEBUG_OUT = REPO_ROOT / "debug_out"
 ASSETS_DIR = REPO_ROOT / "assets"
