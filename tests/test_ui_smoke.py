@@ -21,6 +21,7 @@ from draft_assist.ui.hero_picker import (  # noqa: E402
 HeroPickerDialogCode = _Picker.DialogCode
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
+from draft_assist.ui import split_memory  # noqa: E402
 from draft_assist.ui.tables import SORT_ROLE, TOTAL_LABEL  # noqa: E402
 
 
@@ -382,7 +383,7 @@ def test_manual_hint_explains_missing_picks(qapp, monkeypatch):
     win.timer.stop()
     try:
         win.refresh()
-        assert "reads them off the Dota window" in \
+        assert "come off the Dota window" in \
             win.manual_hint.text()
         assert "HERO_SELECTION" in win.status.currentMessage()
 
@@ -1361,7 +1362,7 @@ def test_swap_button_appears_only_when_the_sides_are_a_guess(qapp):
         assert window.snapshot.lineup_source == "minimap"
         assert window.snapshot.sides_certain is False
         assert not window.swap_button.isHidden()
-        assert "which five are yours is a guess" in window.manual_hint.text()
+        assert "five are yours is a guess" in window.manual_hint.text()
     finally:
         window.close()
 
@@ -1957,5 +1958,106 @@ def test_the_callout_carries_both_grids(window):
             len(draft.allies) + 1
         # No caption: in the callout that space belongs to the grid.
         assert window.overlay.matchup_matrix.caption.isHidden()
+    finally:
+        window._set_overlay(False)
+
+
+# ---- fixing the team split ----------------------------------------------
+
+def test_dragging_a_hero_to_the_other_team_exchanges_it(qapp):
+    """A 5v5 cannot become 4v6, so a hero dropped across swaps places with
+    whatever it landed on."""
+    window = minimap_window(qapp)
+    try:
+        window.refresh()
+        before_ally = filled(window, "ally")
+        before_enemy = filled(window, "enemy")
+        window._on_slot_dropped("ally", 0, "enemy", 2)
+        after_ally, after_enemy = filled(window, "ally"), filled(window, "enemy")
+        assert len(after_ally) == len(before_ally) == 5
+        assert len(after_enemy) == len(before_enemy) == 5
+        assert before_ally[0] in after_enemy
+        assert before_enemy[2] in after_ally
+    finally:
+        window.close()
+
+
+def test_dropping_a_hero_on_its_own_team_changes_nothing(qapp):
+    """The order inside a bank is the feed's; a hand-held order here would
+    quietly fight the next reading rather than correct anything."""
+    window = minimap_window(qapp)
+    try:
+        window.refresh()
+        before = filled(window, "ally")
+        window._on_slot_dropped("ally", 0, "ally", 3)
+        assert filled(window, "ally") == before
+    finally:
+        window.close()
+
+
+def test_three_reversals_pre_swap_the_next_match(qapp):
+    """Correcting the same way every match is the app failing to notice
+    something it has been told three times."""
+    window = minimap_window(qapp)
+    try:
+        window.refresh()
+        as_read = filled(window, "ally")
+        payload = window.provider.server._reception.payload
+        for match in range(1, split_memory.AUTO_AFTER + 1):
+            payload["map"]["matchid"] = str(9000 + match)
+            window.refresh()               # a new match, read as given
+            window._swap_sides()           # …and corrected, as every time
+        history = window.settings.get("split_history", [])
+        assert split_memory.should_pre_swap(history)
+
+        # A new match now starts already corrected, and says so.
+        payload["map"]["matchid"] = "9999"
+        window.refresh()
+        assert window.swap_sides
+        assert window._swap_was_automatic
+        assert filled(window, "ally") != as_read
+        assert "pre-swapped" in window.manual_hint.text()
+    finally:
+        window.settings["split_history"] = []
+        window.close()
+
+
+def test_the_swap_control_never_goes_away_once_it_is_automatic(qapp):
+    """The split is still a guess — a learned habit is not evidence, so the
+    way to undo it has to stay on screen."""
+    window = minimap_window(qapp)
+    try:
+        window.settings["split_history"] = [
+            {"match": f"m{i}", "verdict": split_memory.INVERTED}
+            for i in range(split_memory.AUTO_AFTER)]
+        window.provider.server._reception.payload["map"]["matchid"] = "4242"
+        window.refresh()
+        assert window.swap_sides
+        assert not window.swap_button.isHidden()
+        assert window.snapshot.sides_certain is False
+    finally:
+        window.settings["split_history"] = []
+        window.close()
+
+
+def test_the_main_grids_carry_no_explanatory_caption(window):
+    """The card heading says which grid it is and the headers say what the
+    axes are; a paragraph repeating both stands between the reader and the
+    numbers."""
+    window.refresh()
+    for matrix in (window.matchup_matrix, window.synergy_matrix):
+        assert matrix.caption.isHidden()
+        assert matrix.table.maximumHeight() > 1000, \
+            "the main-window grid should fill its card, not a fitted height"
+
+
+def test_the_callout_grids_stay_cramped(window):
+    """The fitted height and short names are the callout's layout, not
+    every caption-less one."""
+    window.refresh()
+    window._set_overlay(True)
+    try:
+        table = window.overlay.matchup_matrix.table
+        assert table.maximumHeight() == table.minimumHeight()
     finally:
         window._set_overlay(False)

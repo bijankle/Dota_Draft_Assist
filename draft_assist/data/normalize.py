@@ -84,11 +84,16 @@ def build_delta_matrices(index: dict[int, int], b: np.ndarray,
     return d_vs.astype(np.float32), d_with.astype(np.float32)
 
 
-def sanity_check(d_vs: np.ndarray, d_with: np.ndarray) -> list[str]:
+def sanity_check(d_vs: np.ndarray, d_with: np.ndarray,
+                 expect_synergy: bool = True) -> list[str]:
     """Cheap invariant checks on freshly built matrices; returns a list of
     problems (empty = fine). Deltas are small interaction terms: values that
     look like raw win rates (~0.5) mean normalisation was skipped."""
     problems = []
+    if expect_synergy and not d_with.any():
+        problems.append(
+            "with: every synergy delta is zero — the source carried no "
+            "ally-pair counts, or they were dropped")
     for name, m in (("vs", d_vs), ("with", d_with)):
         if not np.isfinite(m).all():
             problems.append(f"{name}: non-finite entries")

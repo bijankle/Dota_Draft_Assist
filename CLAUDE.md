@@ -234,17 +234,51 @@ credentials, and put the account at risk. Do not go there.
   beside the ten picks made the ten harder to read. There is no longer a
   separate Matrix tab.
 - **Each pick is a TILE, not a row** (`teams.HeroTile`): the hero's own
-  portrait behind, the name across the top, the signed number under it,
-  five across per team. That is the shape the same ten picks have on Dota's
-  own pick bar, so the eye arrives knowing the layout, and it costs a fifth
-  of the height five full-width name buttons did. The art is the
-  recognition library's (`ui/portraits.py`, `assets/portraits/base/`), so
-  it costs nothing to draw — but a missing portrait is NORMAL, not an
-  error: a fresh install has none and the tile draws plain. `text()` still
-  reads "Pos 3 · Necrophos", so the tile is a drop-in for the button it
-  replaced. Tests must actually RENDER every tile state: the portrait
-  branch shipped once with a mistyped Qt enum and nothing caught it,
-  because no test had a portrait on disk to take that branch.
+  portrait behind, the name across the top, the signed number in the
+  bottom-right, five across per team. That is the shape the same ten picks
+  have on Dota's own pick bar, so the eye arrives knowing the layout, and
+  it costs a fifth of the height five full-width name buttons did. The art
+  is the recognition library's (`ui/portraits.py`,
+  `assets/portraits/base/`), so it costs nothing to draw — but a missing
+  portrait is NORMAL, not an error: a fresh install has none and the tile
+  draws plain. `text()` still reads "Pos 3 · Necrophos", so the tile is a
+  drop-in for the button it replaced.
+  **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
+  _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
+  leftover width at a fixed height meant full-screening the window
+  stretched every portrait into a wide slice with the hero's head cropped
+  off; the panel now computes one square edge from the width available and
+  gives the remainder to the margins. The art is then scaled to FIT that
+  square, never to fill it, so the whole portrait is visible and the window
+  aspect can never distort it — the dead space above and below a wide
+  portrait is where the name band and the number go. Names shrink to fit
+  and wrap to two lines before they elide, because the name is the thing
+  the panel exists to show. Tests must actually RENDER every tile state:
+  the portrait branch shipped once with a mistyped Qt enum and nothing
+  caught it, because no test had a portrait on disk to take that branch.
+- **Fixing a wrong team split is a DRAG** (`HeroTile.dropped_on`,
+  `_on_slot_dropped`): drop a hero on the other panel and it exchanges with
+  whatever it landed on, because a 5v5 cannot become 4v6. Dropping inside
+  its own team does nothing — the order within a bank is the feed's, and a
+  hand-held order would quietly fight the next reading rather than correct
+  anything. Swap teams and the right-click menu both remain.
+- **The app remembers what the user keeps correcting** (`ui/split_memory.py`).
+  If the split comes out reversed three matches running, the fourth starts
+  already swapped and says so. It records ONLY the two verdicts that mean
+  something — the reading as given, or exactly reversed, compared as sets of
+  five — so a partial fiddle teaches it nothing rather than noise, and one
+  match is one verdict however much the user fiddles in it. A single
+  contradiction stops it. **This is a memory of one person's habit, not a
+  rule about what the minimap means**: `sides_certain` stays False, the swap
+  control stays on screen, and nothing in the section above is settled by it.
+- **Captions are gone from the grids.** The card heading says which grid it
+  is ("Counters", "Synergy") and the row and column headers say what the
+  axes are; a paragraph repeating both only stands between the reader and
+  the numbers. `MatrixTable.set_compact(short_names=...)` separates the two
+  jobs: dropping the caption is for everywhere, while short names, fixed
+  narrow columns and a height fitted to the rows are the in-game callout's
+  layout alone — applying them in the main window shrank the grid to a
+  fitted block floating in a half-empty card.
 - **Every grid carries its margins** (`Matrix.row_totals` / `col_totals` /
   `total`, drawn as a Σ row and column). The grid says which PAIRING is
   bad; the margins say which HERO is, which is the question you act on
@@ -307,6 +341,23 @@ credentials, and put the account at risk. Do not go there.
   without the notes, so `snapshot_record` logs them along with whether a
   frame was captured and whether anything was recognised — capture failing
   and recognition failing are different bugs.
+- **One site supplies the pairwise numbers, never two** (`config.pair_source`,
+  `data/build.py`). OpenDota supplies hero constants and bracket-indexed
+  baselines either way; the SETTING chooses who supplies the matchup and
+  synergy counts, and it is exactly one, because averaging two sites'
+  interaction terms would produce a figure neither site would recognise.
+  Stratz is the default and the only complete one. **OpenDota's cost is
+  real and must stay visible**: it publishes no ally-pair endpoint and no
+  rank filter, so a dataset built from it has an ALL-ZERO synergy matrix
+  and matchups pooled across every bracket while the baselines are
+  Ancient+Divine. The build records `has_synergy` and `pair_brackets` in
+  the dataset meta rather than leaving it to be inferred, `normalize.
+  sanity_check(expect_synergy=...)` refuses to call an empty synergy matrix
+  healthy by accident, and the UI says the source publishes none instead of
+  drawing a grid of +0.00 that reads as "no synergy anywhere". The choice
+  lives in `preferences.json`, not the UI settings file, because the pull
+  runs in a subprocess; `_write_prefs` merges, since saving one preference
+  used to wipe the other.
 - **Bracket comparisons across sites are not apples to apples.** Stratz buckets
   whole matches by average rank; OpenDota counts each player at their own rank.
   That makes cross-source win rates disagree slightly even when tier labels are

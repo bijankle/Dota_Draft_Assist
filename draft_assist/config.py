@@ -40,14 +40,47 @@ DEFAULT_TARGET_BRACKETS = ("ANCIENT", "DIVINE")
 PREFS_FILE = REPO_ROOT / "preferences.json"
 
 
-def target_brackets() -> tuple[str, ...]:
-    """The brackets statistics are pulled for, resolved at call time."""
+# The site whose pairwise numbers the matrices are built from. One at a
+# time, never blended — see data/build.py.
+DEFAULT_PAIR_SOURCE = "stratz"
+PAIR_SOURCES = ("stratz", "opendota")
+
+
+def _prefs() -> dict:
     import json
     try:
         stored = json.loads(PREFS_FILE.read_text(encoding="utf-8"))
-        chosen = stored.get("target_brackets")
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return DEFAULT_TARGET_BRACKETS
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return stored if isinstance(stored, dict) else {}
+
+
+def _write_prefs(**changes) -> None:
+    """Merge into the file rather than replacing it: two settings live here
+    now, and saving one used to wipe the other."""
+    import json
+    stored = _prefs()
+    stored.update(changes)
+    PREFS_FILE.write_text(json.dumps(stored, indent=2), encoding="utf-8")
+
+
+def pair_source() -> str:
+    """Which site supplies matchup/synergy counts, resolved at call time so
+    the app and the pull subprocess always agree."""
+    chosen = _prefs().get("pair_source")
+    return chosen if chosen in PAIR_SOURCES else DEFAULT_PAIR_SOURCE
+
+
+def save_pair_source(source: str) -> None:
+    if source not in PAIR_SOURCES:
+        raise ValueError(f"unknown pair source {source!r}; "
+                         f"expected one of {PAIR_SOURCES}")
+    _write_prefs(pair_source=source)
+
+
+def target_brackets() -> tuple[str, ...]:
+    """The brackets statistics are pulled for, resolved at call time."""
+    chosen = _prefs().get("target_brackets")
     if not isinstance(chosen, list):
         return DEFAULT_TARGET_BRACKETS
     # Keep canonical rank order regardless of what order they were picked
@@ -57,12 +90,10 @@ def target_brackets() -> tuple[str, ...]:
 
 
 def save_target_brackets(brackets) -> None:
-    import json
     ordered = [b for b in ALL_BRACKETS if b in set(brackets)]
     if not ordered:
         raise ValueError("at least one bracket must be selected")
-    PREFS_FILE.write_text(
-        json.dumps({"target_brackets": ordered}, indent=2), encoding="utf-8")
+    _write_prefs(target_brackets=ordered)
 
 
 # Backwards-compatible alias; prefer target_brackets() so a changed

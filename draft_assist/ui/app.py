@@ -46,8 +46,9 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QToolBar, QVBoxLayout, QWidget)
 
 from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
-                       REPO_ROOT, RULES_FILE,
-                       save_target_brackets, target_brackets)
+                       REPO_ROOT, RULES_FILE, pair_source,
+                       save_pair_source, save_target_brackets,
+                       target_brackets)
 from ..data import store
 from ..data.store import Dataset
 from ..model import items as items_mod
@@ -62,6 +63,7 @@ from .overlay import DraftOverlay
 from .portrait_overlay import PortraitOverlay
 from .tables import (BreakdownPanel, MatrixTable, QuickEntry,
                      ValueItem)
+from . import split_memory
 from .task_dialog import TaskDialog
 from .teams import TeamPanel
 from .tasks import TASKS
@@ -126,6 +128,9 @@ class MainWindow(QMainWindow):
         self.slot_roles = {"ally": [None] * 5,
                            "enemy": [None] * 5}
         self._swap_match = ""
+        # True when this match's swap came from the remembered pattern
+        # rather than from the user pressing the button this game.
+        self._swap_was_automatic = False
         # hero id -> "ally"/"enemy", for one hero put on the wrong
         # side. Cleared with the swap when the match changes.
         self.side_overrides: dict[int, str] = {}
@@ -383,6 +388,7 @@ class MainWindow(QMainWindow):
                 b.customContextMenuRequested.connect(
                     lambda pos, side=side, i=index:
                         self._slot_menu(side, i, pos))
+                b.dropped_on.connect(self._on_slot_dropped)
             teams_row.addWidget(panel, 1)
         outer.addLayout(teams_row)
 
@@ -467,13 +473,18 @@ class MainWindow(QMainWindow):
         # ----- the grids, beneath the teams they describe
         grids = QHBoxLayout()
         grids.setSpacing(10)
-        vs_card, vslay = card("Counters · your team against theirs")
+        vs_card, vslay = card("Counters")
         self.matchup_matrix = MatrixTable()
-        vslay.addWidget(self.matchup_matrix)
+        # No caption. The heading says which grid this is, the row and
+        # column headers say what the axes are, and a paragraph explaining
+        # both is a paragraph in the way of the numbers.
+        self.matchup_matrix.set_compact(True, short_names=False)
+        vslay.addWidget(self.matchup_matrix, 1)
         grids.addWidget(vs_card, 1)
-        with_card, withlay = card("Synergy · your team with itself")
+        with_card, withlay = card("Synergy")
         self.synergy_matrix = MatrixTable()
-        withlay.addWidget(self.synergy_matrix)
+        self.synergy_matrix.set_compact(True, short_names=False)
+        withlay.addWidget(self.synergy_matrix, 1)
         grids.addWidget(with_card, 1)
         outer.addLayout(grids, 1)
 
@@ -573,12 +584,7 @@ class MainWindow(QMainWindow):
         clay2.addWidget(self.counters)
         rlay.addWidget(counters_card, 2)
 
-        items_card, ilay = card("Items")
-        note = QLabel("Hand-authored rules — asserted, not measured. "
-                      "Hero scores above are measured.")
-        note.setWordWrap(True)
-        note.setProperty("dim", True)
-        ilay.addWidget(note)
+        items_card, ilay = card("Items · hand-authored rules")
         self.items_view = QTextBrowser()
         self.items_view.setMinimumHeight(140)
         ilay.addWidget(self.items_view)
@@ -1486,6 +1492,60 @@ class MainWindow(QMainWindow):
         self.status.showMessage(message, 6000)
         self.refresh()
 
+    def _on_slot_dropped(self, from_side: str, from_index: int,
+                         to_side: str, to_index: int) -> None:
+        """Drag a pick onto the other team to put it there.
+
+        Within a team it reorders; across teams it EXCHANGES with whatever
+        it was dropped on, because a 5v5 cannot become 4v6 and a hero on
+        the wrong side almost always has an opposite number in the same
+        boat.
+        """
+        moved = self.team_buttons[from_side][from_index].property("hero_id")
+        if moved is None:
+            return
+        landed = self.team_buttons[to_side][to_index].property("hero_id")
+        if from_side == to_side:
+            # Same team: nothing to fix. The order within a bank is the
+            # feed's, and inventing a hand-held order here would quietly
+            # fight the next reading rather than correct anything.
+            self.status.showMessage(
+                "Drag a hero onto the OTHER team to move it across", 4000)
+            return
+        self.side_overrides[moved] = to_side
+        if landed is not None:
+            self.side_overrides[landed] = from_side
+        self.last_draft_key = None
+        self.status.showMessage(
+            f"{self.ds.name(moved)} and {self.ds.name(landed)} exchanged "
+            "teams" if landed is not None
+            else f"{self.ds.name(moved)} moved to the other team", 6000)
+        self.refresh()
+        self._note_split_correction()
+
+    def _note_split_correction(self) -> None:
+        """Remember what the correction implies about the raw reading.
+
+        Only the two verdicts that mean something are recorded — the
+        reading as given, or exactly reversed — so a partial fiddle teaches
+        the app nothing rather than teaching it noise.
+        """
+        snap = self.snapshot
+        if snap is None or getattr(snap, "sides_certain", True):
+            return
+        if getattr(snap, "lineup_source", "") != "minimap":
+            return
+        allies, enemies = self._sides(snap)
+        verdict = split_memory.verdict_for(
+            list(snap.left), list(snap.right), allies, enemies)
+        if verdict is None:
+            return
+        history = list(self.settings.get("split_history", []))
+        history = split_memory.record(
+            history, getattr(snap, "match_id", "") or "", verdict)
+        self.settings["split_history"] = history
+        ui_settings.save(self.settings)
+
     def _set_slot_role(self, side: str, index: int, role: str | None) -> None:
         self.slot_roles[side][index] = role
         self.last_draft_key = None
@@ -1514,11 +1574,13 @@ class MainWindow(QMainWindow):
 
     def _swap_sides(self) -> None:
         self.swap_sides = not self.swap_sides
+        self._swap_was_automatic = False
         self.last_draft_key = None
         self.status.showMessage(
             "Teams swapped for this match" if self.swap_sides
             else "Teams back as the game reported them", 6000)
         self.refresh()
+        self._note_split_correction()
 
     def _flip_quick_side(self) -> None:
         self.quick_side = "ally" if self.quick_side == "enemy" else "enemy"
@@ -1705,6 +1767,7 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog
 
+        self.settings.setdefault("pair_source", pair_source())
         dialog = SettingsDialog(self.settings, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1721,6 +1784,14 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
+        chosen = self.settings.get("pair_source", pair_source())
+        if chosen != pair_source():
+            # Written to preferences.json, not just the UI settings: the
+            # pull runs in a subprocess and reads it there.
+            save_pair_source(chosen)
+            self.status.showMessage(
+                f"Statistics source set to {chosen} — run Data ▸ Update "
+                "statistics to rebuild the matrices from it", 12000)
 
     def _apply_sources(self) -> None:
         """Rebuild the draft source from the settings.
@@ -1827,8 +1898,14 @@ class MainWindow(QMainWindow):
         match = getattr(snap, "match_id", "") or ""
         if match != self._swap_match:
             self._swap_match = match
-            self.swap_sides = False
             self.side_overrides.clear()
+            # If this user has corrected the same way three matches running,
+            # start the next one already corrected. It is a memory of what
+            # they keep doing, not a claim about what the minimap means:
+            # `sides_certain` stays False and the control stays on screen.
+            self.swap_sides = split_memory.should_pre_swap(
+                self.settings.get("split_history", []))
+            self._swap_was_automatic = self.swap_sides
         # Never during the draft. There the picks come from the screen,
         # where Radiant is always the left bank and Dire the right, and the
         # game has already said which of those is yours — so the sides are
@@ -1842,30 +1919,34 @@ class MainWindow(QMainWindow):
         self.swap_button.setVisible(uncertain)
         if not snap.needs_manual:
             if source == "minimap":
-                self.manual_hint.setText(
-                    "All ten heroes came from the game — but which five are "
-                    "yours is a guess. Check the top row against your own "
-                    "team and press Swap teams if it is reversed."
-                    + ("  (swapped)" if self.swap_sides else ""))
+                run = split_memory.streak(
+                    self.settings.get("split_history", []))
+                if self._swap_was_automatic and self.swap_sides:
+                    self.manual_hint.setText(
+                        f"Teams pre-swapped — your last {run} corrections "
+                        "were all reversals. Swap teams undoes it.")
+                elif self.swap_sides:
+                    self.manual_hint.setText("Teams swapped for this match.")
+                else:
+                    self.manual_hint.setText(
+                        "Which five are yours is a guess — drag a hero to "
+                        "the other side, or press Swap teams.")
             elif source == "screen":
-                self.manual_hint.setText(
-                    "Both line-ups read from the Dota window.")
+                self.manual_hint.setText("Picks read from the Dota window.")
             else:
                 self.manual_hint.setText("")
             return
         if source == "screen":
             self.manual_hint.setText(
-                "Reading the picks from the Dota window — type or click in "
-                "anything it has not recognised yet.")
+                "Reading the picks from the Dota window — type in anything "
+                "it has not recognised.")
         elif snap.game_state:
             self.manual_hint.setText(
-                "The game itself reports no picks during hero selection, so "
-                "the app reads them off the Dota window. If nothing appears, "
-                "check the Debug tab is bound to Dota — or type them into "
-                "the box above.")
+                "The game reports no picks while you are picking, so these "
+                "come off the Dota window. Nothing appearing? Check Debug is "
+                "bound to Dota, or type them in.")
         else:
-            self.manual_hint.setText(
-                "Click the empty slots to enter the draft by hand.")
+            self.manual_hint.setText("Click a slot to enter the draft.")
 
     def _sides(self, snap) -> tuple[list[int], list[int]]:
         """(allies, enemies).
@@ -1990,11 +2071,20 @@ class MainWindow(QMainWindow):
     def _update_matrices(self, draft: scoring.DraftState) -> None:
         self.matchup_matrix.show_matrix(
             scoring.matchup_matrix(self.ds, draft),
-            "Fill in both teams and every ally-versus-enemy pairing appears "
-            "here.")
-        self.synergy_matrix.show_matrix(
-            scoring.synergy_matrix(self.ds, draft),
-            "Fill in your own team and every pair's synergy appears here.")
+            "Fill in both teams.")
+        # A dataset built from OpenDota carries no ally-pair counts at all,
+        # so the grid would be a wall of +0.00 that looks like "no synergy
+        # anywhere" rather than "this source does not publish it".
+        if self.ds.meta.get("has_synergy") is False:
+            self.synergy_matrix.show_matrix(
+                scoring.Matrix(rows=[], cols=[], cells=[]),
+                f"{self.ds.meta.get('pair_source', 'this source')} publishes "
+                "no ally-pair data — switch the statistics source to Stratz "
+                "in Settings and re-pull.")
+        else:
+            self.synergy_matrix.show_matrix(
+                scoring.synergy_matrix(self.ds, draft),
+                "Fill in your own team.")
 
     def _apply_filter(self) -> None:
         needle = self.search_box.text().strip().lower()

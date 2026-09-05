@@ -7,8 +7,25 @@ what the picks are, and the app wants both. So they are tick boxes, both on
 by default, and turning one off is a debugging step rather than a mode.
 """
 
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QLabel,
+from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog,
+                             QDialogButtonBox, QFrame, QLabel, QRadioButton,
                              QVBoxLayout)
+
+from ..config import DEFAULT_PAIR_SOURCE
+
+# Which site's matchup and synergy numbers the matrices are built from.
+# Exactly one at a time, so these are radio buttons: averaging two sites'
+# interaction terms would produce a figure neither site would recognise.
+# value, label, explanation
+PAIR_SOURCES = (
+    ("stratz", "Stratz",
+     "Matchups AND synergies, filtered to your bracket. What the app has "
+     "always used, and the only source that fills the synergy grid."),
+    ("opendota", "OpenDota",
+     "Matchups only, all brackets pooled — OpenDota publishes no ally-pair "
+     "data and no rank filter, so the synergy grid comes out empty and the "
+     "counter numbers are not bracket-specific."),
+)
 
 # key, label, explanation
 SWITCHES = (
@@ -55,6 +72,36 @@ class SettingsDialog(QDialog):
         warning.setProperty("dim", True)
         layout.addWidget(warning)
 
+        rule = QFrame()
+        rule.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(rule)
+        stats_heading = QLabel("Where the numbers come from")
+        stats_heading.setProperty("heading", True)
+        layout.addWidget(stats_heading)
+
+        self.source_group = QButtonGroup(self)
+        self.source_buttons = {}
+        current = settings.get("pair_source", DEFAULT_PAIR_SOURCE)
+        for value, label, explanation in PAIR_SOURCES:
+            button = QRadioButton(label)
+            button.setChecked(value == current)
+            self.source_group.addButton(button)
+            layout.addWidget(button)
+            note = QLabel(explanation)
+            note.setWordWrap(True)
+            note.setProperty("dim", True)
+            note.setContentsMargins(22, 0, 0, 8)
+            layout.addWidget(note)
+            self.source_buttons[value] = button
+
+        rebuild = QLabel(
+            "Changing this needs Data ▸ Update statistics to re-pull — the "
+            "matrices are built from whichever source was chosen, not "
+            "switched between at read time.")
+        rebuild.setWordWrap(True)
+        rebuild.setProperty("dim", True)
+        layout.addWidget(rebuild)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel)
@@ -63,4 +110,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def values(self) -> dict:
-        return {key: box.isChecked() for key, box in self.boxes.items()}
+        out = {key: box.isChecked() for key, box in self.boxes.items()}
+        out["pair_source"] = self.pair_source()
+        return out
+
+    def pair_source(self) -> str:
+        for value, button in self.source_buttons.items():
+            if button.isChecked():
+                return value
+        return DEFAULT_PAIR_SOURCE

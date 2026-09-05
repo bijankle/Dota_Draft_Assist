@@ -118,3 +118,51 @@ def per_tier_winrates(hero_stats: list[dict], tier: int) -> dict[int, float]:
         if picks > 0:
             out[int(entry["id"])] = int(entry[f"{tier}_win"]) / picks
     return out
+
+
+def fetch_matchups(hero_ids: list[int]) -> dict[int, dict]:
+    """Pairwise counts from /heroes/{id}/matchups, in Stratz's shape.
+
+    Returns hero_id -> {"vs": {other: (matches, wins)}, "with": {}} so the
+    normaliser does not care which source produced it. Raw counts only;
+    deltas happen in normalize.py.
+
+    TWO THINGS THIS SOURCE CANNOT DO, and neither is a bug to fix here:
+
+    * **No ally pairs.** OpenDota publishes matchups (hero against hero) and
+      nothing equivalent for two heroes on the SAME side, so "with" comes
+      back empty and the synergy matrix is all zeroes. The app says so
+      rather than showing an empty grid as if it were a neutral one.
+    * **No bracket filter.** The endpoint takes no rank argument, so these
+      counts are all brackets pooled — not the Ancient+Divine the baselines
+      are built for. Mixing a pooled interaction term with a bracketed
+      baseline is a real approximation, and the build records it.
+
+    Both are why Stratz remains the default.
+    """
+    out: dict[int, dict] = {}
+    for n, hid in enumerate(hero_ids, 1):
+        rows = _get(f"heroes/{hid}/matchups",
+                    "opendota_matchups_sample.json" if n == 1 else None)
+        require(isinstance(rows, list) and len(rows) > 50,
+                "OpenDota heroes/{id}/matchups",
+                f"hero {hid}: expected one row per other hero (120+), got "
+                f"{type(rows).__name__} "
+                f"len {len(rows) if isinstance(rows, list) else '?'} — if the "
+                "endpoint has changed, adapt this from the raw dump")
+        vs: dict[int, tuple[int, int]] = {}
+        for row in rows:
+            require(isinstance(row, dict) and "hero_id" in row
+                    and "games_played" in row and "wins" in row,
+                    "OpenDota heroes/{id}/matchups",
+                    f"hero {hid}: row fields were "
+                    f"{sorted(row.keys()) if isinstance(row, dict) else row}")
+            matches, wins = int(row["games_played"]), int(row["wins"])
+            require(0 <= wins <= matches, "OpenDota heroes/{id}/matchups",
+                    f"hero {hid} vs {row['hero_id']}: wins {wins} outside "
+                    f"0..games_played {matches}")
+            vs[int(row["hero_id"])] = (matches, wins)
+        out[hid] = {"vs": vs, "with": {}}
+        if n % 10 == 0 or n == len(hero_ids):
+            print(f"  matchups: {n}/{len(hero_ids)} heroes")
+    return out

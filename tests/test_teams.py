@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtGui import QColor, QPixmap  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -52,7 +53,7 @@ def test_a_hero_with_no_downloaded_portrait_is_not_an_error(art):
 
 def test_the_tile_draws_with_and_without_art(art, qapp):
     tile = teams.HeroTile("ally", 0)
-    tile.resize(120, teams.TILE_HEIGHT)
+    tile.set_edge(120)
     for hero_id in (36, 999, None):
         tile.set_pick("Necrophos" if hero_id else None, None, hero_id)
         tile.show_delta(0.012, "with")
@@ -100,3 +101,57 @@ def test_a_panel_is_five_tiles_that_know_their_slot(qapp):
     for index, tile in enumerate(panel.slots):
         assert tile.property("side") == "enemy"
         assert tile.property("slot_index") == index
+
+
+# ---- the tile is square, whatever the window does -----------------------
+
+def test_a_tile_is_always_square(qapp):
+    """Full-screening the window used to hand each tile the leftover width
+    at a fixed height, which stretched every portrait into a letterbox with
+    the hero's head cropped off."""
+    tile = teams.HeroTile("ally", 0)
+    for edge in (40, 90, 200, 1000):
+        tile.set_edge(edge)
+        assert tile.width() == tile.height()
+        assert teams.TILE_MIN <= tile.width() <= teams.TILE_MAX
+
+
+def test_a_panel_keeps_its_tiles_square_at_every_width(qapp):
+    panel = teams.TeamPanel("ally", "Your team")
+    for width in (420, 700, 1200, 2400):
+        panel.resize(width, 200)
+        for tile in panel.slots:
+            assert tile.width() == tile.height(), f"stretched at {width}px"
+            assert tile.width() <= teams.TILE_MAX
+
+
+def test_the_whole_portrait_fits_inside_the_tile(art, qapp):
+    """Fit, not fill: a portrait cropped to a square told you less than the
+    art the game itself shows, and the crop moved as the window resized."""
+    from draft_assist.ui.portraits import portrait
+    tile = teams.HeroTile("ally", 0)
+    tile.set_edge(120)
+    tile.set_pick("Necrophos", None, 36)
+    art_pixmap = portrait(36)
+    scaled = art_pixmap.scaled(tile.rect().adjusted(0, 0, -1, -1).size(),
+                               Qt.AspectRatioMode.KeepAspectRatio)
+    assert scaled.width() <= tile.width()
+    assert scaled.height() <= tile.height()
+
+
+def test_a_long_name_shrinks_rather_than_overflowing(qapp):
+    """The name is the thing the panel exists to show, so the font gives
+    way before the text does."""
+    tile = teams.HeroTile("ally", 0)
+    tile.set_edge(70)
+    small, lines = tile._fit_name("Keeper of the Light", 62, 24)
+    assert small < teams.NAME_MAX_PT
+    tile.set_edge(teams.TILE_MAX)
+    big, _ = tile._fit_name("Lion", teams.TILE_MAX - 8, 40)
+    assert big == teams.NAME_MAX_PT
+    assert lines
+
+
+def test_a_name_that_cannot_fit_on_one_line_wraps_evenly(qapp):
+    assert teams._split("Keeper of the Light") == ["Keeper of", "the Light"]
+    assert teams._split("Lion") == ["Lion"]

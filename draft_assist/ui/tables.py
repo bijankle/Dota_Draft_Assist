@@ -245,11 +245,18 @@ class MatrixTable(QWidget):
             self.table.horizontalHeader().height() + rows
             + 2 * self.table.frameWidth() + 2)
 
-    def set_compact(self, compact: bool = True) -> None:
-        """Drop the explanatory caption. For the in-game callout, where the
-        space it costs is space the grid itself needs and the reader has
-        already met the same grid in the main window."""
+    def set_compact(self, compact: bool = True,
+                    short_names: bool = True) -> None:
+        """Drop the explanatory caption, and optionally the full names.
+
+        The caption goes everywhere: the card heading says which grid this
+        is and the headers say what the axes are, so a paragraph repeating
+        both only stands between the reader and the numbers. Short names
+        are for the in-game callout alone, where width is scarce and the
+        reader is looking at the same five portraits anyway.
+        """
         self._compact = compact
+        self._short_names = compact and short_names
         self.caption.setVisible(not compact)
 
     def show_matrix(self, matrix, empty_text: str = "") -> None:
@@ -263,7 +270,8 @@ class MatrixTable(QWidget):
         # question you act on when you still have a pick to make.
         self.table.setRowCount(len(matrix.rows) + 1)
         self.table.setColumnCount(len(matrix.cols) + 1)
-        label = short_name if getattr(self, "_compact", False) else (lambda n: n)
+        label = (short_name if getattr(self, "_short_names", False)
+                 else (lambda n: n))
         self.table.setHorizontalHeaderLabels(
             [label(n) for _i, n in matrix.cols] + [TOTAL_LABEL])
         self.table.setVerticalHeaderLabels(
@@ -284,9 +292,12 @@ class MatrixTable(QWidget):
         self.table.setItem(last_row, last_col, _total_item(matrix.total))
         header = self.table.horizontalHeader()
         header.setStretchLastSection(False)
-        compact = getattr(self, "_compact", False)
+        # Fixed narrow columns and a height fitted to the rows are the
+        # CALLOUT's layout, not every compact one: in the main window the
+        # grid should fill its card and the names should stay readable.
+        cramped = getattr(self, "_short_names", False)
         for col in range(self.table.columnCount()):
-            if compact:
+            if cramped:
                 header.setSectionResizeMode(
                     col, QHeaderView.ResizeMode.Fixed)
                 self.table.setColumnWidth(col, COMPACT_COLUMN)
@@ -299,5 +310,5 @@ class MatrixTable(QWidget):
                     col, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents)
-        if compact:
+        if cramped:
             self._fit_height()

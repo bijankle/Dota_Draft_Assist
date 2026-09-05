@@ -6,13 +6,25 @@ import time
 
 import numpy as np
 
-from ..config import target_brackets
+from ..config import pair_source, target_brackets
 from . import normalize, opendota, store, stratz, verify
+
+# Which site's pairwise numbers the matrices are built from. Exactly one:
+# blending two sites' interaction terms would produce a figure neither of
+# them would recognise, and the user asked to be able to say which one.
+STRATZ = "stratz"
+OPENDOTA = "opendota"
+PAIR_SOURCES = (STRATZ, OPENDOTA)
 
 
 def build_dataset(skip_bracket_check: bool = False,
-                  brackets: tuple[str, ...] | None = None) -> store.Dataset:
+                  brackets: tuple[str, ...] | None = None,
+                  source: str | None = None) -> store.Dataset:
     brackets = tuple(brackets) if brackets else target_brackets()
+    source = source or pair_source()
+    if source not in PAIR_SOURCES:
+        raise ValueError(f"unknown pair source {source!r}; "
+                         f"expected one of {PAIR_SOURCES}")
     print(f"Building statistics for bracket(s): {'+'.join(brackets)}")
     print("Pulling OpenDota constants/heroes ...")
     heroes = opendota.fetch_heroes()
@@ -40,21 +52,29 @@ def build_dataset(skip_bracket_check: bool = False,
     print(f"Baselines: {brackets} combined, "
           f"{total_picks:,} hero-picks total")
 
-    print("Introspecting Stratz matchUp schema ...")
-    schema = stratz.introspect()
-    bracket_filter = stratz.choose_bracket_filter(schema, brackets)
-    print(f"  bracket filter: {bracket_filter['arg']} = "
-          f"{bracket_filter['values']} "
-          f"({'exact' if bracket_filter['exact'] else 'covers ' + str(bracket_filter['covers'])})")
-
     hero_ids = sorted(heroes)
-    print(f"Pulling Stratz matchups for {len(hero_ids)} heroes ...")
-    matchups = stratz.fetch_matchups(hero_ids, bracket_filter)
+    bracket_filter = None
+    if source == STRATZ:
+        print("Introspecting Stratz matchUp schema ...")
+        schema = stratz.introspect()
+        bracket_filter = stratz.choose_bracket_filter(schema, brackets)
+        print(f"  bracket filter: {bracket_filter['arg']} = "
+              f"{bracket_filter['values']} "
+              f"({'exact' if bracket_filter['exact'] else 'covers ' + str(bracket_filter['covers'])})")
+        print(f"Pulling Stratz matchups for {len(hero_ids)} heroes ...")
+        matchups = stratz.fetch_matchups(hero_ids, bracket_filter)
+    else:
+        print(f"Pulling OpenDota matchups for {len(hero_ids)} heroes ...")
+        print("  NOTE: OpenDota publishes no ally-pair data and no bracket "
+              "filter, so synergy will be empty and these counts are all "
+              "brackets pooled.")
+        matchups = opendota.fetch_matchups(hero_ids)
 
     index = normalize.hero_index(hero_ids)
     b = normalize.baseline_vector(index, baselines)
     d_vs, d_with = normalize.build_delta_matrices(index, b, matchups)
-    problems = normalize.sanity_check(d_vs, d_with)
+    problems = normalize.sanity_check(
+        d_vs, d_with, expect_synergy=any(s["with"] for s in matchups.values()))
     if problems:
         raise RuntimeError("Built matrices failed sanity checks:\n  "
                            + "\n  ".join(problems))
@@ -69,6 +89,14 @@ def build_dataset(skip_bracket_check: bool = False,
         meta={
             "pulled_at": time.time(),
             "target_brackets": list(brackets),
+            "pair_source": source,
+            # OpenDota has no ally-pair endpoint, so a dataset built from it
+            # carries an all-zero synergy matrix. Recorded rather than
+            # inferred, so the UI can say so instead of showing an empty
+            # grid as though every pair were neutral.
+            "has_synergy": any(sides["with"] for sides in matchups.values()),
+            "pair_brackets": ("as target" if source == STRATZ
+                              else "all brackets pooled"),
             "stratz_bracket_filter": bracket_filter,
             "bracket_check": bracket_check,
             "matrices_hold": "normalised deltas (see normalize.py), NOT raw win rates",
