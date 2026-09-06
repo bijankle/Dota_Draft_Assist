@@ -1861,8 +1861,12 @@ def test_the_toolbar_keeps_only_what_belongs_there(window):
     """Recordings and the report have a whole tab of their own, force
     recognition is a debugging switch, and the capture pill said the same
     sentence as the status bar one line higher up."""
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QToolBar
     toolbar = window.findChild(QToolBar)
+    # It rides on the tab strip rather than in a band of its own: three
+    # controls do not need a whole row of window height.
+    assert window.tabs.cornerWidget(Qt.Corner.TopRightCorner) is toolbar
     labels = {w.text() for w in toolbar.findChildren(type(window.update_button))}
     # Update went to Help: it is pressed once a patch and it was taking
     # width from the row that has to survive the narrowest window.

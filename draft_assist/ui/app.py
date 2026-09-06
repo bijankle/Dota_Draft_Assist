@@ -53,6 +53,7 @@ from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
                        target_brackets)
 from ..data import store
 from ..data.store import Dataset
+from ..timing import LOOP
 from ..model import items as items_mod
 from ..model import scoring
 from . import settings as ui_settings
@@ -102,6 +103,32 @@ def open_folder(path: Path) -> None:
         subprocess.Popen(["open", str(path)])
     else:
         subprocess.Popen(["xdg-open", str(path)])
+
+
+def set_log(widget, text: str) -> None:
+    """Replace a read-only log's text without stealing the user's selection.
+
+    `setPlainText` replaces the whole document, which drops the selection
+    AND the scroll position. Four times a second that makes the log
+    impossible to select and copy, which is the one thing a log is for —
+    the selection vanished the instant it was made and looked like a Qt
+    bug rather than our own refresh.
+    """
+    if widget.toPlainText() == text:
+        return
+    if widget.textCursor().hasSelection():
+        return                          # mid-drag: leave it alone
+    bar = widget.verticalScrollBar()
+    at = bar.value()
+    widget.setPlainText(text)
+    bar.setValue(min(at, bar.maximum()))
+
+
+def set_label(widget, text: str) -> None:
+    """Same rule for a selectable QLabel."""
+    if widget.text() == text or widget.selectedText():
+        return
+    widget.setText(text)
 
 
 def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
@@ -305,7 +332,11 @@ class MainWindow(QMainWindow):
     def _build(self) -> None:
         # Built here, added to the shell below the title bar rather than
         # through addToolBar — same reason as the menu bar.
+        # It rides on the TAB STRIP rather than in a row of its own: three
+        # controls do not need a whole band of window height, and the tab
+        # row was already half empty.
         toolbar = QToolBar()
+        toolbar.setObjectName("tabStripTools")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
         # Recording is one button because it is one action. It used to be a
@@ -314,8 +345,7 @@ class MainWindow(QMainWindow):
         # scattered and usually incomplete.
         self.record_button = QPushButton("● Record")
         self.record_button.setProperty("accent", True)
-        self.record_button.setMinimumWidth(120)
-        self.record_button.setMinimumHeight(32)
+        self.record_button.setMinimumWidth(110)
         self.record_button.setToolTip(
             "Record everything for this game — the data Dota sends, the "
             "draft on screen, and what the app made of both.\n"
@@ -357,10 +387,10 @@ class MainWindow(QMainWindow):
 
         self.force_check = QCheckBox("Force recognition")
         self.force_check.toggled.connect(self._set_forced)
-        spacer = QWidget()
-        spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
-                             spacer.sizePolicy().verticalPolicy().Preferred)
-        toolbar.addWidget(spacer)
+        # No expanding spacer: on the tab strip the toolbar is sized to
+        # its contents, and a spacer there would push the controls off the
+        # right edge of the window.
+        toolbar.addSeparator()
         toolbar.addWidget(QLabel("Transparency"))
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setFixedWidth(90)
@@ -394,7 +424,7 @@ class MainWindow(QMainWindow):
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
         shell_lay.addWidget(self.title_bar)
-        shell_lay.addWidget(toolbar)
+        tabs.setCornerWidget(toolbar, Qt.Corner.TopRightCorner)
         shell_lay.addWidget(tabs, 1)
         # A frameless window has no resize border, so the corner is put
         # back explicitly. Bottom-right only: one grip is enough to size a
@@ -628,10 +658,16 @@ class MainWindow(QMainWindow):
         state_card, elay = card("What the app is reading")
         self.unknown_label = QLabel("")
         self.unknown_label.setProperty("dim", True)
+        # Selectable, because the whole point of this card is that its text
+        # gets pasted to somebody. A QLabel is not selectable by default.
+        self.unknown_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         elay.addWidget(self.unknown_label)
         self.manual_hint = QLabel("")
         self.manual_hint.setWordWrap(True)
         self.manual_hint.setProperty("dim", True)
+        self.manual_hint.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         elay.addWidget(self.manual_hint)
         # Only meaningful when the source is pixels: the two banks are then
         # just screen positions. Game data reports player.team_name, so
@@ -653,10 +689,38 @@ class MainWindow(QMainWindow):
         self.debug_image.setProperty("card", True)
         dlay.addWidget(self.debug_image, 3)
 
+        log_card, loglay = card("Recognition log")
+        log_row = QHBoxLayout()
+        log_row.addStretch(1)
+        self.copy_log_button = QPushButton("Copy everything")
+        self.copy_log_button.setProperty("accent", True)
+        self.copy_log_button.setToolTip(
+            "Copy the status line, what the app is reading, this log and "
+            "the loop timings — everything needed to diagnose a bad draft "
+            "or a slow one, in one paste")
+        self.copy_log_button.clicked.connect(self._copy_debug_log)
+        log_row.addWidget(self.copy_log_button)
+        loglay.addLayout(log_row)
         self.debug_text = QPlainTextEdit()
         self.debug_text.setReadOnly(True)
         self.debug_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        dlay.addWidget(self.debug_text, 1)
+        loglay.addWidget(self.debug_text, 1)
+        dlay.addWidget(log_card, 1)
+
+        # Where the refresh loop's time actually goes. Always measured;
+        # only drawn when this tab is open.
+        timing_card, tlay = card("Loop timings · milliseconds")
+        self.timing_text = QPlainTextEdit()
+        self.timing_text.setReadOnly(True)
+        self.timing_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.timing_text.setMinimumHeight(160)
+        self.timing_text.setMaximumHeight(220)
+        font = self.timing_text.font()
+        font.setFamily("Consolas")
+        font.setStyleHint(font.StyleHint.Monospace)
+        self.timing_text.setFont(font)
+        tlay.addWidget(self.timing_text)
+        dlay.addWidget(timing_card)
 
         # Calibration lives beside the picture because it is only usable
         # with the picture: the boxes move as the numbers change, so being
@@ -1867,19 +1931,35 @@ class MainWindow(QMainWindow):
 
     # ---- polling -----------------------------------------------------
     def refresh(self) -> None:
-        snap = self.provider.poll()
+        """One tick, with every stage timed.
+
+        The timing is always on and costs a `perf_counter` pair per stage.
+        When this loop stops being smooth there is otherwise no way to say
+        which stage is costing the time — capture, recognition, scoring and
+        redraw all happen inside one tick — and guessing has already been
+        wrong once: the stutter that looked like scoring was a hidden
+        widget being smooth-scaled four times a second.
+        """
+        started = time.perf_counter()
+        with LOOP.stage("poll (capture + recognition)"):
+            snap = self.provider.poll()
         self.snapshot = snap
         allies, enemies = self._sides(snap)
         draft_key = (tuple(allies), tuple(enemies), snap.unknown)
         if draft_key != self.last_draft_key:
             self.last_draft_key = draft_key
-            self._on_draft_changed(allies, enemies, snap.unknown)
-        self._consider_auto_record(snap)
-        self._capture_recording(snap, allies, enemies)
-        self._update_status(snap)
-        self._update_team_captions(snap)
-        self._update_manual_hint(snap)
-        self._update_debug(snap)
+            with LOOP.stage("rebuild (a pick changed)"):
+                self._on_draft_changed(allies, enemies, snap.unknown)
+        with LOOP.stage("recording"):
+            self._consider_auto_record(snap)
+            self._capture_recording(snap, allies, enemies)
+        with LOOP.stage("status + captions"):
+            self._update_status(snap)
+            self._update_team_captions(snap)
+            self._update_manual_hint(snap)
+        with LOOP.stage("debug view"):
+            self._update_debug(snap)
+        LOOP.tick_done((time.perf_counter() - started) * 1000.0)
 
     def _update_team_captions(self, snap) -> None:
         """Say who the app thinks you are, using what the game reported,
@@ -1909,28 +1989,28 @@ class MainWindow(QMainWindow):
             self.slot_order = {"ally": [], "enemy": []}
         if not snap.needs_manual:
             if source == "minimap":
-                self.manual_hint.setText(
+                set_label(self.manual_hint, 
                     "Which five are yours is a guess — drag a hero onto the "
                     "other team to fix it.")
             elif source == "minimap+screen":
-                self.manual_hint.setText(
+                set_label(self.manual_hint, 
                     "Ten heroes from the game, sides read off the pick bar.")
             elif source == "screen":
-                self.manual_hint.setText("Picks read from the Dota window.")
+                set_label(self.manual_hint, "Picks read from the Dota window.")
             else:
-                self.manual_hint.setText("")
+                set_label(self.manual_hint, "")
             return
         if source == "screen":
-            self.manual_hint.setText(
+            set_label(self.manual_hint, 
                 "Reading the picks from the Dota window — type in anything "
                 "it has not recognised.")
         elif snap.game_state:
-            self.manual_hint.setText(
+            set_label(self.manual_hint, 
                 "The game reports no picks while you are picking, so these "
                 "come off the Dota window. Nothing appearing? Check Debug is "
                 "bound to Dota, or type them in.")
         else:
-            self.manual_hint.setText("Click a slot to enter the draft.")
+            set_label(self.manual_hint, "Click a slot to enter the draft.")
 
     def _sides(self, snap) -> tuple[list[int], list[int]]:
         """(allies, enemies).
@@ -2019,7 +2099,7 @@ class MainWindow(QMainWindow):
         if self.focus is not None and self.focus[1] not in (
                 set(allies) | set(enemies)):
             self.focus = None
-        self.unknown_label.setText(
+        set_label(self.unknown_label, 
             f"{unknown} slot(s) unresolved — scoring uses only confident "
             "slots" if unknown else "")
 
@@ -2246,10 +2326,10 @@ class MainWindow(QMainWindow):
         advice = items_mod.recommend(
             self.rules, enemy_names, ally_names, draft.my_role,
             self.rules_meta.get("current_patch", "0.0"))
-        self.item_row.show_items(
-            advice,
-            "Nothing urgent flagged for this line-up — silence is a valid "
-            "answer.")
+        # No sentence when there is nothing to flag: silence IS the answer
+        # here, and the empty plates already say the strip is working and
+        # has nothing for you.
+        self.item_row.show_items(advice)
         # One missing icon is normal; NONE at all means the pack has never
         # been fetched, and a strip of grey plates looks broken rather than
         # unconfigured.
@@ -2314,11 +2394,12 @@ class MainWindow(QMainWindow):
         # widget nobody is looking at. That was most of the stutter.
         if not self.debug_image.isVisible():
             return
+        set_log(self.timing_text, LOOP.report())
         # Debug shows the RAW per-frame read (live confidences, flicker and
         # all); the draft panels show the stabilised one.
         read = snap.read_raw or snap.read
         if snap.frame is None or read is None:
-            self.debug_text.setPlainText(
+            set_log(self.debug_text, 
                 f"mode={snap.mode}  gate score={snap.gate_score:.3f}  "
                 f"frames arrived={snap.frames_arrived}\n"
                 "No recognised frame yet. In demo mode there is no frame at "
@@ -2342,7 +2423,46 @@ class MainWindow(QMainWindow):
                         "EMPTY" if s.hero_id == -1 else self.ds.name(s.hero_id))
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
-        self.debug_text.setPlainText("\n".join(lines))
+        set_log(self.debug_text, "\n".join(lines))
+
+    def _copy_debug_log(self) -> None:
+        """Everything needed to diagnose one game, in one paste.
+
+        Four separate things had to be selected and copied by hand, from
+        panels that rewrite themselves four times a second. Gathering them
+        here is the difference between "send me the log" being a minute's
+        work and being a chore nobody does.
+        """
+        snap = self.snapshot
+        parts = [
+            "=== Dota Draft Assist ===",
+            f"status: {self.status.currentMessage()}",
+            f"data: {self.ds.meta.get('pair_source', '?')} · "
+            f"{self.ds.age_hours():.1f}h old · "
+            f"brackets {self.ds.meta.get('target_brackets', '?')}",
+            "",
+            "--- what the app is reading ---",
+            self.unknown_label.text(),
+            self.manual_hint.text(),
+        ]
+        if snap is not None:
+            parts += [
+                f"mode={snap.mode} source={snap.source!r} "
+                f"lineup_source={getattr(snap, 'lineup_source', '')!r}",
+                f"game_state={snap.game_state!r} "
+                f"gate={snap.gate_score:.3f} "
+                f"frames_arrived={snap.frames_arrived} "
+                f"frame={'yes' if snap.frame is not None else 'none'}",
+                f"allies={[self.ds.name(h) for h in snap.left]}",
+                f"enemies={[self.ds.name(h) for h in snap.right]}",
+            ]
+            for note in getattr(snap, "gsi_notes", []) or []:
+                parts.append(f"note: {note}")
+        parts += ["", "--- recognition log ---", self.debug_text.toPlainText(),
+                  "", "--- loop timings (ms) ---", LOOP.report()]
+        QApplication.clipboard().setText("\n".join(parts))
+        self.status.showMessage(
+            "Copied — paste it wherever you are reporting this.", 6000)
 
     def _hero_names(self) -> dict[int, str]:
         """Every hero's name, built once per dataset rather than per tick."""

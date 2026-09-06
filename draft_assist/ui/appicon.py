@@ -29,9 +29,10 @@ the icon is built at every size the shell asks for.
 """
 
 import shutil
+import struct
 from pathlib import Path
 
-from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtCore import QBuffer, QIODevice, QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap
 
 from ..config import ASSETS_DIR
@@ -41,6 +42,9 @@ from . import theme
 CANDIDATES = ("app.ico", "app.png", "app.jpg", "app.jpeg", "app.bmp")
 # The sizes Windows actually asks a taskbar icon for.
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+# What goes into a .ico for a shortcut. Fewer than SIZES: the file is read
+# by Explorer, which picks the nearest and scales.
+ICO_SIZES = (16, 32, 48, 64, 128, 256)
 # Bloodseeker. The user asked for this one by name; the recogniser has
 # already downloaded it, so nothing new is fetched and nothing is shipped.
 FALLBACK_HERO = 4
@@ -181,6 +185,49 @@ def pixmap(size: int) -> QPixmap:
     if art.width() == size and art.height() == size:
         return art
     return _square(art, size)
+
+
+def write_ico(path) -> Path:
+    """Write a multi-size .ico from whatever the icon currently is.
+
+    A Windows SHORTCUT's icon must be an .ico (or an exe/dll): point
+    `IconLocation` at a .png and the shortcut draws blank, which is exactly
+    what a pinned taskbar button with no picture looks like. And the pin is
+    where this matters most, because Windows sources a pinned button's icon
+    from the Start-menu shortcut whose AppUserModelID matches the running
+    window — so if that shortcut has no usable icon, neither does the pin.
+
+    PNG-compressed entries, which every Windows since Vista reads, so this
+    is a header and the pixmaps we already have rather than a BMP encoder.
+    """
+    path = Path(path)
+    frames = []
+    for size in ICO_SIZES:
+        # QBuffer() with no argument owns its byte array. Handing it a
+        # temporary QByteArray instead lets Python free the array while Qt
+        # is still writing into it, which crashes the process.
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        written = pixmap(size).save(buffer, "PNG")
+        data = bytes(buffer.data())
+        buffer.close()
+        if written:
+            frames.append((size, data))
+    if not frames:
+        raise ValueError("no icon pixmaps could be encoded")
+
+    header = struct.pack("<HHH", 0, 1, len(frames))
+    offset = len(header) + 16 * len(frames)
+    entries, blobs = b"", b""
+    for size, data in frames:
+        # 0 means 256 in the one-byte width and height fields.
+        entries += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0,
+                               1, 32, len(data), offset)
+        blobs += data
+        offset += len(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(header + entries + blobs)
+    return path
 
 
 def forget() -> None:

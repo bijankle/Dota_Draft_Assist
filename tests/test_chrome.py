@@ -8,6 +8,7 @@ when the window is hidden — drawing its plate and no icon at all.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -199,3 +200,34 @@ def test_the_transparency_setting_survives_a_restart(tmp_path):
     again = ui_settings.load(path)
     assert again["overlay_opacity"] == 0.45
     assert (again["toggle_x"], again["toggle_y"]) == (900, 300)
+
+
+# ---- the .ico a Windows shortcut needs ----------------------------------
+
+def test_a_real_ico_is_written_for_the_shortcut(assets, monkeypatch, qapp):
+    """A shortcut cannot use a .png — `IconLocation` pointed at one draws
+    blank, and a pinned taskbar button with no picture is what that looks
+    like."""
+    from PyQt6.QtGui import QIcon
+    monkeypatch.setattr(appicon, "_hero_pixmap", lambda: wide(256, 256))
+    appicon.forget()
+    path = appicon.write_ico(assets / "app-generated.ico")
+    assert path.exists() and path.stat().st_size > 0
+    # It is an ICO, and Windows will find every size in it.
+    head = path.read_bytes()[:6]
+    assert head[:4] == b"\x00\x00\x01\x00"
+    sizes = {(s.width(), s.height()) for s in QIcon(str(path)).availableSizes()}
+    assert (16, 16) in sizes and (256, 256) in sizes
+
+
+def test_the_shortcut_and_the_app_claim_the_same_identity():
+    """Windows matches a pinned button to a Start-menu shortcut by this
+    string; two spellings of it means the pin finds nothing and falls back
+    to python.exe's icon."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "make_shortcut", Path(__file__).resolve().parents[1]
+        / "tools" / "make_shortcut.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.APP_ID == appicon.APP_ID

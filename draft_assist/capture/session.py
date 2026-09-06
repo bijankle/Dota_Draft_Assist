@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..timing import LOOP
 from ..vision.layout import DraftLayout
 from ..vision.library import Library, RecognitionParams
 from ..vision.recognize import DraftRead, SlotRead, read_draft
@@ -193,8 +194,9 @@ class CaptureSession:
         active = self.state.forced or self.state.mode == "active"
         self._next_tick = now + (ACTIVE_PERIOD if active else IDLE_PERIOD)
 
-        self.state.gate_score = gate.score(frame, self._refs)
-        tripped = gate.is_draft_screen(frame, self._refs)
+        with LOOP.stage("  gate (is this the draft screen)"):
+            self.state.gate_score = gate.score(frame, self._refs)
+            tripped = gate.is_draft_screen(frame, self._refs)
         if tripped:
             self._trips, self._misses = self._trips + 1, 0
         else:
@@ -210,13 +212,15 @@ class CaptureSession:
             self._stabilizer.reset()
 
         if self.state.mode == "active" or self.state.forced:
-            raw = read_draft(frame, self.layout, self.lib, self.params)
+            with LOOP.stage("  recognise (10 crops vs the library)"):
+                raw = read_draft(frame, self.layout, self.lib, self.params)
             self.state.last_read_raw = raw
             self.state.last_read = self._stabilizer.update(raw)
             self.state.last_frame = frame
             # A frame the recogniser itself resolves is the draft screen;
             # judge that on the raw read so gate bootstrap isn't delayed.
             if 10 - raw.unknown_count() >= CONFIRM_SLOTS:
-                if gate.save_reference(frame, gate.GATE_DIR) is not None:
-                    self._refs = gate.load_references(gate.GATE_DIR)
+                with LOOP.stage("  save gate reference"):
+                    if gate.save_reference(frame, gate.GATE_DIR) is not None:
+                        self._refs = gate.load_references(gate.GATE_DIR)
         return self.state

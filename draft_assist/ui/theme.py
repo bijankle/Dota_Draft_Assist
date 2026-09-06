@@ -54,6 +54,12 @@ QToolBar {{
     padding: 6px;
     spacing: 8px;
 }}
+/* On the tab strip it is part of the strip, not a band above it. */
+QToolBar#tabStripTools {{
+    background: transparent; border: none; padding: 0 8px; spacing: 10px;
+}}
+QToolBar#tabStripTools QPushButton {{ padding: 4px 12px; }}
+QToolBar#tabStripTools QLabel {{ color: {TEXT_DIM}; }}
 
 QTabWidget::pane {{ border: none; background: {BG}; }}
 QTabBar {{ background: {BG_DEEP}; }}

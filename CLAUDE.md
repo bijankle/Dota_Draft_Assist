@@ -554,7 +554,12 @@ credentials, and put the account at risk. Do not go there.
   layout for the same reason rather than through `addToolBar`. What the
   system bar was providing has to be put back by hand and that is the whole
   cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
-  the bottom-right does the sizing. View ▸ Reset window position exists
+  the bottom-right does the sizing. **The toolbar rides on the TAB STRIP**
+  (`tabs.setCornerWidget`), not in a band of its own: Record, Auto and
+  Transparency are three controls and did not need a whole row of window
+  height beside a half-empty tab row. It carries no expanding spacer there
+  — a corner widget is sized to its contents and a spacer pushes the
+  controls off the right edge. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
   **Everything on the bar is centred on the bar's middle line.** A layout
   left to itself stretches each child to the bar's full height, and a
@@ -603,9 +608,24 @@ credentials, and put the account at risk. Do not go there.
   taskbar, 256 for Alt-Tab), so a QIcon carrying ONE pixmap gets scaled by
   the shell into something blurry: the icon is built at every size in
   `SIZES`. A supplied .ico is used as it is, since it already carries them.
-  `tools/make_shortcut.py` (Setup ▸ Add to the Start menu) writes a .lnk
-  carrying the icon; a .bat cannot be pinned usefully, because Windows pins
-  the shell rather than the app and the icon is the console's.
+  **Pinning the RUNNING WINDOW is a third problem, and the shortcut is
+  its answer.** Right-clicking a running window's taskbar button and
+  choosing Pin does not pin the window: Windows pins the app IDENTITY,
+  then looks for a Start-menu shortcut whose `System.AppUserModel.ID`
+  matches and takes the pinned button's icon, name and launch command from
+  THAT. With no matching shortcut it falls back to the executable —
+  pythonw.exe — and shows Python's icon. So `tools/make_shortcut.py`
+  (Setup ▸ Add to the Start menu) writes `PKEY_AppUserModel_ID` into the
+  .lnk, which means building it through IShellLink and IPropertyStore:
+  WScript.Shell cannot write a property-store value. A pin made BEFORE
+  that shortcut existed keeps the old identity — it has to be unpinned and
+  pinned again.
+  The shortcut's icon must be a real .ico; `IconLocation` pointed at a
+  .png draws blank. `appicon.write_ico` writes a multi-size one (PNG-
+  compressed entries, which every Windows since Vista reads) from whatever
+  the app's icon currently is, so there is always one to point at. A .bat
+  cannot be pinned usefully at all, because Windows pins the shell rather
+  than the app and the icon is the console's.
 - **The refresh loop runs four times a second, so nothing in it may be
   expensive.** Two things were, and both showed up as stutter over a live
   game. `_update_debug` drew an overlay onto a full-resolution frame,
@@ -618,6 +638,17 @@ credentials, and put the account at risk. Do not go there.
   `item_row._fitted` cache by (id, size) and the caches clear with
   `forget()`. A smooth rescale in a paint handler is the classic Qt
   performance mistake; do not reintroduce it.
+  **The loop is measured, not guessed** (`draft_assist/timing.py`). Every
+  stage — capture and recognition inside `CaptureSession.tick`, the
+  rebuild, recording, status and the debug view — runs inside
+  `LOOP.stage(...)`, and Debug ▸ Live prints the last, mean and worst
+  milliseconds per stage over a rolling window of forty ticks. Always on:
+  two `perf_counter` calls against stages measured in milliseconds, and a
+  profiler you have to switch on is off when the thing you wanted to catch
+  happens. A ROLLING window, not a lifetime mean — an average over an hour
+  in the menu hides the ten seconds of draft that were bad. This exists
+  because guessing has already been wrong once: the stutter that looked
+  like scoring was a hidden widget being smooth-scaled.
 - **The window has a minimum width, and it is derived rather than picked**
   (`tables.minimum_grid_width`, `teams.minimum_panel_width`). Two things
   compete for it: five matrix columns wide enough to print "+12.34"
@@ -636,7 +667,10 @@ credentials, and put the account at risk. Do not go there.
   right for a filled grid — the numbers are the structure — but leaves an
   empty one a blank rectangle rather than a grid. A reason still worth
   saying ("Fill in both teams", "this source publishes no ally-pair data")
-  sits beside the outline, never in place of it.
+  sits beside the outline, never in place of it. **"Nothing urgent
+  flagged" is not one of those reasons**: silence IS the answer there, the
+  plates already say the strip is working, and a sentence explaining that
+  nothing is wrong is read once and skipped forever.
 - **Update restarts the app, and it lives in Help** (`_update_and_restart`,
   `_update_app`).
   Reloading in place works and `reload_backend` does it, but the restart is
@@ -653,6 +687,18 @@ credentials, and put the account at risk. Do not go there.
   so a download that happens while the app is running never appears. That
   is exactly what "I ran the update and the item icons are still blank"
   looks like from the outside, and it was a real bug.
+- **A view that rewrites itself four times a second cannot be copied**
+  (`app.set_log`, `app.set_label`). `setPlainText` replaces the whole
+  document, dropping the selection AND the scroll position, so the debug
+  log could not be selected — the selection vanished the instant it was
+  made, which reads as a Qt bug rather than as our own refresh. Both
+  helpers skip the write when the text is unchanged and skip it entirely
+  while the user has a selection, and `set_log` restores the scroll
+  position. Any label the user is meant to copy also needs
+  `TextSelectableByMouse`; a QLabel is not selectable by default.
+  **Debug ▸ Copy everything** gathers the status line, the reading, the
+  recognition log and the loop timings into one paste, because four panels
+  selected by hand is a chore nobody does.
 - **GSI carries no screen geometry.** It reports game state, not pixels (the
   only coordinates in it are hero world positions). So the overlay anchors
   itself to the Dota window rectangle, which Windows supplies from the window
