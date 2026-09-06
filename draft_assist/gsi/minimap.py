@@ -50,15 +50,21 @@ cannot produce a 4-1 team, since every slot contributes exactly one hero
 to each side, and it degrades honestly, falling back to the runs when the
 positions do not pair cleanly.
 
-**It is still NOT verified against a labelled match.** The pairing itself
-is solid across five recordings; which HALF of each pair is yours rests on
-object-index order being consistent between slots, and nothing has proved
-that. So `Lineups.sides_certain` stays False, the note says which rule
-produced the split, and the UI keeps the drag correction. A wrong line-up
-asserted silently is the worst outcome available, because the app then
-advises against the user's own team. The screen settles it outright when
-vision has a frame (`vision/lineup.py`); this is the fallback for when it
-does not.
+**The pairing is corroborated; the TIE-BREAK is not, and is known wrong at
+least once.** In one recording the screen resolved the same ten
+independently (`vision/lineup.py`) and its split took exactly one hero
+from each lane pair — the first confirmation of the pairing from a source
+that knows nothing about it. But it disagreed with the index tie-break on
+four of the five pairs: the screen put the player with the HIGHER-indexed
+half of each pair, while an older recording has the player with the LOWER
+half. Object index does not decide it, and no rule found so far does.
+
+So the halves are a coin flip that must be labelled: `sides_certain` stays
+False, the note says which rule produced the split, and the drag
+correction stays. What the pairing still buys is that the teams come out
+5-5 with one hero from each lane whichever way the coin lands, so the app
+can no longer show a 4-1 team. **The screen settles it outright when
+vision has a frame**; this is the fallback for when it does not.
 
 Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
 real units rather than strategy-map slots, and the object order means
@@ -206,10 +212,10 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
     if how == "lane pairs":
         out.notes.append(
             "ten heroes read from the minimap, split by the five strategy-"
-            "map lane slots — each slot holds one of yours and one of "
-            "theirs, so the teams cannot come out 4-1. Which half of each "
-            "pair is yours is not yet verified against a known match: "
-            "check it once and drag a hero across if it is wrong")
+            "map lane slots — each holds one of yours and one of theirs, "
+            "so the teams cannot come out 4-1. WHICH half of each pair is "
+            "yours is a coin flip this cannot call: check the top row and "
+            "drag heroes across if it is reversed")
     else:
         out.notes.append(
             "ten heroes read from the minimap, but they did not fall into "

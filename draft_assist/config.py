@@ -17,6 +17,20 @@ CAPTURES_DIR = REPO_ROOT / "captures"
 DEBUG_OUT = REPO_ROOT / "debug_out"
 ASSETS_DIR = REPO_ROOT / "assets"
 PORTRAITS_DIR = ASSETS_DIR / "portraits"
+ITEMS_DIR = ASSETS_DIR / "items"
+
+
+def item_slug(name: str) -> str:
+    """'Black King Bar' -> 'black_king_bar'.
+
+    Icon files are named by a slug of the item's DISPLAY name so that
+    `rules/items.yaml` can go on saying "Black King Bar" the way a person
+    writes it, rather than carrying an internal key to suit the loader.
+    Lives here, not in the UI, because the downloader is a plain script and
+    must not have to import Qt to work out a filename.
+    """
+    import re
+    return re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
 RULES_FILE = REPO_ROOT / "rules" / "items.yaml"
 LAYOUT_FILE = REPO_ROOT / "draft_assist" / "vision" / "layout_default.json"
 # Local calibration nudges (gitignored); overrides the default layout.

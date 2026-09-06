@@ -18,7 +18,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from draft_assist.data.opendota import fetch_heroes, fetch_items  # noqa: E402
-from draft_assist.ui.item_icons import ITEMS_DIR, slug  # noqa: E402
+from draft_assist.config import ITEMS_DIR, item_slug  # noqa: E402
 from draft_assist.vision import library  # noqa: E402
 
 CDN = "https://cdn.cloudflare.steamstatic.com"
@@ -71,7 +71,7 @@ def download_item_icons() -> None:
     items = fetch_items()
     downloaded = skipped = failed = 0
     for name, img_path in sorted(items.items()):
-        dest = ITEMS_DIR / f"{slug(name)}.png"
+        dest = ITEMS_DIR / f"{item_slug(name)}.png"
         if dest.exists():
             skipped += 1
             continue

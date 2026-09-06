@@ -210,13 +210,23 @@ credentials, and put the account at risk. Do not go there.
   recording 2's pairs contradict the runs, which is evidence against the
   runs.
 
-  **Still not verified against a labelled match.** The PAIRING is solid
-  across five recordings; which half of each pair is yours rests on object
-  index order being consistent between slots, and nothing has proved that.
+  **The pairing is corroborated; the TIE-BREAK is not, and is known wrong
+  at least once.** In one recording the screen resolved the same ten
+  independently and its split took exactly one hero from each lane pair —
+  the first confirmation of the pairing from a source that knows nothing
+  about it. But it disagreed with the index tie-break on four of the five
+  pairs: the screen put the player with the HIGHER-indexed half of each
+  pair, while an older recording has the player with the LOWER half.
+  Object index does not decide it, and nothing found so far does. Do not
+  ship a rule that claims to.
+
   So `sides_certain` stays False, the note names the rule that produced the
-  split ("lane pairs" or the "object order" fallback), and the drag
-  correction stays. When the positions do not pair cleanly it falls back to
-  the runs rather than refusing.
+  split ("lane pairs" or the "object order" fallback) and calls the halves
+  a coin flip, and the drag correction stays. What the pairing still buys,
+  whichever way the coin lands, is a 5-5 split with one hero from each lane
+  — the app can no longer show a 4-1 team, which is what it kept doing.
+  When the positions do not pair cleanly it falls back to the runs rather
+  than refusing.
 
   **Only `STRATEGY_TIME` is read**, and the first complete reading is
   latched for the match by `GsiProvider`. After strategy time the minimap
@@ -457,8 +467,18 @@ credentials, and put the account at risk. Do not go there.
   draft screen; a manual override exists in the UI for when reading fails.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
-  Item panel shows at most 5 items above a severity floor, only after the
-  user's pick is locked. Silence in many games is correct — do not tune it away.
+  At most 5 items above a severity floor. Silence in many games is correct
+  — do not tune it away, and note that "silence" is what a coverage hole
+  looks like too, which is why both of these were bugs rather than taste:
+  **"(no role)" must not mean "discard every role-specific rule".** It is
+  the default in the UI, 55 of the file's 62 rules carried a role tag, and
+  reading an unknown role as a filter that excludes threw nine tenths of
+  the file away — one item where five belonged. An unset role does not
+  narrow; a set one does.
+  **Coverage is a feature, not a nicety.** The file named 41 of 126 heroes,
+  so a typical draft tripped one or two rules and the strip read as broken.
+  It now names 94; a hero with no rule is still a silent hero, so new ones
+  are worth adding whenever a draft goes quiet that should not have.
 - **The in-game numbers hang off the crop boxes** (`ui/portrait_overlay.py`).
   The click view again, painted under the ten portraits where the eye
   already is. No panel and no background — a halo (a dark stroke around the

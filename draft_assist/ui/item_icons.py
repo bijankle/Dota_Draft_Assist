@@ -10,38 +10,64 @@ until the download has run, and a rule can name an item OpenDota does not
 list. Callers get None and draw the name instead.
 """
 
-import re
-from pathlib import Path
-
 from PyQt6.QtGui import QPixmap
 
-from ..config import ASSETS_DIR
-
-ITEMS_DIR = ASSETS_DIR / "items"
+from ..config import ITEMS_DIR, item_slug as slug
 
 _cache: dict[str, QPixmap | None] = {}
+_available: list[str] | None = None
 
 
-def slug(name: str) -> str:
-    """'Black King Bar' -> 'black_king_bar'."""
-    return re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
+def _slugs() -> list[str]:
+    """Every icon on disk, by slug, read once."""
+    global _available
+    if _available is None:
+        _available = sorted(p.stem for p in ITEMS_DIR.glob("*.png")) \
+            if ITEMS_DIR.is_dir() else []
+    return _available
+
+
+def _resolve(name: str) -> str | None:
+    """Rule name -> icon slug, exactly or by unique prefix.
+
+    The rules say "Eul's Scepter"; the item's published display name is
+    "Eul's Scepter of Divinity". Rather than make the rules file carry the
+    long form — it is written by a person, for a person — a rule name that
+    is a unique PREFIX of exactly one downloaded icon resolves to it. Two
+    matches is ambiguous and resolves to nothing, because guessing between
+    two items is worse than showing the name.
+    """
+    key = slug(name)
+    slugs = _slugs()
+    if key in slugs:
+        return key
+    prefixed = [s for s in slugs if s.startswith(key)]
+    return prefixed[0] if len(prefixed) == 1 else None
+
+
+def any_downloaded() -> bool:
+    """True when the icon pack has been fetched at all.
+
+    One missing icon is normal; NONE at all means the download has not run,
+    and the strip should say so rather than looking permanently broken.
+    """
+    return ITEMS_DIR.is_dir() and any(ITEMS_DIR.glob("*.png"))
 
 
 def icon(item_name: str) -> QPixmap | None:
     key = slug(item_name)
     if key not in _cache:
         found = None
-        for suffix in (".png", ".jpg"):
-            path = ITEMS_DIR / f"{key}{suffix}"
-            if path.exists():
-                pixmap = QPixmap(str(path))
-                if not pixmap.isNull():
-                    found = pixmap
-                break
+        resolved = _resolve(item_name)
+        if resolved is not None:
+            pixmap = QPixmap(str(ITEMS_DIR / f"{resolved}.png"))
+            found = pixmap if not pixmap.isNull() else None
         _cache[key] = found
     return _cache[key]
 
 
 def forget() -> None:
     """Drop the cache — after a download, or in tests."""
+    global _available
+    _available = None
     _cache.clear()

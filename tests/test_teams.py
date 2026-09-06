@@ -153,8 +153,8 @@ def test_a_long_name_shrinks_rather_than_overflowing(qapp):
 
 
 def test_a_name_that_cannot_fit_on_one_line_wraps_evenly(qapp):
-    assert teams._split("Keeper of the Light") == ["Keeper of", "the Light"]
-    assert teams._split("Lion") == ["Lion"]
+    assert teams.split_two("Keeper of the Light") == ["Keeper of", "the Light"]
+    assert teams.split_two("Lion") == ["Lion"]
 
 
 # ---- the real drag path, not just the handler ---------------------------

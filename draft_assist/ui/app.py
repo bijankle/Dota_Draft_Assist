@@ -58,6 +58,7 @@ from .. import record as record_mod
 from . import theme
 from .bracket_dialog import BracketDialog
 from .hero_picker import HeroPickerDialog
+from . import item_icons
 from .item_row import ItemRow
 from .manual import ManualDraft
 from .overlay import DraftOverlay
@@ -2108,6 +2109,15 @@ class MainWindow(QMainWindow):
             advice,
             "Nothing urgent flagged for this line-up — silence is a valid "
             "answer.")
+        # One missing icon is normal; NONE at all means the pack has never
+        # been fetched, and a strip of grey plates looks broken rather than
+        # unconfigured.
+        if advice and not item_icons.any_downloaded():
+            self.item_row.set_note(
+                "No item icons yet — run Data ▸ Update statistics to "
+                "download them.")
+        else:
+            self.item_row.set_note("")
 
     # ---- status / debug ------------------------------------------------
     def _update_status(self, snap) -> None:

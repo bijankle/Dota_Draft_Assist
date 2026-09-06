@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
 
 from . import theme
 from .portraits import portrait
+from .textfit import fit, split_two  # noqa: F401  (re-exported)
 
 # "with" and "vs" are different questions and the eye should not have to
 # read a legend to tell which it is looking at. Words rather than glyphs:
@@ -274,22 +275,8 @@ class HeroTile(QAbstractButton):
 
     def _fit_name(self, name: str, avail: int,
                   band_h: int) -> tuple[int, list[str]]:
-        for size in range(NAME_MAX_PT, NAME_MIN_PT - 1, -1):
-            metrics = QFontMetricsF(self._font(size, bold=True))
-            if metrics.horizontalAdvance(name) <= avail:
-                return size, [name]
-        # Nothing fits on one line: wrap on the widest gap that balances the
-        # halves, and only at a size where two lines still fit the band.
-        for size in range(NAME_MAX_PT, NAME_MIN_PT - 1, -1):
-            metrics = QFontMetricsF(self._font(size, bold=True))
-            if metrics.height() * 2 > band_h:
-                continue
-            lines = _split(name)
-            if len(lines) == 2 and all(
-                    metrics.horizontalAdvance(part) <= avail
-                    for part in lines):
-                return size, lines
-        return NAME_MIN_PT, _split(name)
+        return fit(name, avail, band_h, self.font(),
+                   NAME_MAX_PT, NAME_MIN_PT, bold=True)
 
     def _paint_number(self, painter: QPainter, box: QRect) -> None:
         """A badge in the bottom-right, cut to the size of the number.
@@ -345,17 +332,6 @@ class HeroTile(QAbstractButton):
         font.setPointSize(size)
         font.setBold(bold)
         return font
-
-
-def _split(name: str) -> list[str]:
-    """Two lines, broken at the gap that leaves the halves most even."""
-    words = name.split()
-    if len(words) < 2:
-        return [name]
-    best = min(range(1, len(words)),
-               key=lambda i: abs(len(" ".join(words[:i]))
-                                 - len(" ".join(words[i:]))))
-    return [" ".join(words[:best]), " ".join(words[best:])]
 
 
 class TeamPanel(QFrame):

@@ -426,3 +426,706 @@ rules:
     reason: "Your Invoker is jump target number one — Force him out"
     roles: [support]
     verified_patch: "7.39"
+
+  # ==================================================================
+  # Second pass: coverage. The file named 41 heroes, so a typical draft
+  # tripped one or two rules and the strip looked broken. These cover the
+  # rest of the common pool. Same standard as the rest of the file —
+  # asserted, not measured, and severity 3 means near-mandatory.
+  # ==================================================================
+
+  # ---- Black King Bar --------------------------------------------------
+  - item: Black King Bar
+    trigger: Tidehunter
+    severity: 3
+    reason: "Ravage decides the fight — BKB is the only way to act inside it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Magnus
+    severity: 3
+    reason: "Reverse Polarity is a full-team stun; BKB blanks it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Disruptor
+    severity: 3
+    reason: "Static Storm silences through most outs — spell immunity is one"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Bane
+    severity: 3
+    reason: "Fiend's Grip removes you for five seconds unless you can break it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Beastmaster
+    severity: 3
+    reason: "Primal Roar is a guaranteed lock on whoever he points at"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Tiny
+    severity: 3
+    reason: "Avalanche into Toss one-shots a squishy core without BKB"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Earthshaker
+    severity: 2
+    reason: "Fissure and Echo Slam are magic — BKB walks out of the combo"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Lina
+    severity: 2
+    reason: "Lina's burst is pure magic; spell immunity blanks all of it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Warlock
+    severity: 2
+    reason: "Fatal Bonds plus Upheaval is magic damage and a rooting slow"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Jakiro
+    severity: 2
+    reason: "Ice Path and Macropyre are magic AoE you can simply walk through"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Kunkka
+    severity: 2
+    reason: "Torrent into Ghostship is a long combo BKB skips entirely"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Ogre Magi
+    severity: 2
+    reason: "Fireblast chains are a stun-lock without spell immunity"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Dark Seer
+    severity: 2
+    reason: "Vacuum plus Wall of Replica is a magic trap; BKB keeps you moving"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Void Spirit
+    severity: 2
+    reason: "Aether Remnant holds you still for the rest of the burst"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Black King Bar
+    trigger: Shadow Demon
+    severity: 2
+    reason: "Disruption and Soul Catcher are magic — BKB is the out"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Linken's Sphere: single-target initiation ------------------------
+  - item: Linken's Sphere
+    trigger: Beastmaster
+    severity: 3
+    reason: "Primal Roar is single-target — Linken's eats it outright"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Bane
+    severity: 2
+    reason: "Blocks Fiend's Grip before it starts"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Batrider
+    severity: 2
+    reason: "Flaming Lasso is single-target; Linken's blocks the pull"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Chaos Knight
+    severity: 2
+    reason: "Chaos Bolt is his whole initiation and it is single-target"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Linken's Sphere
+    trigger: Vengeful Spirit
+    severity: 2
+    reason: "Nether Swap is single-target — Linken's refuses the swap"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Lotus Orb: send it back -----------------------------------------
+  - item: Lotus Orb
+    trigger: Beastmaster
+    severity: 2
+    reason: "Reflects Primal Roar back onto Beastmaster"
+    verified_patch: "7.39"
+  - item: Lotus Orb
+    trigger: Bane
+    severity: 2
+    reason: "Reflects Fiend's Grip"
+    verified_patch: "7.39"
+  - item: Lotus Orb
+    trigger: Batrider
+    severity: 2
+    reason: "Reflects Flaming Lasso"
+    verified_patch: "7.39"
+  - item: Lotus Orb
+    trigger: Vengeful Spirit
+    severity: 2
+    reason: "Reflects Nether Swap"
+    verified_patch: "7.39"
+
+  # ---- Silver Edge: the passive IS the hero ----------------------------
+  - item: Silver Edge
+    trigger: Tidehunter
+    severity: 3
+    reason: "Kraken Shell shrugs off everything until it is broken"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Riki
+    severity: 3
+    reason: "Break turns off permanent invisibility"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Dragon Knight
+    severity: 2
+    reason: "Dragon Blood is most of why he does not die"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Slark
+    severity: 2
+    reason: "Essence Shift and the Shadow Dance regen both break"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Night Stalker
+    severity: 2
+    reason: "Hunter in the Night is his entire night-time spike"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Lycan
+    severity: 2
+    reason: "Feral Impulse feeds him and every unit he brings"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Bloodseeker
+    severity: 2
+    reason: "Thirst is the chase; break it and he cannot catch you"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Weaver
+    severity: 2
+    reason: "Geminate Attack is half his damage"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Centaur Warrunner
+    severity: 2
+    reason: "Return is what makes him unkillable in a brawl"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Silver Edge
+    trigger: Templar Assassin
+    severity: 2
+    reason: "Psi Blades and the Refraction instances lean on the passive"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Monkey King Bar: true strike ------------------------------------
+  - item: Monkey King Bar
+    trigger: Faceless Void
+    severity: 3
+    reason: "Backtrack is a dodge, and true strike goes straight through it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Monkey King Bar
+    trigger: Brewmaster
+    severity: 2
+    reason: "Drunken Brawler's evasion wastes half your right-clicks"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Heaven's Halberd: turn the carry off ----------------------------
+  - item: Heaven's Halberd
+    trigger: Ursa
+    severity: 3
+    reason: "Disarm is the only thing that survives Ursa's burst window"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Troll Warlord
+    severity: 3
+    reason: "Disarm answers a hero whose whole output is right-clicks"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Sven
+    severity: 3
+    reason: "God's Strength is pure physical — disarm blanks the whole ult"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Anti-Mage
+    severity: 2
+    reason: "Disarm shuts down the Manta-and-attack pattern"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Juggernaut
+    severity: 2
+    reason: "Disarm answers everything of his that is not Omnislash"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Wraith King
+    severity: 2
+    reason: "Physical damage only — disarm is a full answer for its duration"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Slark
+    severity: 2
+    reason: "Disarm ends the pounce before the stat steal starts"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Monkey King
+    severity: 2
+    reason: "Wukong's Command is right-clicks; disarm empties the ring"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Luna
+    severity: 2
+    reason: "Physical carry with no escape — disarm buys the whole fight"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Gyrocopter
+    severity: 2
+    reason: "Flak Cannon is physical and disarm turns all of it off"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Lifestealer
+    severity: 2
+    reason: "Disarm stops the attacks that keep him alive"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Phantom Lancer
+    severity: 2
+    reason: "Disarm on the real one takes the illusions with him"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Heaven's Halberd
+    trigger: Naga Siren
+    severity: 2
+    reason: "Physical illusion damage — disarm answers the whole pattern"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Ghost Scepter: physical burst, on a support ---------------------
+  - item: Ghost Scepter
+    trigger: Ursa
+    severity: 3
+    reason: "Ghost form is the only thing that survives being jumped"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Anti-Mage
+    severity: 2
+    reason: "Blink into attacks is physical; ghost form refuses all of it"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Slark
+    severity: 2
+    reason: "Pounce commits him — ghost form makes it worthless"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Juggernaut
+    severity: 2
+    reason: "Omnislash is physical damage and cannot touch a ghost"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Riki
+    severity: 2
+    reason: "Backstab is physical; ghost form buys the escape"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Monkey King
+    severity: 2
+    reason: "Wukong's Command is physical — walk out of it as a ghost"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Ghost Scepter
+    trigger: Bloodseeker
+    severity: 2
+    reason: "Rupture punishes movement, but the chase damage is physical"
+    roles: [support]
+    verified_patch: "7.39"
+
+  # ---- Glimmer Cape: magic burst, on a support -------------------------
+  - item: Glimmer Cape
+    trigger: Lina
+    severity: 2
+    reason: "The resistance and the fade both answer a Laguna Blade pick-off"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Glimmer Cape
+    trigger: Witch Doctor
+    severity: 2
+    reason: "Death Ward and Maledict are magic — resistance buys the fight"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Glimmer Cape
+    trigger: Lich
+    severity: 2
+    reason: "Chain Frost bounces on the low-HP target; the fade breaks it"
+    roles: [support]
+    verified_patch: "7.39"
+  - item: Glimmer Cape
+    trigger: Jakiro
+    severity: 2
+    reason: "All magic, all AoE — the resistance is the cheap answer"
+    roles: [support]
+    verified_patch: "7.39"
+
+  # ---- Pipe of Insight: AoE magic against the whole team ---------------
+  - item: Pipe of Insight
+    trigger: Jakiro
+    severity: 2
+    reason: "Macropyre and Ice Path are exactly what the barrier is for"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Warlock
+    severity: 2
+    reason: "Fatal Bonds spreads magic across the team — Pipe blunts all of it"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Lich
+    severity: 2
+    reason: "Chain Frost is magic bouncing through everyone"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Witch Doctor
+    severity: 2
+    reason: "Maledict plus Death Ward is sustained magic on the group"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Phoenix
+    severity: 2
+    reason: "Supernova and the dives are magic against the whole team"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Tidehunter
+    severity: 2
+    reason: "Ravage's damage is magic even when the stun is unavoidable"
+    verified_patch: "7.39"
+  - item: Pipe of Insight
+    trigger: Kunkka
+    severity: 2
+    reason: "Torrent and Ghostship are magic AoE on a clump"
+    verified_patch: "7.39"
+
+  # ---- Spirit Vessel: healing has to stop ------------------------------
+  - item: Spirit Vessel
+    trigger: Abaddon
+    severity: 3
+    reason: "Aphotic Shield and Borrowed Time both lose to the heal cut"
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Io
+    severity: 3
+    reason: "Tether regen is the whole hero; the vessel is the answer"
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Undying
+    severity: 2
+    reason: "Tombstone and Decay make him heal through chip damage"
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Treant Protector
+    severity: 2
+    reason: "Living Armour heals from across the map"
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Lifestealer
+    severity: 2
+    reason: "Feast is lifesteal, and lifesteal is what the vessel is for"
+    verified_patch: "7.39"
+  - item: Spirit Vessel
+    trigger: Chen
+    severity: 2
+    reason: "Hand of God is a full team heal on a timer"
+    verified_patch: "7.39"
+
+  # ---- Crimson Guard: illusions, summons, attack spam ------------------
+  - item: Crimson Guard
+    trigger: Phantom Lancer
+    severity: 3
+    reason: "The illusions are many small physical hits — exactly what it blocks"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Naga Siren
+    severity: 3
+    reason: "Illusion damage is physical and comes in a flood"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Meepo
+    severity: 3
+    reason: "Five Meepos are five small right-clicks"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Broodmother
+    severity: 3
+    reason: "The spiderlings are physical chip damage the block eats"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Chaos Knight
+    severity: 2
+    reason: "Phantasm is physical illusion damage"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Nature's Prophet
+    severity: 2
+    reason: "The treants are a wall of small physical attacks"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Beastmaster
+    severity: 2
+    reason: "Hawks and boar plus Wild Axes is sustained physical pressure"
+    verified_patch: "7.39"
+  - item: Crimson Guard
+    trigger: Visage
+    severity: 2
+    reason: "Familiars are physical damage that the block halves"
+    verified_patch: "7.39"
+
+  # ---- Mjollnir: clear the copies --------------------------------------
+  - item: Mjollnir
+    trigger: Phantom Lancer
+    severity: 2
+    reason: "Static charge clears illusions faster than you can click them"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Mjollnir
+    trigger: Naga Siren
+    severity: 2
+    reason: "Chain lightning cuts through the illusion wall"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Mjollnir
+    trigger: Chaos Knight
+    severity: 2
+    reason: "Phantasm illusions die to the chain, and quickly"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Scythe of Vyse: hold the slippery one ---------------------------
+  - item: Scythe of Vyse
+    trigger: Void Spirit
+    severity: 3
+    reason: "Hex is one of the few things that catches him between dashes"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Scythe of Vyse
+    trigger: Anti-Mage
+    severity: 2
+    reason: "Hex stops the blink before it starts"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Scythe of Vyse
+    trigger: Slark
+    severity: 2
+    reason: "Hex holds him still long enough to kill"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Scythe of Vyse
+    trigger: Weaver
+    severity: 2
+    reason: "Hex is what lands before Time Lapse does"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Scythe of Vyse
+    trigger: Queen of Pain
+    severity: 2
+    reason: "Blink plus Sonic Wave needs answering the moment she lands"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Orchid: casters with no spell immunity --------------------------
+  - item: Orchid Malevolence
+    trigger: Queen of Pain
+    severity: 2
+    reason: "A silenced Queen of Pain is a dead Queen of Pain"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Orchid Malevolence
+    trigger: Void Spirit
+    severity: 2
+    reason: "Silence removes every dash he has"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Orchid Malevolence
+    trigger: Nature's Prophet
+    severity: 2
+    reason: "Silence stops the teleport out"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Blade Mail: let the burst come back -----------------------------
+  - item: Blade Mail
+    trigger: Legion Commander
+    severity: 3
+    reason: "Duel into Blade Mail is still the cleanest answer there is"
+    verified_patch: "7.39"
+  - item: Blade Mail
+    trigger: Lina
+    severity: 2
+    reason: "Laguna Blade returned is most of her health bar"
+    verified_patch: "7.39"
+  - item: Blade Mail
+    trigger: Ursa
+    severity: 2
+    reason: "Enrage means he takes it all back at once"
+    verified_patch: "7.39"
+  - item: Blade Mail
+    trigger: Lifestealer
+    severity: 2
+    reason: "Rage commits him to attacking through the return"
+    verified_patch: "7.39"
+
+  # ---- Aeon Disk: survive the combo ------------------------------------
+  - item: Aeon Disk
+    trigger: Faceless Void
+    severity: 3
+    reason: "Chronosphere is the whole fight; the disk buys the way out"
+    verified_patch: "7.39"
+  - item: Aeon Disk
+    trigger: Tiny
+    severity: 2
+    reason: "Avalanche and Toss arrive together — the disk breaks the chain"
+    verified_patch: "7.39"
+  - item: Aeon Disk
+    trigger: Magnus
+    severity: 2
+    reason: "Reverse Polarity into everything needs a hard stop"
+    verified_patch: "7.39"
+  - item: Aeon Disk
+    trigger: Lina
+    severity: 2
+    reason: "The disk is what stands between you and the burst"
+    verified_patch: "7.39"
+
+  # ---- Manta Style: shrug it off ---------------------------------------
+  - item: Manta Style
+    trigger: Riki
+    severity: 3
+    reason: "Manta clears Dust and breaks the Smoke Screen silence"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Manta Style
+    trigger: Bane
+    severity: 2
+    reason: "Illusions eat the Grip and the real one walks away"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Detection: invisibility is not a counter, it is a cost ----------
+  - item: Dust of Appearance
+    trigger: Riki
+    severity: 3
+    reason: "Permanent invisibility — somebody has to carry detection"
+    verified_patch: "7.39"
+  - item: Dust of Appearance
+    trigger: Bounty Hunter
+    severity: 3
+    reason: "Shadow Walk means every gank starts invisible"
+    verified_patch: "7.39"
+  - item: Dust of Appearance
+    trigger: Clinkz
+    severity: 3
+    reason: "Skeleton Walk is how he gets on top of you"
+    verified_patch: "7.39"
+  - item: Sentry Ward
+    trigger: Nyx Assassin
+    severity: 2
+    reason: "Vendetta is a one-shot from nowhere without wards"
+    verified_patch: "7.39"
+  - item: Sentry Ward
+    trigger: Weaver
+    severity: 2
+    reason: "Shukuchi both escapes and initiates unless you can see it"
+    verified_patch: "7.39"
+  - item: Sentry Ward
+    trigger: Sand King
+    severity: 2
+    reason: "Sand Storm is where the Epicenter comes from"
+    verified_patch: "7.39"
+  - item: Sentry Ward
+    trigger: Mirana
+    severity: 2
+    reason: "Moonlight Shadow turns every retreat into a re-engage"
+    verified_patch: "7.39"
+
+  # ---- Mage Slayer: magic on a core ------------------------------------
+  - item: Mage Slayer
+    trigger: Zeus
+    severity: 2
+    reason: "Flat magic resistance plus the debuff answers his whole kit"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Mage Slayer
+    trigger: Lina
+    severity: 2
+    reason: "Magic resistance is the cheapest answer to Laguna Blade"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Mage Slayer
+    trigger: Void Spirit
+    severity: 2
+    reason: "The debuff cuts his damage after he commits"
+    roles: [core]
+    verified_patch: "7.39"
+
+  # ---- Nullifier: dispel the buff, stop the heal -----------------------
+  - item: Nullifier
+    trigger: Abaddon
+    severity: 2
+    reason: "Dispels Aphotic Shield and stops the healing under it"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Undying
+    severity: 2
+    reason: "Stops the regeneration he fights through"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Treant Protector
+    severity: 2
+    reason: "Cuts Living Armour off at the source"
+    roles: [core]
+    verified_patch: "7.39"
+  - item: Nullifier
+    trigger: Io
+    severity: 2
+    reason: "The heal-cut is the only way to kill anything Io is tethered to"
+    roles: [core]
+    verified_patch: "7.39"

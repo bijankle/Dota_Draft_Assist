@@ -142,7 +142,12 @@ def recommend(rules: list[Rule], enemy_names: list[str],
 
     per_item: dict[str, list[Trigger]] = {}
     for rule in rules:
-        if rule.roles and (my_role is None or my_role not in rule.roles):
+        # No role chosen means "do not narrow by role", NOT "discard every
+        # role-specific rule". 55 of the 62 rules carry a role tag, so the
+        # old reading silently threw nine tenths of the file away whenever
+        # the role box said "(no role)" — which is its default — and the
+        # panel showed one item where it should have shown five.
+        if rule.roles and my_role is not None and my_role not in rule.roles:
             continue
         present = enemy_set if rule.side == "enemy" else ally_set
         if rule.trigger.lower() not in present:
