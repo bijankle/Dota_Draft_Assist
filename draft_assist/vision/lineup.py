@@ -36,7 +36,7 @@ import cv2
 import numpy as np
 
 from . import autocal
-from .layout import DraftLayout, hud_box
+from .layout import DraftLayout
 
 # A placed crop is scored against a portrait resized to the same box, so
 # the bar is lower than a search's: the box may be a few pixels out and the

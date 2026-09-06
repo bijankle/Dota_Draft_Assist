@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizeGrip,
 
 from . import appicon, theme
 
-BAR_HEIGHT = 34
+# Tall enough for the app icon to be an icon rather than a bullet point.
+BAR_HEIGHT = 48
+ICON = 34
 EDGE = 6            # how close to the border counts as a resize grab
 
 
@@ -41,7 +43,7 @@ class TitleBar(QWidget):
         lay.setSpacing(8)
 
         self.icon = QLabel()
-        self.icon.setPixmap(appicon.pixmap(18))
+        self.icon.setPixmap(appicon.pixmap(ICON))
         lay.addWidget(self.icon)
         self.title = QLabel(title)
         self.title.setObjectName("titleText")
@@ -62,7 +64,7 @@ class TitleBar(QWidget):
                 ("close", "✕", self.close)):
             button = QPushButton(glyph)
             button.setObjectName(f"win_{name}")
-            button.setFixedSize(44, BAR_HEIGHT)
+            button.setFixedSize(46, BAR_HEIGHT)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             button.clicked.connect(signal.emit)
             lay.addWidget(button)
@@ -121,7 +123,7 @@ class OverlayToggle(QPushButton):
     user needs to know whether the window is hidden or merely behind Dota.
     """
 
-    SIZE = 40
+    SIZE = 48
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -130,7 +132,7 @@ class OverlayToggle(QPushButton):
         self.setChecked(True)
         self.setFixedSize(self.SIZE, self.SIZE)
         self.setIcon(appicon.icon())
-        self.setIconSize(QSize(self.SIZE - 14, self.SIZE - 14))
+        self.setIconSize(QSize(self.SIZE - 10, self.SIZE - 10))
         self.setToolTip("Show or hide the draft window · drag to move")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint

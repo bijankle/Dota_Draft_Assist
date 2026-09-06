@@ -67,7 +67,9 @@ def icon(item_name: str) -> QPixmap | None:
 
 
 def forget() -> None:
-    """Drop the cache — after a download, or in tests."""
+    """Drop the caches — after a download, or in tests."""
     global _available
     _available = None
     _cache.clear()
+    from .item_row import forget_scaled
+    forget_scaled()

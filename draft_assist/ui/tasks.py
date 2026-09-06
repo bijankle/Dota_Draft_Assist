@@ -65,6 +65,18 @@ TASKS = {
         needs_network=True,
         reload_after=True,
     ),
+    "fetch_item_icons": Task(
+        key="fetch_item_icons",
+        title="Fetch item icons",
+        steps=[[PY, "tools/fetch_item_icons.py"]],
+        blurb=("Downloads only the item pictures for the strip under the "
+               "draft, and prints the URL it tried and how many files it "
+               "wrote. The full update does this too — this exists so that "
+               "'the icons are still blank' has an answer rather than a "
+               "shrug."),
+        needs_network=True,
+        reload_after=True,
+    ),
     "make_shortcut": Task(
         key="make_shortcut",
         title="Add to the Start menu",

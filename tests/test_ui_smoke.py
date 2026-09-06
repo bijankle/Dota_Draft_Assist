@@ -1799,3 +1799,63 @@ def test_your_own_hero_must_still_be_in_the_draft(window):
     window._on_draft_changed([], [], 10)
     assert window._my_hero() is None
     assert not window.my_hero_locked
+
+
+def test_the_debug_view_does_no_work_while_it_is_hidden(window, monkeypatch):
+    """It draws an overlay onto a full-resolution frame, converts it and
+    smooth-scales it — four times a second, into a widget nobody is looking
+    at. That was most of the stutter during a game."""
+    import numpy as np
+    from draft_assist.vision import debug as debug_mod
+
+    drawn = []
+    monkeypatch.setattr(debug_mod, "draw_overlay",
+                        lambda *a, **k: drawn.append(1) or a[0])
+    window.refresh()
+    snap = window.snapshot
+    snap.frame = np.zeros((64, 64, 3), dtype=np.uint8)
+    snap.read_raw = snap.read = object()
+
+    window.tabs.setCurrentIndex(0)          # Draft tab: Debug is hidden
+    window._update_debug(snap)
+    assert drawn == [], "the debug view redrew while hidden"
+
+
+def test_hero_names_are_built_once_not_per_tick(window):
+    first = window._hero_names()
+    assert first is window._hero_names()
+    assert len(first) == len(window.ds.hero_ids)
+
+
+def test_scaled_portraits_are_cached_not_rescaled_every_paint(qapp,
+                                                              monkeypatch,
+                                                              tmp_path):
+    """A smooth rescale inside paintEvent, for a picture that never
+    changes, on thirty widgets, four times a second."""
+    from PyQt6.QtGui import QColor, QPixmap
+    from draft_assist.ui import portraits
+
+    pixmap = QPixmap(256, 144)
+    pixmap.fill(QColor("#404040"))
+    pixmap.save(str(tmp_path / "4_bloodseeker.png"))
+    monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
+    portraits.forget()
+
+    first = portraits.scaled(4, 60, 40)
+    assert first is not None
+    assert first is portraits.scaled(4, 60, 40)      # same object, not a copy
+    assert portraits.scaled(4, 30, 20) is not first  # a different size is not
+    portraits.forget()
+    assert portraits.scaled(4, 60, 40) is not first  # and forgetting clears
+
+
+def test_the_toolbar_keeps_only_what_belongs_there(window):
+    """Recordings and the report have a whole tab of their own, force
+    recognition is a debugging switch, and the capture pill said the same
+    sentence as the status bar one line higher up."""
+    from PyQt6.QtWidgets import QToolBar
+    toolbar = window.findChild(QToolBar)
+    labels = {w.text() for w in toolbar.findChildren(type(window.update_button))}
+    assert "Update" in labels
+    assert "Recordings" not in labels and "Report" not in labels
+    assert not window.capture_pill.isVisibleTo(toolbar)

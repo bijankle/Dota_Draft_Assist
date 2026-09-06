@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPixmap
+from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QPushButton,
                              QScrollArea, QSlider, QSplitter,
                              QTableWidget,
-                             QTableWidgetItem, QTabWidget, QTextBrowser,
+                             QTableWidgetItem, QTabWidget,
                              QToolBar, QVBoxLayout, QWidget)
 
 from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
@@ -65,9 +65,10 @@ from . import item_icons
 from . import portraits
 from .item_row import ItemRow
 from .manual import ManualDraft
-from .tables import BreakdownPanel, MatrixTable, ValueItem
+from .tables import (BreakdownPanel, MatrixTable, ValueItem,
+                     minimum_grid_width)
 from .task_dialog import TaskDialog
-from .teams import TeamPanel
+from .teams import TeamPanel, minimum_panel_width
 from .tasks import TASKS
 
 # Loose mapping from queued position to OpenDota hero role tags, used ONLY
@@ -172,6 +173,12 @@ class MainWindow(QMainWindow):
         # which `ui/chrome.py` does.
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint
                             | Qt.WindowType.WindowStaysOnTopHint)
+        # The narrowest honest width. Two things are competing for it —
+        # five matrix columns wide enough to print "+12.34", and five pick
+        # tiles wide enough to still show a portrait — so the floor is
+        # whichever of them needs more, doubled for the two halves.
+        self.setMinimumWidth(
+            2 * max(minimum_grid_width(), minimum_panel_width()) + 44)
         self.resize(1240, 820)
         self._build_menus()
         self._build()
@@ -209,6 +216,9 @@ class MainWindow(QMainWindow):
                   "Download the latest hero statistics and portraits")
         self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
                   None, "Which ranks the statistics are drawn from")
+        self._act(setup_menu, "&Fetch item icons…",
+                  lambda: self.run_task("fetch_item_icons"), None,
+                  "Just the item pictures, with the reason if it fails")
         self._act(setup_menu, "&Add to the Start menu",
                   lambda: self.run_task("make_shortcut"), None,
                   "Make a pinnable shortcut with the app's own icon")
@@ -319,14 +329,15 @@ class MainWindow(QMainWindow):
 
         self.recording_label = QLabel("")
         self.recording_label.setProperty("dim", True)
-        toolbar.addWidget(self.recording_label)
+        self.recording_label.setVisible(False)
 
+        # Recordings and the report have a whole tab of their own
+        # (Debug ▸ Recordings). Buttons for them up here were the same
+        # thing said twice, in the row that has to stay readable at the
+        # narrowest the window goes.
         self.open_recordings_button = QPushButton("Recordings")
-        self.open_recordings_button.setMinimumHeight(32)
-        self.open_recordings_button.setToolTip("Open the recordings folder")
         self.open_recordings_button.clicked.connect(
             lambda: open_folder(RECORDINGS_DIR))
-        toolbar.addWidget(self.open_recordings_button)
 
         self.update_button = QPushButton("Update")
         self.update_button.setMinimumHeight(32)
@@ -337,24 +348,15 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.update_button)
 
         self.report_button = QPushButton("Report")
-        self.report_button.setMinimumHeight(32)
-        self.report_button.setToolTip(
-            "Open the last recording's report — everything the session saw, "
-            "in one document")
         self.report_button.clicked.connect(self._show_latest_report)
-        toolbar.addWidget(self.report_button)
 
-        toolbar.addSeparator()
         self.force_check = QCheckBox("Force recognition")
-        self.force_check.setToolTip(
-            "Recognise every frame even when the draft gate does not trip")
         self.force_check.toggled.connect(self._set_forced)
-        toolbar.addWidget(self.force_check)
         spacer = QWidget()
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
                              spacer.sizePolicy().verticalPolicy().Preferred)
         toolbar.addWidget(spacer)
-        toolbar.addWidget(QLabel("See-through"))
+        toolbar.addWidget(QLabel("Transparency"))
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setFixedWidth(90)
         self.opacity_slider.setRange(30, 100)
@@ -366,9 +368,10 @@ class MainWindow(QMainWindow):
             lambda value: self._set_see_through(value / 100.0))
         toolbar.addWidget(self.opacity_slider)
 
+        # No capture pill: it said the same sentence as the status bar,
+        # in less room, one line higher up.
         self.capture_pill = QLabel("capture: —")
-        self.capture_pill.setProperty("pill", True)
-        toolbar.addWidget(self.capture_pill)
+        self.capture_pill.setVisible(False)
         self.data_pill = QLabel("data: —")
         self.data_pill.setProperty("pill", True)
         toolbar.addWidget(self.data_pill)
@@ -761,6 +764,14 @@ class MainWindow(QMainWindow):
             "Dota sent them — the highest-fidelity test there is")
         replay.clicked.connect(self._replay_session)
         buttons.addWidget(replay)
+        # The two that came off the toolbar. They belong beside the
+        # recordings they are about, not in the row above the draft.
+        buttons.addWidget(self.report_button)
+        self.report_button.setToolTip(
+            "The newest session's report, whatever is selected here")
+        buttons.addWidget(self.open_recordings_button)
+        self.open_recordings_button.setToolTip(
+            "Open the recordings folder")
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
         buttons.addWidget(open_session)
@@ -2154,8 +2165,9 @@ class MainWindow(QMainWindow):
         # unconfigured.
         if advice and not item_icons.any_downloaded():
             self.item_row.set_note(
-                "No item icons yet — run Data ▸ Update statistics to "
-                "download them.")
+                "No item icons on disk yet — press Update. If they are "
+                "still missing after that, Setup ▸ Fetch item icons says "
+                "why.")
         else:
             self.item_row.set_note("")
 
@@ -2206,6 +2218,12 @@ class MainWindow(QMainWindow):
             pill.style().polish(pill)
 
     def _update_debug(self, snap) -> None:
+        # NOTHING here is worth doing while the tab is hidden. It draws an
+        # overlay onto a full-resolution frame, converts it to a QImage and
+        # smooth-scales it — four times a second, over a game, into a
+        # widget nobody is looking at. That was most of the stutter.
+        if not self.debug_image.isVisible():
+            return
         # Debug shows the RAW per-frame read (live confidences, flicker and
         # all); the draft panels show the stabilised one.
         read = snap.read_raw or snap.read
@@ -2218,8 +2236,7 @@ class MainWindow(QMainWindow):
                 "boxes here as soon as recognition runs.")
             return
         from ..vision.debug import draw_overlay
-        names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
-        overlay = draw_overlay(snap.frame, read, names)
+        overlay = draw_overlay(snap.frame, read, self._hero_names())
         h, w = overlay.shape[:2]
         img = QImage(overlay.tobytes(), w, h, 3 * w,
                      QImage.Format.Format_BGR888)
@@ -2236,6 +2253,13 @@ class MainWindow(QMainWindow):
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
         self.debug_text.setPlainText("\n".join(lines))
+
+    def _hero_names(self) -> dict[int, str]:
+        """Every hero's name, built once per dataset rather than per tick."""
+        if getattr(self, "_names_for", None) is not self.ds:
+            self._names_for = self.ds
+            self._names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
+        return self._names
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         self.overlay_toggle.close()
@@ -2408,6 +2432,7 @@ def _report_crash(exc: BaseException) -> None:
 
 
 def main() -> None:
+    appicon.claim_taskbar_identity()
     try:
         _main()
     except SystemExit:

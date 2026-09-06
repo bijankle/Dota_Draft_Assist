@@ -134,12 +134,14 @@ QTableWidget {{
 QHeaderView::section {{
     background: {BG_ELEVATED};
     color: {TEXT_DIM};
-    padding: 7px 8px;
+    padding: 2px 4px;
     border: none;
     border-bottom: 1px solid {BORDER};
     font-weight: 600;
 }}
-QTableWidget::item {{ padding: 5px 8px; }}
+/* Centred both ways: a grid of signed numbers reads as a grid, and
+   left-aligned cells under a centred portrait do not line up with it. */
+QTableWidget::item {{ padding: 2px 4px; }}
 
 QTextBrowser, QPlainTextEdit {{
     background: {BG_ELEVATED};

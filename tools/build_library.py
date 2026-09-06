@@ -59,7 +59,7 @@ def main() -> None:
           "recognition operating point against these portraits.")
 
 
-def download_item_icons() -> None:
+def download_item_icons(verbose: bool = False) -> None:
     """Item art for the draft screen's item row.
 
     Named by a slug of the DISPLAY name, so `rules/items.yaml` needs no
@@ -69,6 +69,7 @@ def download_item_icons() -> None:
     """
     ITEMS_DIR.mkdir(parents=True, exist_ok=True)
     items = fetch_items()
+    print(f"  {len(items)} items listed; writing into {ITEMS_DIR}")
     downloaded = skipped = failed = 0
     for name, img_path in sorted(items.items()):
         dest = ITEMS_DIR / f"{item_slug(name)}.png"
@@ -76,6 +77,8 @@ def download_item_icons() -> None:
             skipped += 1
             continue
         url = img_path if img_path.startswith("http") else CDN + img_path
+        if verbose and downloaded == 0 and failed == 0:
+            print(f"  first URL: {url}")
         try:
             resp = requests.get(url, timeout=30)
             resp.raise_for_status()

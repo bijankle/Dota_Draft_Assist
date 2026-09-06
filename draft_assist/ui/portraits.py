@@ -13,6 +13,7 @@ tile.
 import re
 from pathlib import Path
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
 from ..config import PORTRAITS_DIR
@@ -21,6 +22,11 @@ BASE_DIR = PORTRAITS_DIR / "base"
 
 _paths: dict[int, Path] | None = None
 _cache: dict[int, QPixmap | None] = {}
+# Scaled copies, keyed by (hero, width, height). Rescaling a 256x144 image
+# with a smooth transform inside paintEvent is the classic Qt performance
+# mistake: ten tiles and twenty matrix headers repainting on every tick is
+# thirty rescales a frame, for pictures that never change.
+_scaled: dict[tuple[int, int, int], QPixmap] = {}
 
 
 def _index() -> dict[int, Path]:
@@ -56,8 +62,27 @@ def portrait(hero_id: int | None) -> QPixmap | None:
     return _cache[hero_id]
 
 
+def scaled(hero_id: int | None, width: int, height: int) -> QPixmap | None:
+    """The portrait, fitted inside width x height, cached at that size.
+
+    Aspect ratio is kept, so the result is usually smaller than the box in
+    one direction; callers centre it.
+    """
+    art = portrait(hero_id)
+    if art is None or width < 1 or height < 1:
+        return None
+    key = (int(hero_id), int(width), int(height))
+    hit = _scaled.get(key)
+    if hit is None:
+        hit = art.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+        _scaled[key] = hit
+    return hit
+
+
 def forget() -> None:
-    """Drop the cache — after a portrait download, or in tests."""
+    """Drop the caches — after a portrait download, or in tests."""
     global _paths
     _paths = None
     _cache.clear()
+    _scaled.clear()

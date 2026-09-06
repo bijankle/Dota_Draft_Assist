@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
                              QSizePolicy, QVBoxLayout)
 
 from . import theme
-from .portraits import portrait
+from .portraits import portrait, scaled
 from .textfit import fit, split_two  # noqa: F401  (re-exported)
 
 # "with" and "vs" are different questions and the eye should not have to
@@ -44,8 +44,20 @@ SLOT_MIME = "application/x-dota-draft-slot"
 # A tile is square. These bound how big the panel may make one; between them
 # it takes whatever five-across leaves, so the row breathes on a wide window
 # without any tile turning into a letterbox.
-TILE_MAX = 140
-TILE_MIN = 62
+# A tile is capped so a wide window does not turn the draft into five
+# posters, and floored at the matrix's own column width so that when the
+# window is at its narrowest the tiles still line up with the grid below.
+TILE_MAX = 132
+# Below this the name band leaves no room for the portrait and the tile
+# stops being a picture of a hero, which is the only reason it exists.
+TILE_MIN = 64
+PANEL_MARGIN = 12
+TILE_GAP = 6
+
+
+def minimum_panel_width() -> int:
+    """Five tiles at their floor, plus the panel's own margins."""
+    return 2 * PANEL_MARGIN + 5 * TILE_MIN + 4 * TILE_GAP
 EMPTY_TEXT = "+"
 
 NAME_MAX_PT = 11
@@ -226,15 +238,12 @@ class HeroTile(QAbstractButton):
                      self._band_height(box))
         art_box = QRect(box.left(), band.bottom() + 1, box.width(),
                         box.bottom() - band.bottom())
-        art = portrait(self.property("hero_id"))
-        if art is not None and art_box.height() > 4:
-            scaled = art.scaled(art_box.size(),
-                                Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation)
+        art = (scaled(self.property("hero_id"), art_box.width(),
+                      art_box.height()) if art_box.height() > 4 else None)
+        if art is not None:
             painter.drawPixmap(
-                art_box.left() + (art_box.width() - scaled.width()) // 2,
-                art_box.top() + (art_box.height() - scaled.height()) // 2,
-                scaled)
+                art_box.left() + (art_box.width() - art.width()) // 2,
+                art_box.top() + (art_box.height() - art.height()) // 2, art)
 
         painter.fillRect(band, CHROME)
         self._paint_name(painter, band)
@@ -343,7 +352,7 @@ class TeamPanel(QFrame):
         self.setProperty("card", True)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 8, 12, 10)
+        lay.setContentsMargins(PANEL_MARGIN, 8, PANEL_MARGIN, 10)
         lay.setSpacing(6)
 
         head = QHBoxLayout()
@@ -356,7 +365,7 @@ class TeamPanel(QFrame):
         head.addWidget(self.note)
         lay.addLayout(head)
 
-        self.spacing = 6
+        self.spacing = TILE_GAP
         row = QHBoxLayout()
         row.setSpacing(self.spacing)
         row.addStretch(1)

@@ -13,7 +13,7 @@ Two things live here that Qt does not give for free:
   the rows are then laid side by side.
 """
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
                              QTableWidget, QTableWidgetItem,
@@ -45,6 +45,10 @@ class ValueItem(QTableWidgetItem):
 def delta_item(delta: float) -> ValueItem:
     """A signed interaction term, coloured by sign. Percentage points."""
     item = ValueItem(f"{delta * 100:+.2f}", delta)
+    # Centred both ways: the grid sits under portraits that are centred in
+    # their own columns, and a left-aligned number does not line up with
+    # the hero it belongs to.
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     if delta:
         item.setForeground(QColor(theme.GOOD if delta > 0 else theme.BAD))
     return item
@@ -190,6 +194,25 @@ TOTAL_LABEL = "Σ"
 # scrolling. Anyone reading it is looking at the same five portraits.
 COMPACT_NAME = 7
 COMPACT_COLUMN = 72
+# The portrait head on a matrix column. This is the app's width UNIT: five
+# of them plus a row header is the narrowest a grid can be drawn, two of
+# those grids is the narrowest the window is worth having, and the pick
+# tiles above size themselves against the same number so a column reads
+# down from the tile it belongs to.
+HEADER_ICON = 34
+ROW_HEADER = HEADER_ICON + 12
+# A cell has to hold "+12.34" without eliding, and that is wider than the
+# portrait above it — so the column, not the icon, sets the floor.
+CELL_MIN = 46
+
+
+def minimum_grid_width(columns: int = 5) -> int:
+    """The narrowest a grid of this many columns can honestly be drawn.
+
+    Honestly: a narrower one still draws, it just shows "..." where the
+    numbers were, which is a grid that has stopped being a grid.
+    """
+    return ROW_HEADER + columns * max(HEADER_ICON, CELL_MIN)
 
 
 def short_name(name: str) -> str:
@@ -218,24 +241,27 @@ class PortraitHeader(QHeaderView):
 
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
-        self.art: dict[int, object] = {}
+        self.heroes: dict[int, int] = {}
 
-    def set_art(self, art: dict) -> None:
-        self.art = art
+    def set_heroes(self, heroes: dict) -> None:
+        """Section index -> hero id. Ids rather than pixmaps, so the shared
+        scaled-portrait cache does the work instead of this repainting."""
+        self.heroes = heroes
         self.updateGeometries()
         self.viewport().update()
 
     def paintSection(self, painter, rect, index):   # noqa: N802 - Qt naming
-        art = self.art.get(index)
+        from .portraits import scaled
+        hero_id = self.heroes.get(index)
+        art = (scaled(hero_id, rect.width(), rect.height())
+               if hero_id is not None else None)
         if art is None:
             return super().paintSection(painter, rect, index)
         painter.save()
         painter.fillRect(rect, QColor(theme.BG_ELEVATED))
-        scaled = art.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation)
         painter.drawPixmap(
-            rect.left() + (rect.width() - scaled.width()) // 2,
-            rect.top() + (rect.height() - scaled.height()) // 2, scaled)
+            rect.left() + (rect.width() - art.width()) // 2,
+            rect.top() + (rect.height() - art.height()) // 2, art)
         painter.restore()
 
 
@@ -296,7 +322,8 @@ class MatrixTable(QWidget):
         self._short_names = compact and short_names
         self.caption.setVisible(not compact)
 
-    def set_icon_headers(self, on: bool = True, size: int = 34) -> None:
+    def set_icon_headers(self, on: bool = True,
+                         size: int = HEADER_ICON) -> None:
         """Head the rows and columns with the heroes' own portraits.
 
         The grid sits directly under the tiles it describes, so a column
@@ -376,7 +403,7 @@ class MatrixTable(QWidget):
             return
 
         from .portraits import portrait
-        size = getattr(self, "_icon_size", 34)
+        size = getattr(self, "_icon_size", HEADER_ICON)
         for ids, names, header, setter in (
                 ([i for i, _n in matrix.cols], cols,
                  self.table.horizontalHeader(),
@@ -384,7 +411,7 @@ class MatrixTable(QWidget):
                 ([i for i, _n in matrix.rows], rows,
                  self.table.verticalHeader(),
                  self.table.setVerticalHeaderItem)):
-            art_by_index = {}
+            by_index = {}
             for index, name in enumerate(names):
                 item = QTableWidgetItem()
                 art = portrait(ids[index]) if index < len(ids) else None
@@ -393,10 +420,10 @@ class MatrixTable(QWidget):
                     # name still has to say which hero this is.
                     item.setText(label(name))
                 else:
-                    art_by_index[index] = art
+                    by_index[index] = ids[index]
                     item.setToolTip(name)
                 setter(index, item)
             if isinstance(header, PortraitHeader):
-                header.set_art(art_by_index)
-        self.table.horizontalHeader().setFixedHeight(size + 8)
+                header.set_heroes(by_index)
+        self.table.horizontalHeader().setFixedHeight(size + 4)
         self.table.verticalHeader().setFixedWidth(size + 12)

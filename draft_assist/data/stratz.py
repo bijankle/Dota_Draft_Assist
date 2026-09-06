@@ -19,7 +19,6 @@ Every response is dumped to data_cache/raw/ and shape-validated loudly.
 
 import json
 import time
-from typing import Any
 
 import requests
 

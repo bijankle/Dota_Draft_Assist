@@ -30,6 +30,29 @@ NAME_MIN_PT = 7
 SEVERITY_COLOUR = {3: theme.BAD, 2: theme.WARN, 1: theme.TEXT_DIM}
 MAX_SHOWN = 8
 
+# Scaled copies, keyed by (item, box). Same reason as the portraits: a
+# smooth rescale inside paintEvent, for a picture that never changes, on
+# every repaint.
+_fitted_cache: dict[tuple[str, int, int], object] = {}
+
+
+def _fitted(item: str, width: int, height: int):
+    art = icon(item)
+    if art is None or width < 1 or height < 1:
+        return None
+    key = (item, width, height)
+    hit = _fitted_cache.get(key)
+    if hit is None:
+        hit = art.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+        _fitted_cache[key] = hit
+    return hit
+
+
+def forget_scaled() -> None:
+    """Drop the scaled copies — after an icon download, or in tests."""
+    _fitted_cache.clear()
+
 
 class ItemTile(QWidget):
     """One recommended item: its picture over its name.
@@ -60,13 +83,11 @@ class ItemTile(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         box = QRect(0, 0, ICON_W, ICON_H)
-        art = icon(self.advice.item)
+        art = _fitted(self.advice.item, box.width(), box.height())
         if art is not None:
-            scaled = art.scaled(box.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation)
-            painter.drawPixmap(box.left() + (box.width() - scaled.width()) // 2,
-                               box.top() + (box.height() - scaled.height()) // 2,
-                               scaled)
+            painter.drawPixmap(box.left() + (box.width() - art.width()) // 2,
+                               box.top() + (box.height() - art.height()) // 2,
+                               art)
         else:
             # No picture: a plain plate, not the name again.
             painter.fillRect(box, QColor(theme.BG_INPUT))

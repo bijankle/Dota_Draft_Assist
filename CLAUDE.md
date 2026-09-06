@@ -509,17 +509,42 @@ credentials, and put the account at risk. Do not go there.
   cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
   the bottom-right does the sizing. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
-- **The app icon is `assets/app.ico` if the user supplies one**
-  (`ui/appicon.py`), otherwise a drawn fallback. The user asked for
-  Warcraft III: The Frozen Throne's icon; that is Blizzard's artwork and
-  this project does not download or ship it. Their own file on their own
-  machine is a different thing, so the loader simply reads whatever is
-  there. The fallback is PAINTED rather than committed as a binary: the
-  repository stays free of image blobs nobody can diff, and it only has to
-  read as "this app" at 16 pixels. `tools/make_shortcut.py` (Setup ▸ Add to
-  the Start menu) writes a .lnk carrying that icon — a .bat cannot be
-  pinned usefully, because Windows pins the shell rather than the app and
-  the icon is the console's.
+- **The app icon has three sources and ships none of them**
+  (`ui/appicon.py`): `assets/app.ico` or `.png` if the user put one there,
+  else **Bloodseeker's portrait out of `assets/portraits/base/`**, else a
+  drawn fallback. The user asked first for the Frozen Throne icon and then
+  for Bloodseeker's; both are someone else's artwork and this repository
+  does not carry either. But the recogniser has ALREADY downloaded that
+  portrait onto their disk, by a step they ran themselves, and pointing a
+  window at a file that exists is not redistribution. The last-resort icon
+  is PAINTED rather than committed as a binary: no image blobs nobody can
+  diff, and it only has to read as "this app" at 16 pixels.
+  **The taskbar is a separate problem.** A Python process is grouped under
+  python.exe and shows Python's icon whatever `setWindowIcon` says, unless
+  it declares an AppUserModelID before the first window —
+  `claim_taskbar_identity`, called from `main`. `tools/make_shortcut.py`
+  (Setup ▸ Add to the Start menu) writes a .lnk carrying the icon; a .bat
+  cannot be pinned usefully, because Windows pins the shell rather than
+  the app and the icon is the console's.
+- **The refresh loop runs four times a second, so nothing in it may be
+  expensive.** Two things were, and both showed up as stutter over a live
+  game. `_update_debug` drew an overlay onto a full-resolution frame,
+  converted it to a QImage and smooth-scaled it — every tick, into a
+  widget on a hidden tab; it now returns immediately unless the view is
+  actually visible, and the hero-name map it needed is built once per
+  dataset rather than per tick. And every portrait and item icon was being
+  rescaled with a smooth transform INSIDE `paintEvent`, thirty widgets at a
+  time, for pictures that never change: `portraits.scaled` and
+  `item_row._fitted` cache by (id, size) and the caches clear with
+  `forget()`. A smooth rescale in a paint handler is the classic Qt
+  performance mistake; do not reintroduce it.
+- **The window has a minimum width, and it is derived rather than picked**
+  (`tables.minimum_grid_width`, `teams.minimum_panel_width`). Two things
+  compete for it: five matrix columns wide enough to print "+12.34"
+  without eliding, and five pick tiles wide enough to still show a
+  portrait. The floor is whichever needs more, doubled for the two halves.
+  Numbers that elide to "..." are a grid that has stopped being a grid,
+  and a tile with no room for art is not a picture of a hero.
 - **Update is a button that restarts the app** (`_update_and_restart`).
   Reloading in place works and `reload_backend` does it, but the restart is
   the only way to be certain nothing is still holding the old data, and the
