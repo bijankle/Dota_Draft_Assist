@@ -65,6 +65,7 @@ from .chrome import OverlayToggle, ResizeGrip, TitleBar
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
+from .framebox import FrameView
 from .item_row import ItemRow
 from .suggest_row import MAX_SHOWN as SuggestRow_MAX
 from .suggest_row import SuggestRow
@@ -188,6 +189,11 @@ class MainWindow(QMainWindow):
         # (side, hero id). Clicking it again clears it; it survives a
         # refresh but not the hero leaving the draft.
         self.focus: tuple[str, int] | None = None
+        # Rectangles drawn on the debug picture during drag calibration.
+        self._drag_rects: list[tuple[int, int, int, int]] = []
+        # A frame loaded from disk, so calibration does not need Dota to be
+        # on screen at the moment the user has time to do it.
+        self._still = None
         self.scored: list[scoring.ScoredHero] = []
         self.settings = ui_settings.load()
         self.overlay_toggle = OverlayToggle()
@@ -686,10 +692,10 @@ class MainWindow(QMainWindow):
         elay.addLayout(side_row)
         dlay.addWidget(state_card)
 
-        self.debug_image = QLabel("No frame captured yet.")
-        self.debug_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.debug_image = FrameView("No frame captured yet.")
         self.debug_image.setMinimumHeight(320)
         self.debug_image.setProperty("card", True)
+        self.debug_image.boxed.connect(self._on_box_dragged)
         dlay.addWidget(self.debug_image, 3)
 
         log_card, loglay = card("Recognition log")
@@ -731,12 +737,35 @@ class MainWindow(QMainWindow):
         # and restarting.
         cal_card, callay = card("Crop boxes")
         cal_note = QLabel(
-            "Nudge until the boxes sit on the hero portraits during hero "
-            "selection. Values are fractions of Dota's 16:9 HUD area, so "
-            "they hold across resolutions.")
+            "Press <b>Drag the boxes</b> and draw a rectangle round three "
+            "portraits in the picture above — the app works the rest out. "
+            "The numbers below are fractions of Dota's 16:9 HUD area, so "
+            "they hold across resolutions; nudge them if a box is a few "
+            "pixels out.")
         cal_note.setWordWrap(True)
         cal_note.setProperty("dim", True)
         callay.addWidget(cal_note)
+
+        self.drag_button = QPushButton("Drag the boxes onto the portraits")
+        self.drag_button.setProperty("accent", True)
+        self.drag_button.setCheckable(True)
+        self.drag_button.setToolTip(
+            "Draw a rectangle round one portrait at a time and the six "
+            "numbers fall out of it")
+        self.drag_button.toggled.connect(self._set_drag_calibration)
+        drag_row = QHBoxLayout()
+        drag_row.addWidget(self.drag_button, 1)
+        self.still_button = QPushButton("Use a saved picture…")
+        self.still_button.setToolTip(
+            "Calibrate from a frame saved earlier (Ctrl+S writes one) "
+            "instead of waiting for Dota to be on screen")
+        self.still_button.clicked.connect(self._choose_still)
+        drag_row.addWidget(self.still_button)
+        callay.addLayout(drag_row)
+        self.drag_label = QLabel("")
+        self.drag_label.setWordWrap(True)
+        self.drag_label.setProperty("dim", True)
+        callay.addWidget(self.drag_label)
         grid = QHBoxLayout()
         self.cal_spins = {}
         for field, label, step in (
@@ -1779,6 +1808,117 @@ class MainWindow(QMainWindow):
             "Crop boxes measured from this game and saved — recognition "
             "should work from here.", 12000)
 
+    # Three rectangles, in this order. LEFT and RIGHT rather than yours and
+    # theirs: Radiant is always the left bank of the pick bar, and which
+    # team the user is on has nothing to do with where the boxes go.
+    DRAG_STEPS = (
+        "Drag a rectangle round the FIRST portrait of the LEFT bank.",
+        "Now the LAST (fifth) portrait of the LEFT bank — that gives the "
+        "spacing.",
+        "Now the FIRST portrait of the RIGHT bank.",
+    )
+
+    def _choose_still(self) -> None:
+        """Calibrate from a frame saved earlier rather than a live one.
+
+        Dragging boxes onto portraits needs a picture of the portraits, and
+        waiting for Dota to be on screen to do it is a poor trade when the
+        user already has `frame_*.png` sitting in the debug folder from the
+        last time they pressed Ctrl+S.
+        """
+        if self._still is not None:
+            self._still = None
+            self.still_button.setText("Use a saved picture…")
+            self.drag_label.setText("Back to the live picture.")
+            return
+        path, _filter = QFileDialog.getOpenFileName(
+            self, "Pick a saved frame", str(DEBUG_OUT),
+            "Pictures (*.png *.jpg *.jpeg *.bmp)")
+        if not path:
+            return
+        import cv2
+        still = cv2.imread(path)
+        if still is None:
+            QMessageBox.warning(self, "Crop boxes",
+                                f"Could not read {Path(path).name}.")
+            return
+        self._still = still
+        self.still_button.setText("Back to the live picture")
+        self.drag_label.setText(
+            f"Showing {Path(path).name} ({still.shape[1]}x{still.shape[0]}). "
+            "Press \u201cDrag the boxes\u201d and draw on it.")
+        self._draw_still()
+
+    def _set_drag_calibration(self, on: bool) -> None:
+        """Calibrate by drawing on the picture instead of typing fractions.
+
+        Six numbers, each a fraction of Dota's 16:9 HUD box rather than of
+        the window, is not something anybody can convert "the boxes are 135
+        pixels too far left" into. The user could see exactly what was wrong
+        and had no way to say it.
+        """
+        self._drag_rects = []
+        self.debug_image.set_picking(on)
+        if not on:
+            self.drag_label.setText("")
+            return
+        # A still is drawn on demand rather than waiting for the refresh
+        # loop: the loop skips the debug view unless it is visible, and the
+        # user pressing this button is the proof that it is.
+        self._draw_still()
+        if self.debug_image.pixmap() is None or \
+                self.debug_image.pixmap().isNull():
+            self.drag_button.setChecked(False)
+            self.drag_label.setText(
+                "No picture to draw on yet — this needs Dota running and "
+                "captured. Check the capture source at the top of this tab.")
+            return
+        self.drag_label.setText(f"1 of 3 · {self.DRAG_STEPS[0]}")
+
+    def _on_box_dragged(self, x: int, y: int, width: int, height: int) -> None:
+        if not self.drag_button.isChecked():
+            return
+        self._drag_rects.append((x, y, width, height))
+        if len(self._drag_rects) < len(self.DRAG_STEPS):
+            step = len(self._drag_rects)
+            self.drag_label.setText(
+                f"{step + 1} of 3 · {self.DRAG_STEPS[step]}")
+            return
+
+        from ..vision import layout as layout_mod
+        frame = (self._still if self._still is not None
+                 else getattr(self.snapshot, "frame", None))
+        if frame is None:
+            self.drag_button.setChecked(False)
+            self.drag_label.setText("the frame went away — try again")
+            return
+        first, last, other = self._drag_rects
+        layout, note = layout_mod.layout_from_drags(
+            first, last, other, frame.shape[1], frame.shape[0],
+            self.layout_spec)
+        self.drag_button.setChecked(False)
+        if layout is None:
+            self.drag_label.setText(f"Not saved: {note}")
+            return
+        self.layout_spec = layout
+        session = getattr(self.provider, "session", None)
+        if session is not None:
+            session.layout = layout
+        for field, spin in self.cal_spins.items():
+            spin.blockSignals(True)
+            spin.setValue(getattr(layout, field))
+            spin.blockSignals(False)
+        self._force_redraw()
+        try:
+            layout_mod.save_calibration(layout)
+        except OSError as exc:
+            self.drag_label.setText(f"measured but could not save: {exc}")
+            return
+        self.drag_label.setText(
+            f"Saved — {note}. The boxes above should now sit on the "
+            "portraits; nudge the numbers if any is a pixel or two out.")
+        self.cal_label.setText(f"saved to {CALIBRATION_FILE.name}")
+
     def _set_calibration(self, field: str, value: float) -> None:
         """Live: the next frame is cropped with the new numbers, so the
         boxes in the picture move as the spin box turns."""
@@ -2444,6 +2584,14 @@ class MainWindow(QMainWindow):
         if not self.debug_image.isVisible():
             return
         set_log(self.timing_text, LOOP.report())
+        if self._draw_still():
+            set_log(self.debug_text,
+                    f"Calibrating from a saved picture "
+                    f"({self._still.shape[1]}x{self._still.shape[0]}). "
+                    "The boxes above are the current numbers.")
+            return
+        if snap is None:
+            return
         # Debug shows the RAW per-frame read (live confidences, flicker and
         # all); the draft panels show the stabilised one.
         read = snap.read_raw or snap.read
@@ -2458,12 +2606,7 @@ class MainWindow(QMainWindow):
         from ..vision.debug import draw_overlay
         overlay = draw_overlay(snap.frame, read, self._hero_names())
         h, w = overlay.shape[:2]
-        img = QImage(overlay.tobytes(), w, h, 3 * w,
-                     QImage.Format.Format_BGR888)
-        pix = QPixmap.fromImage(img).scaled(
-            self.debug_image.size(), Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation)
-        self.debug_image.setPixmap(pix)
+        self._show_picture(overlay)
         lines = [f"gate score: {snap.gate_score:.3f}   "
                  f"frames arrived: {snap.frames_arrived}   "
                  f"frame: {w}x{h}"]
@@ -2473,6 +2616,30 @@ class MainWindow(QMainWindow):
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
         set_log(self.debug_text, "\n".join(lines))
+
+    def _draw_still(self) -> bool:
+        """Put the loaded still on screen with the current boxes over it."""
+        if self._still is None:
+            return False
+        from ..vision.debug import draw_boxes
+        self._show_picture(draw_boxes(self._still, self.layout_spec))
+        return True
+
+    def _show_picture(self, picture) -> None:
+        """Put a BGR frame in the debug view, at the view's size.
+
+        The view is told the FRAME's own size as well, because a rectangle
+        dragged on it has to come back in frame pixels rather than in
+        whatever the fit happened to scale it to.
+        """
+        height, width = picture.shape[:2]
+        img = QImage(picture.tobytes(), width, height, 3 * width,
+                     QImage.Format.Format_BGR888)
+        self.debug_image.show_frame(
+            QPixmap.fromImage(img).scaled(
+                self.debug_image.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation),
+            width, height)
 
     def _copy_debug_log(self) -> None:
         """Everything needed to diagnose one game, in one paste.

@@ -86,6 +86,57 @@ class DraftLayout:
                         slot.y + self.role_dy, slot.w, self.role_h)
 
 
+def layout_from_drags(first, last, other, width: int, height: int,
+                      base: "DraftLayout | None" = None):
+    """Three dragged portrait rectangles -> the six numbers, or a reason.
+
+    `first` and `last` are the FIRST and FIFTH portraits of one bank, and
+    `other` is the first portrait of the other bank; each is (x, y, w, h)
+    in frame pixels. One portrait at a time, never a box around a whole
+    bank: a bank rectangle spans four pitches plus one portrait, which is
+    one equation for two unknowns, and the only way to close it is to guess
+    the gap between portraits. Four steps between first and fifth gives the
+    pitch outright.
+
+    Which bank is which is decided by x, not by what the user was asked
+    for: Radiant is always the left bank, so dragging them in the other
+    order is a mistake worth absorbing rather than reporting.
+
+    Returns (layout, note). `layout` is None when the rectangles cannot be
+    a pick bar.
+    """
+    base = base or DraftLayout()
+    left, span = hud_box(width, height)
+    if not span or not height:
+        return None, "the frame has no size"
+    if abs(last[0] - first[0]) < 8:
+        return None, ("the first and last portraits are in the same place — "
+                      "drag the FIFTH portrait of the bank, not the first "
+                      "one again")
+    pitch = abs(last[0] - first[0]) / 4.0
+    if pitch < first[2] * 0.5:
+        return None, ("those portraits overlap by more than half — the "
+                      "rectangles are probably not five slots apart")
+
+    bank, elsewhere = (first, other) if first[0] <= other[0] else (other, first)
+    layout = DraftLayout(
+        radiant_x=(bank[0] - left) / span,
+        dire_x=(elsewhere[0] - left) / span,
+        y=first[1] / height,
+        slot_w=first[2] / span,
+        slot_h=first[3] / height,
+        pitch=pitch / span,
+        role_dy=base.role_dy, role_h=base.role_h,
+    )
+    for name in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
+        value = getattr(layout, name)
+        if not 0.0 <= value <= 1.0:
+            return None, (f"{name} came out at {value:.3f}, which is off the "
+                          "frame — is one rectangle in the wrong place?")
+    return layout, (f"from your three rectangles: pitch {pitch:.0f}px, "
+                    f"portrait {first[2]:.0f}x{first[3]:.0f}px")
+
+
 def load_layout(calibration_file: Path = CALIBRATION_FILE) -> DraftLayout:
     layout = DraftLayout()
     if calibration_file.exists():

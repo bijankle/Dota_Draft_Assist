@@ -70,6 +70,25 @@ credentials, and put the account at risk. Do not go there.
    the top edge. Calibration nudges are fractional too, and are edited live
    in Debug ▸ Live with the boxes drawn on the picture.
 
+   **When measuring fails, the user DRAWS it** (`ui/framebox.py`,
+   `layout.layout_from_drags`). Six numbers, each a fraction of the HUD box
+   rather than of the window, is not something anyone can convert "the
+   boxes are 135 pixels left of the portraits" into — the user could see
+   exactly what was wrong and had no way to say it, which is where "how the
+   fuck do I calibrate these boxes" came from. Debug ▸ Live now takes three
+   dragged rectangles — the first portrait of the left bank, the fifth of
+   the left bank, the first of the right — and the six numbers fall out
+   with no assumptions: the first gives the origin and the size, the fifth
+   gives the pitch across four steps, the third gives the other bank.
+   ONE PORTRAIT AT A TIME, never a box round a whole bank: a bank spans
+   four pitches plus one portrait, which is one equation for two unknowns,
+   and closing it means guessing the gap between portraits. Which bank is
+   which is decided by x rather than by what was asked for, since Radiant
+   is always the left bank. **Use a saved picture…** loads a `frame_*.png`
+   off disk so this can be done without Dota on screen — the frames are
+   already there from Ctrl+S, and making calibration wait for a live game
+   is what made it never happen.
+
    **The layout is measured, not guessed** (`vision/autocal.py`). At
    strategy time the app holds a frame AND the ten heroes the minimap named
    in it, so it searches for those portraits by normalised cross-correlation
