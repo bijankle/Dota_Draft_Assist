@@ -71,23 +71,44 @@ credentials, and put the account at risk. Do not go there.
    in Debug ▸ Live with the boxes drawn on the picture.
 
    **When measuring fails, the user DRAWS it** (`ui/framebox.py`,
-   `layout.layout_from_drags`). Six numbers, each a fraction of the HUD box
-   rather than of the window, is not something anyone can convert "the
-   boxes are 135 pixels left of the portraits" into — the user could see
-   exactly what was wrong and had no way to say it, which is where "how the
-   fuck do I calibrate these boxes" came from. Debug ▸ Live now takes three
-   dragged rectangles — the first portrait of the left bank, the fifth of
-   the left bank, the first of the right — and the six numbers fall out
-   with no assumptions: the first gives the origin and the size, the fifth
-   gives the pitch across four steps, the third gives the other bank.
-   ONE PORTRAIT AT A TIME, never a box round a whole bank: a bank spans
-   four pitches plus one portrait, which is one equation for two unknowns,
-   and closing it means guessing the gap between portraits. Which bank is
-   which is decided by x rather than by what was asked for, since Radiant
-   is always the left bank. **Use a saved picture…** loads a `frame_*.png`
-   off disk so this can be done without Dota on screen — the frames are
-   already there from Ctrl+S, and making calibration wait for a live game
-   is what made it never happen.
+   `autocal.measure_bank` / `layout_from_banks`). Six numbers, each a
+   fraction of the HUD box rather than of the window, is not something
+   anyone can convert "the boxes are 135 pixels left of the portraits"
+   into — the user could see exactly what was wrong and had no way to say
+   it, which is where "how the fuck do I calibrate these boxes" came from.
+   Debug ▸ Live takes ONE BOX ROUND EACH BANK, either order, and measures
+   the rest.
+
+   A box round five portraits spans four pitches plus one portrait, which
+   is one equation for two unknowns — so a first attempt asked for three
+   rectangles (first portrait, fifth portrait, other bank) because the gap
+   between portraits could not be derived. It does not have to be derived:
+   it is IN THE PICTURE. Portrait content differs per hero and repeats
+   nothing, but the borders between them are the only periodic feature in
+   a pick bar, so `measure_bank` fits (start, pitch, width) against the
+   per-column edge profile and takes the fit that lands all ten predicted
+   boundaries on an edge. Scored on the sum AND the WEAKEST of the ten,
+   because the sum alone cannot tell the right fit from one whose portrait
+   width equals its pitch — that one puts every right edge on top of the
+   next left edge, scores the same five edges twice, and lands a whole
+   portrait out.
+
+   All four sides are FITTED, not taken from the drag, because nobody
+   draws a rectangle within a few pixels of anything and a span 2% wide
+   misplaces the fifth portrait by a tenth of a portrait. Horizontally
+   that is free — ten edges agree with each other. Vertically there are
+   only two, so the top and bottom are pulled towards the drawn box rather
+   than snapped hard onto whatever row edge happened to be strongest.
+   Measured against synthetic bars at four resolutions with the drags up
+   to 12px sloppy: within 3px horizontally, 6px vertically. A flat picture
+   fits nothing, so it falls back to five equal slots and SAYS SO rather
+   than reporting noise as a measurement. Which bank is which is decided
+   by x, since Radiant is always the left bank.
+
+   **Use a saved picture…** loads a `frame_*.png` off disk so this can be
+   done without Dota on screen — the frames are already there from Ctrl+S,
+   and making calibration wait for a live game is what made it never
+   happen.
 
    **The layout is measured, not guessed** (`vision/autocal.py`). At
    strategy time the app holds a frame AND the ten heroes the minimap named

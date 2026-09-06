@@ -737,8 +737,9 @@ class MainWindow(QMainWindow):
         # and restarting.
         cal_card, callay = card("Crop boxes")
         cal_note = QLabel(
-            "Press <b>Drag the boxes</b> and draw a rectangle round three "
-            "portraits in the picture above — the app works the rest out. "
+            "Press <b>Drag the boxes</b> and draw a rectangle round each "
+            "bank of five in the picture above — the app measures the rest "
+            "off the borders it can see. "
             "The numbers below are fractions of Dota's 16:9 HUD area, so "
             "they hold across resolutions; nudge them if a box is a few "
             "pixels out.")
@@ -750,8 +751,8 @@ class MainWindow(QMainWindow):
         self.drag_button.setProperty("accent", True)
         self.drag_button.setCheckable(True)
         self.drag_button.setToolTip(
-            "Draw a rectangle round one portrait at a time and the six "
-            "numbers fall out of it")
+            "Draw a box round each bank of five and the six numbers are "
+            "measured out of the picture")
         self.drag_button.toggled.connect(self._set_drag_calibration)
         drag_row = QHBoxLayout()
         drag_row.addWidget(self.drag_button, 1)
@@ -1808,14 +1809,15 @@ class MainWindow(QMainWindow):
             "Crop boxes measured from this game and saved — recognition "
             "should work from here.", 12000)
 
-    # Three rectangles, in this order. LEFT and RIGHT rather than yours and
-    # theirs: Radiant is always the left bank of the pick bar, and which
-    # team the user is on has nothing to do with where the boxes go.
+    # Two rectangles, one per bank, either order. It used to be three —
+    # first portrait, fifth portrait, other bank — because a box round a
+    # whole bank spans four pitches plus one portrait, which is one
+    # equation for two unknowns. The gap is now MEASURED off the picture
+    # instead (`autocal.measure_bank`), so the user draws the two boxes
+    # they were always going to draw.
     DRAG_STEPS = (
-        "Drag a rectangle round the FIRST portrait of the LEFT bank.",
-        "Now the LAST (fifth) portrait of the LEFT bank — that gives the "
-        "spacing.",
-        "Now the FIRST portrait of the RIGHT bank.",
+        "Drag a rectangle round ALL FIVE portraits of one bank.",
+        "Now round ALL FIVE of the other bank — either order is fine.",
     )
 
     def _choose_still(self) -> None:
@@ -1873,7 +1875,8 @@ class MainWindow(QMainWindow):
                 "No picture to draw on yet — this needs Dota running and "
                 "captured. Check the capture source at the top of this tab.")
             return
-        self.drag_label.setText(f"1 of 3 · {self.DRAG_STEPS[0]}")
+        self.drag_label.setText(
+            f"1 of {len(self.DRAG_STEPS)} · {self.DRAG_STEPS[0]}")
 
     def _on_box_dragged(self, x: int, y: int, width: int, height: int) -> None:
         if not self.drag_button.isChecked():
@@ -1882,20 +1885,19 @@ class MainWindow(QMainWindow):
         if len(self._drag_rects) < len(self.DRAG_STEPS):
             step = len(self._drag_rects)
             self.drag_label.setText(
-                f"{step + 1} of 3 · {self.DRAG_STEPS[step]}")
+                f"{step + 1} of {len(self.DRAG_STEPS)} · "
+                f"{self.DRAG_STEPS[step]}")
             return
 
-        from ..vision import layout as layout_mod
+        from ..vision import autocal, layout as layout_mod
         frame = (self._still if self._still is not None
                  else getattr(self.snapshot, "frame", None))
         if frame is None:
             self.drag_button.setChecked(False)
             self.drag_label.setText("the frame went away — try again")
             return
-        first, last, other = self._drag_rects
-        layout, note = layout_mod.layout_from_drags(
-            first, last, other, frame.shape[1], frame.shape[0],
-            self.layout_spec)
+        layout, note = autocal.layout_from_banks(
+            frame, self._drag_rects[0], self._drag_rects[1], self.layout_spec)
         self.drag_button.setChecked(False)
         if layout is None:
             self.drag_label.setText(f"Not saved: {note}")

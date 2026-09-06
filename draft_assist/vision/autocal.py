@@ -215,6 +215,208 @@ def layout_from(found: list[Located], width: int, height: int,
         f"{np.mean([i.score for i in found]):.2f}"))
 
 
+# How far outside a dragged rectangle to look for the real edges. A hand
+# drawn box is a few pixels out on every side, and a pitch derived from a
+# span that is 2% wide is 8% of a portrait out by the fifth one.
+SNAP = 14
+# The pitch is between a fifth and a quarter of a five-portrait bank: five
+# portraits with no gap is exactly a fifth, and anything wider than a
+# quarter would leave the fifth portrait outside the box.
+PITCH_LO, PITCH_HI = 1 / 6.0, 1 / 4.0
+# How much the weakest of a fit's ten predicted boundaries counts against
+# its total. Enough that "all ten land on an edge" beats "nine land on five
+# edges counted twice".
+WEAKEST_WEIGHT = 5.0
+
+
+def _edge_profile(grey) -> np.ndarray:
+    """Per-column edge strength: where the vertical borders are.
+
+    Portrait CONTENT is different for every hero, so nothing about it
+    repeats. The borders between portraits do, which is the only periodic
+    thing in a pick bar and therefore the only thing worth measuring.
+
+    A zero is prepended so index i means "the boundary at the left of
+    column i". `diff` puts the step between columns i and i+1 at i, which
+    would put every measured edge one pixel low.
+    """
+    if grey.shape[1] < 2:
+        return np.zeros(grey.shape[1], np.float32)
+    columns = np.abs(np.diff(grey.astype(np.float32), axis=1)).mean(axis=0)
+    return np.concatenate([[0.0], columns]).astype(np.float32)
+
+
+def _row_profile(grey) -> np.ndarray:
+    """The same thing horizontally, for the top and bottom edges."""
+    if grey.shape[0] < 2:
+        return np.zeros(grey.shape[0], np.float32)
+    rows = np.abs(np.diff(grey.astype(np.float32), axis=0)).mean(axis=1)
+    return np.concatenate([[0.0], rows]).astype(np.float32)
+
+
+def _tolerant(profile: np.ndarray, reach: int = 2) -> np.ndarray:
+    """Each position carries the strongest edge within `reach` of it.
+
+    So a fit is scored on whether it lands NEAR an edge rather than exactly
+    on one, which is what makes a hand-drawn box work, and it turns the
+    inner loop into an array index instead of a slice and a max.
+    """
+    if profile.size == 0:
+        return profile
+    out = profile.copy()
+    for shift in range(1, reach + 1):
+        out[:-shift] = np.maximum(out[:-shift], profile[shift:])
+        out[shift:] = np.maximum(out[shift:], profile[:-shift])
+    return out
+
+
+def measure_bank(frame, rect, slots: int = TEAM_SIZE):
+    """Fit five evenly spaced portraits inside a hand-drawn rectangle.
+
+    One box round a whole bank is, on its own, one equation for two
+    unknowns: the box spans four pitches plus one portrait, and the gap
+    between portraits could be anything. So the gap is MEASURED rather than
+    assumed — the borders are the strongest vertical edges in the strip,
+    and the fit that lands all ten of them on an edge is the right one.
+
+    The edges are fitted rather than taken from the drag, on all four
+    sides, because a hand-drawn box is several pixels out and a span 2% too
+    wide misplaces the fifth portrait by a tenth of a portrait. Returns
+    (x, y, w, h, pitch) in frame pixels, or None and a reason.
+    """
+    x, y, width, height = (int(v) for v in rect)
+    top = max(0, y - SNAP)
+    bottom = min(frame.shape[0], y + height + SNAP)
+    left = max(0, x - SNAP)
+    right = min(frame.shape[1], x + width + SNAP)
+    # Judged on the DRAG, not on the padded search window: the padding is
+    # ours and would let a twelve-pixel box look big enough.
+    if height < 8 or width < 8 * slots:
+        return None, "that rectangle is too small to hold five portraits"
+    if bottom - top < 8 or right - left < 8 * slots:
+        return None, "that rectangle falls outside the picture"
+    grey = _grey(frame)[top:bottom, left:right]
+    profile = _tolerant(_edge_profile(grey))
+    if profile.size < 8 * slots:
+        return None, "that rectangle is too small to measure"
+
+    span = float(width)
+    origin = x - left
+    starts = range(max(0, origin - SNAP), origin + SNAP + 1)
+    pitches = range(int(span * PITCH_LO), int(span * PITCH_HI) + 1)
+    best = None
+    for pitch in pitches:
+        for begin in starts:
+            lefts = begin + np.arange(slots) * pitch
+            if lefts.min() < 0 or lefts.max() >= profile.size:
+                continue
+            # Clip the widths that would run off the end rather than
+            # discarding the whole candidate: dropping a (start, pitch)
+            # pair because its WIDEST portrait overruns threw away the
+            # correct fit whenever the drag sat near the right of the
+            # search window, and the wrong fit that survived was a whole
+            # portrait out.
+            room = profile.size - 1 - lefts.max()
+            widths = np.arange(int(pitch * 0.60), min(pitch, room) + 1)
+            if not widths.size:
+                continue
+            rights = lefts[:, None] + widths[None, :]
+            edges = np.concatenate(
+                [np.repeat(profile[lefts][:, None], widths.size, axis=1),
+                 profile[rights]], axis=0)
+            # Sum AND the weakest of the ten. A fit is only right if EVERY
+            # boundary it predicts is on an edge, and the sum alone cannot
+            # tell that apart from a fit whose portrait width equals its
+            # pitch — that one predicts each right edge on top of the next
+            # left edge, scoring the same five edges twice and landing a
+            # whole portrait out.
+            scores = edges.sum(axis=0) + WEAKEST_WEIGHT * edges.min(axis=0)
+            index = int(np.argmax(scores))
+            if best is None or scores[index] > best[0]:
+                best = (float(scores[index]), begin, pitch,
+                        int(widths[index]))
+    if best is None:
+        return None, "no portrait edges found inside that rectangle"
+
+    score, begin, pitch, slot_w = best
+    # A flat picture fits nothing in particular, so the honest answer is
+    # the even split rather than whatever noise happened to win.
+    if score <= float(profile.mean()) * (2 * slots + WEAKEST_WEIGHT):
+        pitch = int(round(span / slots))
+        slot_w, begin = pitch, origin
+        note = ("no portrait borders stood out, so the bank was split into "
+                "five equal slots — check the boxes")
+    else:
+        note = f"{slots} portraits, {slot_w}px wide, {pitch}px apart"
+
+    # And the same fit vertically, so a box drawn a few pixels tall or
+    # short does not carry that error into every crop.
+    band = _tolerant(_row_profile(
+        grey[:, begin:begin + (slots - 1) * pitch + slot_w]))
+    y_origin, y_span = y - top, height
+    # Pulled towards the drawn box, so a weak or spurious row edge cannot
+    # drag the height ten pixels off. The horizontal fit needs no such
+    # anchor: it has ten edges agreeing with each other, and this has two.
+    anchor = float(band.mean()) * 0.08
+    best_y = None
+    for y0 in range(max(0, y_origin - SNAP), y_origin + SNAP + 1):
+        for y1 in range(y0 + max(8, y_span - SNAP), y0 + y_span + SNAP + 1):
+            if y1 >= band.size:
+                break
+            value = (float(band[y0] + band[y1])
+                     - anchor * (abs(y0 - y_origin) + abs(y1 - y0 - y_span)))
+            if best_y is None or value > best_y[0]:
+                best_y = (value, y0, y1 - y0)
+    if best_y is not None and best_y[0] > float(band.mean()) * 2:
+        _v, y_origin, y_span = best_y
+    return (left + begin, top + y_origin, slot_w, y_span, pitch), note
+
+
+def layout_from_banks(frame, first, second, base: DraftLayout | None = None):
+    """Two dragged bank rectangles -> the whole layout.
+
+    Which bank is which is decided by x, not by the order they were drawn:
+    Radiant is always the left bank of the pick bar.
+    """
+    base = base or DraftLayout()
+    if frame is None:
+        return None, "there is no picture to measure"
+    height, width = frame.shape[:2]
+    left_edge, span = hud_box(width, height)
+    if not span or not height:
+        return None, "the frame has no size"
+
+    banks = sorted((tuple(first), tuple(second)), key=lambda r: r[0])
+    measured, notes = [], []
+    for rect in banks:
+        fit, note = measure_bank(frame, rect)
+        if fit is None:
+            return None, note
+        measured.append(fit)
+        notes.append(note)
+
+    (lx, ly, lw, lh, lpitch), (rx, _ry, rw, _rh, rpitch) = measured
+    # Both banks are the same bar, so the pitch and the portrait size are
+    # one measurement made twice; averaging halves the error in a drag.
+    pitch = (lpitch + rpitch) / 2.0
+    slot_w = (lw + rw) / 2.0
+    layout = DraftLayout(
+        radiant_x=(lx - left_edge) / span,
+        dire_x=(rx - left_edge) / span,
+        y=ly / height,
+        slot_w=slot_w / span,
+        slot_h=lh / height,
+        pitch=pitch / span,
+        role_dy=base.role_dy, role_h=base.role_h,
+    )
+    for name in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
+        value = getattr(layout, name)
+        if not 0.0 <= value <= 1.0:
+            return None, (f"{name} came out at {value:.3f}, which is off the "
+                          "frame — is one rectangle in the wrong place?")
+    return layout, "; ".join(notes)
+
+
 def calibrate(frame, portraits: dict[int, np.ndarray],
               base: DraftLayout | None = None) -> Calibration:
     if frame is None or not portraits:
