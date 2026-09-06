@@ -10,7 +10,7 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt  # noqa: E402
+from PyQt6.QtCore import QPoint, Qt  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from draft_assist.config import RULES_FILE  # noqa: E402
@@ -185,10 +185,10 @@ def test_items_are_live_from_the_first_enemy_pick(window):
     # telling you to go and lock something first.
     assert "Lock your pick" not in window.item_row.message.text()
 
-    # Locking a pick refines the advice; it does not switch it on.
+    # Naming and locking a pick refines the advice; it does not switch it on.
     before = list(window.item_row.items)
-    window.my_hero_combo.setCurrentIndex(1)
-    window.lock_check.setChecked(True)
+    window._set_my_hero(window.team_buttons["ally"][0].property("hero_id"))
+    window._set_my_hero_locked(True)
     assert "Lock your pick" not in window.item_row.message.text()
     assert isinstance(before, list)
 
@@ -216,7 +216,10 @@ def test_role_highlight_changes_rows(window):
                    == HIGHLIGHT)
 
     assert highlighted() == 0          # no role selected yet
-    window.role_combo.setCurrentIndex(1)  # Carry
+    # The role now comes from the slot your own hero stands in, so setting
+    # it means naming your hero and giving that slot a position.
+    window._set_my_hero(window.team_buttons["ally"][0].property("hero_id"))
+    window._set_slot_role("ally", 0, "Pos 1")   # Carry
     assert highlighted() > 0
     # Highlighting is cosmetic: the full list is still present.
     assert window.table.rowCount() == total_rows
@@ -328,7 +331,7 @@ def test_banner_hidden_once_data_is_fresh(window):
 def test_menus_expose_every_maintenance_action(window):
     """Everything that used to be a .bat file is reachable from the menus."""
     menus = {m.title().replace("&", ""): m
-             for m in window.menuBar().findChildren(type(window.menuBar()
+             for m in window.menu_bar.findChildren(type(window.menu_bar
                                                          .addMenu("x")))}
     labels = {title: [a.text().replace("&", "") for a in menu.actions()]
               for title, menu in menus.items()}
@@ -465,122 +468,6 @@ def test_capture_controls_hidden_under_game_data(qapp):
 
 
 # ---- the always-on-top overlay -----------------------------------------
-
-def test_overlay_collapses_to_just_the_badge(qapp):
-    """Collapsed, the window must be the badge and nothing more, or an
-    invisible strip sits over the game swallowing clicks."""
-    from draft_assist.ui.overlay import BADGE_SIZE, PANEL_WIDTH, DraftOverlay
-
-    overlay = DraftOverlay(demo_dataset())
-    try:
-        overlay.show()
-        assert overlay.expanded
-        assert overlay.width() == PANEL_WIDTH
-        overlay.toggle()
-        assert not overlay.expanded
-        assert overlay.size().width() == BADGE_SIZE
-        assert overlay.size().height() == BADGE_SIZE
-        overlay.toggle()
-        assert overlay.width() == PANEL_WIDTH
-    finally:
-        overlay.close()
-
-
-def test_overlay_is_frameless_and_on_top(qapp):
-    from PyQt6.QtCore import Qt
-
-    from draft_assist.ui.overlay import DraftOverlay
-
-    overlay = DraftOverlay(demo_dataset())
-    try:
-        flags = overlay.windowFlags()
-        assert flags & Qt.WindowType.FramelessWindowHint
-        assert flags & Qt.WindowType.WindowStaysOnTopHint
-        # Must never steal keyboard focus from the game when it appears.
-        assert overlay.testAttribute(
-            Qt.WidgetAttribute.WA_ShowWithoutActivating)
-    finally:
-        overlay.close()
-
-
-def test_overlay_shows_ranked_heroes(qapp):
-    from draft_assist.model import scoring
-    from draft_assist.ui.overlay import DraftOverlay
-    from draft_assist.ui.providers import Snapshot
-
-    ds = demo_dataset()
-    overlay = DraftOverlay(ds, rows=4)
-    try:
-        draft = scoring.DraftState(allies=[1, 2], enemies=[11, 12],
-                                   my_role="carry")
-        scored = scoring.score_all(ds, draft)
-        snap = Snapshot(mode="draft", game_state="DOTA_GAMERULES_STATE_"
-                                                 "HERO_SELECTION")
-        overlay.update_content(snap, scored, draft)
-        visible = [l for l in overlay.row_labels if l.isVisibleTo(overlay)]
-        assert len(visible) == 4
-        assert scored[0].name in visible[0].text()
-        assert "%" in visible[0].text()
-        assert "Hero Selection" in overlay.state_label.text()
-        assert "4 picks known" in overlay.state_label.text()
-    finally:
-        overlay.close()
-
-
-def test_overlay_says_when_enemy_picks_are_missing(qapp):
-    from draft_assist.model import scoring
-    from draft_assist.ui.overlay import DraftOverlay
-    from draft_assist.ui.providers import Snapshot
-
-    ds = demo_dataset()
-    overlay = DraftOverlay(ds)
-    try:
-        draft = scoring.DraftState(allies=[1])
-        overlay.update_content(Snapshot(needs_manual=True),
-                               scoring.score_all(ds, draft), draft)
-        assert "not reported" in overlay.footer.text()
-    finally:
-        overlay.close()
-
-
-def test_overlay_toggle_persists_position_and_state(qapp, tmp_path,
-                                                    monkeypatch):
-    """Dragging it somewhere must survive a restart."""
-    from draft_assist.ui import settings as ui_settings
-
-    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "ui.json")
-    ds = demo_dataset()
-    win = make_window(qapp, ds)
-    monkeypatch.setattr(win, "settings", ui_settings.load())
-    try:
-        win.overlay_action.setChecked(True)
-        assert win.overlay is not None and win.overlay.isVisible()
-        win._remember_overlay_position(517, 233)
-        win.overlay.set_expanded(False)
-        win._remember_overlay_expanded(False)
-
-        stored = ui_settings.load(tmp_path / "ui.json")
-        assert stored["overlay_x"] == 517 and stored["overlay_y"] == 233
-        assert stored["overlay_expanded"] is False
-        assert stored["overlay_enabled"] is True
-
-        win._reset_overlay_position()
-        assert win.overlay.x() == 40
-    finally:
-        win.close()
-
-
-def test_overlay_closes_with_the_main_window(qapp, tmp_path, monkeypatch):
-    from draft_assist.ui import settings as ui_settings
-
-    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "ui.json")
-    win = make_window(qapp, demo_dataset())
-    monkeypatch.setattr(win, "settings", ui_settings.load())
-    win.overlay_action.setChecked(True)
-    overlay = win.overlay
-    win.close()
-    assert not overlay.isVisible()
-
 
 # ---- statistics bracket -------------------------------------------------
 
@@ -1174,7 +1061,7 @@ def test_menus_no_longer_offer_a_source_mode(window):
     """"Use game data" and "Use screen capture" were mutually exclusive
     commands from when the two were alternatives. They are not."""
     labels = []
-    for action in window.menuBar().actions():
+    for action in window.menu_bar.actions():
         menu = action.menu()
         if menu is None:
             continue
@@ -1190,10 +1077,10 @@ def test_menus_no_longer_offer_a_source_mode(window):
 
 
 def test_the_menu_bar_stays_small(window):
-    titles = [a.text().replace("&", "") for a in window.menuBar().actions()
+    titles = [a.text().replace("&", "") for a in window.menu_bar.actions()
               if a.menu() is not None]
     assert titles == ["Setup", "Game", "View", "Help"]
-    for action in window.menuBar().actions():
+    for action in window.menu_bar.actions():
         menu = action.menu()
         if menu is not None:
             visible = [a for a in menu.actions() if not a.isSeparator()]
@@ -1290,39 +1177,54 @@ def test_a_new_match_forgets_the_corrections(qapp):
 # ---- the matrices -------------------------------------------------------
 
 def test_matchup_matrix_is_allies_by_enemies(window):
-    """Plus one margin row and column: the grid says which pairing is bad,
-    the margins say which hero is."""
+    """No margin row or column any more: each tile carries that hero's
+    total in its own corner, and the same figure twice is once too many."""
     window.refresh()
     allies, enemies = filled(window, "ally"), filled(window, "enemy")
     table = window.matchup_matrix.table
-    assert table.rowCount() == len(allies) + 1
-    assert table.columnCount() == len(enemies) + 1
+    assert table.rowCount() == len(allies)
+    assert table.columnCount() == len(enemies)
+    # Portraits head the axes; without art downloaded they fall back to
+    # names, which is what runs here.
     assert [table.verticalHeaderItem(r).text()
-            for r in range(table.rowCount())] == allies + [TOTAL_LABEL]
+            for r in range(table.rowCount())] == allies
     assert [table.horizontalHeaderItem(c).text()
-            for c in range(table.columnCount())] == enemies + [TOTAL_LABEL]
+            for c in range(table.columnCount())] == enemies
     assert table.item(0, 0).text()          # every cell carries a value
 
 
-def test_matrix_totals_are_the_sums_of_what_is_drawn(window):
-    """A total nobody can check against the cells above it is worse than
-    no total at all."""
+def test_the_grids_sit_under_the_team_they_are_about(window):
+    """Synergy is ally-by-ally so it belongs under your five; counters are
+    read against theirs. A column then reads straight down from the tile
+    it describes."""
+    window.resize(1400, 900)
+    window.show()
+    QApplication.processEvents()
     window.refresh()
-    for matrix in (window.matchup_matrix, window.synergy_matrix):
-        table = matrix.table
-        last_row, last_col = table.rowCount() - 1, table.columnCount() - 1
-        for row in range(last_row):
-            cells = [_cell_value(table, row, c) for c in range(last_col)]
-            assert _cell_value(table, row, last_col) == pytest.approx(
-                sum(v for v in cells if v is not None))
-        for col in range(last_col):
-            cells = [_cell_value(table, r, col) for r in range(last_row)]
-            assert _cell_value(table, last_row, col) == pytest.approx(
-                sum(v for v in cells if v is not None))
-        every = [_cell_value(table, r, c)
-                 for r in range(last_row) for c in range(last_col)]
-        assert _cell_value(table, last_row, last_col) == pytest.approx(
-            sum(v for v in every if v is not None))
+    QApplication.processEvents()
+    left = window.synergy_matrix.mapTo(window, window.synergy_matrix.pos()).x()
+    right = window.matchup_matrix.mapTo(window,
+                                        window.matchup_matrix.pos()).x()
+    assert left < right, "synergy must sit under your five, counters theirs"
+    assert (window.team_panels["ally"].mapTo(window, QPoint()).x()
+            < window.team_panels["enemy"].mapTo(window, QPoint()).x())
+
+
+def test_the_margins_can_be_turned_off_and_on(qapp):
+    """The main window drops them because the tiles carry the totals; the
+    in-game callout keeps them, so the switch has to work both ways."""
+    from draft_assist.model import scoring
+    from draft_assist.ui.tables import MatrixTable
+    table = MatrixTable()
+    matrix = scoring.Matrix(rows=[(1, "A"), (2, "B")], cols=[(3, "C")],
+                            cells=[[0.01], [-0.02]])
+    table.set_margins(False)
+    table.show_matrix(matrix)
+    assert (table.table.rowCount(), table.table.columnCount()) == (2, 1)
+    table.set_margins(True)
+    table.show_matrix(matrix)
+    assert (table.table.rowCount(), table.table.columnCount()) == (3, 2)
+    assert _cell_value(table.table, 0, 1) == pytest.approx(0.01)
 
 
 def _cell_value(table, row, col):
@@ -1337,7 +1239,7 @@ def test_synergy_matrix_shows_each_pair_once(window):
     window.refresh()
     allies = filled(window, "ally")
     table = window.synergy_matrix.table
-    assert table.rowCount() == table.columnCount() == len(allies) + 1
+    assert table.rowCount() == table.columnCount() == len(allies)
     pairs = [(r, c) for r in range(len(allies)) for c in range(len(allies))
              if table.item(r, c).text()]
     assert len(pairs) == len(allies) * (len(allies) - 1) // 2
@@ -1558,7 +1460,7 @@ def test_replaying_a_session_is_a_button_on_the_recording(qapp, monkeypatch,
         assert ran["arg"] == str(folder / "gsi")
 
         labels = []
-        for action in window.menuBar().actions():
+        for action in window.menu_bar.actions():
             menu = action.menu()
             if menu is not None:
                 labels += [a.text().replace("&", "") for a in menu.actions()]
@@ -1703,92 +1605,7 @@ def test_a_hero_leaving_the_draft_drops_the_focus(window):
 
 # ---- the overlay toggle drives both overlays ----------------------------
 
-def test_the_overlay_tick_brings_the_in_game_numbers_too(window):
-    """One tick, one feature: the badge and the numbers under the portraits
-    are the same thing to the person using them."""
-    window.refresh()
-    window._set_overlay(True)
-    try:
-        assert window.portrait_overlay is not None
-        assert window.portrait_overlay.isVisible()
-    finally:
-        window._set_overlay(False)
-    assert not window.portrait_overlay.isVisible()
-
-
-def test_hiding_the_overlay_relocks_the_anchors(window):
-    """An overlay put away while unlocked would come back swallowing clicks
-    that belong to Dota."""
-    window.refresh()
-    window._set_overlay(True)
-    window.unlock_anchors_action.setChecked(True)
-    assert window.portrait_overlay.unlocked
-    window._set_overlay(False)
-    assert not window.portrait_overlay.unlocked
-    assert not window.unlock_anchors_action.isChecked()
-
-
-def test_unlocking_with_no_overlay_says_so_rather_than_doing_nothing(window):
-    window.refresh()
-    assert window.portrait_overlay is None
-    window.unlock_anchors_action.setChecked(True)
-    assert not window.unlock_anchors_action.isChecked()
-
-
-def test_the_in_game_numbers_follow_the_screen_banks_not_the_teams(window):
-    """left/right is a fact about pixels; ally/enemy is a fact about the
-    draft. The overlay hangs off the crop boxes, so it has to use the
-    former — putting your team's numbers over their portraits would be
-    worse than showing none."""
-    window.refresh()
-    window._set_overlay(True)
-    try:
-        snap = window.snapshot
-        window.team_buttons["ally"][0].click()
-        overlay = window.portrait_overlay
-        for bank, ids in ((overlay.left, snap.left),
-                          (overlay.right, snap.right)):
-            assert len(bank) == 5
-            assert sum(v is not None for v in bank) <= len(ids)
-    finally:
-        window._set_overlay(False)
-
-
 # ---- the badge is the mid-draft switch ----------------------------------
-
-def test_collapsing_the_badge_takes_the_in_game_numbers_with_it(window):
-    """The badge is the only part of the overlay visible from inside Dota,
-    so it has to be the switch — a menu tick you cannot see mid-draft is
-    not a toggle."""
-    window.refresh()
-    window._set_overlay(True)
-    try:
-        assert window.overlay.expanded
-        assert window.portrait_overlay.isVisible()
-        window.overlay.set_expanded(False)
-        assert not window.portrait_overlay.isVisible()
-        window.overlay.set_expanded(True)
-        assert window.portrait_overlay.isVisible()
-    finally:
-        window._set_overlay(False)
-
-
-def test_the_callout_carries_both_grids(window):
-    """Mid-draft the callout is the only surface being looked at, and a
-    ranked list does not answer which lane loses."""
-    window.refresh()
-    window._set_overlay(True)
-    try:
-        draft = window._current_draft()
-        assert window.overlay.matchup_matrix.table.rowCount() == \
-            len(draft.allies) + 1
-        assert window.overlay.synergy_matrix.table.columnCount() == \
-            len(draft.allies) + 1
-        # No caption: in the callout that space belongs to the grid.
-        assert window.overlay.matchup_matrix.caption.isHidden()
-    finally:
-        window._set_overlay(False)
-
 
 # ---- fixing the team split ----------------------------------------------
 
@@ -1851,13 +1668,134 @@ def test_the_main_grids_carry_no_explanatory_caption(window):
             "the main-window grid should fill its card, not a fitted height"
 
 
-def test_the_callout_grids_stay_cramped(window):
-    """The fitted height and short names are the callout's layout, not
-    every caption-less one."""
-    window.refresh()
+
+
+# ---- the window IS the overlay -----------------------------------------
+
+def test_the_window_is_frameless_see_through_and_on_top(window):
+    """Three overlays became one. Windows' own title bar read as a
+    different program bolted on top of a dark app, and a window that is
+    not see-through and not on top cannot sit over a game."""
+    flags = window.windowFlags()
+    assert flags & Qt.WindowType.FramelessWindowHint
+    assert flags & Qt.WindowType.WindowStaysOnTopHint
+    assert 0.0 < window.windowOpacity() <= 1.0
+
+
+def test_the_toggle_hides_and_shows_the_window(window):
+    window.show()
+    QApplication.processEvents()
+    window._set_overlay(False)
+    assert not window.isVisible()
+    assert not window.overlay_toggle.isChecked()
     window._set_overlay(True)
-    try:
-        table = window.overlay.matchup_matrix.table
-        assert table.maximumHeight() == table.minimumHeight()
-    finally:
-        window._set_overlay(False)
+    assert window.isVisible()
+    assert window.overlay_toggle.isChecked()
+
+
+def test_the_toggle_stays_on_screen_when_the_window_is_hidden(window):
+    """It is the only way back — closing it with the window would strand
+    the app running and invisible."""
+    window.show()
+    QApplication.processEvents()
+    window._set_overlay(False)
+    assert not window.overlay_toggle.isHidden()
+
+
+def test_the_toggle_position_is_remembered(window):
+    window._remember_toggle_position(321, 210)
+    assert window.settings["toggle_x"] == 321
+    assert window.settings["toggle_y"] == 210
+
+
+def test_opacity_is_remembered(window):
+    """Qt stores opacity as an 8-bit value, so it comes back within a
+    step of what was asked for rather than exactly."""
+    window._set_see_through(0.55)
+    assert window.windowOpacity() == pytest.approx(0.55, abs=0.01)
+    assert window.settings["overlay_opacity"] == pytest.approx(0.55)
+
+
+def test_reset_rescues_a_window_dragged_off_screen(window):
+    """A frameless window has no system menu, so the app has to offer the
+    way back itself."""
+    window.move(-4000, -4000)
+    window.overlay_toggle.move(-4000, -4000)
+    window._reset_overlay_position()
+    assert window.x() >= 0 and window.y() >= 0
+    assert window.overlay_toggle.x() >= 0
+
+
+def test_the_title_bar_carries_the_window_buttons(window):
+    """Frameless means minimise, maximise and close are ours to draw."""
+    bar = window.title_bar
+    assert bar.findChild(type(bar.icon)) is not None
+    names = {child.objectName() for child in bar.children()}
+    assert {"win_min", "win_max", "win_close"} <= names
+
+
+def test_the_toggle_closes_with_the_window(window):
+    window.show()
+    QApplication.processEvents()
+    window.close()
+    assert window.overlay_toggle.isHidden()
+
+
+def test_the_update_button_only_restarts_after_a_pull_that_worked(window):
+    """Relaunching after a failure would close the dialog showing the
+    error, and every other task must not restart the app at all."""
+    calls = []
+    window._relaunch = lambda: calls.append("restart")
+
+    class FakeDialog:
+        def __init__(self, key, ok):
+            self.task = type("T", (), {"key": key, "reload_after": False})()
+            self.succeeded = ok
+
+    window._restart_after_task = "update_data"
+    window._task_finished(FakeDialog("tune", True))          # another task
+    assert calls == []
+    window._task_finished(FakeDialog("update_data", False))  # it failed
+    assert calls == []
+    window._restart_after_task = "update_data"
+    window._task_finished(FakeDialog("update_data", True))
+    assert calls == ["restart"]
+
+
+def test_reloading_forgets_the_picture_caches(window, monkeypatch):
+    """Both caches index their folder once and remember it was empty, so a
+    download while the app is running would otherwise never appear — which
+    is what "I ran the update and the icons are still blank" looks like."""
+    from draft_assist.ui import item_icons, portraits
+    forgotten = []
+    monkeypatch.setattr(portraits, "forget",
+                        lambda: forgotten.append("portraits"))
+    monkeypatch.setattr(item_icons, "forget",
+                        lambda: forgotten.append("items"))
+    window.reload_backend()
+    assert set(forgotten) == {"portraits", "items"}
+
+
+def test_role_and_own_pick_come_off_the_tile_not_a_dropdown(window):
+    """Two dropdowns naming the hero a second time was a worse way to say
+    something the tile already shows."""
+    window.refresh()
+    assert not hasattr(window, "role_combo")
+    assert not hasattr(window, "my_hero_combo")
+    hero = window.team_buttons["ally"][0].property("hero_id")
+    window._set_my_hero(hero)
+    window._set_slot_role("ally", 0, "Pos 1")
+    assert window._my_hero() == hero
+    assert window._my_role() == "carry"
+    # The role follows the hero, not the slot number, if it moves.
+    window._set_slot_role("ally", 0, None)
+    assert window._my_role() is None
+
+
+def test_your_own_hero_must_still_be_in_the_draft(window):
+    window.refresh()
+    window._set_my_hero(window.team_buttons["ally"][0].property("hero_id"))
+    window._set_my_hero_locked(True)
+    window._on_draft_changed([], [], 10)
+    assert window._my_hero() is None
+    assert not window.my_hero_locked

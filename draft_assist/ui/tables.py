@@ -13,7 +13,7 @@ Two things live here that Qt does not give for free:
   the rows are then laid side by side.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
                              QTableWidget, QTableWidgetItem,
@@ -206,6 +206,39 @@ def _total_item(value: float) -> QTableWidgetItem:
     return item
 
 
+class PortraitHeader(QHeaderView):
+    """A header that draws hero portraits, because Qt will not.
+
+    A QHeaderView under a stylesheet ignores `iconSize` and falls back to
+    the style's small-icon metric — 16 pixels, whatever you asked for — so
+    an icon set on the header item comes out a third of the size and there
+    is no property that changes it. Painting the pixmap here is the only
+    reliable way, and it is a dozen lines.
+    """
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self.art: dict[int, object] = {}
+
+    def set_art(self, art: dict) -> None:
+        self.art = art
+        self.updateGeometries()
+        self.viewport().update()
+
+    def paintSection(self, painter, rect, index):   # noqa: N802 - Qt naming
+        art = self.art.get(index)
+        if art is None:
+            return super().paintSection(painter, rect, index)
+        painter.save()
+        painter.fillRect(rect, QColor(theme.BG_ELEVATED))
+        scaled = art.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+        painter.drawPixmap(
+            rect.left() + (rect.width() - scaled.width()) // 2,
+            rect.top() + (rect.height() - scaled.height()) // 2, scaled)
+        painter.restore()
+
+
 class MatrixTable(QWidget):
     """A drafted-hero grid: allies against enemies, or allies with allies.
 
@@ -226,6 +259,10 @@ class MatrixTable(QWidget):
         self.table = QTableWidget(0, 0)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.table.setHorizontalHeader(
+            PortraitHeader(Qt.Orientation.Horizontal, self.table))
+        self.table.setVerticalHeader(
+            PortraitHeader(Qt.Orientation.Vertical, self.table))
         layout.addWidget(self.table, 1)
         self.empty_note = QLabel("")
         self.empty_note.setWordWrap(True)
@@ -259,23 +296,39 @@ class MatrixTable(QWidget):
         self._short_names = compact and short_names
         self.caption.setVisible(not compact)
 
+    def set_icon_headers(self, on: bool = True, size: int = 34) -> None:
+        """Head the rows and columns with the heroes' own portraits.
+
+        The grid sits directly under the tiles it describes, so a column
+        headed by the same picture as the tile above it reads straight
+        down; a name repeated in a narrow header does not. Falls back to
+        the name for any hero whose portrait has not been downloaded.
+        """
+        self._icon_headers = on
+        self._icon_size = size
+
+    def set_margins(self, on: bool) -> None:
+        """Draw the Sigma row and column, or leave them off.
+
+        Off where each hero's own tile already carries its total: the same
+        figure in two places, one of them in the corner of a grid, is one
+        place too many.
+        """
+        self._margins = on
+
     def show_matrix(self, matrix, empty_text: str = "") -> None:
         self.caption.setText(matrix.caption)
         self.caption.setVisible(not getattr(self, "_compact", False))
         self.empty_note.setText("" if not matrix.empty else empty_text)
         self.empty_note.setVisible(bool(matrix.empty and empty_text))
         self.table.setVisible(not matrix.empty)
-        # One extra row and column for the totals: the grid says which
-        # pairing is bad, the margins say which HERO is, which is the
-        # question you act on when you still have a pick to make.
-        self.table.setRowCount(len(matrix.rows) + 1)
-        self.table.setColumnCount(len(matrix.cols) + 1)
-        label = (short_name if getattr(self, "_short_names", False)
-                 else (lambda n: n))
-        self.table.setHorizontalHeaderLabels(
-            [label(n) for _i, n in matrix.cols] + [TOTAL_LABEL])
-        self.table.setVerticalHeaderLabels(
-            [label(n) for _i, n in matrix.rows] + [TOTAL_LABEL])
+
+        margins = getattr(self, "_margins", True)
+        extra = 1 if margins else 0
+        self.table.setRowCount(len(matrix.rows) + extra)
+        self.table.setColumnCount(len(matrix.cols) + extra)
+        self._set_headers(matrix, margins)
+
         for row, line in enumerate(matrix.cells):
             for col, value in enumerate(line):
                 if value is None:
@@ -284,12 +337,14 @@ class MatrixTable(QWidget):
                 else:
                     item = delta_item(value)
                 self.table.setItem(row, col, item)
-        last_col, last_row = len(matrix.cols), len(matrix.rows)
-        for row, value in enumerate(matrix.row_totals):
-            self.table.setItem(row, last_col, _total_item(value))
-        for col, value in enumerate(matrix.col_totals):
-            self.table.setItem(last_row, col, _total_item(value))
-        self.table.setItem(last_row, last_col, _total_item(matrix.total))
+        if margins:
+            last_col, last_row = len(matrix.cols), len(matrix.rows)
+            for row, value in enumerate(matrix.row_totals):
+                self.table.setItem(row, last_col, _total_item(value))
+            for col, value in enumerate(matrix.col_totals):
+                self.table.setItem(last_row, col, _total_item(value))
+            self.table.setItem(last_row, last_col, _total_item(matrix.total))
+
         header = self.table.horizontalHeader()
         header.setStretchLastSection(False)
         # Fixed narrow columns and a height fitted to the rows are the
@@ -298,17 +353,50 @@ class MatrixTable(QWidget):
         cramped = getattr(self, "_short_names", False)
         for col in range(self.table.columnCount()):
             if cramped:
-                header.setSectionResizeMode(
-                    col, QHeaderView.ResizeMode.Fixed)
+                header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
                 self.table.setColumnWidth(col, COMPACT_COLUMN)
             else:
-                # Stretch, not fit-to-contents: the totals column is the
-                # one that must never be the one pushed off the right edge,
-                # and a name elided by a few pixels costs less than a
-                # horizontal scrollbar between the reader and the sum.
-                header.setSectionResizeMode(
-                    col, QHeaderView.ResizeMode.Stretch)
+                # Stretch, not fit-to-contents: a column pushed off the
+                # right edge costs more than a name elided by a few pixels.
+                header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents)
         if cramped:
             self._fit_height()
+
+    def _set_headers(self, matrix, margins: bool) -> None:
+        icons = getattr(self, "_icon_headers", False)
+        label = (short_name if getattr(self, "_short_names", False)
+                 else (lambda n: n))
+        cols = [n for _i, n in matrix.cols] + ([TOTAL_LABEL] if margins else [])
+        rows = [n for _i, n in matrix.rows] + ([TOTAL_LABEL] if margins else [])
+        if not icons:
+            self.table.setHorizontalHeaderLabels([label(n) for n in cols])
+            self.table.setVerticalHeaderLabels([label(n) for n in rows])
+            return
+
+        from .portraits import portrait
+        size = getattr(self, "_icon_size", 34)
+        for ids, names, header, setter in (
+                ([i for i, _n in matrix.cols], cols,
+                 self.table.horizontalHeader(),
+                 self.table.setHorizontalHeaderItem),
+                ([i for i, _n in matrix.rows], rows,
+                 self.table.verticalHeader(),
+                 self.table.setVerticalHeaderItem)):
+            art_by_index = {}
+            for index, name in enumerate(names):
+                item = QTableWidgetItem()
+                art = portrait(ids[index]) if index < len(ids) else None
+                if art is None:
+                    # No portrait downloaded, or the margin column: the
+                    # name still has to say which hero this is.
+                    item.setText(label(name))
+                else:
+                    art_by_index[index] = art
+                    item.setToolTip(name)
+                setter(index, item)
+            if isinstance(header, PortraitHeader):
+                header.set_art(art_by_index)
+        self.table.horizontalHeader().setFixedHeight(size + 8)
+        self.table.verticalHeader().setFixedWidth(size + 12)

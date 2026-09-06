@@ -65,6 +65,17 @@ TASKS = {
         needs_network=True,
         reload_after=True,
     ),
+    "make_shortcut": Task(
+        key="make_shortcut",
+        title="Add to the Start menu",
+        steps=[[PY, "tools/make_shortcut.py"]],
+        blurb=("Creates a Start-menu shortcut you can pin. A .bat cannot be "
+               "pinned usefully — Windows pins the shell rather than the "
+               "app, and the icon is the console's — so this makes a proper "
+               ".lnk that carries the app's own icon and opens without a "
+               "console window. Windows only; nothing outside your own "
+               "Start menu is touched."),
+    ),
     "tune": Task(
         key="tune",
         title="Tune recognition",

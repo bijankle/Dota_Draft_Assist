@@ -37,10 +37,11 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QImage, QKeySequence, QPi
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-                             QMainWindow, QMessageBox, QPlainTextEdit,
+                             QMainWindow, QMenuBar, QMessageBox,
+                             QPlainTextEdit,
                              QDoubleSpinBox, QListWidget,
                              QPushButton,
-                             QScrollArea, QSplitter,
+                             QScrollArea, QSlider, QSplitter,
                              QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextBrowser,
                              QToolBar, QVBoxLayout, QWidget)
@@ -57,12 +58,13 @@ from . import settings as ui_settings
 from .. import record as record_mod
 from . import theme
 from .bracket_dialog import BracketDialog
+from . import appicon
+from .chrome import OverlayToggle, ResizeGrip, TitleBar
 from .hero_picker import HeroPickerDialog
 from . import item_icons
+from . import portraits
 from .item_row import ItemRow
 from .manual import ManualDraft
-from .overlay import DraftOverlay
-from .portrait_overlay import PortraitOverlay
 from .tables import BreakdownPanel, MatrixTable, ValueItem
 from .task_dialog import TaskDialog
 from .teams import TeamPanel
@@ -80,6 +82,10 @@ ROLE_TAGS = {
 ROLE_LABELS = [("(no role)", None), ("Carry (1)", "carry"), ("Mid (2)", "mid"),
                ("Offlane (3)", "offlane"), ("Soft support (4)", "soft_support"),
                ("Hard support (5)", "hard_support")]
+# The slot menu says "Pos 1"; the scoring layer says "carry". One mapping,
+# in one place, so the two cannot drift apart.
+ROLE_BY_LABEL = {"Pos 1": "carry", "Pos 2": "mid", "Pos 3": "offlane",
+                 "Pos 4": "soft_support", "Pos 5": "hard_support"}
 HIGHLIGHT = QColor(theme.HIGHLIGHT_ROW)
 
 
@@ -127,6 +133,13 @@ class MainWindow(QMainWindow):
         # so nothing sets these automatically yet.
         self.slot_roles = {"ally": [None] * 5,
                            "enemy": [None] * 5}
+        # Your own hero and whether it is locked, set from the tile's menu
+        # rather than a dropdown. A hero id, not a slot: the slot it stands
+        # in can change under it.
+        self.my_hero_id: int | None = None
+        self.my_hero_locked = False
+        # Set to a task key by the Update button; cleared when that task ends.
+        self._restart_after_task = ""
         self._swap_match = ""
         # hero id -> "ally"/"enemy", for one hero put on the wrong
         # side. Cleared with the swap when the match changes.
@@ -146,17 +159,28 @@ class MainWindow(QMainWindow):
         self.focus: tuple[str, int] | None = None
         self.scored: list[scoring.ScoredHero] = []
         self.settings = ui_settings.load()
-        self.overlay: DraftOverlay | None = None
-        self.portrait_overlay: PortraitOverlay | None = None
+        self.overlay_toggle = OverlayToggle()
+        self.overlay_toggle.toggled.connect(self._set_overlay)
+        self.overlay_toggle.moved.connect(self._remember_toggle_position)
+        self.overlay_toggle.move(int(self.settings.get("toggle_x", 24)),
+                                 int(self.settings.get("toggle_y", 24)))
         self.setWindowTitle("Dota Draft Assist")
+        self.setWindowIcon(appicon.icon())
+        # Frameless: Windows' own title bar is a white strip above a dark
+        # app and reads as a different program bolted on top. The cost is
+        # that the drag and the resize corner have to be put back by hand,
+        # which `ui/chrome.py` does.
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint
+                            | Qt.WindowType.WindowStaysOnTopHint)
         self.resize(1240, 820)
         self._build_menus()
         self._build()
         self._refresh_sources()
         self._sync_source_controls()
         self._update_first_run_banner()
-        if self.settings.get("overlay_enabled"):
-            self._set_overlay(True)
+        self.setWindowOpacity(
+            float(self.settings.get("overlay_opacity", 0.7)))
+        self.overlay_toggle.show()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
@@ -173,7 +197,11 @@ class MainWindow(QMainWindow):
         return action
 
     def _build_menus(self) -> None:
-        bar = self.menuBar()
+        # NOT self.menuBar(): QMainWindow puts that above the central
+        # widget, which would leave a menu strip sitting on top of our own
+        # title bar. It goes inside the bar instead, the way Steam does it.
+        bar = QMenuBar()
+        self.menu_bar = bar
 
         setup_menu = bar.addMenu("&Setup")
         self._act(setup_menu, "&Update statistics and portraits…",
@@ -181,6 +209,9 @@ class MainWindow(QMainWindow):
                   "Download the latest hero statistics and portraits")
         self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
                   None, "Which ranks the statistics are drawn from")
+        self._act(setup_menu, "&Add to the Start menu",
+                  lambda: self.run_task("make_shortcut"), None,
+                  "Make a pinnable shortcut with the app's own icon")
         setup_menu.addSeparator()
         self._act(setup_menu, "&Set up game data (GSI)…", self._install_gsi,
                   None, "Install Dota's Game State Integration config")
@@ -208,23 +239,12 @@ class MainWindow(QMainWindow):
         self.overlay_action.setCheckable(True)
         self.overlay_action.setShortcut(QKeySequence("Ctrl+O"))
         self.overlay_action.setStatusTip(
-            "Over Dota: the recommendation badge, and the synergy and "
-            "counter numbers under the ten portraits")
+            "Show or hide the draft window. It sits over Dota, "
+            "see-through, and the floating button brings it back.")
         self.overlay_action.toggled.connect(self._set_overlay)
         view_menu.addAction(self.overlay_action)
-        # The crop boxes are calibrated per user and can be out, so the
-        # numbers that hang off them have to be movable by hand.
-        self.unlock_anchors_action = QAction("&Unlock overlay anchors", self)
-        self.unlock_anchors_action.setCheckable(True)
-        self.unlock_anchors_action.setStatusTip(
-            "Drag the in-game numbers into place. While unlocked the "
-            "overlay takes the mouse instead of passing it to Dota.")
-        self.unlock_anchors_action.toggled.connect(self._set_unlock_anchors)
-        view_menu.addAction(self.unlock_anchors_action)
-        self._act(view_menu, "&Reset overlay position",
+        self._act(view_menu, "&Reset window position",
                   self._reset_overlay_position)
-        self._act(view_menu, "Reset in-game &number position",
-                  self._reset_portrait_anchors)
         view_menu.addSeparator()
         self._act(view_menu, "Re&load data and library", self.reload_backend,
                   "F5", "Re-read the downloaded data from disk")
@@ -267,9 +287,11 @@ class MainWindow(QMainWindow):
 
     # ---- widgets -----------------------------------------------------
     def _build(self) -> None:
+        # Built here, added to the shell below the title bar rather than
+        # through addToolBar — same reason as the menu bar.
         toolbar = QToolBar()
         toolbar.setMovable(False)
-        self.addToolBar(toolbar)
+        toolbar.setFloatable(False)
         # Recording is one button because it is one action. It used to be a
         # menu tick for payloads, a separate probe for frames and Ctrl+S for
         # snapshots, in three folders — so the evidence for any one game was
@@ -306,6 +328,14 @@ class MainWindow(QMainWindow):
             lambda: open_folder(RECORDINGS_DIR))
         toolbar.addWidget(self.open_recordings_button)
 
+        self.update_button = QPushButton("Update")
+        self.update_button.setMinimumHeight(32)
+        self.update_button.setToolTip(
+            "Download the latest statistics, portraits and item icons, "
+            "then restart the app so all of it is in use")
+        self.update_button.clicked.connect(self._update_and_restart)
+        toolbar.addWidget(self.update_button)
+
         self.report_button = QPushButton("Report")
         self.report_button.setMinimumHeight(32)
         self.report_button.setToolTip(
@@ -324,6 +354,18 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
                              spacer.sizePolicy().verticalPolicy().Preferred)
         toolbar.addWidget(spacer)
+        toolbar.addWidget(QLabel("See-through"))
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setFixedWidth(90)
+        self.opacity_slider.setRange(30, 100)
+        self.opacity_slider.setToolTip(
+            "How much of Dota shows through this window")
+        self.opacity_slider.setValue(
+            int(float(self.settings.get("overlay_opacity", 0.7)) * 100))
+        self.opacity_slider.valueChanged.connect(
+            lambda value: self._set_see_through(value / 100.0))
+        toolbar.addWidget(self.opacity_slider)
+
         self.capture_pill = QLabel("capture: —")
         self.capture_pill.setProperty("pill", True)
         toolbar.addWidget(self.capture_pill)
@@ -333,7 +375,28 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         self.tabs = tabs
-        self.setCentralWidget(tabs)
+
+        shell = QWidget()
+        shell_lay = QVBoxLayout(shell)
+        shell_lay.setContentsMargins(0, 0, 0, 0)
+        shell_lay.setSpacing(0)
+        self.title_bar = TitleBar("Dota Draft Assist")
+        self.title_bar.add_menu_bar(self.menu_bar)
+        self.title_bar.minimise.connect(self.showMinimized)
+        self.title_bar.maximise.connect(self._toggle_maximised)
+        self.title_bar.close.connect(self.close)
+        shell_lay.addWidget(self.title_bar)
+        shell_lay.addWidget(toolbar)
+        shell_lay.addWidget(tabs, 1)
+        # A frameless window has no resize border, so the corner is put
+        # back explicitly. Bottom-right only: one grip is enough to size a
+        # window and four would be four things to mis-hit.
+        grip_row = QHBoxLayout()
+        grip_row.setContentsMargins(0, 0, 0, 0)
+        grip_row.addStretch(1)
+        grip_row.addWidget(ResizeGrip(shell))
+        shell_lay.addLayout(grip_row)
+        self.setCentralWidget(shell)
 
         # ----- Draft tab: the two teams, and the grids under them.
         # The whole tab answers one question — what does this ten-hero
@@ -385,68 +448,66 @@ class MainWindow(QMainWindow):
             teams_row.addWidget(panel, 1)
         outer.addLayout(teams_row)
 
-        entry_card, elay = card()
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("My role:"))
-        self.role_combo = QComboBox()
-        for label, _ in ROLE_LABELS:
-            self.role_combo.addItem(label)
-        self.role_combo.currentIndexChanged.connect(self._refresh_views)
-        row1.addWidget(self.role_combo, 1)
-        row1.addWidget(QLabel("My pick:"))
-        self.my_hero_combo = QComboBox()
-        self.my_hero_combo.currentIndexChanged.connect(self._refresh_views)
-        row1.addWidget(self.my_hero_combo, 1)
-        self.lock_check = QCheckBox("Locked in")
-        self.lock_check.toggled.connect(self._refresh_views)
-        row1.addWidget(self.lock_check)
-        # Only meaningful when the source is pixels: the two banks are then
-        # just screen positions. Game data reports player.team_name, so
-        # asking would be asking about something already known.
-        self.side_label = QLabel("My team:")
-        row1.addWidget(self.side_label)
-        self.side_combo = QComboBox()
-        self.side_combo.addItems(["left bank", "right bank"])
-        self.side_combo.currentIndexChanged.connect(self._force_redraw)
-        row1.addWidget(self.side_combo)
-        elay.addLayout(row1)
-
-        status_row = QHBoxLayout()
-        self.unknown_label = QLabel("")
-        self.unknown_label.setProperty("dim", True)
-        status_row.addWidget(self.unknown_label)
-        self.manual_hint = QLabel("")
-        self.manual_hint.setWordWrap(True)
-        self.manual_hint.setProperty("dim", True)
-        status_row.addWidget(self.manual_hint, 1)
-        elay.addLayout(status_row)
-        outer.addWidget(entry_card)
-
-        # Items sit between the draft and the grids: they are about the ten
-        # heroes above, and they were unreadable in a side panel gated
-        # behind locking your own pick — blank on the screen where they
-        # matter, and late by the time they filled.
+        # Items first. They are about the ten heroes below, they read in
+        # one glance, and they used to sit behind a lock that kept them
+        # blank for the whole of the draft.
         items_card, ilay = card("Items · hand-authored rules")
         self.item_row = ItemRow()
         ilay.addWidget(self.item_row)
-        outer.addWidget(items_card)
+        outer.insertWidget(1, items_card)
 
-        # ----- the grids, beneath the teams they describe
+        # Role and "my pick" moved onto the tile's right-click menu: they
+        # are facts about one hero in one slot, and two dropdowns naming
+        # the hero a second time is a worse way to say it. What is left
+        # here is what the app has to TELL you, not ask.
+        status_card, elay = card()
+        self.unknown_label = QLabel("")
+        self.unknown_label.setProperty("dim", True)
+        elay.addWidget(self.unknown_label)
+        self.manual_hint = QLabel("")
+        self.manual_hint.setWordWrap(True)
+        self.manual_hint.setProperty("dim", True)
+        elay.addWidget(self.manual_hint)
+        # Only meaningful when the source is pixels: the two banks are then
+        # just screen positions. Game data reports player.team_name, so
+        # asking would be asking about something already known.
+        side_row = QHBoxLayout()
+        self.side_label = QLabel("My team:")
+        side_row.addWidget(self.side_label)
+        self.side_combo = QComboBox()
+        self.side_combo.addItems(["left bank", "right bank"])
+        self.side_combo.currentIndexChanged.connect(self._force_redraw)
+        side_row.addWidget(self.side_combo)
+        side_row.addStretch(1)
+        elay.addLayout(side_row)
+        outer.addWidget(status_card)
+
+        # ----- the grids, each under the team whose heroes head it.
+        # Synergy is ally-by-ally, so it belongs under your five on the
+        # LEFT; counters are read against their five, so its columns belong
+        # under theirs on the RIGHT. A column then reads straight down from
+        # the tile it is about, which is why the headers are those same
+        # portraits rather than the names a second time.
         grids = QHBoxLayout()
         grids.setSpacing(10)
-        vs_card, vslay = card("Counters")
-        self.matchup_matrix = MatrixTable()
-        # No caption. The heading says which grid this is, the row and
-        # column headers say what the axes are, and a paragraph explaining
-        # both is a paragraph in the way of the numbers.
-        self.matchup_matrix.set_compact(True, short_names=False)
-        vslay.addWidget(self.matchup_matrix, 1)
-        grids.addWidget(vs_card, 1)
         with_card, withlay = card("Synergy")
         self.synergy_matrix = MatrixTable()
+        # No caption: the heading says which grid this is and the headers
+        # say what the axes are.
         self.synergy_matrix.set_compact(True, short_names=False)
+        self.synergy_matrix.set_icon_headers(True)
+        # No Sigma row or column — each tile already carries that hero's
+        # total in its corner, and the same figure twice is once too many.
+        self.synergy_matrix.set_margins(False)
         withlay.addWidget(self.synergy_matrix, 1)
         grids.addWidget(with_card, 1)
+        vs_card, vslay = card("Counters")
+        self.matchup_matrix = MatrixTable()
+        self.matchup_matrix.set_compact(True, short_names=False)
+        self.matchup_matrix.set_icon_headers(True)
+        self.matchup_matrix.set_margins(False)
+        vslay.addWidget(self.matchup_matrix, 1)
+        grids.addWidget(vs_card, 1)
         outer.addLayout(grids, 1)
 
         tabs.addTab(draft_widget, "Draft")
@@ -800,12 +861,25 @@ class MainWindow(QMainWindow):
             self._open_tasks.remove(dialog)
         if dialog.succeeded and dialog.task.reload_after:
             self.reload_backend()
+        # Only the Update button asks for a restart, and only a pull that
+        # actually worked earns one — relaunching after a failure would
+        # hide the error the dialog is showing.
+        if getattr(self, "_restart_after_task", "") == dialog.task.key:
+            self._restart_after_task = ""
+            if dialog.succeeded:
+                self._relaunch()
 
     def reload_backend(self) -> None:
         """Re-read dataset and portrait library from disk, and rebuild the
         capture session around them, so a data update takes effect without
         restarting the app."""
         self.ds = store.load_or_empty()
+        # Both picture caches index their folder ONCE and remember it was
+        # empty. A download that happens while the app is running would
+        # therefore never appear — which is exactly what "I ran the update
+        # and the item icons are still blank" looks like from outside.
+        portraits.forget()
+        item_icons.forget()
         session = getattr(self.provider, "session", None)
         if session is not None:
             try:
@@ -816,8 +890,6 @@ class MainWindow(QMainWindow):
             except FileNotFoundError:
                 pass  # no portraits yet; the banner explains what to do
         self.last_draft_key = None
-        if self.overlay is not None:
-            self.overlay.set_dataset(self.ds)
         self._update_first_run_banner()
         self._refresh_views()
         self.status.showMessage(
@@ -917,139 +989,50 @@ class MainWindow(QMainWindow):
             "It never injects code, reads game memory, or sends input to "
             "Dota — it only reads pixels from a window already on screen.")
 
-    # ---- overlay --------------------------------------------------------
+    # ---- the window IS the overlay --------------------------------------
     def _set_overlay(self, enabled: bool) -> None:
-        if enabled and self.overlay is None:
-            self.overlay = DraftOverlay(
-                self.ds,
-                rows=int(self.settings.get("overlay_rows", 6)),
-                expanded=bool(self.settings.get("overlay_expanded", True)))
-            self.overlay.moved.connect(self._remember_overlay_position)
-            self.overlay.toggled.connect(self._remember_overlay_expanded)
-            self.overlay.move(int(self.settings.get("overlay_x", 40)),
-                              int(self.settings.get("overlay_y", 40)))
-        if self.overlay is not None:
-            self.overlay.setVisible(enabled)
-            if enabled and self.snapshot is not None:
-                # Fill it now rather than on the next tick: an overlay that
-                # opens blank looks broken for the third of a second before
-                # the timer catches up.
-                self.overlay.update_content(self.snapshot, self.scored,
-                                            self._current_draft())
+        """Show or hide the draft window itself.
+
+        There used to be three overlays: a badge that expanded into a
+        callout, numbers painted under the portraits, and this window. They
+        were three copies of the same information in three places, each
+        needing its own layout and its own bugs. Now the window is the
+        overlay — always on top, see-through, resizable — and the floating
+        toggle is the only thing that stays behind when it is hidden.
+        """
         self.settings["overlay_enabled"] = bool(enabled)
         ui_settings.save(self.settings)
+        self.setVisible(enabled)
+        if enabled:
+            self.raise_()
+        if self.overlay_toggle.isChecked() != enabled:
+            self.overlay_toggle.blockSignals(True)
+            self.overlay_toggle.setChecked(enabled)
+            self.overlay_toggle.blockSignals(False)
         if self.overlay_action.isChecked() != enabled:
             self.overlay_action.blockSignals(True)
             self.overlay_action.setChecked(enabled)
             self.overlay_action.blockSignals(False)
-        self._sync_portrait_overlay()
 
-    # ---- the in-game numbers under the portraits ------------------------
-    def _sync_portrait_overlay(self) -> None:
-        """Show the in-game numbers exactly when the callout is open.
-
-        The badge is the on/off switch the user reaches for mid-draft — it
-        is the one piece of the overlay always on screen — so collapsing it
-        has to take the numbers with it. A tick in a menu you cannot see
-        from inside Dota is not a toggle.
-        """
-        self._set_portrait_overlay(
-            bool(self.overlay_action.isChecked())
-            and (self.overlay is None or self.overlay.expanded))
-
-    def _set_portrait_overlay(self, enabled: bool) -> None:
-        """Created lazily; driven by `_sync_portrait_overlay`, never
-        directly, so the numbers and the callout can never disagree."""
-        if enabled and self.portrait_overlay is None:
-            self.portrait_overlay = PortraitOverlay(
-                self.layout_spec,
-                offset=(float(self.settings.get("portrait_dx", 0.0)),
-                        float(self.settings.get("portrait_dy", 0.0))))
-            self.portrait_overlay.anchors_moved.connect(
-                self._remember_portrait_anchors)
-        if self.portrait_overlay is not None:
-            if not enabled:
-                # Leaving it unlocked while hidden would mean it came back
-                # swallowing clicks that belong to Dota.
-                self.portrait_overlay.set_unlocked(False)
-                self.unlock_anchors_action.setChecked(False)
-            self.portrait_overlay.setVisible(enabled)
-            if enabled:
-                self._position_portrait_overlay()
-                self._update_relations()
-
-    def _position_portrait_overlay(self) -> None:
-        overlay = self.portrait_overlay
-        if overlay is None or not overlay.isVisible():
-            return
-        from ..capture.window import DOTA_TITLE, find_dota_window_title
-        from ..capture.window import window_rect
-        title = find_dota_window_title() or DOTA_TITLE
-        overlay.set_window_rect(window_rect(title))
-
-    def _update_portrait_overlay(self, values: dict[int, float]) -> None:
-        """Map hero ids onto the two SCREEN banks.
-
-        `snapshot.left` / `.right` are the pick bar's left and right banks
-        in screen order, which is the only ordering the overlay can use —
-        ally/enemy is a fact about the draft, left/right is a fact about
-        where the pixels are.
-        """
-        overlay = self.portrait_overlay
-        if overlay is None or not overlay.isVisible():
-            return
-        snap = self.snapshot
-        left_ids = list(getattr(snap, "left", None) or [])
-        right_ids = list(getattr(snap, "right", None) or [])
-        overlay.set_values([values.get(h) for h in left_ids],
-                           [values.get(h) for h in right_ids])
-
-    def _set_unlock_anchors(self, unlocked: bool) -> None:
-        if self.portrait_overlay is None or not self.portrait_overlay.isVisible():
-            if unlocked:
-                self.unlock_anchors_action.setChecked(False)
-                self.status.showMessage(
-                    "Turn the overlay on first — there is nothing to drag "
-                    "while it is hidden", 6000)
-            return
-        self.portrait_overlay.set_unlocked(unlocked)
-        self.status.showMessage(
-            "Anchors unlocked — drag the numbers into place, then untick "
-            "this to make the overlay click-through again" if unlocked
-            else "Anchors locked; the overlay is click-through again", 8000)
-
-    def _remember_portrait_anchors(self, dx: float, dy: float) -> None:
-        self.settings["portrait_dx"] = float(dx)
-        self.settings["portrait_dy"] = float(dy)
+    def _set_see_through(self, opacity: float) -> None:
+        """Opacity is the whole reason this can sit over a game at all."""
+        self.settings["overlay_opacity"] = float(opacity)
         ui_settings.save(self.settings)
+        self.setWindowOpacity(opacity)
 
-    def _reset_portrait_anchors(self) -> None:
-        self.settings["portrait_dx"] = 0.0
-        self.settings["portrait_dy"] = 0.0
+    def _remember_toggle_position(self, x: int, y: int) -> None:
+        self.settings["toggle_x"], self.settings["toggle_y"] = int(x), int(y)
         ui_settings.save(self.settings)
-        if self.portrait_overlay is not None:
-            self.portrait_overlay.set_offset(0.0, 0.0)
-        self.status.showMessage(
-            "In-game numbers moved back onto the crop boxes", 5000)
-
-    def _remember_overlay_position(self, x: int, y: int) -> None:
-        self.settings["overlay_x"] = int(x)
-        self.settings["overlay_y"] = int(y)
-        ui_settings.save(self.settings)
-
-    def _remember_overlay_expanded(self, expanded: bool) -> None:
-        self.settings["overlay_expanded"] = bool(expanded)
-        ui_settings.save(self.settings)
-        self._sync_portrait_overlay()
 
     def _reset_overlay_position(self) -> None:
-        """Rescue for an overlay dragged off-screen or onto a monitor that
-        is no longer attached."""
-        self.settings["overlay_x"], self.settings["overlay_y"] = 40, 40
-        ui_settings.save(self.settings)
-        if self.overlay is not None:
-            self.overlay.move(40, 40)
-        self.status.showMessage("Overlay moved back to the top-left", 5000)
+        """Rescue for a window dragged off-screen or onto a monitor that is
+        no longer attached. A frameless window has no system menu to do
+        this from, so the app has to offer it."""
+        self.move(60, 60)
+        self.resize(1240, 820)
+        self.overlay_toggle.move(24, 24)
+        self._remember_toggle_position(24, 24)
+        self.status.showMessage("Window moved back to the top-left", 5000)
 
     # ---- game data (GSI) ----------------------------------------------
     def _install_gsi(self) -> None:
@@ -1407,6 +1390,22 @@ class MainWindow(QMainWindow):
         move.setToolTip("Exchanges with the hero opposite, keeping 5v5")
         move.setEnabled(button.property("hero_id") is not None)
         move.triggered.connect(lambda: self._move_hero(side, index))
+
+        hero_id = button.property("hero_id")
+        menu.addSeparator()
+        mine = menu.addAction("This is my pick")
+        mine.setCheckable(True)
+        mine.setChecked(hero_id is not None and hero_id == self.my_hero_id)
+        mine.setEnabled(hero_id is not None and side == "ally")
+        mine.setToolTip("Item advice keys off your own hero once it is set")
+        mine.triggered.connect(
+            lambda checked: self._set_my_hero(hero_id if checked else None))
+        locked = menu.addAction("Locked in")
+        locked.setCheckable(True)
+        locked.setChecked(self.my_hero_locked)
+        locked.setEnabled(hero_id is not None and hero_id == self.my_hero_id)
+        locked.triggered.connect(self._set_my_hero_locked)
+
         role_menu = menu.addMenu("Role")
         for label in ("Pos 1", "Pos 2", "Pos 3", "Pos 4", "Pos 5"):
             action = role_menu.addAction(label)
@@ -1419,6 +1418,19 @@ class MainWindow(QMainWindow):
         role_menu.addAction("No role").triggered.connect(
             lambda: self._set_slot_role(side, index, None))
         menu.exec(button.mapToGlobal(pos))
+
+    def _set_my_hero(self, hero_id: int | None) -> None:
+        self.my_hero_id = hero_id
+        if hero_id is None:
+            self.my_hero_locked = False
+        self.status.showMessage(
+            f"Your pick: {self.ds.name(hero_id)}" if hero_id is not None
+            else "Your pick cleared", 5000)
+        self._refresh_views()
+
+    def _set_my_hero_locked(self, locked: bool) -> None:
+        self.my_hero_locked = bool(locked)
+        self._refresh_views()
 
     def _move_hero(self, side: str, index: int) -> None:
         """Put one hero on the other team.
@@ -1657,6 +1669,34 @@ class MainWindow(QMainWindow):
         self._set_calibration("y", self.layout_spec.y)   # push and redraw
         self.cal_label.setText("reset to defaults — not saved")
 
+    def _update_and_restart(self) -> None:
+        """Pull, then relaunch.
+
+        Reloading in place works and is what `reload_backend` does — but a
+        restart is the only way to be certain nothing anywhere is still
+        holding the old data, and the user asked not to have to close and
+        reopen the app by hand. So the app does it for them.
+        """
+        self._restart_after_task = "update_data"
+        self.run_task("update_data")
+
+    def _relaunch(self) -> None:
+        """Start a fresh copy of ourselves and quit.
+
+        Detached on purpose: the new process must outlive this one, and it
+        must not inherit a half-torn-down Qt event loop.
+        """
+        try:
+            subprocess.Popen([sys.executable, "-m", "draft_assist.ui.app"],
+                             cwd=str(REPO_ROOT), close_fds=True)
+        except OSError as exc:
+            self.status.showMessage(f"Could not restart: {exc}", 10000)
+            return
+        QApplication.quit()
+
+    def _toggle_maximised(self) -> None:
+        self.showNormal() if self.isMaximized() else self.showMaximized()
+
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog
 
@@ -1760,12 +1800,6 @@ class MainWindow(QMainWindow):
         self._update_team_captions(snap)
         self._update_manual_hint(snap)
         self._update_debug(snap)
-        if self.overlay is not None and self.overlay.isVisible():
-            self.overlay.update_content(snap, self.scored,
-                                        self._current_draft())
-        # The Dota window can move or change resolution mid-session, so the
-        # anchor rectangle is re-read rather than taken once at startup.
-        self._position_portrait_overlay()
 
     def _update_team_captions(self, snap) -> None:
         """Say who the app thinks you are, using what the game reported,
@@ -1867,15 +1901,29 @@ class MainWindow(QMainWindow):
         if self.snapshot is None:
             return scoring.DraftState()
         allies, enemies = self._sides(self.snapshot)
-        role_idx = self.role_combo.currentIndex()
         return scoring.DraftState(
             allies=list(allies), enemies=list(enemies),
             unknown_slots=self.snapshot.unknown,
-            my_role=ROLE_LABELS[role_idx][1],
-            my_hero=self._my_hero() if self.lock_check.isChecked() else None)
+            my_role=self._my_role(),
+            my_hero=self._my_hero() if self.my_hero_locked else None)
+
+    def _my_role(self) -> str | None:
+        """The role written on the slot your own hero is standing in.
+
+        Roles belong to slots and your hero belongs to you, so the role
+        that filters item advice is wherever those two meet — there is no
+        separate answer to keep in sync.
+        """
+        if self.my_hero_id is None:
+            return None
+        for index, tile in enumerate(self.team_buttons["ally"]):
+            if tile.property("hero_id") == self.my_hero_id:
+                label = self.slot_roles["ally"][index]
+                return ROLE_BY_LABEL.get(label) if label else None
+        return None
 
     def _my_hero(self) -> int | None:
-        return self.my_hero_combo.currentData()
+        return self.my_hero_id
 
     # ---- reactions -----------------------------------------------------
     def _on_draft_changed(self, allies, enemies, unknown) -> None:
@@ -1895,15 +1943,9 @@ class MainWindow(QMainWindow):
             f"{unknown} slot(s) unresolved — scoring uses only confident "
             "slots" if unknown else "")
 
-        current_my = self._my_hero()
-        self.my_hero_combo.blockSignals(True)
-        self.my_hero_combo.clear()
-        self.my_hero_combo.addItem("(not picked yet)", None)
-        for hid in allies:
-            self.my_hero_combo.addItem(self.ds.name(hid), hid)
-        if current_my in allies:
-            self.my_hero_combo.setCurrentIndex(allies.index(current_my) + 1)
-        self.my_hero_combo.blockSignals(False)
+        # Your own hero has to still be in the draft to be your own hero.
+        if self.my_hero_id is not None and self.my_hero_id not in allies:
+            self.my_hero_id, self.my_hero_locked = None, False
 
         self._refresh_views()
 
@@ -2046,7 +2088,6 @@ class MainWindow(QMainWindow):
                     value = net.get(tile.property("hero_id"))
                     if value is not None:
                         tile.show_delta(value)
-            self._update_portrait_overlay(net)
             return
         side, hid = self.focus
         relations = {r.hero_id: r for r in
@@ -2066,7 +2107,6 @@ class MainWindow(QMainWindow):
                     continue
                 tile.show_delta(rel.delta, rel.kind)
                 values[other] = rel.delta
-        self._update_portrait_overlay(values)
 
     def _on_drafted_clicked(self) -> None:
         """Kept for callers that click a slot expecting the counters view."""
@@ -2198,8 +2238,7 @@ class MainWindow(QMainWindow):
         self.debug_text.setPlainText("\n".join(lines))
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if self.overlay is not None:
-            self.overlay.close()
+        self.overlay_toggle.close()
         # A modeless task owns a subprocess that would otherwise keep POSTing
         # to a port nobody is listening on any more.
         for dialog in list(self._open_tasks):
@@ -2415,6 +2454,7 @@ def _main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Dota Draft Assist")
     app.setStyleSheet(theme.STYLESHEET)
+    app.setWindowIcon(appicon.icon())
     manual = ManualDraft()
     provider = make_provider(args, ds, manual)
     win = MainWindow(ds, provider, rules, meta, manual)

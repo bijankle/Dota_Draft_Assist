@@ -165,6 +165,35 @@ QProgressBar {{
 }}
 QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 
+/* Our own title bar: the system one is a white strip above a dark app. */
+QWidget#titleBar {{ background: {BG_DEEP}; }}
+QLabel#titleText {{ color: {TEXT_DIM}; font-weight: 600; }}
+QMenuBar#titleMenus {{ background: transparent; border: none; }}
+QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
+QMenuBar#titleMenus::item:selected {{ background: {BG_HOVER}; }}
+QPushButton#win_min, QPushButton#win_max, QPushButton#win_close {{
+    background: transparent; border: none; border-radius: 0;
+    color: {TEXT_DIM}; font-size: 13px; padding: 0;
+}}
+QPushButton#win_min:hover, QPushButton#win_max:hover {{
+    background: {BG_HOVER}; color: {TEXT_STRONG};
+}}
+/* Close is the one button whose hover has to be unmistakable. */
+QPushButton#win_close:hover {{ background: {BAD}; color: #ffffff; }}
+
+/* The floating toggle: the only part of the app on screen when the window
+   is hidden, so it reads as pressed-in or popped-out at a glance. */
+QPushButton#overlayToggle {{
+    background: {BG_ELEVATED};
+    border: 2px solid {BORDER};
+    border-radius: 8px;
+}}
+QPushButton#overlayToggle:hover {{ border-color: {TEXT_DIM}; }}
+QPushButton#overlayToggle:checked {{
+    background: {BG_DEEP};
+    border-color: {ACCENT};
+}}
+
 QFrame[card="true"] {{
     background: {BG_ELEVATED};
     border: 1px solid {BORDER};

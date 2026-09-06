@@ -283,14 +283,17 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
-- **The draft panel is keyboard-first and refuses duplicates.** A hero
-  already in the draft cannot be entered again on either side —
-  `_taken_heroes()` is the single source for that, so typing and the picker
-  cannot disagree. Enter leaves focus in the entry box for the next pick;
-  clicking a slot opens one picker and never chains. Tab walks the ten
-  slots (they are `StrongFocus`), so the entry side moved to Ctrl+Tab.
+- **The draft panel refuses duplicates, and everything about a pick is on
+  the pick.** A hero already in the draft cannot be entered again on either
+  side — `_taken_heroes()` is the single source for that. Right-clicking a
+  tile changes it, clears it, moves it across, names it as YOUR pick and
+  locks it, and sets its role: two dropdowns above the board naming the
+  same hero a second time was a worse way to say all of that. The role that
+  filters item advice is therefore wherever your own hero and its slot's
+  role meet (`_my_role`), so there is no separate answer to keep in sync.
   Roles (Pos 1-5) are assigned per SLOT, not per hero, and survive the hero
-  changing: a slot is a lane. Vision reads the ranked-role icons but is not
+  changing: a slot is a lane. `ROLE_BY_LABEL` is the one place "Pos 1"
+  becomes "carry". Vision reads the ranked-role icons but is not
   wired to these yet — that waits on the crop geometry being right. Each
   slot reserves a line ABOVE it for the click view's signed number whether
   or not one is showing: slots that grew by a text height on every click
@@ -375,18 +378,24 @@ credentials, and put the account at risk. Do not go there.
   narrow columns and a height fitted to the rows are the in-game callout's
   layout alone — applying them in the main window shrank the grid to a
   fitted block floating in a half-empty card.
-- **Every grid carries its margins** (`Matrix.row_totals` / `col_totals` /
-  `total`, drawn as a Σ row and column). The grid says which PAIRING is
-  bad; the margins say which HERO is, which is the question you act on
-  while you still have a pick to make. The totals are the sum of what is
-  DRAWN, deliberately: in the synergy grid only the upper triangle is
-  filled, so a hero's row total and column total are each partial and
-  neither is its full synergy — consistency with the cells above the number
-  was chosen over completeness, because a total nobody can check against
-  the grid is worse than no total. The grand total sums the cells rather
-  than the margins, so each pair counts once in both grids. Main-window
-  columns STRETCH rather than fit their contents: the Σ column must never
-  be the one pushed off the right edge.
+- **Each grid sits under the team whose heroes head it, and its headers
+  are their portraits.** Synergy is ally-by-ally so it goes under your five
+  on the LEFT; counters are read against theirs, so its columns go under
+  theirs on the RIGHT. A column then reads straight down from the tile it
+  is about — which is the whole reason the headers are the same pictures
+  rather than the names a second time. **Qt will not draw those icons.** A
+  QHeaderView under a stylesheet ignores `iconSize` and falls back to the
+  style's 16px small-icon metric, and no property changes it; `tables.
+  PortraitHeader` paints the pixmap in `paintSection` instead, which is a
+  dozen lines and the only reliable way.
+  The Σ row and column are OFF in the main window (`set_margins(False)`):
+  each tile already carries that hero's total in its corner and the same
+  figure twice is once too many. They stay available for the callout, and
+  `Matrix.row_totals` / `col_totals` / `total` still sum what is DRAWN —
+  in the synergy grid only the upper triangle is filled, so a hero's row
+  and column totals are each partial, and consistency with the cells above
+  the number was chosen over completeness. Columns STRETCH rather than fit
+  their contents: nothing should be pushed off the right edge.
 - **Clicking a pick is the matrix read one row at a time**
   (`scoring.relations_to`, `MainWindow.focus` / `_update_relations`). It is
   context-aware, because an ally and an enemy are different questions: an
@@ -479,42 +488,49 @@ credentials, and put the account at risk. Do not go there.
   so a typical draft tripped one or two rules and the strip read as broken.
   It now names 94; a hero with no rule is still a silent hero, so new ones
   are worth adding whenever a draft goes quiet that should not have.
-- **The in-game numbers hang off the crop boxes** (`ui/portrait_overlay.py`).
-  The click view again, painted under the ten portraits where the eye
-  already is. No panel and no background — a halo (a dark stroke around the
-  glyphs) is what makes text legible over an arbitrary screen, and a filled
-  box over the pick bar would hide the thing it annotates. It uses
-  `snapshot.left` / `.right`, the SCREEN banks, never ally/enemy: left and
-  right are facts about pixels, ally and enemy are facts about the draft,
-  and putting your team's numbers over their portraits would be worse than
-  showing none. With nothing clicked it falls back to
-  `scoring.net_contributions` so every portrait still carries a figure.
-  Locked it is click-through (`WA_TransparentForMouseEvents` plus
-  `WindowTransparentForInput`) — an overlay strip that ate clicks meant for
-  Dota would be worse than no overlay — and View ▸ Unlock overlay anchors
-  takes the mouse so the numbers can be dragged, saving a FRACTIONAL nudge
-  (`portrait_dx` / `portrait_dy`), in the same units as every other
-  coordinate here. Hiding the overlay re-locks it, or it would come back
-  swallowing clicks.
-  **The badge is the switch, not the menu tick** (`_sync_portrait_overlay`):
-  collapsing the callout takes the numbers with it and expanding brings
-  them back, because the badge is the only part of the overlay visible from
-  inside Dota and a tick you cannot see mid-draft is not a toggle. The
-  badge is also the drag handle — an event filter turns a press into a drag
-  once it passes `DRAG_THRESHOLD` and then swallows the release, so moving
-  it never also flips the panel.
-- **The overlay sits OVER Dota, never inside it.** `ui/overlay.py` is an
-  ordinary frameless always-on-top window: no DLL injection, no hooking of the
-  present chain, no input sent to the game — which is what keeps it on the
-  safe side of the boundary above. It needs Dota in borderless windowed mode,
-  and it is deliberately interactive (not click-through) because the badge has
-  to be clickable and draggable. This reverses the original spec's "no
-  overlay" decision, at the user's request; the main window is unchanged.
-  The callout carries the same two grids as the Draft tab, compact
-  (`MatrixTable.set_compact`: no caption, shortened names, fixed columns,
-  height fitted to the rows) — mid-draft it is the only surface being
-  looked at, and a ranked list of candidates does not answer which lane
-  loses.
+- **The WINDOW is the overlay** (`ui/chrome.py`). There used to be three:
+  a badge that expanded into a callout, numbers painted under the ten
+  portraits, and this window — three copies of the same information, each
+  with its own layout and its own bugs. All that is gone. The main window
+  is frameless, always-on-top, see-through (`overlay_opacity`, 0.7 by
+  default, on a toolbar slider) and resizable, and a small always-on-top
+  `OverlayToggle` carrying the app's icon hides and shows it. The toggle
+  never closes with the window: it is the only way back, and closing both
+  would strand the app running and invisible. It is checkable so it reads
+  as on or off, and it is draggable by the same press-becomes-a-drag rule
+  the old badge used, so moving it never also toggles the window.
+- **Frameless means the chrome is ours to draw.** Windows' own title bar is
+  a white strip above a dark app and reads as a different program bolted on
+  top. `TitleBar` replaces it, and the menu bar goes INSIDE it — NOT
+  `self.menuBar()`, which QMainWindow would place above the central widget
+  as a second strip on top of the first. The toolbar is added to the shell
+  layout for the same reason rather than through `addToolBar`. What the
+  system bar was providing has to be put back by hand and that is the whole
+  cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
+  the bottom-right does the sizing. View ▸ Reset window position exists
+  because a frameless window has no system menu to rescue itself from.
+- **The app icon is `assets/app.ico` if the user supplies one**
+  (`ui/appicon.py`), otherwise a drawn fallback. The user asked for
+  Warcraft III: The Frozen Throne's icon; that is Blizzard's artwork and
+  this project does not download or ship it. Their own file on their own
+  machine is a different thing, so the loader simply reads whatever is
+  there. The fallback is PAINTED rather than committed as a binary: the
+  repository stays free of image blobs nobody can diff, and it only has to
+  read as "this app" at 16 pixels. `tools/make_shortcut.py` (Setup ▸ Add to
+  the Start menu) writes a .lnk carrying that icon — a .bat cannot be
+  pinned usefully, because Windows pins the shell rather than the app and
+  the icon is the console's.
+- **Update is a button that restarts the app** (`_update_and_restart`).
+  Reloading in place works and `reload_backend` does it, but the restart is
+  the only way to be certain nothing is still holding the old data, and the
+  user asked not to close and reopen by hand. It relaunches ONLY after the
+  update task, and only when that task succeeded — a relaunch after a
+  failure would close the dialog showing the error.
+  **`reload_backend` must forget the picture caches.** `portraits` and
+  `item_icons` each index their folder once and remember that it was empty,
+  so a download that happens while the app is running never appears. That
+  is exactly what "I ran the update and the item icons are still blank"
+  looks like from the outside, and it was a real bug.
 - **GSI carries no screen geometry.** It reports game state, not pixels (the
   only coordinates in it are hero world positions). So the overlay anchors
   itself to the Dota window rectangle, which Windows supplies from the window
