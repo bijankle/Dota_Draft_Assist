@@ -2,23 +2,34 @@
 
 Three sources, in order, and none of them is a file this repository ships:
 
-1. `assets/app.ico` or `app.png`, if the user put one there. Their own
-   file on their own machine, whatever they like.
+1. `assets/app.ico` (or .png/.jpg), if the user put one there — by hand or
+   through Setup ▸ Choose app icon…, which copies their file into place.
+   Their own artwork on their own machine, whatever they like.
 2. Bloodseeker's portrait, which the app has ALREADY downloaded into
-   `assets/portraits/base/` for the recogniser. The user asked for that
-   icon; it is Valve's artwork, so it is not committed here — but it is
-   already sitting on their disk, fetched by a step they ran themselves,
-   and pointing the window at a file that exists is not redistribution.
+   `assets/portraits/base/` for the recogniser. Valve's artwork, so it is
+   not committed here — but it is already on their disk, fetched by a step
+   they ran themselves, and pointing a window at a file that exists is not
+   redistribution.
 3. A drawn fallback, so a fresh install is never iconless.
 
-Drawn rather than shipped as a binary: a few lines of painting keep the
-repository free of image blobs nobody can diff, and the fallback only has
-to read as "this app" at 16 pixels.
+Every pixmap this module hands out is SQUARE and letterboxed, never
+cropped. Source 2 is a 256x144 head shot — Dota's own crop — so filling a
+square box with it slices the top and bottom off the hero's head, which is
+exactly what it looked like. Fitting it inside a transparent square keeps
+the whole picture and lets a square icon (source 1, normally) fill the box
+edge to edge.
 
 The TASKBAR is a separate problem on Windows. A Python process is grouped
 under python.exe and shows its icon no matter what the window says, unless
-the process declares an explicit AppUserModelID first — hence `claim_taskbar_identity`.
+the process declares an explicit AppUserModelID before its first window —
+hence `claim_taskbar_identity`. Windows also asks the icon for specific
+sizes (16 for the title, 32 and 48 for the taskbar, 256 for Alt-Tab), so a
+QIcon carrying one pixmap gets scaled by the shell into something blurry:
+the icon is built at every size the shell asks for.
 """
+
+import shutil
+from pathlib import Path
 
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap
@@ -27,7 +38,9 @@ from ..config import ASSETS_DIR
 from . import theme
 
 # Anything here wins over everything below, in this order.
-CANDIDATES = ("app.ico", "app.png")
+CANDIDATES = ("app.ico", "app.png", "app.jpg", "app.jpeg", "app.bmp")
+# The sizes Windows actually asks a taskbar icon for.
+SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 # Bloodseeker. The user asked for this one by name; the recogniser has
 # already downloaded it, so nothing new is fetched and nothing is shipped.
 FALLBACK_HERO = 4
@@ -61,29 +74,85 @@ def _drawn(size: int = 256) -> QPixmap:
     return pixmap
 
 
+def _square(art: QPixmap, size: int) -> QPixmap:
+    """`art` fitted inside a transparent square of `size`, never cropped."""
+    canvas = QPixmap(size, size)
+    canvas.fill(QColor(0, 0, 0, 0))
+    if art.isNull() or size < 1:
+        return canvas
+    fitted = art.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation)
+    painter = QPainter(canvas)
+    painter.drawPixmap((size - fitted.width()) // 2,
+                       (size - fitted.height()) // 2, fitted)
+    painter.end()
+    return canvas
+
+
 def icon() -> QIcon:
-    """The app icon, read once."""
+    """The app icon, built once."""
     global _icon
     if _icon is None:
-        _icon = _supplied() or _hero_portrait() or QIcon(_drawn())
+        _icon = _build()
     return _icon
 
 
-def _supplied() -> QIcon | None:
+def _build() -> QIcon:
+    path = supplied_path()
+    if path is not None:
+        # A real .ico already carries every size the shell wants, and
+        # whatever the user supplied is meant to be used as it is.
+        candidate = QIcon(str(path))
+        if not candidate.isNull():
+            return candidate
+    art = _hero_pixmap() or _drawn(256)
+    built = QIcon()
+    for size in SIZES:
+        built.addPixmap(_square(art, size))
+    return built
+
+
+def supplied_path() -> Path | None:
+    """The user's own icon file, if there is one."""
     for name in CANDIDATES:
         path = ASSETS_DIR / name
         if path.exists():
-            candidate = QIcon(str(path))
-            if not candidate.isNull():
-                return candidate
+            return path
     return None
 
 
-def _hero_portrait() -> QIcon | None:
+def install(path) -> Path:
+    """Copy the user's chosen file in as the app icon.
+
+    Raises ValueError if Qt cannot read it as an image, because a silent
+    no-op here looks exactly like the bug this is meant to fix. Any icon
+    already installed is removed first: two candidates would leave the
+    order in CANDIDATES deciding, which is not what the user just chose.
+    """
+    src = Path(path)
+    art = QPixmap(str(src))
+    if art.isNull():
+        raise ValueError(f"{src.name} is not an image Qt can read")
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    for name in CANDIDATES:
+        (ASSETS_DIR / name).unlink(missing_ok=True)
+    if src.suffix.lower() == ".ico":
+        dest = ASSETS_DIR / "app.ico"
+        shutil.copyfile(src, dest)
+    else:
+        # Normalised to PNG so the rest of the app has one thing to find,
+        # and so a format Qt can read but not re-read from a copy cannot
+        # exist.
+        dest = ASSETS_DIR / "app.png"
+        art.save(str(dest), "PNG")
+    forget()
+    return dest
+
+
+def _hero_pixmap() -> QPixmap | None:
     """Bloodseeker, out of the portraits the recogniser downloaded."""
     from .portraits import portrait
-    art = portrait(FALLBACK_HERO)
-    return QIcon(art) if art is not None else None
+    return portrait(FALLBACK_HERO)
 
 
 def claim_taskbar_identity() -> None:
@@ -105,8 +174,13 @@ def claim_taskbar_identity() -> None:
 
 
 def pixmap(size: int) -> QPixmap:
+    """A square pixmap of exactly `size`, whatever the source's shape."""
     art = icon().pixmap(size, size)
-    return art if not art.isNull() else _drawn(size)
+    if art.isNull():
+        art = _drawn(size)
+    if art.width() == size and art.height() == size:
+        return art
+    return _square(art, size)
 
 
 def forget() -> None:
@@ -117,8 +191,8 @@ def forget() -> None:
 
 def source() -> str:
     """Where the icon came from — for the About box and for tests."""
-    if _supplied() is not None:
+    if supplied_path() is not None:
         return "assets"
-    if _hero_portrait() is not None:
+    if _hero_pixmap() is not None:
         return "portrait"
     return "drawn"

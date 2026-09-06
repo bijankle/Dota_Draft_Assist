@@ -21,6 +21,7 @@ from draft_assist.ui.hero_picker import (  # noqa: E402
 HeroPickerDialogCode = _Picker.DialogCode
 from draft_assist.ui.demo import DemoDraft, demo_dataset  # noqa: E402
 from draft_assist.ui.providers import DemoProvider  # noqa: E402
+from draft_assist.ui import item_row as item_row_mod  # noqa: E402
 from draft_assist.ui.tables import SORT_ROLE, TOTAL_LABEL  # noqa: E402
 
 
@@ -193,12 +194,15 @@ def test_items_are_live_from_the_first_enemy_pick(window):
     assert isinstance(before, list)
 
 
-def test_an_empty_draft_says_so_rather_than_showing_a_bare_strip(qapp):
+def test_an_empty_draft_shows_the_shape_of_the_strip_not_a_sentence(qapp):
+    """A line saying items appear later is read once and skipped forever.
+    Blank plates say the same thing in the place the answer will be."""
     window = blank_window(qapp)
     try:
         window.refresh()
         assert window.item_row.items == []
-        assert "draft fills in" in window.item_row.message.text()
+        assert window.item_row.message.text() == ""
+        assert len(window.item_row._blanks) == item_row_mod.PLACEHOLDERS
     finally:
         window.close()
 
@@ -1250,7 +1254,11 @@ def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
     window = blank_window(qapp)
     try:
         window.refresh()
-        assert window.matchup_matrix.table.isHidden()
+        # The grid stays on screen as an outline rather than vanishing:
+        # a card that collapses and re-expands moves everything under it.
+        assert not window.matchup_matrix.table.isHidden()
+        assert window.matchup_matrix.table.rowCount() == 5
+        assert window.matchup_matrix.table.item(0, 0).text() == ""
         assert "Fill in both teams" in window.matchup_matrix.empty_note.text()
         assert "Fill in your own team" in \
             window.synergy_matrix.empty_note.text()
@@ -1856,6 +1864,8 @@ def test_the_toolbar_keeps_only_what_belongs_there(window):
     from PyQt6.QtWidgets import QToolBar
     toolbar = window.findChild(QToolBar)
     labels = {w.text() for w in toolbar.findChildren(type(window.update_button))}
-    assert "Update" in labels
+    # Update went to Help: it is pressed once a patch and it was taking
+    # width from the row that has to survive the narrowest window.
+    assert "Update" not in labels
     assert "Recordings" not in labels and "Report" not in labels
     assert not window.capture_pill.isVisibleTo(toolbar)

@@ -12,8 +12,8 @@ window has neither. Both are deliberately dumb: eight-pixel margins, a
 press, a move, a release.
 """
 
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizeGrip,
                              QWidget)
 
@@ -21,7 +21,11 @@ from . import appicon, theme
 
 # Tall enough for the app icon to be an icon rather than a bullet point.
 BAR_HEIGHT = 48
-ICON = 34
+# The icon fills the bar's height bar a few pixels of breathing room. It is
+# drawn letterboxed into a square (see `appicon`), so a square icon fills
+# that box edge to edge and a wide one keeps its whole picture instead of
+# being sliced top and bottom.
+ICON = BAR_HEIGHT - 8
 EDGE = 6            # how close to the border counts as a resize grab
 
 
@@ -30,7 +34,10 @@ class TitleBar(QWidget):
 
     minimise = pyqtSignal()
     maximise = pyqtSignal()
-    close = pyqtSignal()
+    # NOT `close`: a signal of that name shadows QWidget.close(), so the
+    # bar could never be closed programmatically and the failure was a
+    # baffling "native Qt signal is not callable".
+    close_clicked = pyqtSignal()
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
@@ -42,26 +49,35 @@ class TitleBar(QWidget):
         lay.setContentsMargins(8, 0, 0, 0)
         lay.setSpacing(8)
 
+        middle = Qt.AlignmentFlag.AlignVCenter
         self.icon = QLabel()
-        self.icon.setPixmap(appicon.pixmap(ICON))
-        lay.addWidget(self.icon)
+        self.icon.setFixedSize(ICON, ICON)
+        self.icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.refresh_icon()
+        lay.addWidget(self.icon, 0, middle)
         self.title = QLabel(title)
         self.title.setObjectName("titleText")
-        lay.addWidget(self.title)
+        lay.addWidget(self.title, 0, middle)
         self.menus = QHBoxLayout()
         self.menus.setContentsMargins(8, 0, 0, 0)
+        # Everything on the bar is centred on the bar's middle. A layout
+        # left to itself stretches each child to the full 48px and the menu
+        # bar then draws its items hard against the top, which is what
+        # "Setup Game View Help" sitting high in the strip was.
+        self.menus.setAlignment(middle)
         lay.addLayout(self.menus)
         lay.addStretch(1)
 
         self.extras = QHBoxLayout()
         self.extras.setContentsMargins(0, 0, 0, 0)
         self.extras.setSpacing(6)
+        self.extras.setAlignment(middle)
         lay.addLayout(self.extras)
 
         for name, glyph, signal in (
                 ("min", "─", self.minimise),
                 ("max", "□", self.maximise),
-                ("close", "✕", self.close)):
+                ("close", "✕", self.close_clicked)):
             button = QPushButton(glyph)
             button.setObjectName(f"win_{name}")
             button.setFixedSize(46, BAR_HEIGHT)
@@ -77,11 +93,18 @@ class TitleBar(QWidget):
         the arrangement this class exists to get rid of.
         """
         menu_bar.setObjectName("titleMenus")
-        self.menus.addWidget(menu_bar)
+        # Its own natural height, then centred: given the bar's full height
+        # it fills it and draws the menu titles along the top edge.
+        menu_bar.setFixedHeight(menu_bar.sizeHint().height())
+        self.menus.addWidget(menu_bar, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def add_widget(self, widget: QWidget) -> None:
         """Anything that belongs on the bar rather than under it."""
-        self.extras.addWidget(widget)
+        self.extras.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def refresh_icon(self) -> None:
+        """Re-read the app icon — after the user supplies their own."""
+        self.icon.setPixmap(appicon.pixmap(ICON))
 
     # ---- dragging the window by its bar ---------------------------------
     def mousePressEvent(self, event) -> None:       # noqa: N802 - Qt naming
@@ -121,9 +144,17 @@ class OverlayToggle(QPushButton):
     app: the button and the window it summons should look like the same
     program. Checkable so it reads as on or off at a glance — mid-draft the
     user needs to know whether the window is hidden or merely behind Dota.
+
+    **It paints itself**, plate and icon both, rather than handing the icon
+    to QPushButton. A translucent frameless top-level button styled by a
+    stylesheet drew its plate and nothing else on Windows, so the one thing
+    on screen when the window is hidden was a blank square — the same class
+    of bug as QHeaderView refusing to honour `iconSize`. Drawing it is a
+    dozen lines and it cannot be styled out from under us.
     """
 
     SIZE = 48
+    PAD = 7             # plate edge to icon, so the border stays visible
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -131,8 +162,7 @@ class OverlayToggle(QPushButton):
         self.setCheckable(True)
         self.setChecked(True)
         self.setFixedSize(self.SIZE, self.SIZE)
-        self.setIcon(appicon.icon())
-        self.setIconSize(QSize(self.SIZE - 10, self.SIZE - 10))
+        self._art = appicon.pixmap(self.SIZE - 2 * self.PAD)
         self.setToolTip("Show or hide the draft window · drag to move")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint
@@ -145,6 +175,31 @@ class OverlayToggle(QPushButton):
         self._dragging = False
 
     moved = pyqtSignal(int, int)
+
+    def refresh_icon(self) -> None:
+        """Re-read the app icon — after the user supplies their own."""
+        self._art = appicon.pixmap(self.SIZE - 2 * self.PAD)
+        self.update()
+
+    def paintEvent(self, event) -> None:            # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        plate = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        # Pressed-in when the window is showing, popped-out when it is not:
+        # the button has to say which state it is in without a label.
+        painter.setPen(QPen(QColor(theme.ACCENT if self.isChecked()
+                                   else (theme.TEXT_DIM if self.underMouse()
+                                         else theme.BORDER)), 2))
+        painter.setBrush(QColor(theme.BG_DEEP if self.isChecked()
+                                else theme.BG_ELEVATED))
+        painter.drawRoundedRect(plate, 8, 8)
+        if not self._art.isNull():
+            painter.setOpacity(1.0 if self.isChecked() else 0.75)
+            painter.drawPixmap(
+                (self.width() - self._art.width()) // 2,
+                (self.height() - self._art.height()) // 2, self._art)
+        painter.end()
 
     # Press becomes a drag once it has moved far enough to mean one; the
     # release is then swallowed so moving it never also toggles the window.

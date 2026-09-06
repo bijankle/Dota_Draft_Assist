@@ -29,6 +29,10 @@ NAME_MAX_PT = 9
 NAME_MIN_PT = 7
 SEVERITY_COLOUR = {3: theme.BAD, 2: theme.WARN, 1: theme.TEXT_DIM}
 MAX_SHOWN = 8
+# How many blank plates stand in for the strip before it has anything to
+# say. Five, because five is what a full strip usually holds, so the row
+# does not change height the moment the first item arrives.
+PLACEHOLDERS = 5
 
 # Scaled copies, keyed by (item, box). Same reason as the portraits: a
 # smooth rescale inside paintEvent, for a picture that never changes, on
@@ -124,6 +128,34 @@ class ItemTile(QWidget):
         return self.size()
 
 
+class PlaceholderTile(QWidget):
+    """An empty plate, the shape an item will be.
+
+    A sentence saying items appear later is a sentence read once and then
+    skipped forever; an outline of the row that is coming says the same
+    thing in the place the answer will actually appear. Dashed, like an
+    empty pick slot — but with no "+" on it, because unlike a pick slot
+    there is nothing here to click.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(ICON_W, ICON_H + NAME_H)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        box = QRect(0, 0, ICON_W - 1, ICON_H - 1)
+        painter.fillRect(box, QColor(theme.BG_DEEP))
+        painter.setPen(QPen(QColor(theme.BORDER), 1, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(box)
+        painter.end()
+
+    def sizeHint(self) -> QSize:                # noqa: N802
+        return self.size()
+
+
 class ItemRow(QWidget):
     """A line of item tiles, or one line of text saying why there are none."""
 
@@ -141,6 +173,7 @@ class ItemRow(QWidget):
         self.note.setVisible(False)
         self.row.addWidget(self.note)
         self._tiles: list[ItemTile] = []
+        self._blanks: list[PlaceholderTile] = []
 
     def set_note(self, text: str) -> None:
         """A word about the strip itself, beside it rather than in place of
@@ -148,16 +181,22 @@ class ItemRow(QWidget):
         self.note.setText(text)
         self.note.setVisible(bool(text))
 
-    def show_items(self, advice: list, empty: str) -> None:
-        for tile in self._tiles:
+    def show_items(self, advice: list, empty: str = "") -> None:
+        for tile in self._tiles + self._blanks:
             self.row.removeWidget(tile)
             tile.deleteLater()
-        self._tiles = []
+        self._tiles, self._blanks = [], []
+        # `empty` is a REASON, not a stand-in for the strip: when there is
+        # nothing to show the placeholders show the shape of the row and
+        # the sentence, if there is one, sits beside them.
+        self.message.setText(empty if not advice else "")
+        self.message.setVisible(bool(empty) and not advice)
         if not advice:
-            self.message.setText(empty)
-            self.message.setVisible(True)
+            for _ in range(PLACEHOLDERS):
+                blank = PlaceholderTile(self)
+                self.row.insertWidget(len(self._blanks), blank)
+                self._blanks.append(blank)
             return
-        self.message.setVisible(False)
         for entry in advice[:MAX_SHOWN]:
             tile = ItemTile(entry, self)
             self.row.insertWidget(len(self._tiles), tile)

@@ -23,6 +23,13 @@ from . import theme
 
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
+# The empty grid drawn before either team is known: a draft is five a side,
+# so the outline is too.
+BLANK_SIDE = 5
+# The same height a filled row settles at, so nothing jumps when the first
+# pair of heroes arrives.
+BLANK_ROW = 26
+
 
 class ValueItem(QTableWidgetItem):
     """A cell that sorts on the number it displays rather than its text."""
@@ -348,7 +355,15 @@ class MatrixTable(QWidget):
         self.caption.setVisible(not getattr(self, "_compact", False))
         self.empty_note.setText("" if not matrix.empty else empty_text)
         self.empty_note.setVisible(bool(matrix.empty and empty_text))
-        self.table.setVisible(not matrix.empty)
+        self.table.setVisible(True)
+        if matrix.empty:
+            # The grid stays on screen as an outline. A card that vanishes
+            # until the draft fills in leaves the tab collapsing and
+            # re-expanding under the reader; the shape of the answer is
+            # itself information, and it is where the answer will appear.
+            self._show_outline()
+            return
+        self.table.setStyleSheet("")            # back to the app's own
 
         margins = getattr(self, "_margins", True)
         extra = 1 if margins else 0
@@ -390,6 +405,41 @@ class MatrixTable(QWidget):
             QHeaderView.ResizeMode.ResizeToContents)
         if cramped:
             self._fit_height()
+
+    def _show_outline(self) -> None:
+        """Five by five of nothing — the shape the grid will have."""
+        self.table.setRowCount(BLANK_SIDE)
+        self.table.setColumnCount(BLANK_SIDE)
+        for header, setter in ((self.table.horizontalHeader(),
+                                self.table.setHorizontalHeaderItem),
+                               (self.table.verticalHeader(),
+                                self.table.setVerticalHeaderItem)):
+            if isinstance(header, PortraitHeader):
+                header.set_heroes({})
+            for index in range(BLANK_SIDE):
+                setter(index, QTableWidgetItem(""))
+        for row in range(BLANK_SIDE):
+            for col in range(BLANK_SIDE):
+                cell = QTableWidgetItem("")
+                cell.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.table.setItem(row, col, cell)
+        # The app's stylesheet hides the grid lines, which is right for a
+        # filled grid — the numbers are the structure. An empty one has no
+        # numbers, so without the lines it is not a grid at all, just a
+        # blank rectangle.
+        self.table.setStyleSheet(
+            f"QTableWidget {{ gridline-color: {theme.BORDER}; }}")
+        head = self.table.horizontalHeader()
+        head.setStretchLastSection(False)
+        for col in range(BLANK_SIDE):
+            head.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        # Fixed rows, not ResizeToContents: empty cells have no contents,
+        # so the outline would collapse to five hairlines.
+        side = self.table.verticalHeader()
+        side.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        side.setDefaultSectionSize(BLANK_ROW)
+        for row in range(BLANK_SIDE):
+            self.table.setRowHeight(row, BLANK_ROW)
 
     def _set_headers(self, matrix, margins: bool) -> None:
         icons = getattr(self, "_icon_headers", False)

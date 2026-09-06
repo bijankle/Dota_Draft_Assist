@@ -509,6 +509,21 @@ credentials, and put the account at risk. Do not go there.
   cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
   the bottom-right does the sizing. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
+  **Everything on the bar is centred on the bar's middle line.** A layout
+  left to itself stretches each child to the bar's full height, and a
+  QMenuBar given 48px draws its titles hard against the top edge — which is
+  what "Setup Game View Help" riding high in the strip was. The menu bar is
+  pinned to its own `sizeHint` height and every child is added with
+  `AlignVCenter`.
+  **The title bar's close signal is `close_clicked`, not `close`.** A
+  pyqtSignal named `close` shadows `QWidget.close()`, so the bar could
+  never be closed programmatically and the failure read "native Qt signal
+  is not callable" — which names nothing.
+  **The floating toggle paints its own plate and icon.** It used to hand
+  the icon to QPushButton, and a translucent frameless top-level button
+  under a stylesheet drew the plate and nothing else, so the one thing on
+  screen with the window hidden was a blank square. Same class of bug as
+  QHeaderView refusing to honour `iconSize`, and the same answer: draw it.
 - **The app icon has three sources and ships none of them**
   (`ui/appicon.py`): `assets/app.ico` or `.png` if the user put one there,
   else **Bloodseeker's portrait out of `assets/portraits/base/`**, else a
@@ -519,13 +534,31 @@ credentials, and put the account at risk. Do not go there.
   window at a file that exists is not redistribution. The last-resort icon
   is PAINTED rather than committed as a binary: no image blobs nobody can
   diff, and it only has to read as "this app" at 16 pixels.
-  **The taskbar is a separate problem.** A Python process is grouped under
-  python.exe and shows Python's icon whatever `setWindowIcon` says, unless
-  it declares an AppUserModelID before the first window —
-  `claim_taskbar_identity`, called from `main`. `tools/make_shortcut.py`
-  (Setup ▸ Add to the Start menu) writes a .lnk carrying the icon; a .bat
-  cannot be pinned usefully, because Windows pins the shell rather than
-  the app and the icon is the console's.
+  **An icon attached to a chat message is not a file**, which is the whole
+  reason `appicon.install` and Setup ▸ Choose app icon… exist: a file
+  picker copies the user's own .ico or .png into `assets/`, where source 1
+  finds it, and `_apply_app_icon` pushes it at all four places that draw
+  one — the window, the application (taskbar), the title bar and the
+  floating toggle — without a restart. Handing them a picker is the only
+  honest answer to "use the icon I gave you".
+  **Every pixmap the module hands out is SQUARE and letterboxed, never
+  cropped.** Source 2 is a 256x144 head shot — Dota's own crop — so filling
+  a square box with it slices the top and bottom off the hero's head, which
+  is exactly what the title bar looked like. Fitting it inside a
+  transparent square keeps the whole picture and lets a square icon fill
+  the bar edge to edge, which is what the title bar's ICON (bar height less
+  a few pixels) assumes.
+  **The taskbar is a separate problem, and it has two halves.** A Python
+  process is grouped under python.exe and shows Python's icon whatever
+  `setWindowIcon` says, unless it declares an AppUserModelID before the
+  first window — `claim_taskbar_identity`, called from `main`. And the
+  shell asks the icon for specific sizes (16 for the title, 32/48 for the
+  taskbar, 256 for Alt-Tab), so a QIcon carrying ONE pixmap gets scaled by
+  the shell into something blurry: the icon is built at every size in
+  `SIZES`. A supplied .ico is used as it is, since it already carries them.
+  `tools/make_shortcut.py` (Setup ▸ Add to the Start menu) writes a .lnk
+  carrying the icon; a .bat cannot be pinned usefully, because Windows pins
+  the shell rather than the app and the icon is the console's.
 - **The refresh loop runs four times a second, so nothing in it may be
   expensive.** Two things were, and both showed up as stutter over a live
   game. `_update_debug` drew an overlay onto a full-resolution frame,
@@ -545,12 +578,29 @@ credentials, and put the account at risk. Do not go there.
   portrait. The floor is whichever needs more, doubled for the two halves.
   Numbers that elide to "..." are a grid that has stopped being a grid,
   and a tile with no room for art is not a picture of a hero.
-- **Update is a button that restarts the app** (`_update_and_restart`).
+- **An empty panel shows the SHAPE of its answer, not a sentence about
+  it.** The item strip draws five blank plates (`item_row.PlaceholderTile`)
+  and both grids draw a 5x5 outline (`tables._show_outline`) before there
+  is anything to put in them. A line saying "items appear as the draft
+  fills in" is read once and skipped forever, and a card that vanishes
+  until the draft fills in makes everything below it jump when it comes
+  back. The outline needs its grid lines turned back ON for that state
+  alone: the app's stylesheet sets `gridline-color: transparent`, which is
+  right for a filled grid — the numbers are the structure — but leaves an
+  empty one a blank rectangle rather than a grid. A reason still worth
+  saying ("Fill in both teams", "this source publishes no ally-pair data")
+  sits beside the outline, never in place of it.
+- **Update restarts the app, and it lives in Help** (`_update_and_restart`,
+  `_update_app`).
   Reloading in place works and `reload_backend` does it, but the restart is
   the only way to be certain nothing is still holding the old data, and the
   user asked not to close and reopen by hand. It relaunches ONLY after the
   update task, and only when that task succeeded — a relaunch after a
   failure would close the dialog showing the error.
+  Both the data update and the code update relaunch: a `git pull` that
+  leaves the old process running has done half the job. It was a toolbar
+  button and is now Help ▸ Update application… — pressed once a patch, and
+  the toolbar row has to stay readable at the window's minimum width.
   **`reload_backend` must forget the picture caches.** `portraits` and
   `item_icons` each index their folder once and remember that it was empty,
   so a download that happens while the app is running never appears. That
@@ -561,6 +611,13 @@ credentials, and put the account at risk. Do not go there.
   itself to the Dota window rectangle, which Windows supplies from the window
   handle; anything drawn against specific portraits needs coordinates from a
   saved frame, which is what the snapshot key exists for.
+- **`ui_settings.DEFAULTS` is the write filter, not just a fallback.**
+  `save` writes only the keys DEFAULTS names, so a preference the app set
+  but that dict did not know about was written by the widget, kept in
+  memory for the session and dropped on the way to disk. That is what
+  "transparency does not remember what I set it to" was, and the floating
+  toggle's position had the same bug. A new preference means a new DEFAULTS
+  entry, every time.
 - **Stratz API key** lives in `.env` (`STRATZ_API_KEY=...`), gitignored since
   the first commit, read at runtime. Never hardcode, never commit.
 

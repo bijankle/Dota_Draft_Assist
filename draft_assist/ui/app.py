@@ -37,6 +37,7 @@ from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                             QFileDialog,
                              QMainWindow, QMenuBar, QMessageBox,
                              QPlainTextEdit,
                              QDoubleSpinBox, QListWidget,
@@ -219,6 +220,9 @@ class MainWindow(QMainWindow):
         self._act(setup_menu, "&Fetch item icons…",
                   lambda: self.run_task("fetch_item_icons"), None,
                   "Just the item pictures, with the reason if it fails")
+        self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
+                  None, "Use your own .ico or .png for the window, the "
+                        "taskbar and the floating button")
         self._act(setup_menu, "&Add to the Start menu",
                   lambda: self.run_task("make_shortcut"), None,
                   "Make a pinnable shortcut with the app's own icon")
@@ -268,9 +272,9 @@ class MainWindow(QMainWindow):
         self.addAction(self.force_action)
 
         help_menu = bar.addMenu("&Help")
-        self._act(help_menu, "&Update application…",
-                  lambda: self.run_task("update_app"), None,
-                  "Pull the latest code from GitHub")
+        self._act(help_menu, "&Update application…", self._update_app,
+                  None,
+                  "Pull the latest code and data, then reopen the app")
         # Everything under Advanced diagnoses the app itself. It is
         # occasionally necessary and it is not what a menu bar is for.
         advanced = help_menu.addMenu("&Advanced")
@@ -339,13 +343,12 @@ class MainWindow(QMainWindow):
         self.open_recordings_button.clicked.connect(
             lambda: open_folder(RECORDINGS_DIR))
 
+        # Update is in Help, not up here. It is pressed once a patch, and
+        # the row it was in has to stay readable at the narrowest the
+        # window goes. It still closes and reopens the app by itself.
         self.update_button = QPushButton("Update")
-        self.update_button.setMinimumHeight(32)
-        self.update_button.setToolTip(
-            "Download the latest statistics, portraits and item icons, "
-            "then restart the app so all of it is in use")
+        self.update_button.setVisible(False)
         self.update_button.clicked.connect(self._update_and_restart)
-        toolbar.addWidget(self.update_button)
 
         self.report_button = QPushButton("Report")
         self.report_button.clicked.connect(self._show_latest_report)
@@ -387,7 +390,7 @@ class MainWindow(QMainWindow):
         self.title_bar.add_menu_bar(self.menu_bar)
         self.title_bar.minimise.connect(self.showMinimized)
         self.title_bar.maximise.connect(self._toggle_maximised)
-        self.title_bar.close.connect(self.close)
+        self.title_bar.close_clicked.connect(self.close)
         shell_lay.addWidget(self.title_bar)
         shell_lay.addWidget(toolbar)
         shell_lay.addWidget(tabs, 1)
@@ -454,7 +457,7 @@ class MainWindow(QMainWindow):
         # Items first. They are about the ten heroes below, they read in
         # one glance, and they used to sit behind a lock that kept them
         # blank for the whole of the draft.
-        items_card, ilay = card("Items · hand-authored rules")
+        items_card, ilay = card("Items")
         self.item_row = ItemRow()
         ilay.addWidget(self.item_row)
         outer.insertWidget(1, items_card)
@@ -885,12 +888,16 @@ class MainWindow(QMainWindow):
         capture session around them, so a data update takes effect without
         restarting the app."""
         self.ds = store.load_or_empty()
+        # The icon can come out of the portrait library, so a download that
+        # has just landed may have supplied one.
+        appicon.forget()
         # Both picture caches index their folder ONCE and remember it was
         # empty. A download that happens while the app is running would
         # therefore never appear — which is exactly what "I ran the update
         # and the item icons are still blank" looks like from outside.
         portraits.forget()
         item_icons.forget()
+        self._apply_app_icon()
         session = getattr(self.provider, "session", None)
         if session is not None:
             try:
@@ -1705,6 +1712,59 @@ class MainWindow(QMainWindow):
             return
         QApplication.quit()
 
+    def _update_app(self) -> None:
+        """Pull the code, then reopen. Same deal as the data update.
+
+        A pull that leaves the old process running has done half the job:
+        the point of the button was never to run git, it was to be on the
+        new version without closing and reopening the app by hand.
+        """
+        self._restart_after_task = "update_app"
+        self.run_task("update_app")
+
+    # ---- the app's icon -------------------------------------------------
+    def _choose_app_icon(self) -> None:
+        """Let the user hand the app the icon they want.
+
+        This repository ships no icon and will not: the ones asked for are
+        Blizzard's and Valve's artwork. But an icon file on the user's own
+        machine is theirs to point at, and a file picker is the only honest
+        answer to "use the one I gave you".
+        """
+        path, _filter = QFileDialog.getOpenFileName(
+            self, "Choose the app icon", str(REPO_ROOT),
+            "Icons and images (*.ico *.png *.jpg *.jpeg *.bmp)")
+        if not path:
+            return
+        try:
+            dest = appicon.install(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "App icon",
+                                f"Could not use that file:\n\n{exc}")
+            return
+        self._apply_app_icon()
+        self.status.showMessage(
+            f"App icon set from {Path(path).name} (copied to "
+            f"assets/{dest.name}). The taskbar picks it up when the app is "
+            "reopened.", 12000)
+
+    def _apply_app_icon(self) -> None:
+        """Push the current icon at everything that draws one.
+
+        Four places, and they are easy to leave out of step: the window
+        (Alt-Tab), the application (the taskbar), our own title bar, and
+        the floating toggle, which is the only part of the app on screen
+        when the window is hidden.
+        """
+        art = appicon.icon()
+        self.setWindowIcon(art)
+        app = QApplication.instance()
+        if app is not None:
+            app.setWindowIcon(art)
+        if getattr(self, "title_bar", None) is not None:
+            self.title_bar.refresh_icon()
+        self.overlay_toggle.refresh_icon()
+
     def _toggle_maximised(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
@@ -2151,7 +2211,7 @@ class MainWindow(QMainWindow):
         ally_names = [self.ds.name(h) for h in draft.allies
                       if h != draft.my_hero]
         if not enemy_names and not ally_names:
-            self.item_row.show_items([], "Items appear as the draft fills in.")
+            self.item_row.show_items([])
             return
         advice = items_mod.recommend(
             self.rules, enemy_names, ally_names, draft.my_role,

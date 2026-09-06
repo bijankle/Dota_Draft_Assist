@@ -28,6 +28,14 @@ DEFAULTS = {
     # debugging step, never a mode.
     "use_gsi": True,
     "use_vision": True,
+    # How see-through the window is, remembered between runs. It HAS to be
+    # listed here: `save` writes only the keys DEFAULTS names, so a
+    # preference the app set but this dict did not know about was written
+    # by the slider, kept in memory, and dropped on the way to disk.
+    "overlay_opacity": 0.7,
+    # Where the floating toggle was left. Same story.
+    "toggle_x": 24,
+    "toggle_y": 24,
 }
 
 
