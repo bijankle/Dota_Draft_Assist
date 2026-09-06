@@ -4,6 +4,7 @@ disk, or the scripted demo — which is what keeps the whole interface
 iterable with no game running.
 """
 
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -405,6 +406,17 @@ class HybridProvider:
         # same ten are on the same bar.
         self._sight: dict[tuple, object] = {}
         self._searched: set[tuple] = set()
+        # The search runs on a WORKER, never on the caller. Measured on a
+        # real 3440x1440 session it took 25.6 seconds in one tick, which is
+        # the whole app frozen mid-draft. Shrinking the search grid cut
+        # that to about three, and three is still a freeze, so the answer
+        # arrives on a later tick instead of holding this one.
+        self._search_lock = threading.Lock()
+        self._search_done: dict[tuple, object] = {}
+        self._search_running: tuple | None = None
+        # Set by a successful search so the UI can save the geometry it
+        # measured: one search calibrates the boxes for good.
+        self.measured_layout = None
 
     # The Debug tab and the capture menu reach for these.
     @property
@@ -457,25 +469,9 @@ class HybridProvider:
         key = (snap.match_id or "", frozenset(ten))
         read = self._sight.get(key)
         if read is None:
-            if snap.frame is None:
-                return
-            from ..vision import lineup as lineup_mod
-            layout = getattr(getattr(self.vision, "session", None),
-                             "layout", None)
-            # The search path is hundreds of correlations at an unknown
-            # scale. Once per match; every later tick is the cheap path or
-            # nothing at all.
-            allow_search = key not in self._searched
-            self._searched.add(key)
-            found = lineup_mod.read_lineup(snap.frame, ten, layout,
-                                           allow_search=allow_search)
-            if not found.ok:
-                if allow_search:
-                    snap.gsi_notes = list(snap.gsi_notes) + [
-                        f"sides not readable from the screen: {found.note}"]
-                return
-            self._sight[key] = found
-            read = found
+            read = self._read_or_start_search(key, snap, ten)
+        if read is None:
+            return
         allies, enemies = read.sides_for(snap.my_team)
         snap.left = merge(allies, self.manual.entered("ally"))
         snap.right = merge(enemies, self.manual.entered("enemy"))
@@ -483,6 +479,89 @@ class HybridProvider:
         snap.lineup_source = "minimap+screen"
         snap.source = (f"game data + screen · ten heroes from the game, "
                        f"sides read off the pick bar ({read.how})")
+
+    def _read_or_start_search(self, key, snap, ten):
+        """The cheap read now; the expensive one on a worker.
+
+        `read_placed` is a hundred small correlations against calibrated
+        boxes — microseconds, and it is tried on every tick. The SEARCH
+        behind it hunts ten portraits across the top strip at an unknown
+        scale, and on a real 3440x1440 session that was 25.6 seconds inside
+        one tick with the window frozen. So it is started once per (match,
+        the ten) and its answer is picked up on whichever later tick it is
+        ready — the caller keeps the guess it had in the meantime, which is
+        what it would have had anyway.
+        """
+        from ..vision import lineup as lineup_mod
+        with self._search_lock:
+            done = self._search_done.pop(key, None)
+        if done is not None:
+            if done.ok:
+                self._sight[key] = done
+                self._remember_measured_layout(done, snap)
+                return done
+            snap.gsi_notes = list(snap.gsi_notes) + [
+                f"sides not readable from the screen: {done.note}"]
+            return None
+
+        if snap.frame is None:
+            return None
+        layout = getattr(getattr(self.vision, "session", None), "layout", None)
+        placed = lineup_mod.read_lineup(snap.frame, ten, layout,
+                                        allow_search=False)
+        if placed.ok:
+            self._sight[key] = placed
+            return placed
+
+        with self._search_lock:
+            if self._search_running is not None or key in self._searched:
+                return None
+            self._search_running = key
+            self._searched.add(key)
+        # The capture session overwrites its frame buffer, so the worker
+        # gets a copy of its own rather than a view that changes underneath
+        # a three-second correlation.
+        frame = snap.frame.copy()
+        threading.Thread(target=self._run_search, name="lineup-search",
+                         args=(key, frame, list(ten), layout),
+                         daemon=True).start()
+        return None
+
+    def _run_search(self, key, frame, ten, layout) -> None:
+        """Worker body. Never raises into the thread: a failed search must
+        cost the reading, never the app."""
+        from ..vision import lineup as lineup_mod
+        try:
+            found = lineup_mod.read_lineup(frame, ten, layout,
+                                           allow_search=True)
+        except Exception as exc:                # noqa: BLE001 - see above
+            found = lineup_mod.ScreenLineup(note=f"search failed: {exc}")
+        found.frame_shape = frame.shape[:2]
+        with self._search_lock:
+            self._search_done[key] = found
+            self._search_running = None
+
+    def _remember_measured_layout(self, read, snap) -> None:
+        """A successful SEARCH has already measured the crop boxes.
+
+        It found every portrait's position and size to do its job, so the
+        geometry is free — and throwing it away is why the search kept
+        running: the cheap path needs calibrated boxes and the boxes were
+        never calibrated. `MainWindow` picks this up and saves it, after
+        which the search never runs again on this machine.
+        """
+        if read.how != "searched" or not read.found:
+            return
+        shape = getattr(read, "frame_shape", None) or (
+            snap.frame.shape[:2] if snap.frame is not None else None)
+        if shape is None:
+            return
+        from ..vision import autocal
+        height, width = shape
+        base = getattr(getattr(self.vision, "session", None), "layout", None)
+        result = autocal.layout_from(read.found, width, height, base)
+        if result.ok:
+            self.measured_layout = result
 
     def poll(self) -> Snapshot:
         snap = self.gsi.poll()

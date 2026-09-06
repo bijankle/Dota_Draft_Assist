@@ -72,6 +72,40 @@ def icon_path() -> str | None:
         return None
 
 
+def stamp_identity(link, propsys, pscon) -> bool:
+    """Write System.AppUserModel.ID onto the link, if it can be done.
+
+    This is the property Windows matches a pinned taskbar button against,
+    so it is the difference between the pin showing our icon and showing
+    python.exe's. It is also the call that crashed the interpreter outright
+    when handed an explicit variant type, so it is kept to the form that
+    works and its failure is survivable.
+    """
+    try:
+        store = link.QueryInterface(propsys.IID_IPropertyStore)
+        store.SetValue(pscon.PKEY_AppUserModel_ID,
+                       propsys.PROPVARIANTType(APP_ID))
+        store.Commit()
+        return True
+    except Exception as exc:            # noqa: BLE001 - see the docstring
+        print(f"Could not write the AppUserModelID: {exc}")
+        return False
+
+
+def open_containing_folder(path: Path) -> None:
+    """Show the shortcut, because pinning it is now the user's move.
+
+    Nothing can pin to the taskbar on the user's behalf: Windows removed
+    the verb. Putting the file in front of them is the most the app can
+    do, and it beats describing a path.
+    """
+    import subprocess
+    try:
+        subprocess.run(["explorer", "/select,", str(path)], check=False)
+    except OSError:
+        pass
+
+
 def main() -> None:
     if sys.platform != "win32":
         raise SystemExit("Windows only — there is no Start menu to pin to.")
@@ -99,25 +133,35 @@ def main() -> None:
     if icon:
         link.SetIconLocation(icon, 0)
 
-    # The whole reason for building the link this way: WScript.Shell has no
-    # way to write a property-store value, and this one property is what
-    # ties a pinned taskbar button to this shortcut's icon.
-    store = link.QueryInterface(propsys.IID_IPropertyStore)
-    store.SetValue(pscon.PKEY_AppUserModel_ID,
-                   propsys.PROPVARIANTType(APP_ID, pythoncom.VT_LPWSTR))
-    store.Commit()
-
+    # The identity is stamped BEFORE the file is written, and the whole
+    # attempt is wrapped, because it has already taken the process down
+    # once: passing PROPVARIANTType an explicit VT killed the interpreter
+    # with STATUS_STACK_BUFFER_OVERRUN (exit 3221226505), which no `except`
+    # can catch. The one-argument form is the one that works. A shortcut
+    # without the identity is still a usable shortcut, so failing here must
+    # not cost the shortcut.
+    stamped = stamp_identity(link, propsys, pscon)
     link.QueryInterface(pythoncom.IID_IPersistFile).Save(str(link_path), 0)
 
     print(f"Created {link_path}")
-    print(f"AppUserModelID: {APP_ID}")
+    if stamped:
+        print(f"AppUserModelID: {APP_ID}")
+    else:
+        print("The AppUserModelID could not be written, so a pin made from "
+              "the running window will still show Python's icon. Pin THIS "
+              "shortcut instead and the icon is correct.")
     if not icon:
         print("No icon — the shortcut uses Python's. Put an .ico in assets/ "
               "(or use Setup > Choose app icon) and run this again.")
-    print("It is now in the Start menu; right-click it there to pin it.")
+    print("")
+    print("TO PIN IT TO THE TASKBAR: Windows does not allow a program to "
+          "pin itself — that verb was removed — so drag the shortcut onto "
+          "the taskbar, or right-click it and choose Pin to taskbar "
+          "(Windows 11 hides that under 'Show more options').")
     print("Already pinned the RUNNING WINDOW? Unpin it and pin it again — "
-          "Windows caches the old identity, and the pin only finds this "
-          "shortcut's icon on a fresh pin.")
+          "Windows caches the old identity, and the pin only picks this "
+          "shortcut up on a fresh pin.")
+    open_containing_folder(link_path)
 
 
 if __name__ == "__main__":

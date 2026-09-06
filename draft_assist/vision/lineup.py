@@ -56,6 +56,11 @@ class ScreenLineup:
     confidence: float = 0.0
     how: str = ""            # "placed" | "searched"
     note: str = ""
+    # Where the search found each portrait, when it was the search that
+    # ran. Carried so ONE expensive search can also calibrate the crop
+    # boxes: it has already measured every portrait's position and size,
+    # and throwing that away means paying for it again next match.
+    found: list = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -195,6 +200,7 @@ def read_searched(frame, hero_ids: list[int],
         right=[item.hero_id for item in found[TEAM_SIZE:]],
         confidence=float(np.mean([item.score for item in found])),
         how="searched",
+        found=found,
         note=f"located all ten on the bar, mean confidence "
              f"{np.mean([item.score for item in found]):.2f}")
 

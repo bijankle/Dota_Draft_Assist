@@ -217,7 +217,8 @@ class MainWindow(QMainWindow):
         self._update_first_run_banner()
         self.setWindowOpacity(
             float(self.settings.get("overlay_opacity", 0.7)))
-        self.overlay_toggle.show()
+        # Not shown here: it appears only when the window is hidden, so the
+        # app is never two windows at once.
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
@@ -252,9 +253,10 @@ class MainWindow(QMainWindow):
         self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
                   None, "Use your own .ico or .png for the window, the "
                         "taskbar and the floating button")
-        self._act(setup_menu, "&Add to the Start menu",
+        self._act(setup_menu, "Make a &pinnable shortcut…",
                   lambda: self.run_task("make_shortcut"), None,
-                  "Make a pinnable shortcut with the app's own icon")
+                  "A .lnk with the app's icon and identity, ready to "
+                  "drag onto the taskbar")
         setup_menu.addSeparator()
         self._act(setup_menu, "&Set up game data (GSI)…", self._install_gsi,
                   None, "Install Dota's Game State Integration config")
@@ -420,6 +422,7 @@ class MainWindow(QMainWindow):
         shell_lay.setSpacing(0)
         self.title_bar = TitleBar("Dota Draft Assist")
         self.title_bar.add_menu_bar(self.menu_bar)
+        self.title_bar.hide_away.connect(lambda: self._set_overlay(False))
         self.title_bar.minimise.connect(self.showMinimized)
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
@@ -1096,6 +1099,11 @@ class MainWindow(QMainWindow):
         self.setVisible(enabled)
         if enabled:
             self.raise_()
+        # ONE window of this app on screen at a time. The toggle used to sit
+        # there alongside the window, so the app looked like two programs —
+        # it is a way BACK from a hidden window, and while the window is up
+        # the title bar's own hide button is that control.
+        self.overlay_toggle.setVisible(not enabled)
         if self.overlay_toggle.isChecked() != enabled:
             self.overlay_toggle.blockSignals(True)
             self.overlay_toggle.setChecked(enabled)
@@ -1731,6 +1739,46 @@ class MainWindow(QMainWindow):
         self._save_calibration()
         self.cal_label.setText(f"{result.note} — saved")
 
+    def _adopt_measured_layout(self) -> None:
+        """Take the geometry a successful screen search already measured.
+
+        The search hunts all ten portraits across the top strip to work out
+        whose five are whose, so by the time it answers it knows exactly
+        where every box is and how big. Nothing was doing anything with
+        that, which is why it kept running: the cheap path needs calibrated
+        boxes, the boxes were never calibrated, so every match paid for the
+        search again — and on a real 3440x1440 session that was 25 seconds
+        of frozen window.
+
+        Saved the first time it happens and never again, so a later match
+        cannot quietly move the boxes: `_measure_calibration` is still
+        there for doing it deliberately.
+        """
+        result = getattr(self.provider, "measured_layout", None)
+        if result is None:
+            return
+        self.provider.measured_layout = None
+        if not result.ok:
+            return
+        self.layout_spec = result.layout
+        session = getattr(self.provider, "session", None)
+        if session is not None:
+            session.layout = result.layout
+        for field, spin in getattr(self, "cal_spins", {}).items():
+            spin.blockSignals(True)
+            spin.setValue(getattr(result.layout, field))
+            spin.blockSignals(False)
+        from ..vision import layout as layout_mod
+        try:
+            layout_mod.save_calibration(result.layout)
+        except OSError as exc:
+            self.cal_label.setText(f"measured but could not save: {exc}")
+            return
+        self.cal_label.setText(f"measured from the game — {result.note}")
+        self.status.showMessage(
+            "Crop boxes measured from this game and saved — recognition "
+            "should work from here.", 12000)
+
     def _set_calibration(self, field: str, value: float) -> None:
         """Live: the next frame is cropped with the new numbers, so the
         boxes in the picture move as the spin box turns."""
@@ -1953,6 +2001,7 @@ class MainWindow(QMainWindow):
         with LOOP.stage("recording"):
             self._consider_auto_record(snap)
             self._capture_recording(snap, allies, enemies)
+        self._adopt_measured_layout()
         with LOOP.stage("status + captions"):
             self._update_status(snap)
             self._update_team_captions(snap)

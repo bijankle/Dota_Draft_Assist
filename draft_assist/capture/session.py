@@ -195,8 +195,12 @@ class CaptureSession:
         self._next_tick = now + (ACTIVE_PERIOD if active else IDLE_PERIOD)
 
         with LOOP.stage("  gate (is this the draft screen)"):
+            # ONE signature per tick. `is_draft_screen` computes the whole
+            # thing again, so asking both questions cost twice what the
+            # answer is worth — and the answer is a comparison, not a
+            # second measurement.
             self.state.gate_score = gate.score(frame, self._refs)
-            tripped = gate.is_draft_screen(frame, self._refs)
+            tripped = self.state.gate_score <= gate.DEFAULT_THRESHOLD
         if tripped:
             self._trips, self._misses = self._trips + 1, 0
         else:

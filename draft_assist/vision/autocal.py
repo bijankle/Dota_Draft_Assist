@@ -34,6 +34,11 @@ WIDTHS = tuple(round(0.028 + 0.003 * i, 4) for i in range(19))
 HEIGHTS = tuple(round(0.050 + 0.006 * i, 4) for i in range(17))
 MIN_SCORE = 0.35
 MIN_FOUND = 8
+# The coarse scale grid runs on a strip decimated to about this width. The
+# grid only has to find the NEIGHBOURHOOD; `_refine` walks in from there at
+# full resolution, so nothing is lost and the search stops being measured
+# in tens of seconds.
+SEARCH_WIDTH = 900
 TEAM_SIZE = 5
 
 
@@ -96,21 +101,47 @@ def find_scale(strip, templates, span: int, frame_height: int):
     Found once, from a few heroes, rather than per hero: every portrait is
     the same size on screen, so searching the grid ten times over is ten
     times the work for one answer.
+
+    **The grid is searched SHRUNK.** 19 widths x 17 heights x 2 probes is
+    646 template matches, and on a 3440x1440 frame each one is a
+    correlation over a 3440x432 strip — measured at 25.6 SECONDS on one
+    tick of a real session, which is the freeze the user reported. The
+    answer that costs nothing is that finding the neighbourhood does not
+    need full resolution: the coarse pass runs on a strip decimated to
+    about `SEARCH_WIDTH` across, which is 10-20x less work, and the result
+    is then walked back to exact size at full resolution. Accuracy is
+    unchanged because `_refine` at the end does the same pixel walk it
+    always did — it just starts from a scaled-up estimate rather than from
+    a grid point.
     """
+    shrink = max(1, int(round(strip.shape[1] / SEARCH_WIDTH)))
+    if shrink > 1:
+        small = cv2.resize(strip, (strip.shape[1] // shrink,
+                                   max(1, strip.shape[0] // shrink)),
+                           interpolation=cv2.INTER_AREA)
+    else:
+        small = strip
+
     best = None
     for template in templates:
         for width_frac in WIDTHS:
-            width = int(round(span * width_frac))
+            width = max(8, int(round(span * width_frac)) // shrink)
             for height_frac in HEIGHTS:
-                height = int(round(frame_height * height_frac))
-                hit = _best_at(strip, template, width, height)
+                height = max(8, int(round(frame_height * height_frac))
+                             // shrink)
+                hit = _best_at(small, template, width, height)
                 if hit is None:
                     continue
                 if best is None or hit[0] > best[2]:
                     best = (width, height, hit[0])
     if best is None:
         return None
-    return _refine(strip, templates[0], best[0], best[1])
+    if shrink > 1:
+        # Sharpen the estimate where it is cheap, then once at full size.
+        best = _refine(small, templates[0], best[0], best[1], reach=2)
+        best = (best[0] * shrink, best[1] * shrink, best[2])
+    return _refine(strip, templates[0], best[0], best[1],
+                   reach=max(3, shrink))
 
 
 def locate(frame, portraits: dict[int, np.ndarray]) -> list[Located]:

@@ -6,6 +6,8 @@ heroes can be put in their screen positions reliably, and about refusing
 rather than guessing when they cannot.
 """
 
+import time
+
 import numpy as np
 import pytest
 
@@ -211,8 +213,117 @@ def test_a_screen_that_cannot_be_read_leaves_the_guess_alone(monkeypatch):
 
     gsi = FakeGsi()
     gsi.manual = ManualDraft()
-    snap = HybridProvider(gsi, FakeVision()).poll()
+    provider = HybridProvider(gsi, FakeVision())
+    # The first poll starts the search on a worker and returns at once: the
+    # search takes SECONDS on a real frame and holding the tick for it is
+    # the freeze this design exists to avoid.
+    snap = provider.poll()
     assert snap.lineup_source == "minimap"
     assert snap.sides_certain is False
     assert snap.left == TEN[5:]
+
+    # The reason arrives on a later tick, when the worker has finished.
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        snap = provider.poll()
+        if any("not readable" in note for note in snap.gsi_notes):
+            break
     assert any("not readable" in note for note in snap.gsi_notes)
+    assert snap.left == TEN[5:], "the guess must survive a failed search"
+
+
+# ---- the search runs on a worker, and it calibrates on the way out ------
+
+def _hybrid(frame, layout=None, monkeypatch=None):
+    """A HybridProvider whose game names TEN and whose screen is `frame`."""
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import HybridProvider, Snapshot
+
+    class FakeGsi:
+        def poll(self):
+            return Snapshot(left=TEN[5:], right=TEN[:5], my_team="radiant",
+                            lineup_source="minimap", sides_certain=False,
+                            match_id="42", sides_known=True)
+
+    class FakeSession:
+        pass
+
+    FakeSession.layout = layout
+
+    class FakeVision:
+        session = FakeSession()
+
+        def poll(self):
+            return Snapshot(frame=frame)
+
+    gsi = FakeGsi()
+    gsi.manual = ManualDraft()
+    return HybridProvider(gsi, FakeVision())
+
+
+def _poll_until(provider, done, timeout=60):
+    deadline = time.monotonic() + timeout
+    snap = provider.poll()
+    while time.monotonic() < deadline and not done(provider, snap):
+        snap = provider.poll()
+    return snap
+
+
+def test_the_search_never_holds_the_tick(monkeypatch):
+    """Measured at 25.6 SECONDS inside one tick on a real 3440x1440
+    session, with the whole window frozen. The tick must come back at once
+    and the answer must arrive on a later one."""
+    from draft_assist.vision import autocal
+    art = portraits(TEN)
+    monkeypatch.setattr(autocal, "base_portraits", lambda ids: art)
+    frame = bar(TEN, DraftLayout())
+    provider = _hybrid(frame, layout=None)
+
+    started = time.perf_counter()
+    snap = provider.poll()
+    assert time.perf_counter() - started < 1.0, "the poll blocked on the search"
+    assert snap.lineup_source == "minimap"          # still the guess
+
+    snap = _poll_until(provider, lambda p, s: s.sides_certain)
+    assert snap.sides_certain, "the worker's answer never arrived"
+    assert snap.lineup_source == "minimap+screen"
+
+
+def test_a_successful_search_hands_back_the_geometry_it_measured(monkeypatch):
+    """It located every portrait to do its job, so the crop boxes are free
+    — and throwing them away is why the search kept running every match."""
+    from draft_assist.vision import autocal
+    art = portraits(TEN)
+    monkeypatch.setattr(autocal, "base_portraits", lambda ids: art)
+    truth = DraftLayout()
+    frame = bar(TEN, truth)
+    provider = _hybrid(frame, layout=None)
+
+    _poll_until(provider, lambda p, s: p.measured_layout is not None)
+    result = provider.measured_layout
+    assert result is not None and result.ok, "no layout came back"
+    for field in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
+        assert getattr(result.layout, field) == pytest.approx(
+            getattr(truth, field), abs=0.004), field
+
+
+def test_the_cheap_path_is_taken_when_the_boxes_are_calibrated(monkeypatch):
+    """With a layout that fits, no search should ever start."""
+    from draft_assist.vision import autocal
+
+    def refuse(_ids):
+        raise AssertionError("the search ran when the placed path would do")
+
+    monkeypatch.setattr(autocal, "base_portraits", refuse)
+    monkeypatch.setattr("draft_assist.vision.lineup.autocal.base_portraits",
+                        refuse)
+    layout = DraftLayout()
+    frame = bar(TEN, layout)
+    provider = _hybrid(frame, layout=layout)
+    monkeypatch.setattr(
+        "draft_assist.vision.lineup.read_placed",
+        lambda f, ids, lay, art=None: lineup.ScreenLineup(
+            left=TEN[:5], right=TEN[5:], how="placed", confidence=0.9))
+    snap = provider.poll()
+    assert snap.sides_certain
+    assert provider._search_running is None

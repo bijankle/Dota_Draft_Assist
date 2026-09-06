@@ -180,6 +180,24 @@ credentials, and put the account at risk. Do not go there.
     keeps the guess it had — a wrong split asserted confidently is worse
     than a guess the user is already correcting.
 
+    **The search runs on a WORKER, and it calibrates on the way out.**
+    Measured on a real 3440x1440 session it took **25.6 seconds inside one
+    tick**, with the window frozen — the freeze the user reported. Three
+    things were wrong and all three are fixed. The scale grid searched at
+    full resolution: 19 widths x 17 heights x 2 probes is 646 correlations
+    over a 3440x432 strip, so `autocal.find_scale` now runs the coarse pass
+    on a strip decimated to `SEARCH_WIDTH` and walks back to exact size at
+    full resolution — 17.9s to 3.4s on the synthetic bar, with the measured
+    layout unchanged to four decimal places. Three seconds is still a
+    freeze, so `HybridProvider._read_or_start_search` starts it on a thread
+    and the answer is picked up on a later tick, on a COPY of the frame
+    because the capture session overwrites its buffer. And it ran EVERY
+    match because nothing kept what it found: a successful search has
+    already located every portrait's position and size, so
+    `_remember_measured_layout` turns that into a `DraftLayout` and
+    `MainWindow._adopt_measured_layout` saves it — after which the cheap
+    placed path works and the search never runs again.
+
     Corrections stay, and they are all per-match, cleared on a new match id:
     **drag a hero onto the other team** exchanges it with whatever it is
     dropped on (an exchange, never one-way — a 5v5 cannot become 4v6), and
@@ -546,6 +564,12 @@ credentials, and put the account at risk. Do not go there.
   would strand the app running and invisible. It is checkable so it reads
   as on or off, and it is draggable by the same press-becomes-a-drag rule
   the old badge used, so moving it never also toggles the window.
+  **There is never more than ONE window of this app on screen.** The toggle
+  used to sit there alongside the window, which made the app look like two
+  programs — and it is a way BACK from a hidden window, so it has no job
+  while the window is up. It appears exactly when the window is hidden, and
+  the title bar's own hide button (`TitleBar.hide_away`) is the control
+  while the window is showing.
 - **Frameless means the chrome is ours to draw.** Windows' own title bar is
   a white strip above a dark app and reads as a different program bolted on
   top. `TitleBar` replaces it, and the menu bar goes INSIDE it — NOT
@@ -626,6 +650,14 @@ credentials, and put the account at risk. Do not go there.
   the app's icon currently is, so there is always one to point at. A .bat
   cannot be pinned usefully at all, because Windows pins the shell rather
   than the app and the icon is the console's.
+  **Nothing can pin to the taskbar on the user's behalf** — Windows removed
+  the verb — so the tool opens the shortcut's folder and they drag it. And
+  `propsys.PROPVARIANTType` must be called with ONE argument: handing it an
+  explicit variant type killed the interpreter with
+  STATUS_STACK_BUFFER_OVERRUN (exit 3221226505), which no `except` can
+  catch. The identity is stamped before the file is written and its failure
+  is survivable, because a shortcut without the identity is still a usable
+  shortcut.
 - **The refresh loop runs four times a second, so nothing in it may be
   expensive.** Two things were, and both showed up as stutter over a live
   game. `_update_debug` drew an overlay onto a full-resolution frame,
@@ -638,6 +670,13 @@ credentials, and put the account at risk. Do not go there.
   `item_row._fitted` cache by (id, size) and the caches clear with
   `forget()`. A smooth rescale in a paint handler is the classic Qt
   performance mistake; do not reintroduce it.
+  **The gate computes ONE signature per tick.** `gate.score` followed by
+  `gate.is_draft_screen` measured the same frame twice, and `signature`
+  colour-converts and area-resizes whatever it is handed — 97ms of every
+  tick on a 3440x1440 frame, for a 24x14 thumbnail. The second call is now
+  a comparison against the first, and `signature` decimates by plain
+  slicing before the expensive steps (a slice is a view, so it is free,
+  and dropping three quarters of the rows cannot move a 24x14 average).
   **The loop is measured, not guessed** (`draft_assist/timing.py`). Every
   stage — capture and recognition inside `CaptureSession.tick`, the
   rebuild, recording, status and the debug view — runs inside

@@ -32,6 +32,7 @@ EDGE = 6            # how close to the border counts as a resize grab
 class TitleBar(QWidget):
     """Icon, title, and the three buttons Windows would have drawn."""
 
+    hide_away = pyqtSignal()
     minimise = pyqtSignal()
     maximise = pyqtSignal()
     # NOT `close`: a signal of that name shadows QWidget.close(), so the
@@ -75,6 +76,11 @@ class TitleBar(QWidget):
         lay.addLayout(self.extras)
 
         for name, glyph, signal in (
+                # Hide-to-the-corner sits first because it is the one that
+                # leaves something behind: the window goes, the floating
+                # toggle appears in its place, and there is never more than
+                # one of this app on screen.
+                ("hide", "◱", self.hide_away),
                 ("min", "─", self.minimise),
                 ("max", "□", self.maximise),
                 ("close", "✕", self.close_clicked)):

@@ -179,11 +179,13 @@ QLabel#titleText {{ color: {TEXT_DIM}; font-weight: 600; }}
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
 QMenuBar#titleMenus::item:selected {{ background: {BG_HOVER}; }}
-QPushButton#win_min, QPushButton#win_max, QPushButton#win_close {{
+QPushButton#win_hide, QPushButton#win_min,
+QPushButton#win_max, QPushButton#win_close {{
     background: transparent; border: none; border-radius: 0;
     color: {TEXT_DIM}; font-size: 13px; padding: 0;
 }}
-QPushButton#win_min:hover, QPushButton#win_max:hover {{
+QPushButton#win_hide:hover, QPushButton#win_min:hover,
+QPushButton#win_max:hover {{
     background: {BG_HOVER}; color: {TEXT_STRONG};
 }}
 /* Close is the one button whose hover has to be unmistakable. */
