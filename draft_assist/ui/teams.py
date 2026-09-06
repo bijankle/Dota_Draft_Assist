@@ -22,14 +22,19 @@ of the number, so it reads over whatever is behind it without covering more
 than it needs.
 """
 
-from PyQt6.QtCore import QMimeData, QPoint, QRect, QRectF, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QDrag, QFont, QFontMetricsF, QPainter, QPen
+from PyQt6.QtCore import QMimeData, QPoint, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QDrag, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
                              QSizePolicy, QVBoxLayout)
 
-from . import theme
-from .portraits import portrait, scaled
+from . import theme, tilekit
+from .portraits import scaled
 from .textfit import fit, split_two  # noqa: F401  (re-exported)
+# One look for every tile in the app: the name band, the number badge and
+# the point sizes are shared with the item strip and the suggested picks,
+# so the three strips cannot drift apart again.
+from .tilekit import (BADGE_PAD_X, BADGE_PAD_Y, CHROME,  # noqa: F401
+                      NAME_MAX_PT, NAME_MIN_PT, NUMBER_PT)
 
 # "with" and "vs" are different questions and the eye should not have to
 # read a legend to tell which it is looking at. Words rather than glyphs:
@@ -59,16 +64,6 @@ def minimum_panel_width() -> int:
     """Five tiles at their floor, plus the panel's own margins."""
     return 2 * PANEL_MARGIN + 5 * TILE_MIN + 4 * TILE_GAP
 EMPTY_TEXT = "+"
-
-NAME_MAX_PT = 11
-NAME_MIN_PT = 7
-NUMBER_PT = 11
-
-# The name strip and the number badge share one tint, so the two pieces of
-# text read as the same layer sitting over the art rather than two ideas.
-CHROME = QColor(0, 0, 0, 165)
-BADGE_PAD_X = 5
-BADGE_PAD_Y = 2
 
 
 class HeroTile(QAbstractButton):
@@ -245,7 +240,6 @@ class HeroTile(QAbstractButton):
                 art_box.left() + (art_box.width() - art.width()) // 2,
                 art_box.top() + (art_box.height() - art.height()) // 2, art)
 
-        painter.fillRect(band, CHROME)
         self._paint_name(painter, band)
         self._paint_number(painter, box)
         if self.role:
@@ -258,7 +252,7 @@ class HeroTile(QAbstractButton):
         painter.end()
 
     def _band_height(self, box: QRect) -> int:
-        return max(20, int(box.height() * 0.28))
+        return tilekit.band_height(box.height())
 
     def _paint_name(self, painter: QPainter, band: QRect) -> None:
         """Shrink to fit, then wrap to two lines, then elide.
@@ -268,19 +262,7 @@ class HeroTile(QAbstractButton):
         text does — but the strip's height is fixed, so two lines only
         happen at a size where two lines still fit.
         """
-        name = self.hero_name or ""
-        avail = band.width() - 8
-        band_h = band.height()
-
-        size, lines = self._fit_name(name, avail, band_h)
-        painter.setFont(self._font(size, bold=True))
-        painter.setPen(QColor(theme.TEXT_STRONG))
-        metrics = QFontMetricsF(painter.font())
-        text = "\n".join(
-            metrics.elidedText(line, Qt.TextElideMode.ElideRight, avail)
-            for line in lines)
-        painter.drawText(QRectF(band.adjusted(4, 1, -4, -1)),
-                         int(Qt.AlignmentFlag.AlignCenter), text)
+        tilekit.paint_band(painter, band, self.hero_name or "", self.font())
 
     def _fit_name(self, name: str, avail: int,
                   band_h: int) -> tuple[int, list[str]]:
@@ -294,21 +276,8 @@ class HeroTile(QAbstractButton):
         art, and no bigger than the digits need — a full-width bar there
         would hide as much of the portrait as the name used to.
         """
-        if not self._delta:
-            return
-        painter.setFont(self._font(NUMBER_PT, bold=True))
-        metrics = QFontMetricsF(painter.font())
-        text_w = metrics.horizontalAdvance(self._delta)
-        badge = QRectF(
-            box.right() - 3 - text_w - 2 * BADGE_PAD_X,
-            box.bottom() - 3 - metrics.height() - 2 * BADGE_PAD_Y,
-            text_w + 2 * BADGE_PAD_X, metrics.height() + 2 * BADGE_PAD_Y)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(CHROME)
-        painter.drawRoundedRect(badge, 3, 3)
-        painter.setPen(QColor(self._delta_colour))
-        painter.drawText(badge, int(Qt.AlignmentFlag.AlignCenter),
-                         self._delta)
+        tilekit.paint_badge(painter, box, self._delta, self._delta_colour,
+                            self.font())
 
     def _paint_border(self, painter: QPainter, box: QRect) -> None:
         if self._drop_target:

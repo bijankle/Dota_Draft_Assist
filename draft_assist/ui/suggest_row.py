@@ -1,0 +1,129 @@
+"""The suggested picks: the ranked list, as a strip, above the items.
+
+The Analysis tab already ranks every hero the draft has not taken by draft
+fit. That answer belongs on the Draft tab too — it is the question a draft
+screen is actually asking — but 120 rows of it is a table, and a table
+beside the ten picks makes the ten harder to read. So the top handful come
+across as tiles: best on the left, descending to the right, exactly the way
+the item strip reads.
+
+The tiles are the item strip's tiles with a hero in them (`tilekit`), and
+each carries its fit in the same bottom-right badge the ten picks use — the
+same number, in the same place, in the same colours, so a suggestion and a
+pick can be compared without translating between two layouts.
+
+Nothing here is clickable. A pick is entered by clicking a SLOT, and a
+strip that also entered picks would be a second way to do it that behaves
+differently.
+"""
+
+from PyQt6.QtCore import QRect, QSize, Qt
+from PyQt6.QtGui import QPainter
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
+
+from . import theme, tilekit
+from .portraits import scaled
+
+WIDTH = tilekit.STRIP_W
+ART_H = tilekit.STRIP_ART_H
+BAND_H = tilekit.STRIP_BAND_H
+# Eight is what the item strip holds, and the answer past the eighth-best
+# hero in a 120-hero list is not one anybody acts on.
+MAX_SHOWN = 8
+PLACEHOLDERS = 5
+
+
+class SuggestTile(QWidget):
+    """One candidate: name band, portrait, fit in the corner."""
+
+    def __init__(self, hero_id: int, name: str, fit_value: float,
+                 tooltip: str = "", parent=None):
+        super().__init__(parent)
+        self.hero_id = hero_id
+        self.hero_name = name
+        self.fit = float(fit_value)
+        self.setFixedSize(WIDTH, BAND_H + ART_H)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setToolTip(tooltip or name)
+
+    def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform, True)
+        band = QRect(0, 0, WIDTH, BAND_H)
+        box = QRect(0, BAND_H, WIDTH, ART_H)
+        if not tilekit.paint_art(painter, box,
+                                 scaled(self.hero_id, box.width(),
+                                        box.height())):
+            tilekit.paint_plate(painter, box)
+        tilekit.paint_band(painter, band, self.hero_name, self.font())
+        # Same figure, same corner, same colours as a drafted tile: a
+        # suggestion and a pick have to be comparable at a glance.
+        tilekit.paint_badge(painter, QRect(0, 0, WIDTH, BAND_H + ART_H),
+                            f"{self.fit * 100:+.1f}",
+                            theme.GOOD if self.fit >= 0 else theme.BAD,
+                            self.font())
+        painter.end()
+
+    def sizeHint(self) -> QSize:                # noqa: N802
+        return self.size()
+
+
+class PlaceholderTile(QWidget):
+    """The shape a suggestion will be. Same reason as the item strip's."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(WIDTH, BAND_H + ART_H)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event) -> None:        # noqa: N802
+        painter = QPainter(self)
+        tilekit.paint_plate(painter, QRect(0, 0, WIDTH, BAND_H + ART_H),
+                            dashed=True)
+        painter.end()
+
+    def sizeHint(self) -> QSize:                # noqa: N802
+        return self.size()
+
+
+class SuggestRow(QWidget):
+    """A line of suggestion tiles, best first."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        self.row.setSpacing(8)
+        self.message = QLabel("")
+        self.message.setProperty("dim", True)
+        self.message.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.row.addWidget(self.message)
+        self.row.addStretch(1)
+        self._tiles: list[SuggestTile] = []
+        self._blanks: list[PlaceholderTile] = []
+
+    def show_heroes(self, rows: list[tuple[int, str, float, str]],
+                    empty: str = "") -> None:
+        """`rows` is (hero id, name, fit, tooltip), already in order."""
+        for tile in self._tiles + self._blanks:
+            self.row.removeWidget(tile)
+            tile.deleteLater()
+        self._tiles, self._blanks = [], []
+        self.message.setText(empty if not rows else "")
+        self.message.setVisible(bool(empty) and not rows)
+        if not rows:
+            for _ in range(PLACEHOLDERS):
+                blank = PlaceholderTile(self)
+                self.row.insertWidget(len(self._blanks), blank)
+                self._blanks.append(blank)
+            return
+        for hero_id, name, fit_value, tip in rows[:MAX_SHOWN]:
+            tile = SuggestTile(hero_id, name, fit_value, tip, self)
+            self.row.insertWidget(len(self._tiles), tile)
+            self._tiles.append(tile)
+
+    @property
+    def heroes(self) -> list[str]:
+        return [tile.hero_name for tile in self._tiles]

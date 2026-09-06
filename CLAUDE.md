@@ -299,6 +299,30 @@ credentials, and put the account at risk. Do not go there.
   or not one is showing: slots that grew by a text height on every click
   made the column restless, and a draft panel that moves under the cursor
   is one you misclick.
+- **The Draft tab reads top to bottom as one argument**: the board, then
+  which hero to take, then what to build. The ten picks are at the very
+  top because they are the subject; **Suggested picks** (`ui/suggest_row.
+  py`) is the Analysis tab's ranked list cut to its head — best draft fit
+  on the left, descending right, the same order and the same numbers,
+  because it IS that list rather than a second opinion; the item strip
+  follows, and the two grids sit at the bottom under the sides they
+  describe. 120 rows of ranking beside the ten picks was why the list
+  lived on another tab, and eight tiles is not 120 rows. The strip stays
+  blank until at least one hero is on the board: with an empty draft every
+  fit is zero, so it would be ranking nothing while looking like a
+  recommendation. Nothing in it is clickable — a pick is entered by
+  clicking a SLOT, and a second way to do it that behaved differently
+  would be worse than no way.
+- **The panel that narrated the reading is gone from the Draft tab.** It
+  said which source produced the line-up, how many slots were unresolved
+  and offered the left/right bank picker — all of which the tab already
+  showed: an unresolved slot draws as "+", the source is in the status
+  bar, and a wrong side is fixed by dragging the tile rather than by
+  reading a sentence about it. The widgets moved to Debug ▸ Live under
+  "What the app is reading", where the rest of "what did it conclude and
+  from where" lives. Note for tests: a widget on a tab that is not current
+  is hidden BY THE TAB WIDGET, so `isVisibleTo(window)` there answers "is
+  this the open tab", not "did the app hide this" — ask `isHidden()`.
 - **The Draft tab is the whole board and nothing else.** Your five on the
   left, theirs on the right (`ui/teams.py`), because that is where they sit
   on the pick bar, with the two grids directly under the sides they
@@ -311,6 +335,15 @@ credentials, and put the account at risk. Do not go there.
   items panel — moved to the **Analysis** tab, because 120 candidates
   beside the ten picks made the ten harder to read. There is no longer a
   separate Matrix tab.
+- **Every tile in the app is the same tile** (`ui/tilekit.py`). There are
+  three strips of them — the ten picks, the suggested picks and the items
+  — and they had drifted into three designs: hero names 11pt bold on a
+  tinted band above the art, item names 9pt plain with no band under it,
+  and nothing saying they were the same kind of object. The name band, the
+  number badge, the fitted art and the point sizes now live in one module
+  and the tiles are the layout around them. One size for both names, 10pt,
+  between the two they had. A change to how a tile looks belongs there,
+  not in one of the three.
 - **Each pick is a TILE, not a row** (`teams.HeroTile`): the hero's own
   portrait behind, the name across the top, the signed number in the
   bottom-right, five across per team. That is the shape the same ten picks
@@ -388,6 +421,20 @@ credentials, and put the account at risk. Do not go there.
   style's 16px small-icon metric, and no property changes it; `tables.
   PortraitHeader` paints the pixmap in `paintSection` instead, which is a
   dozen lines and the only reliable way.
+  **Both headers must be given ONE box** (`_apply_icon_box`,
+  `PortraitHeader.set_box`), because they scale from different
+  measurements and nothing on screen says why: a column header's section
+  is (stretched column width) x (fixed header height) while a row
+  header's is (fixed header width) x (row height), so each portrait is
+  limited by a different number — which is how a wide window ended up with
+  large portraits along one axis and small ones along the other. One WIDTH
+  is chosen for both, growing with the columns to `HEADER_ICON_MAX`, and
+  the sections are then cut to what that actually draws: a portrait is
+  256x144, so a square section would be 40% empty space and every row 40%
+  too tall. The height is MEASURED off the scaled pixmap rather than
+  assumed. With no portraits downloaded the headers fall back to names and
+  the box stays at the floor — growing a text header to 68px elides
+  "Tidehunter" and makes every row 68px tall for nothing.
   The Σ row and column are OFF in the main window (`set_margins(False)`):
   each tile already carries that hero's total in its corner and the same
   figure twice is once too many. They stay available for the callout, and

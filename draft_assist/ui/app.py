@@ -65,6 +65,8 @@ from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
 from .item_row import ItemRow
+from .suggest_row import MAX_SHOWN as SuggestRow_MAX
+from .suggest_row import SuggestRow
 from .manual import ManualDraft
 from .tables import (BreakdownPanel, MatrixTable, ValueItem,
                      minimum_grid_width)
@@ -454,39 +456,18 @@ class MainWindow(QMainWindow):
             teams_row.addWidget(panel, 1)
         outer.addLayout(teams_row)
 
-        # Items first. They are about the ten heroes below, they read in
-        # one glance, and they used to sit behind a lock that kept them
-        # blank for the whole of the draft.
+        # The board is the top of the screen and everything under it is
+        # advice about the board: first which hero to take, then what to
+        # build against what is already there.
+        picks_card, playy = card("Suggested picks · best draft fit")
+        self.suggest_row = SuggestRow()
+        playy.addWidget(self.suggest_row)
+        outer.addWidget(picks_card)
+
         items_card, ilay = card("Items")
         self.item_row = ItemRow()
         ilay.addWidget(self.item_row)
-        outer.insertWidget(1, items_card)
-
-        # Role and "my pick" moved onto the tile's right-click menu: they
-        # are facts about one hero in one slot, and two dropdowns naming
-        # the hero a second time is a worse way to say it. What is left
-        # here is what the app has to TELL you, not ask.
-        status_card, elay = card()
-        self.unknown_label = QLabel("")
-        self.unknown_label.setProperty("dim", True)
-        elay.addWidget(self.unknown_label)
-        self.manual_hint = QLabel("")
-        self.manual_hint.setWordWrap(True)
-        self.manual_hint.setProperty("dim", True)
-        elay.addWidget(self.manual_hint)
-        # Only meaningful when the source is pixels: the two banks are then
-        # just screen positions. Game data reports player.team_name, so
-        # asking would be asking about something already known.
-        side_row = QHBoxLayout()
-        self.side_label = QLabel("My team:")
-        side_row.addWidget(self.side_label)
-        self.side_combo = QComboBox()
-        self.side_combo.addItems(["left bank", "right bank"])
-        self.side_combo.currentIndexChanged.connect(self._force_redraw)
-        side_row.addWidget(self.side_combo)
-        side_row.addStretch(1)
-        elay.addLayout(side_row)
-        outer.addWidget(status_card)
+        outer.addWidget(items_card)
 
         # ----- the grids, each under the team whose heroes head it.
         # Synergy is ally-by-ally, so it belongs under your five on the
@@ -637,6 +618,34 @@ class MainWindow(QMainWindow):
             self.source_combo.addItem(
                 "(screen capture only — the current source is game data)")
         dlay.addWidget(src_card)
+
+        # What the app concluded about the draft, and the one control that
+        # corrects it. This was a card of its own on the DRAFT tab, where
+        # it repeated what the tiles and the status bar already say: an
+        # unresolved slot draws as "+", the source is in the status bar,
+        # and sides are now fixed by dragging a tile rather than by reading
+        # a sentence about them.
+        state_card, elay = card("What the app is reading")
+        self.unknown_label = QLabel("")
+        self.unknown_label.setProperty("dim", True)
+        elay.addWidget(self.unknown_label)
+        self.manual_hint = QLabel("")
+        self.manual_hint.setWordWrap(True)
+        self.manual_hint.setProperty("dim", True)
+        elay.addWidget(self.manual_hint)
+        # Only meaningful when the source is pixels: the two banks are then
+        # just screen positions. Game data reports player.team_name, so
+        # asking would be asking about something already known.
+        side_row = QHBoxLayout()
+        self.side_label = QLabel("My team:")
+        side_row.addWidget(self.side_label)
+        self.side_combo = QComboBox()
+        self.side_combo.addItems(["left bank", "right bank"])
+        self.side_combo.currentIndexChanged.connect(self._force_redraw)
+        side_row.addWidget(self.side_combo)
+        side_row.addStretch(1)
+        elay.addLayout(side_row)
+        dlay.addWidget(state_card)
 
         self.debug_image = QLabel("No frame captured yet.")
         self.debug_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2061,6 +2070,7 @@ class MainWindow(QMainWindow):
             self._select_hero_row(selected)
         self._apply_filter()
         self._update_matrices(draft)
+        self._update_suggestions(draft)
         self._update_items(draft)
         self._update_relations()
 
@@ -2197,6 +2207,26 @@ class MainWindow(QMainWindow):
             [("Hero", [(name, delta) for _chid, name, delta in counters])],
             footnote="Percentage points against this hero alone.",
             empty="No matchup data for this hero yet.")
+
+    def _update_suggestions(self, draft: scoring.DraftState) -> None:
+        """The top of the ranked list, as a strip above the items.
+
+        Same numbers as the Analysis tab, same order — this is that list's
+        head, not a second opinion. It stays quiet until at least one hero
+        is on the board: with an empty draft every fit is zero, so a strip
+        of "+0.0" would be ranking nothing and inviting the user to read it
+        as a recommendation.
+        """
+        if not draft.allies and not draft.enemies:
+            self.suggest_row.show_heroes([])
+            return
+        rows = [
+            (s.hero_id, s.name, s.score,
+             f"{s.name}\nfit {s.score * 100:+.2f}"
+             f"  (vs {s.vs_total * 100:+.2f}, with {s.with_total * 100:+.2f})")
+            for s in self.scored[:SuggestRow_MAX]
+        ]
+        self.suggest_row.show_heroes(rows)
 
     def _update_items(self, draft: scoring.DraftState) -> None:
         """The strip is live from the first enemy pick.

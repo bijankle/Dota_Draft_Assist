@@ -97,16 +97,17 @@ def test_the_strip_is_capped_so_it_cannot_run_off_the_window(icons, qapp):
 
 
 def test_a_long_item_name_shrinks_and_wraps_rather_than_being_cut(icons, qapp):
-    """"Scythe of Vyse" in a 64px box is the same problem as "Keeper of the
-    Light" in a hero tile, so it gets the same answer."""
+    """A long item name in a strip tile is the same problem as "Keeper of
+    the Light" in a hero tile, so it gets the same answer."""
     from draft_assist.ui.item_row import ICON_W, NAME_H, NAME_MAX_PT
     from draft_assist.ui.textfit import fit
-    tile = ItemTile(advice("Scythe of Vyse"))
-    size, lines = fit("Scythe of Vyse", ICON_W - 2, NAME_H - 3, tile.font(),
-                      NAME_MAX_PT, 7)
+    long_name = "Eul's Scepter of Divinity"
+    tile = ItemTile(advice(long_name))
+    size, lines = fit(long_name, ICON_W - 2, NAME_H - 3, tile.font(),
+                      NAME_MAX_PT, 7, bold=True)
     assert size <= NAME_MAX_PT
     assert len(lines) == 2          # wrapped, not truncated
-    assert "".join(lines).replace(" ", "") == "ScytheofVyse"
+    assert "".join(lines).replace(" ", "") == long_name.replace(" ", "")
 
 
 def test_an_item_with_no_icon_shows_its_name_once(icons, qapp):

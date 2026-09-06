@@ -556,8 +556,8 @@ def test_side_selector_is_hidden_when_the_game_reports_your_team(qapp):
         "hero": {"id": 5}})
     try:
         win.refresh()
-        assert not win.side_combo.isVisibleTo(win)
-        assert not win.side_label.isVisibleTo(win)
+        assert win.side_combo.isHidden()
+        assert win.side_label.isHidden()
         # And it says who it thinks you are, from the game's own report.
         assert "Bijson" in win.team_captions["ally"].text()
         assert "Dire" in win.team_captions["ally"].text()
@@ -595,7 +595,7 @@ def test_side_selector_still_shown_for_pixel_sources(window):
     """With screen capture the banks are just screen positions, so the
     question is real and the control must stay."""
     window.refresh()
-    assert window.side_combo.isVisibleTo(window)
+    assert not window.side_combo.isHidden()
     assert "Your team" in window.team_captions["ally"].text()
 
 

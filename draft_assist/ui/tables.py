@@ -207,7 +207,8 @@ COMPACT_COLUMN = 72
 # tiles above size themselves against the same number so a column reads
 # down from the tile it belongs to.
 HEADER_ICON = 34
-ROW_HEADER = HEADER_ICON + 12
+HEADER_ICON_MAX = 64
+ROW_HEADER = HEADER_ICON + 4
 # A cell has to hold "+12.34" without eliding, and that is wider than the
 # portrait above it — so the column, not the icon, sets the floor.
 CELL_MIN = 46
@@ -249,6 +250,21 @@ class PortraitHeader(QHeaderView):
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
         self.heroes: dict[int, int] = {}
+        self.box = HEADER_ICON
+
+    def set_box(self, size: int) -> None:
+        """The square every portrait is drawn inside, both headers alike.
+
+        Without this the two headers scale differently and there is no way
+        to see why: a column header's section is (stretched column width) x
+        (fixed header height) while a row header's is (fixed header width)
+        x (row height), so the two portraits are limited by different
+        numbers and one grows with the window while the other does not.
+        Same box, same picture.
+        """
+        self.box = max(8, int(size))
+        self.updateGeometries()
+        self.viewport().update()
 
     def set_heroes(self, heroes: dict) -> None:
         """Section index -> hero id. Ids rather than pixmaps, so the shared
@@ -260,7 +276,10 @@ class PortraitHeader(QHeaderView):
     def paintSection(self, painter, rect, index):   # noqa: N802 - Qt naming
         from .portraits import scaled
         hero_id = self.heroes.get(index)
-        art = (scaled(hero_id, rect.width(), rect.height())
+        # The box's WIDTH, never the section's: see set_box. The height
+        # comes from the section, which _apply_icon_box has already cut to
+        # what this width draws, so both headers land on the same picture.
+        art = (scaled(hero_id, min(self.box, rect.width()), rect.height())
                if hero_id is not None else None)
         if art is None:
             return super().paintSection(painter, rect, index)
@@ -365,6 +384,9 @@ class MatrixTable(QWidget):
             return
         self.table.setStyleSheet("")            # back to the app's own
 
+        # The sections this was last applied to are about to be replaced,
+        # so the cached figure no longer describes anything.
+        self._icon_box = None
         margins = getattr(self, "_margins", True)
         extra = 1 if margins else 0
         self.table.setRowCount(len(matrix.rows) + extra)
@@ -401,8 +423,12 @@ class MatrixTable(QWidget):
                 # Stretch, not fit-to-contents: a column pushed off the
                 # right edge costs more than a name elided by a few pixels.
                 header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+        if not getattr(self, "_icon_headers", False):
+            # With portrait headers the row height is set by _set_headers,
+            # to the same square the columns use; resizing to contents here
+            # would shrink it back to the height of a line of digits.
+            self.table.verticalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.ResizeToContents)
         if cramped:
             self._fit_height()
 
@@ -441,6 +467,66 @@ class MatrixTable(QWidget):
         for row in range(BLANK_SIDE):
             self.table.setRowHeight(row, BLANK_ROW)
 
+    def _apply_icon_box(self) -> None:
+        """Give both headers the SAME portrait, sized to the window.
+
+        Without one number for both, the two headers scale from different
+        measurements and nothing on screen says why: a column header's
+        section is (stretched column width) x (fixed header height) and a
+        row header's is (fixed header width) x (row height), so each
+        portrait is limited by a different one — which is how a wide window
+        ended up with big portraits along one axis and small ones along the
+        other.
+
+        So one WIDTH is chosen for both, and the sections are then cut to
+        what that actually draws. A portrait is 256x144, so a square
+        section would be 40% empty space; the height comes from measuring
+        the scaled pixmap rather than assuming the picture is square.
+        """
+        if not getattr(self, "_icon_headers", False):
+            return
+        columns = self.table.columnCount()
+        if columns < 1:
+            return
+        across = self.table.horizontalHeader()
+        down = self.table.verticalHeader()
+        floor = getattr(self, "_icon_size", HEADER_ICON)
+        # Only grow for PICTURES. With no portraits downloaded the headers
+        # fall back to names, and a 68px row header elides "Tidehunter"
+        # while making every row 68px tall for nothing.
+        heroes = list(getattr(across, "heroes", {}).values()) or \
+            list(getattr(down, "heroes", {}).values())
+        if not heroes:
+            self._icon_box = None
+            across.setFixedHeight(floor + 4)
+            down.setFixedWidth(ROW_HEADER)
+            down.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+            return
+
+        room = self.table.viewport().width() // columns - 6
+        size = max(floor, min(HEADER_ICON_MAX, room))
+        if size == getattr(self, "_icon_box", None):
+            return
+        self._icon_box = size
+
+        from .portraits import scaled
+        art = scaled(heroes[0], size, size)
+        width, height = ((art.width(), art.height()) if art is not None
+                         else (size, size))
+        for header in (across, down):
+            if isinstance(header, PortraitHeader):
+                header.set_box(size)
+        across.setFixedHeight(height + 4)
+        down.setFixedWidth(width + 4)
+        down.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        down.setDefaultSectionSize(height + 4)
+        for row in range(self.table.rowCount()):
+            self.table.setRowHeight(row, height + 4)
+
+    def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._apply_icon_box()
+
     def _set_headers(self, matrix, margins: bool) -> None:
         icons = getattr(self, "_icon_headers", False)
         label = (short_name if getattr(self, "_short_names", False)
@@ -475,5 +561,4 @@ class MatrixTable(QWidget):
                 setter(index, item)
             if isinstance(header, PortraitHeader):
                 header.set_heroes(by_index)
-        self.table.horizontalHeader().setFixedHeight(size + 4)
-        self.table.verticalHeader().setFixedWidth(size + 12)
+        self._apply_icon_box()
