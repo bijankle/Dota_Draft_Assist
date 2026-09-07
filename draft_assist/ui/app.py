@@ -32,7 +32,7 @@ import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
@@ -42,11 +42,13 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QPlainTextEdit,
                              QDoubleSpinBox, QListWidget,
                              QPushButton,
-                             QScrollArea, QSlider, QSplitter,
+                             QScrollArea, QSizePolicy, QSlider,
+                             QSplitter,
                              QTableWidget,
                              QTableWidgetItem, QTabWidget,
                              QToolBar, QVBoxLayout, QWidget)
 
+from ..gsi.state import DRAFTING_STATES
 from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
                        REPO_ROOT, RULES_FILE, pair_source,
                        save_pair_source, save_target_brackets,
@@ -150,32 +152,80 @@ def _scrolling(page: QWidget) -> QScrollArea:
     return area
 
 
-def _side_scrolling(strip: QWidget) -> QScrollArea:
-    """Wrap a tile strip so its LENGTH stops dictating the window's width.
+class _SideScroller(QScrollArea):
+    """A tile strip that scrolls sideways and is exactly as tall as it is.
 
-    Both strips are fixed-width tiles in a row, so at twenty of them the
-    layout's minimum is over 1700px — and a widget's minimum is the
-    window's minimum, so raising the setting would have left a window that
-    could not be made narrow again. Same class of bug as the Debug tab
-    setting the window's height floor, and the same answer: inside a
-    scroll area the strip asks for nothing.
+    Two jobs, and the second one was got wrong first time. **Length must
+    not dictate the window's width**: twenty fixed-width tiles in a row is
+    over 1700px of layout minimum, and a widget's minimum is the WINDOW's
+    minimum, so the "how many to show" setting would otherwise have left a
+    window that could not be made narrow again — the same bug as the Debug
+    tab setting the height floor, in the other axis.
 
-    Horizontal only, and sized to one row: a vertical bar on a
-    single-height strip would be a scrollbar with nowhere to go.
+    **And height must not be frozen at what the strip wanted when it was
+    EMPTY.** A plain QScrollArea given `setMinimumHeight(sizeHint)` at
+    build time measured a strip holding nothing but a hidden label, so
+    every tile put in it afterwards was sliced off — the portraits showed
+    as a band with their bottoms cut. The height is therefore ASKED FOR
+    every time rather than stamped once, and it includes the horizontal
+    scrollbar whenever that bar is up, because the bar takes its room out
+    of the viewport and would crop the tiles by its own height.
     """
-    area = QScrollArea()
-    area.setWidgetResizable(True)
-    area.setFrameShape(QScrollArea.Shape.NoFrame)
-    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-    area.setSizeAdjustPolicy(
-        QScrollArea.SizeAdjustPolicy.AdjustToContents)
-    area.setWidget(strip)
-    area.setMinimumWidth(0)
-    height = strip.sizeHint().height()
-    if height > 0:
-        area.setMinimumHeight(height)
-    return area
+
+    def __init__(self, strip: QWidget, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setSizeAdjustPolicy(
+            QScrollArea.SizeAdjustPolicy.AdjustToContents)
+        self.setWidget(strip)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred,
+                           QSizePolicy.Policy.Fixed)
+        # Qt caches a widget's size hint and only re-asks when the widget
+        # says it changed. Overriding sizeHint is therefore not enough on
+        # its own: without this the strip fills with tiles and the wrapper
+        # goes on reporting the height an EMPTY strip wanted, which is
+        # exactly how the tiles came to be sliced.
+        strip.installEventFilter(self)
+
+    def eventFilter(self, watched, event):     # noqa: N802 - Qt naming
+        if (watched is self.widget()
+                and event.type() == QEvent.Type.LayoutRequest):
+            self.updateGeometry()
+        return super().eventFilter(watched, event)
+
+    def _wanted_height(self) -> int:
+        strip = self.widget()
+        if strip is None:
+            return 0
+        height = max(strip.sizeHint().height(),
+                     strip.minimumSizeHint().height())
+        bar = self.horizontalScrollBar()
+        if bar is not None and bar.isVisible():
+            height += bar.sizeHint().height()
+        return height
+
+    def sizeHint(self):
+        # Width 0: the strip's length is exactly what must not reach the
+        # window. Height: whatever the tiles currently need.
+        return QSize(0, self._wanted_height())
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+
+# The two states where the pick bar IS on screen, without their prefix.
+_DRAFT_STATE_NAMES = frozenset(
+    st.replace("DOTA_GAMERULES_STATE_", "") for st in DRAFTING_STATES)
+
+
+def _side_scrolling(strip: QWidget) -> QScrollArea:
+    """See `_SideScroller`."""
+    return _SideScroller(strip)
 
 
 def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
@@ -2725,13 +2775,35 @@ class MainWindow(QMainWindow):
         self._show_picture(overlay)
         lines = [f"gate score: {snap.gate_score:.3f}   "
                  f"frames arrived: {snap.frames_arrived}   "
-                 f"frame: {w}x{h}"]
+                 f"frame: {w}x{h}   "
+                 f"capturing: {self._capture_target()}"]
+        # Ten UNKNOWNs is the CORRECT answer when the pick bar is not on
+        # screen, and this log has already been read as "the crop boxes are
+        # broken" during a team showcase. Say which screen it is looking at
+        # rather than leaving the reader to infer it from ten failures.
+        state = (snap.game_state or "").replace("DOTA_GAMERULES_STATE_", "")
+        if state and state not in _DRAFT_STATE_NAMES:
+            lines.append(
+                f"NOTE: the game is at {state}, not the pick screen — the "
+                "pick bar is not up, so every slot reading UNKNOWN here is "
+                "right. Judge the crop boxes during hero selection.")
         for s in read.slots:
             resolved = ("UNKNOWN" if s.hero_id is None else
                         "EMPTY" if s.hero_id == -1 else self.ds.name(s.hero_id))
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
         set_log(self.debug_text, "\n".join(lines))
+
+    def _capture_target(self) -> str:
+        """The window the frames are coming from, by name.
+
+        A frame that is the wrong SIZE for the monitor is the tell that the
+        app bound to something other than Dota, and the log printed the
+        size without ever saying what it was a picture of.
+        """
+        vision = getattr(self.provider, "vision", self.provider)
+        session = getattr(vision, "session", None)
+        return getattr(session, "capture_title", None) or "(nothing bound)"
 
     def _draw_still(self) -> bool:
         """Put the loaded still on screen with the current boxes over it."""

@@ -2031,3 +2031,83 @@ def test_dota_being_closed_is_not_a_fault_worth_a_banner(window, qapp):
 def test_the_warning_leads_the_status_line(window, qapp):
     window._update_status(_silent_gsi_snapshot(True))
     assert window.status.currentMessage().startswith("WARNING:")
+
+
+def _settle(qapp, times=4):
+    """A size-hint change reaches the parent through a posted
+    LayoutRequest, so the new geometry lands a couple of event-loop passes
+    later rather than inside the call that caused it."""
+    for _ in range(times):
+        qapp.processEvents()
+
+
+def _strip_is_fully_visible(scroller):
+    """Every tile's bottom edge inside the viewport, in viewport space."""
+    strip = scroller.widget()
+    tiles = getattr(strip, "_tiles", []) or getattr(strip, "_blanks", [])
+    if not tiles:
+        return True, "no tiles to check"
+    room = scroller.viewport().height()
+    tallest = max(t.sizeHint().height() for t in tiles)
+    return tallest <= room, f"tiles want {tallest}px, viewport gives {room}px"
+
+
+def test_the_strips_are_not_sliced_off(window, qapp):
+    """The scroll area's height was stamped once, from a strip holding
+    nothing but a hidden label — so every tile put in it afterwards had its
+    bottom cut off and the portraits showed as a band. The height has to be
+    asked for, not frozen at what an EMPTY strip wanted."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    for name in ("suggest_row", "item_row"):
+        strip = getattr(window, name)
+        scroller = strip.parentWidget().parentWidget()
+        ok, detail = _strip_is_fully_visible(scroller)
+        assert ok, f"{name} is cropped: {detail}"
+
+
+def test_the_strips_grow_when_they_are_filled(window, qapp):
+    """An empty strip and a full one are different heights, and the wrapper
+    has to follow — which is the half that was got wrong."""
+    window.show()
+    qapp.processEvents()
+    scroller = window.suggest_row.parentWidget().parentWidget()
+    window.suggest_row.show_heroes([])
+    _settle(qapp)
+    empty = scroller.sizeHint().height()
+    window.refresh()
+    _settle(qapp)
+    assert window.suggest_row.heroes, "the fixture should have suggestions"
+    assert scroller.sizeHint().height() >= empty
+    ok, detail = _strip_is_fully_visible(scroller)
+    assert ok, detail
+
+
+def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
+    """Ten UNKNOWNs is the RIGHT answer at a team showcase, and this log has
+    already been read as "the crop boxes are broken" because of it."""
+    import numpy as np
+    from draft_assist.gsi import state as gsi_state
+    from draft_assist.vision.layout import DraftLayout
+    from draft_assist.vision.recognize import DraftRead, SlotRead
+
+    snap = window.snapshot or window.provider.poll()
+    snap.frame = np.zeros((200, 400, 3), dtype=np.uint8)
+    snap.read_raw = DraftRead(slots=[
+        SlotRead(rect=r, hero_id=None, best_label="base/1.png",
+                 distance=101, margin=0)
+        for r in DraftLayout().slots()])
+    snap.game_state = gsi_state.STATE_IN_PROGRESS
+    window.show()
+    window.tabs.setCurrentIndex(window.tabs.count() - 1)
+    _settle(qapp)
+    assert window.debug_image.isVisible(), "the Debug tab is not on screen"
+    window._update_debug(snap)
+    text = window.debug_text.toPlainText()
+    assert "not the pick screen" in text
+    assert "capturing:" in text, "the log has to say WHAT it is a picture of"
+
+    snap.game_state = gsi_state.STATE_HERO_SELECTION
+    window._update_debug(snap)
+    assert "not the pick screen" not in window.debug_text.toPlainText()

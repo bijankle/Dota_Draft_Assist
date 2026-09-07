@@ -731,12 +731,24 @@ credentials, and put the account at risk. Do not go there.
   cap silently overruling the setting is a bug with nothing on screen to
   explain it); `clamp_count` applies the ceiling on the way IN as well as
   out, since a hand-edited file must not be able to ask for two hundred
-  tiles; and both strips are wrapped in `_side_scrolling`, because twenty
+  tiles; and both strips are wrapped in `_SideScroller`, because twenty
   fixed-width tiles in a row is 1700px of layout minimum and a widget's
   minimum is the WINDOW's minimum — the same bug as the Debug tab setting
   the height floor, in the other axis. Changing the setting also has to
   call `_refresh_views`: the strips are redrawn when a PICK changes, so
   otherwise the new number sits in the file until the next hero is picked.
+  **That wrapper must ASK for its height, never stamp it.** The first
+  version called `setMinimumHeight(strip.sizeHint().height())` at build
+  time — measuring a strip that held nothing but a hidden label — so every
+  tile put in it afterwards was sliced and the portraits showed as a band
+  with their bottoms cut off. `sizeHint` is computed per call, includes
+  the horizontal scrollbar whenever that bar is up (it takes its room out
+  of the viewport, so ignoring it crops by exactly one scrollbar), and the
+  scroller filters the strip's `LayoutRequest` to call `updateGeometry`:
+  Qt caches a child's size hint and only re-asks when the child says it
+  changed, so overriding `sizeHint` alone leaves the old number in place.
+  A size-hint change reaches the parent through a POSTED event, so tests
+  have to drive the event loop a few passes before measuring.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   At most `suggested_items` items above a severity floor. Silence in many games is correct
@@ -998,6 +1010,15 @@ credentials, and put the account at risk. Do not go there.
   **Debug ▸ Copy everything** gathers the status line, the reading, the
   recognition log and the loop timings into one paste, because four panels
   selected by hand is a chore nobody does.
+  **The recognition log says WHICH SCREEN it read and what it is a picture
+  of.** Ten UNKNOWNs is the CORRECT answer when the pick bar is not up,
+  and the log has already been read as "the crop boxes are broken" from a
+  `TEAM_SHOWCASE` frame — every slot failed because there was nothing
+  there to match. It now names the game state and says so outright when
+  that state is not a drafting one, and prints the bound window title
+  beside the frame size, because a frame that is the wrong size for the
+  monitor is the tell that capture bound to something other than Dota and
+  the size alone never said what it was a picture of.
 - **GSI carries no screen geometry.** It reports game state, not pixels (the
   only coordinates in it are hero world positions). So the overlay anchors
   itself to the Dota window rectangle, which Windows supplies from the window
