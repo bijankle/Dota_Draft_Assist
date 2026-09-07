@@ -27,9 +27,11 @@ from .portraits import scaled
 WIDTH = tilekit.STRIP_W
 ART_H = tilekit.STRIP_ART_H
 BAND_H = tilekit.STRIP_BAND_H
-# Eight is what the item strip holds, and the answer past the eighth-best
-# hero in a 120-hero list is not one anybody acts on.
-MAX_SHOWN = 8
+# HOW MANY IS THE CALLER'S DECISION, not this widget's: it is a setting
+# (Settings ▸ How much each strip shows), and a second cap in here would
+# silently overrule it — raising the setting to twelve and getting eight
+# is a bug with nothing on screen to explain it. The row draws the rows it
+# is handed.
 PLACEHOLDERS = 5
 
 
@@ -119,7 +121,7 @@ class SuggestRow(QWidget):
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)
             return
-        for hero_id, name, fit_value, tip in rows[:MAX_SHOWN]:
+        for hero_id, name, fit_value, tip in rows:
             tile = SuggestTile(hero_id, name, fit_value, tip, self)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)

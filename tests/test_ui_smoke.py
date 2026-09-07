@@ -1920,3 +1920,67 @@ def test_the_toolbar_keeps_only_what_belongs_there(window):
     assert "Update" not in labels
     assert "Recordings" not in labels and "Report" not in labels
     assert not hasattr(window, "capture_pill")
+
+
+def test_a_long_strip_does_not_set_the_windows_width_floor(window, qapp):
+    """Twenty fixed-width tiles in a row is over 1700px of layout minimum,
+    and a widget's minimum is the window's minimum — so the setting that
+    lets you ask for twenty would have left a window that could not be made
+    narrow again. Same class of bug as the Debug tab and the same answer:
+    the strips scroll sideways."""
+    window.show()
+    window.refresh()
+    qapp.processEvents()
+    before = window.minimumSizeHint().width()
+
+    window.settings["suggested_picks"] = 20
+    window.settings["suggested_items"] = 20
+    window._refresh_views()
+    qapp.processEvents()
+    assert window.minimumSizeHint().width() == before, \
+        ("twenty tiles widened the window's floor to "
+         f"{window.minimumSizeHint().width()} from {before} — the strips "
+         "are not scrolling sideways")
+
+
+def test_the_settings_decide_how_many_are_shown(window, qapp):
+    """The cap is the user's, and both strips read the same one setting."""
+    window.refresh()
+    window.settings["suggested_picks"] = 3
+    window._refresh_views()
+    qapp.processEvents()
+    assert len(window.suggest_row.heroes) == 3
+
+    window.settings["suggested_picks"] = 11
+    window._refresh_views()
+    qapp.processEvents()
+    assert len(window.suggest_row.heroes) == 11
+
+
+def test_a_cap_is_not_a_quota(window, qapp):
+    """Raising the item cap to twenty does not produce twenty items.
+
+    They are filtered by how urgent they are FIRST, so the strip shows
+    whatever cleared the severity floor and no more — which is the whole
+    reason silence is a correct answer here.
+    """
+    window.refresh()
+    window.settings["suggested_items"] = 20
+    window._refresh_views()
+    qapp.processEvents()
+    shown = len(window.item_row._tiles)
+    assert shown <= 20
+    window.settings["suggested_items"] = 2
+    window._refresh_views()
+    qapp.processEvents()
+    assert len(window.item_row._tiles) == min(shown, 2)
+
+
+def test_a_hand_edited_settings_file_cannot_ask_for_two_hundred_tiles(
+        window, qapp):
+    from draft_assist.ui import settings as ui_settings
+    window.refresh()
+    window.settings["suggested_picks"] = 200
+    window._refresh_views()
+    qapp.processEvents()
+    assert len(window.suggest_row.heroes) <= ui_settings.MAX_SHOWN

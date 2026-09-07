@@ -705,9 +705,25 @@ credentials, and put the account at risk. Do not go there.
   downloader prints the path on every run and the task blurb says it.
 - **Ranked-role-queue role icons are ground truth** for roles, read from the
   draft screen; a manual override exists in the UI for when reading fails.
+- **How many tiles each strip shows is a SETTING, and it is a CAP rather
+  than a quota** (`ui_settings.suggested_picks` / `suggested_items`,
+  `MAX_SHOWN` 20, `MainWindow._how_many`). Items are filtered by severity
+  FIRST and then cut to the cap, so raising it to twenty does not produce
+  twenty items — it only stops advice that already cleared the floor being
+  truncated. Three things this touches: the cap lives in ONE place per
+  strip (`suggest_row` no longer caps what it is handed, because a second
+  cap silently overruling the setting is a bug with nothing on screen to
+  explain it); `clamp_count` applies the ceiling on the way IN as well as
+  out, since a hand-edited file must not be able to ask for two hundred
+  tiles; and both strips are wrapped in `_side_scrolling`, because twenty
+  fixed-width tiles in a row is 1700px of layout minimum and a widget's
+  minimum is the WINDOW's minimum — the same bug as the Debug tab setting
+  the height floor, in the other axis. Changing the setting also has to
+  call `_refresh_views`: the strips are redrawn when a PICK changes, so
+  otherwise the new number sits in the file until the next hero is picked.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
-  At most 5 items above a severity floor. Silence in many games is correct
+  At most `suggested_items` items above a severity floor. Silence in many games is correct
   — do not tune it away, and note that "silence" is what a coverage hole
   looks like too, which is why both of these were bugs rather than taste:
   **"(no role)" must not mean "discard every role-specific rule".** It is

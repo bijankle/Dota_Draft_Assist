@@ -19,9 +19,8 @@ from PyQt6.QtWidgets import QApplication                    # noqa: E402
 
 from draft_assist.ui import portraits, tilekit              # noqa: E402
 from draft_assist.ui.item_row import ItemTile               # noqa: E402
-from draft_assist.ui.suggest_row import (MAX_SHOWN,         # noqa: E402
-                                         PLACEHOLDERS, SuggestRow,
-                                         SuggestTile)
+from draft_assist.ui.suggest_row import (PLACEHOLDERS,      # noqa: E402
+                                         SuggestRow, SuggestTile)
 
 
 @pytest.fixture(scope="module")
@@ -52,10 +51,16 @@ def test_it_keeps_the_order_it_was_given(qapp):
     assert row.heroes == ["Hero 0", "Hero 1", "Hero 2", "Hero 3"]
 
 
-def test_it_is_capped(qapp):
+def test_the_cap_belongs_to_the_caller_not_the_row(qapp):
+    """How many to show is a SETTING, so the row draws what it is handed.
+
+    A second cap in here would silently overrule it: raising Settings to
+    twelve and getting eight is a bug with nothing on screen to explain
+    it. The caller cuts the ranked list; the row is the layout.
+    """
     row = SuggestRow()
-    row.show_heroes(rows(MAX_SHOWN + 5))
-    assert len(row.heroes) == MAX_SHOWN
+    row.show_heroes(rows(13))
+    assert len(row.heroes) == 13
 
 
 def test_it_swaps_its_contents_without_piling_up(qapp):

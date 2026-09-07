@@ -68,7 +68,6 @@ from . import item_icons
 from . import portraits
 from .framebox import FrameView
 from .item_row import ItemRow
-from .suggest_row import MAX_SHOWN as SuggestRow_MAX
 from .suggest_row import SuggestRow
 from .manual import ManualDraft
 from .tables import (BreakdownPanel, MatrixTable, ValueItem,
@@ -148,6 +147,34 @@ def _scrolling(page: QWidget) -> QScrollArea:
     area.setWidgetResizable(True)
     area.setFrameShape(QScrollArea.Shape.NoFrame)
     area.setWidget(page)
+    return area
+
+
+def _side_scrolling(strip: QWidget) -> QScrollArea:
+    """Wrap a tile strip so its LENGTH stops dictating the window's width.
+
+    Both strips are fixed-width tiles in a row, so at twenty of them the
+    layout's minimum is over 1700px — and a widget's minimum is the
+    window's minimum, so raising the setting would have left a window that
+    could not be made narrow again. Same class of bug as the Debug tab
+    setting the window's height floor, and the same answer: inside a
+    scroll area the strip asks for nothing.
+
+    Horizontal only, and sized to one row: a vertical bar on a
+    single-height strip would be a scrollbar with nowhere to go.
+    """
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    area.setSizeAdjustPolicy(
+        QScrollArea.SizeAdjustPolicy.AdjustToContents)
+    area.setWidget(strip)
+    area.setMinimumWidth(0)
+    height = strip.sizeHint().height()
+    if height > 0:
+        area.setMinimumHeight(height)
     return area
 
 
@@ -514,12 +541,12 @@ class MainWindow(QMainWindow):
         # build against what is already there.
         picks_card, playy = card("Suggested picks · best draft fit")
         self.suggest_row = SuggestRow()
-        playy.addWidget(self.suggest_row)
+        playy.addWidget(_side_scrolling(self.suggest_row))
         outer.addWidget(picks_card)
 
         items_card, ilay = card("Items")
         self.item_row = ItemRow()
-        ilay.addWidget(self.item_row)
+        ilay.addWidget(_side_scrolling(self.item_row))
         outer.addWidget(items_card)
 
         # ----- the grids, each under the team whose heroes head it.
@@ -2084,6 +2111,11 @@ class MainWindow(QMainWindow):
         before = dict(self.settings)
         self.settings.update(dialog.values())
         ui_settings.save(self.settings)
+        # The strips are redrawn only when a PICK changes, so without this
+        # a new "how many to show" would sit in the settings file doing
+        # nothing until the next hero was picked — which reads as the
+        # setting not working rather than as a refresh that never ran.
+        self._refresh_views()
 
         self.auto_record_check.setChecked(
             bool(self.settings.get("auto_record", True)))
@@ -2520,6 +2552,16 @@ class MainWindow(QMainWindow):
             footnote="Percentage points against this hero alone.",
             empty="No matchup data for this hero yet.")
 
+    def _how_many(self, key: str) -> int:
+        """A strip's cap, from the settings. A CAP, not a quota.
+
+        The item strip stops at whatever clears the severity floor, so
+        raising this does not manufacture advice — it only stops advice
+        that was already worth showing from being cut off at five.
+        """
+        return ui_settings.clamp_count(self.settings.get(key),
+                                       ui_settings.DEFAULTS[key])
+
     def _update_suggestions(self, draft: scoring.DraftState) -> None:
         """The top of the ranked list, as a strip above the items.
 
@@ -2536,7 +2578,7 @@ class MainWindow(QMainWindow):
             (s.hero_id, s.name, s.score,
              f"{s.name}\nfit {s.score * 100:+.2f}"
              f"  (vs {s.vs_total * 100:+.2f}, with {s.with_total * 100:+.2f})")
-            for s in self.scored[:SuggestRow_MAX]
+            for s in self.scored[:self._how_many("suggested_picks")]
         ]
         self.suggest_row.show_heroes(rows)
 
@@ -2557,7 +2599,8 @@ class MainWindow(QMainWindow):
             return
         advice = items_mod.recommend(
             self.rules, enemy_names, ally_names, draft.my_role,
-            self.rules_meta.get("current_patch", "0.0"))
+            self.rules_meta.get("current_patch", "0.0"),
+            max_shown=self._how_many("suggested_items"))
         # No sentence when there is nothing to flag: silence IS the answer
         # here, and the empty plates already say the strip is working and
         # has nothing for you.
