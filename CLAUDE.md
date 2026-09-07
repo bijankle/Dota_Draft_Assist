@@ -595,6 +595,45 @@ credentials, and put the account at risk. Do not go there.
   once daily and cached to disk with a timestamp.
 - **Portrait matching is many-to-one**: persona/arcana portrait variants are
   separate library entries mapping to the same hero id. No OCR anywhere.
+  **The library LEARNS the ones it does not have** (`vision/harvest.py`).
+  It is built from Valve's one base image per hero, so a hero wearing a
+  persona, an arcana or a set that changes the top-bar picture sits at
+  UNKNOWN while the other nine resolve. That artwork does not have to be
+  found anywhere: it is on screen at the right size with the HUD's own
+  badge and border on it, and at strategy time the game NAMES all ten — so
+  ten from the game, minus nine matched, leaves exactly one answer. That is
+  elimination, not a guess.
+  Every condition in `by_elimination` is a guard, because a mislabelled
+  crop teaches the library that one hero looks like another and never
+  expires: exactly one unresolved slot, at least `MIN_RESOLVED` matched,
+  and every hero the screen named must be one the game named — a stray
+  means one of the two sources is wrong and neither can pin the third. When
+  a frame does not qualify the answer is "not this frame"; a draft is
+  hundreds of frames and being right on one is enough. `save_variant`
+  deduplicates by perceptual distance rather than by frame number, because
+  four frames a second of one portrait is four frames a second of one
+  picture, and refuses a near-flat crop outright — flat is an empty slot or
+  a bad crop box, and a black rectangle filed under a hero is the worst
+  thing this could do.
+  **`library.load` rebuilds when a source is newer than the cache.** A crop
+  learned mid-draft, or a file dropped in by hand, used to sit in the
+  variants folder doing nothing until somebody remembered to run
+  `build_library` — so the app learned a portrait and then went on not
+  recognising it.
+  **Downloaded alternatives are a supplement, not the mechanism**
+  (`tools/fetch_custom_portraits.py`, Setup ▸ Download ▸ Alternative
+  portraits). The community's collection is published at 128x72, 256x144,
+  268x151 and 384x216 — the same 16:9 top-bar portrait, NOT the square
+  hero icon, which was the open question about whether it was usable at
+  all. The hero is read out of the filename by the longest hero name
+  appearing as whole words, which is what keeps "Crown of the One True
+  King Wraith King" off Monkey King and "Davion of Dragon Hold Dragon
+  Knight" on Dragon Knight; all 24 real filenames map. To the user's disk
+  at runtime, never committed — the same rule `build_library` follows for
+  the base portraits, and the reason is that these are Valve's artwork.
+  It has never been run against the real API: the network policy where it
+  was written blocks the site, so `--dry-run` prints the whole mapping and
+  names any hero in `EXPECTED` that came back with nothing.
 - **Ranked-role-queue role icons are ground truth** for roles, read from the
   draft screen; a manual override exists in the UI for when reading fails.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
@@ -622,12 +661,14 @@ credentials, and put the account at risk. Do not go there.
   would strand the app running and invisible. It is checkable so it reads
   as on or off, and it is draggable by the same press-becomes-a-drag rule
   the old badge used, so moving it never also toggles the window.
-  **There is never more than ONE window of this app on screen.** The toggle
-  used to sit there alongside the window, which made the app look like two
-  programs — and it is a way BACK from a hidden window, so it has no job
-  while the window is up. It appears exactly when the window is hidden, and
-  the title bar's own hide button (`TitleBar.hide_away`) is the control
-  while the window is showing.
+  **THE FLOATING TOGGLE IS GONE, and so is hiding the window.** Making it
+  appear only when the window was hidden was not enough: it is a second
+  top-level window, so the app still showed up twice in the taskbar and in
+  Alt-Tab, and it was the thing the user kept noticing. It was removed
+  outright — and the hide path had to go with it, because hiding a window
+  with nothing left to click strands the app running and invisible. What is
+  left is an ordinary window: minimise, maximise, close. `overlay_enabled`,
+  `toggle_x` and `toggle_y` went too.
 - **Frameless means the chrome is ours to draw.** Windows' own title bar is
   a white strip above a dark app and reads as a different program bolted on
   top. `TitleBar` replaces it, and the menu bar goes INSIDE it — NOT
@@ -668,6 +709,14 @@ credentials, and put the account at risk. Do not go there.
   window at a file that exists is not redistribution. The last-resort icon
   is PAINTED rather than committed as a binary: no image blobs nobody can
   diff, and it only has to read as "this app" at 16 pixels.
+  **That drawn icon is the one the app SHIPS**, so it has to be worth
+  looking at rather than a placeholder: two wedges meeting across a
+  diagonal — your side, theirs, and the line between them — which is a
+  draft in one shape and survives being drawn sixteen pixels wide. It is
+  original because it has to be: the icons asked for were Warcraft's and
+  Valve's, and committing either is redistributing it the moment anyone
+  else clones this. `assets/app.ico` still overrides it, so the user keeps
+  whatever they like locally without it reaching anybody else.
   **An icon attached to a chat message is not a file**, which is the whole
   reason `appicon.install` and Setup ▸ Choose app icon… exist: a file
   picker copies the user's own .ico or .png into `assets/`, where source 1
@@ -746,6 +795,13 @@ credentials, and put the account at risk. Do not go there.
   in the menu hides the ten seconds of draft that were bad. This exists
   because guessing has already been wrong once: the stutter that looked
   like scoring was a hidden widget being smooth-scaled.
+- **A grid is exactly as tall as its rows** (`MatrixTable._fit_height`,
+  applied everywhere rather than only in the callout). A five-row table
+  left to stretch fills whatever height the layout hands it, and the
+  leftover is dead space INSIDE the widget: half the window was blank and,
+  worse, the window had no shorter size to offer, because a stretching
+  widget never asks for less. The stretch goes at the BOTTOM of the tab
+  instead, so every card is its own height and the slack is slack.
 - **The window has a minimum width, and it is derived rather than picked**
   (`tables.minimum_grid_width`, `teams.minimum_panel_width`). Two things
   compete for it: five matrix columns wide enough to print "+12.34"

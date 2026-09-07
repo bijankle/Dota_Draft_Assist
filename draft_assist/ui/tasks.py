@@ -91,6 +91,23 @@ TASKS = {
                "running window? Unpin it and pin this instead: a pin keeps "
                "whatever identity it was made with."),
     ),
+    "fetch_custom_portraits": Task(
+        key="fetch_custom_portraits",
+        title="Fetch alternative hero portraits",
+        steps=[[PY, "tools/fetch_custom_portraits.py"]],
+        blurb=("Downloads the community's collection of persona, arcana and "
+               "custom-set hero pictures and files them under the right "
+               "hero, so a teammate on a set portrait stops reading as "
+               "UNKNOWN.\n\nTo your disk only — they are Valve's artwork "
+               "and the app does not carry them.\n\nTwo caveats: these are "
+               "named \"icon\", and a hero icon may not be the same asset "
+               "as the top-bar portrait; and the hero is read out of the "
+               "filename. Neither could be checked where this was written, "
+               "so read the output. The app also learns an unmatched "
+               "portrait off your own screen while you play, which needs no "
+               "download and is always the right picture."),
+        reload_after=True,
+    ),
     "tune": Task(
         key="tune",
         title="Tune recognition",

@@ -32,7 +32,6 @@ EDGE = 6            # how close to the border counts as a resize grab
 class TitleBar(QWidget):
     """Icon, title, and the three buttons Windows would have drawn."""
 
-    hide_away = pyqtSignal()
     minimise = pyqtSignal()
     maximise = pyqtSignal()
     # NOT `close`: a signal of that name shadows QWidget.close(), so the
@@ -76,11 +75,6 @@ class TitleBar(QWidget):
         lay.addLayout(self.extras)
 
         for name, glyph, signal in (
-                # Hide-to-the-corner sits first because it is the one that
-                # leaves something behind: the window goes, the floating
-                # toggle appears in its place, and there is never more than
-                # one of this app on screen.
-                ("hide", "◱", self.hide_away),
                 ("min", "─", self.minimise),
                 ("max", "□", self.maximise),
                 ("close", "✕", self.close_clicked)):
@@ -141,99 +135,6 @@ class ResizeGrip(QSizeGrip):
         for offset in (3, 7, 11):
             painter.drawLine(span - offset, span - 2, span - 2, span - offset)
         painter.end()
-
-
-class OverlayToggle(QPushButton):
-    """The one thing that stays on screen when the window is hidden.
-
-    It is the app's own icon rather than a plus sign, because it is the
-    app: the button and the window it summons should look like the same
-    program. Checkable so it reads as on or off at a glance — mid-draft the
-    user needs to know whether the window is hidden or merely behind Dota.
-
-    **It paints itself**, plate and icon both, rather than handing the icon
-    to QPushButton. A translucent frameless top-level button styled by a
-    stylesheet drew its plate and nothing else on Windows, so the one thing
-    on screen when the window is hidden was a blank square — the same class
-    of bug as QHeaderView refusing to honour `iconSize`. Drawing it is a
-    dozen lines and it cannot be styled out from under us.
-    """
-
-    SIZE = 48
-    PAD = 7             # plate edge to icon, so the border stays visible
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("overlayToggle")
-        self.setCheckable(True)
-        self.setChecked(True)
-        self.setFixedSize(self.SIZE, self.SIZE)
-        self._art = appicon.pixmap(self.SIZE - 2 * self.PAD)
-        self.setToolTip("Show or hide the draft window · drag to move")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint
-                            | Qt.WindowType.WindowStaysOnTopHint
-                            | Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        # Appearing mid-draft must never pull keyboard focus out of the game.
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        self._press: QPoint | None = None
-        self._dragging = False
-
-    moved = pyqtSignal(int, int)
-
-    def refresh_icon(self) -> None:
-        """Re-read the app icon — after the user supplies their own."""
-        self._art = appicon.pixmap(self.SIZE - 2 * self.PAD)
-        self.update()
-
-    def paintEvent(self, event) -> None:            # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        plate = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        # Pressed-in when the window is showing, popped-out when it is not:
-        # the button has to say which state it is in without a label.
-        painter.setPen(QPen(QColor(theme.ACCENT if self.isChecked()
-                                   else (theme.TEXT_DIM if self.underMouse()
-                                         else theme.BORDER)), 2))
-        painter.setBrush(QColor(theme.BG_DEEP if self.isChecked()
-                                else theme.BG_ELEVATED))
-        painter.drawRoundedRect(plate, 8, 8)
-        if not self._art.isNull():
-            painter.setOpacity(1.0 if self.isChecked() else 0.75)
-            painter.drawPixmap(
-                (self.width() - self._art.width()) // 2,
-                (self.height() - self._art.height()) // 2, self._art)
-        painter.end()
-
-    # Press becomes a drag once it has moved far enough to mean one; the
-    # release is then swallowed so moving it never also toggles the window.
-    def mousePressEvent(self, event) -> None:       # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._press = event.globalPosition().toPoint()
-            self._offset = self._press - self.frameGeometry().topLeft()
-            self._dragging = False
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:        # noqa: N802
-        if self._press is None:
-            return super().mouseMoveEvent(event)
-        here = event.globalPosition().toPoint()
-        if self._dragging or (here - self._press).manhattanLength() > 5:
-            self._dragging = True
-            self.move(here - self._offset)
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:     # noqa: N802
-        if self._dragging:
-            self._press, self._dragging = None, False
-            self.setDown(False)
-            self.moved.emit(self.x(), self.y())
-            return
-        self._press = None
-        super().mouseReleaseEvent(event)
 
 
 def edge_at(window, pos: QPoint) -> Qt.Edge | None:

@@ -340,7 +340,7 @@ def test_menus_expose_every_maintenance_action(window):
     labels = {title: [a.text().replace("&", "") for a in menu.actions()]
               for title, menu in menus.items()}
     flat = [text for texts in labels.values() for text in texts]
-    for expected in ("Update statistics and portraits…", "Tune recognition…",
+    for expected in ("Statistics and portraits…", "Tune recognition…",
                      "List capture sources…", "Run capture probe…",
                      "Update application…", "Save debug snapshot"):
         assert expected in flat, f"{expected} missing from menus: {flat}"
@@ -1091,6 +1091,21 @@ def test_the_menu_bar_stays_small(window):
             assert len(visible) <= 7, f"{action.text()} has {len(visible)}"
 
 
+def test_the_downloads_are_one_group(window):
+    """Three siblings called Update / Fetch / Fetch are one idea said three
+    times, and they pushed Setup past the size a menu stays readable at."""
+    setup = next(a.menu() for a in window.menu_bar.actions()
+                 if a.text().replace("&", "") == "Setup")
+    names = [a.text().replace("&", "") for a in setup.actions()]
+    assert "Download" in names
+    downloads = next(a.menu() for a in setup.actions()
+                     if a.text().replace("&", "") == "Download")
+    inside = [a.text().replace("&", "") for a in downloads.actions()]
+    assert any("Statistics and portraits" in n for n in inside)
+    assert any("Alternative portraits" in n for n in inside)
+    assert any("Item icons" in n for n in inside)
+
+
 def test_both_sources_are_on_by_default():
     from draft_assist.ui import settings as ui_settings
 
@@ -1104,7 +1119,7 @@ def test_settings_dialog_round_trips_the_switches(qapp):
     from draft_assist.ui.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog({"use_gsi": True, "use_vision": False,
-                             "auto_record": True, "overlay_enabled": False})
+                             "auto_record": True})
     assert dialog.boxes["use_vision"].isChecked() is False
     dialog.boxes["use_vision"].setChecked(True)
     dialog.boxes["use_gsi"].setChecked(False)
@@ -1672,13 +1687,40 @@ def test_the_main_grids_carry_no_explanatory_caption(window):
     window.refresh()
     for matrix in (window.matchup_matrix, window.synergy_matrix):
         assert matrix.caption.isHidden()
-        assert matrix.table.maximumHeight() > 1000, \
-            "the main-window grid should fill its card, not a fitted height"
+
+
+def test_a_grid_is_exactly_as_tall_as_its_rows(window):
+    """A five-row grid left to stretch fills whatever the layout gives it,
+    and the leftover is dead space INSIDE the widget: half the window was
+    blank and it could not be made shorter, because a stretching table
+    never asks for a smaller size."""
+    window.refresh()
+    for matrix in (window.matchup_matrix, window.synergy_matrix):
+        table = matrix.table
+        rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+        wanted = table.horizontalHeader().height() + rows
+        assert abs(table.maximumHeight() - wanted) <= 6, "not fitted to rows"
+        assert table.maximumHeight() < 1000
 
 
 
 
-# ---- the window IS the overlay -----------------------------------------
+# ---- the window is the whole app ---------------------------------------
+
+def test_there_is_only_one_window(window, qapp):
+    """The floating toggle made the app look like two programs in the
+    taskbar and in Alt-Tab. It is gone, and with it the only way to hide
+    the window — hiding with nothing left to click would strand the app
+    running and invisible."""
+    from PyQt6.QtWidgets import QWidget
+    window.show()
+    qapp.processEvents()
+    tops = [w for w in qapp.topLevelWidgets()
+            if isinstance(w, QWidget) and not w.isHidden()]
+    assert window in tops
+    assert len(tops) == 1, f"a second window is on screen: {tops}"
+    assert not hasattr(window, "overlay_toggle")
+
 
 def test_the_window_is_frameless_see_through_and_on_top(window):
     """Three overlays became one. Windows' own title bar read as a
@@ -1690,32 +1732,6 @@ def test_the_window_is_frameless_see_through_and_on_top(window):
     assert 0.0 < window.windowOpacity() <= 1.0
 
 
-def test_the_toggle_hides_and_shows_the_window(window):
-    window.show()
-    QApplication.processEvents()
-    window._set_overlay(False)
-    assert not window.isVisible()
-    assert not window.overlay_toggle.isChecked()
-    window._set_overlay(True)
-    assert window.isVisible()
-    assert window.overlay_toggle.isChecked()
-
-
-def test_the_toggle_stays_on_screen_when_the_window_is_hidden(window):
-    """It is the only way back — closing it with the window would strand
-    the app running and invisible."""
-    window.show()
-    QApplication.processEvents()
-    window._set_overlay(False)
-    assert not window.overlay_toggle.isHidden()
-
-
-def test_the_toggle_position_is_remembered(window):
-    window._remember_toggle_position(321, 210)
-    assert window.settings["toggle_x"] == 321
-    assert window.settings["toggle_y"] == 210
-
-
 def test_opacity_is_remembered(window):
     """Qt stores opacity as an 8-bit value, so it comes back within a
     step of what was asked for rather than exactly."""
@@ -1724,29 +1740,12 @@ def test_opacity_is_remembered(window):
     assert window.settings["overlay_opacity"] == pytest.approx(0.55)
 
 
-def test_reset_rescues_a_window_dragged_off_screen(window):
-    """A frameless window has no system menu, so the app has to offer the
-    way back itself."""
-    window.move(-4000, -4000)
-    window.overlay_toggle.move(-4000, -4000)
-    window._reset_overlay_position()
-    assert window.x() >= 0 and window.y() >= 0
-    assert window.overlay_toggle.x() >= 0
-
-
 def test_the_title_bar_carries_the_window_buttons(window):
     """Frameless means minimise, maximise and close are ours to draw."""
     bar = window.title_bar
     assert bar.findChild(type(bar.icon)) is not None
     names = {child.objectName() for child in bar.children()}
     assert {"win_min", "win_max", "win_close"} <= names
-
-
-def test_the_toggle_closes_with_the_window(window):
-    window.show()
-    QApplication.processEvents()
-    window.close()
-    assert window.overlay_toggle.isHidden()
 
 
 def test_the_update_button_only_restarts_after_a_pull_that_worked(window):

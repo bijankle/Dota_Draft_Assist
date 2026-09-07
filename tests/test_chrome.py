@@ -145,47 +145,6 @@ def test_the_menus_sit_on_the_bars_middle_line(qapp):
     bar.hide()
 
 
-# ---- the floating toggle ------------------------------------------------
-
-def test_the_toggle_draws_its_icon_itself(assets, monkeypatch, qapp):
-    """It used to hand the icon to QPushButton, and a translucent frameless
-    top-level button under a stylesheet drew the plate and nothing else —
-    a blank square as the only thing on screen with the window hidden."""
-    monkeypatch.setattr(appicon, "_hero_pixmap", lambda: wide(64, 64, "#20c020"))
-    appicon.forget()
-    toggle = chrome.OverlayToggle()
-    assert not toggle._art.isNull()
-    image = toggle.grab().toImage()
-    middle = image.pixelColor(toggle.width() // 2, toggle.height() // 2)
-    assert middle.green() > 100, "the icon is not being painted"
-
-
-def test_the_toggle_reads_as_on_or_off(assets, monkeypatch, qapp):
-    """Mid-draft the user has to know whether the window is hidden or
-    merely behind Dota."""
-    monkeypatch.setattr(appicon, "_hero_pixmap", lambda: wide(64, 64))
-    appicon.forget()
-    toggle = chrome.OverlayToggle()
-    toggle.setChecked(True)
-    on = toggle.grab().toImage()
-    toggle.setChecked(False)
-    off = toggle.grab().toImage()
-    assert on != off
-
-
-def test_a_new_icon_reaches_the_toggle_without_a_restart(assets, monkeypatch,
-                                                         qapp):
-    monkeypatch.setattr(appicon, "_hero_pixmap", lambda: None)
-    appicon.forget()
-    toggle = chrome.OverlayToggle()
-    before = toggle.grab().toImage()
-    chosen = assets / "chosen.png"
-    wide(64, 64, "#c020c0").save(str(chosen), "PNG")
-    appicon.install(chosen)
-    toggle.refresh_icon()
-    assert toggle.grab().toImage() != before
-
-
 # ---- preferences that were being dropped on the way to disk -------------
 
 def test_the_transparency_setting_survives_a_restart(tmp_path):
@@ -194,12 +153,11 @@ def test_the_transparency_setting_survives_a_restart(tmp_path):
     path = tmp_path / "ui_settings.json"
     settings = ui_settings.load(path)
     settings["overlay_opacity"] = 0.45
-    settings["toggle_x"], settings["toggle_y"] = 900, 300
     ui_settings.save(settings, path)
 
     again = ui_settings.load(path)
     assert again["overlay_opacity"] == 0.45
-    assert (again["toggle_x"], again["toggle_y"]) == (900, 300)
+    assert again["auto_record"] is True
 
 
 # ---- the .ico a Windows shortcut needs ----------------------------------

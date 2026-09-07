@@ -32,8 +32,9 @@ import shutil
 import struct
 from pathlib import Path
 
-from PyQt6.QtCore import QBuffer, QIODevice, QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap
+from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
+from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
+                         QPen, QPixmap, QPolygonF)
 
 from ..config import ASSETS_DIR
 from . import theme
@@ -56,24 +57,52 @@ _icon: QIcon | None = None
 
 
 def _drawn(size: int = 256) -> QPixmap:
-    """A dark shield with a draft-blue chevron. Deliberately plain."""
+    """The icon this repository SHIPS, painted rather than committed.
+
+    It has to be original. The icons asked for — Warcraft's Frozen Throne,
+    then Bloodseeker — are Blizzard's and Valve's artwork, and putting
+    either in the repository is redistributing it the moment anyone else
+    clones this. So the shipped mark is drawn: two blades meeting across a
+    diagonal, which is a draft in one shape — your side and theirs, and the
+    line between them.
+
+    Painted, not a committed .png, for two reasons that have both bitten
+    already: no image blob nobody can diff, and it renders at whatever size
+    the shell asks for instead of being upscaled from one. `assets/app.ico`
+    still overrides it, so the user keeps whatever they like locally
+    without it reaching anybody else.
+    """
     pixmap = QPixmap(size, size)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    body = QRectF(size * 0.06, size * 0.06, size * 0.88, size * 0.88)
-    grad = QLinearGradient(body.topLeft(), body.bottomRight())
-    grad.setColorAt(0.0, QColor(theme.BG_INPUT))
-    grad.setColorAt(1.0, QColor(theme.BG_DEEP))
+
+    body = QRectF(size * 0.04, size * 0.04, size * 0.92, size * 0.92)
+    plate = QLinearGradient(body.topLeft(), body.bottomRight())
+    plate.setColorAt(0.0, QColor("#3b4252"))
+    plate.setColorAt(1.0, QColor(theme.BG_DEEP))
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(grad)
-    painter.drawRoundedRect(body, size * 0.18, size * 0.18)
-    font = QFont()
-    font.setPointSizeF(size * 0.58)
-    font.setBold(True)
-    painter.setFont(font)
-    painter.setPen(QColor(theme.ACCENT))
-    painter.drawText(body, int(Qt.AlignmentFlag.AlignCenter), "D")
+    painter.setBrush(plate)
+    painter.drawRoundedRect(body, size * 0.22, size * 0.22)
+
+    # Two wedges facing each other across a diagonal gap: allies and
+    # enemies, and the matchup between them. One shape, so it survives
+    # being drawn sixteen pixels wide.
+    gap = size * 0.055
+    mine = QPolygonF([QPointF(size * 0.20, size * 0.74),
+                      QPointF(size * 0.50 - gap, size * 0.20),
+                      QPointF(size * 0.50 - gap, size * 0.74)])
+    theirs = QPolygonF([QPointF(size * 0.80, size * 0.26),
+                        QPointF(size * 0.50 + gap, size * 0.80),
+                        QPointF(size * 0.50 + gap, size * 0.26)])
+    painter.setBrush(QColor(theme.ACCENT))
+    painter.drawPolygon(mine)
+    painter.setBrush(QColor(theme.BAD))
+    painter.drawPolygon(theirs)
+
+    painter.setPen(QPen(QColor(0, 0, 0, 90), max(1.0, size * 0.012)))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(body, size * 0.22, size * 0.22)
     painter.end()
     return pixmap
 

@@ -38,8 +38,6 @@ SWITCHES = (
     ("auto_record", "Record every draft automatically",
      "Starts a recording when hero selection begins and stops a minute "
      "after the draft ends. Nothing to press."),
-    ("overlay_enabled", "Show the draft overlay over Dota",
-     "A small always-on-top badge that expands into the recommendations."),
 )
 
 

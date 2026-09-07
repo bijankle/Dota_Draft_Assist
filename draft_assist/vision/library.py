@@ -141,7 +141,19 @@ def rebuild(hash_size: int, base_dir: Path = BASE_DIR,
     return lib
 
 
-def load(path: Path = LIBRARY_FILE, expected_hash_size: int | None = None) -> Library:
+def newest_source(base_dir: Path = BASE_DIR,
+                  variants_dir: Path = VARIANTS_DIR) -> float:
+    """When the newest portrait on disk was written."""
+    newest = 0.0
+    for folder in (base_dir, variants_dir):
+        if folder.is_dir():
+            for path in folder.rglob("*.png"):
+                newest = max(newest, path.stat().st_mtime)
+    return newest
+
+
+def load(path: Path = LIBRARY_FILE, expected_hash_size: int | None = None,
+         base_dir: Path = BASE_DIR, variants_dir: Path = VARIANTS_DIR) -> Library:
     if not path.exists():
         raise FileNotFoundError(
             f"No portrait library at {path}; run `python tools/build_library.py`.")
@@ -151,4 +163,10 @@ def load(path: Path = LIBRARY_FILE, expected_hash_size: int | None = None) -> Li
                   hash_size=int(z["hash_size"]))
     if expected_hash_size is not None and lib.hash_size != expected_hash_size:
         return rebuild(expected_hash_size)
+    # A portrait added since the cache was written is a portrait nobody can
+    # match. Crops learned by elimination and files dropped in by hand both
+    # land in the variants folder and both used to sit there doing nothing
+    # until somebody remembered to rebuild.
+    if newest_source(base_dir, variants_dir) > path.stat().st_mtime:
+        return rebuild(lib.hash_size, base_dir, variants_dir, path)
     return lib

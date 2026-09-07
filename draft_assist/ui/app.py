@@ -54,6 +54,7 @@ from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
 from ..data import store
 from ..data.store import Dataset
 from ..timing import LOOP
+from ..vision import harvest
 from ..model import items as items_mod
 from ..model import scoring
 from . import settings as ui_settings
@@ -61,7 +62,7 @@ from .. import record as record_mod
 from . import theme
 from .bracket_dialog import BracketDialog
 from . import appicon
-from .chrome import OverlayToggle, ResizeGrip, TitleBar
+from .chrome import ResizeGrip, TitleBar
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
@@ -191,16 +192,14 @@ class MainWindow(QMainWindow):
         self.focus: tuple[str, int] | None = None
         # Rectangles drawn on the debug picture during drag calibration.
         self._drag_rects: list[tuple[int, int, int, int]] = []
+        # Heroes whose alternative portrait has been learned this session,
+        # so a draft's worth of frames writes one file rather than hundreds.
+        self._learned: set[int] = set()
         # A frame loaded from disk, so calibration does not need Dota to be
         # on screen at the moment the user has time to do it.
         self._still = None
         self.scored: list[scoring.ScoredHero] = []
         self.settings = ui_settings.load()
-        self.overlay_toggle = OverlayToggle()
-        self.overlay_toggle.toggled.connect(self._set_overlay)
-        self.overlay_toggle.moved.connect(self._remember_toggle_position)
-        self.overlay_toggle.move(int(self.settings.get("toggle_x", 24)),
-                                 int(self.settings.get("toggle_y", 24)))
         self.setWindowTitle("Dota Draft Assist")
         self.setWindowIcon(appicon.icon())
         # Frameless: Windows' own title bar is a white strip above a dark
@@ -248,17 +247,26 @@ class MainWindow(QMainWindow):
         self.menu_bar = bar
 
         setup_menu = bar.addMenu("&Setup")
-        self._act(setup_menu, "&Update statistics and portraits…",
+        # The three downloads live together rather than as three siblings
+        # of everything else: they are one idea — go and fetch the pictures
+        # and numbers — and a menu you have to read twice is a menu that
+        # has stopped helping.
+        downloads = setup_menu.addMenu("&Download")
+        self._act(downloads, "&Statistics and portraits…",
                   lambda: self.run_task("update_data"), "Ctrl+U",
-                  "Download the latest hero statistics and portraits")
-        self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
-                  None, "Which ranks the statistics are drawn from")
-        self._act(setup_menu, "&Fetch item icons…",
+                  "The hero numbers and Valve's base portrait for each")
+        self._act(downloads, "&Alternative portraits…",
+                  lambda: self.run_task("fetch_custom_portraits"), None,
+                  "Persona, arcana and custom-set pictures, so a set "
+                  "portrait stops reading as UNKNOWN")
+        self._act(downloads, "&Item icons…",
                   lambda: self.run_task("fetch_item_icons"), None,
                   "Just the item pictures, with the reason if it fails")
+        self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
+                  None, "Which ranks the statistics are drawn from")
         self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
-                  None, "Use your own .ico or .png for the window, the "
-                        "taskbar and the floating button")
+                  None, "Use your own .ico or .png for the window and the "
+                        "taskbar")
         self._act(setup_menu, "Make a &pinnable shortcut…",
                   lambda: self.run_task("make_shortcut"), None,
                   "A .lnk with the app's icon and identity, ready to "
@@ -286,14 +294,6 @@ class MainWindow(QMainWindow):
                   "Shows the real GSI limitation: enemy slots stay empty")
 
         view_menu = bar.addMenu("&View")
-        self.overlay_action = QAction("Draft &overlay", self)
-        self.overlay_action.setCheckable(True)
-        self.overlay_action.setShortcut(QKeySequence("Ctrl+O"))
-        self.overlay_action.setStatusTip(
-            "Show or hide the draft window. It sits over Dota, "
-            "see-through, and the floating button brings it back.")
-        self.overlay_action.toggled.connect(self._set_overlay)
-        view_menu.addAction(self.overlay_action)
         self._act(view_menu, "&Reset window position",
                   self._reset_overlay_position)
         view_menu.addSeparator()
@@ -428,7 +428,6 @@ class MainWindow(QMainWindow):
         shell_lay.setSpacing(0)
         self.title_bar = TitleBar("Dota Draft Assist")
         self.title_bar.add_menu_bar(self.menu_bar)
-        self.title_bar.hide_away.connect(lambda: self._set_overlay(False))
         self.title_bar.minimise.connect(self.showMinimized)
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
@@ -525,16 +524,21 @@ class MainWindow(QMainWindow):
         # No Sigma row or column — each tile already carries that hero's
         # total in its corner, and the same figure twice is once too many.
         self.synergy_matrix.set_margins(False)
-        withlay.addWidget(self.synergy_matrix, 1)
+        withlay.addWidget(self.synergy_matrix)
         grids.addWidget(with_card, 1)
         vs_card, vslay = card("Counters")
         self.matchup_matrix = MatrixTable()
         self.matchup_matrix.set_compact(True, short_names=False)
         self.matchup_matrix.set_icon_headers(True)
         self.matchup_matrix.set_margins(False)
-        vslay.addWidget(self.matchup_matrix, 1)
+        vslay.addWidget(self.matchup_matrix)
         grids.addWidget(vs_card, 1)
-        outer.addLayout(grids, 1)
+        outer.addLayout(grids)
+        # The stretch goes at the BOTTOM, not into the grids. Giving it to
+        # them left half the window blank and, worse, meant the window had
+        # no shorter size to offer — a stretching widget never asks for
+        # less. Now every card is its own height and the slack is slack.
+        outer.addStretch(1)
 
         tabs.addTab(draft_widget, "Draft")
 
@@ -1114,44 +1118,11 @@ class MainWindow(QMainWindow):
             "Dota — it only reads pixels from a window already on screen.")
 
     # ---- the window IS the overlay --------------------------------------
-    def _set_overlay(self, enabled: bool) -> None:
-        """Show or hide the draft window itself.
-
-        There used to be three overlays: a badge that expanded into a
-        callout, numbers painted under the portraits, and this window. They
-        were three copies of the same information in three places, each
-        needing its own layout and its own bugs. Now the window is the
-        overlay — always on top, see-through, resizable — and the floating
-        toggle is the only thing that stays behind when it is hidden.
-        """
-        self.settings["overlay_enabled"] = bool(enabled)
-        ui_settings.save(self.settings)
-        self.setVisible(enabled)
-        if enabled:
-            self.raise_()
-        # ONE window of this app on screen at a time. The toggle used to sit
-        # there alongside the window, so the app looked like two programs —
-        # it is a way BACK from a hidden window, and while the window is up
-        # the title bar's own hide button is that control.
-        self.overlay_toggle.setVisible(not enabled)
-        if self.overlay_toggle.isChecked() != enabled:
-            self.overlay_toggle.blockSignals(True)
-            self.overlay_toggle.setChecked(enabled)
-            self.overlay_toggle.blockSignals(False)
-        if self.overlay_action.isChecked() != enabled:
-            self.overlay_action.blockSignals(True)
-            self.overlay_action.setChecked(enabled)
-            self.overlay_action.blockSignals(False)
-
     def _set_see_through(self, opacity: float) -> None:
         """Opacity is the whole reason this can sit over a game at all."""
         self.settings["overlay_opacity"] = float(opacity)
         ui_settings.save(self.settings)
         self.setWindowOpacity(opacity)
-
-    def _remember_toggle_position(self, x: int, y: int) -> None:
-        self.settings["toggle_x"], self.settings["toggle_y"] = int(x), int(y)
-        ui_settings.save(self.settings)
 
     def _reset_overlay_position(self) -> None:
         """Rescue for a window dragged off-screen or onto a monitor that is
@@ -1159,8 +1130,6 @@ class MainWindow(QMainWindow):
         this from, so the app has to offer it."""
         self.move(60, 60)
         self.resize(1240, 820)
-        self.overlay_toggle.move(24, 24)
-        self._remember_toggle_position(24, 24)
         self.status.showMessage("Window moved back to the top-left", 5000)
 
     # ---- game data (GSI) ----------------------------------------------
@@ -1769,6 +1738,45 @@ class MainWindow(QMainWindow):
         self._save_calibration()
         self.cal_label.setText(f"{result.note} — saved")
 
+    def _learn_unknown_portrait(self, snap) -> None:
+        """Teach the library the one portrait it could not match.
+
+        Personas, arcanas and cosmetic sets change the top-bar picture, and
+        the library only holds Valve's one base image per hero — so a hero
+        on a set portrait sits at UNKNOWN while the other nine resolve. The
+        artwork does not have to be found anywhere: it is on screen, at the
+        right size, with the HUD's own badge and border on it, and the game
+        names all ten so the label is exact. Nine matched plus the game's
+        ten leaves exactly one answer.
+
+        Everything here is a guard, because a mislabelled crop teaches the
+        library that one hero looks like another and never expires. When a
+        frame does not qualify the answer is "not this frame" — a draft is
+        hundreds of frames and one is enough.
+        """
+        if snap is None or snap.frame is None or snap.read_raw is None:
+            return
+        if not getattr(snap, "sides_known", False):
+            return                    # the game has not named the ten
+        ten = list(snap.left) + list(snap.right)
+        hero_id, found = harvest.by_elimination(snap.read_raw, ten)
+        if hero_id is None or hero_id in self._learned:
+            return
+        session = getattr(self.provider, "session", None)
+        from ..vision.recognize import crop_rect
+        crop = crop_rect(snap.frame, found.rect)
+        params = getattr(session, "params", None)
+        saved = harvest.save_variant(
+            hero_id, crop, f"{snap.match_id or 'game'}_{found.rect.team}"
+            f"{found.rect.slot}",
+            hash_size=getattr(params, "hash_size", 16))
+        if saved is None:
+            return
+        self._learned.add(hero_id)
+        self.status.showMessage(
+            f"Learned {self.ds.name(hero_id)}'s portrait from this game — "
+            "it will be recognised from the next reload (F5).", 12000)
+
     def _adopt_measured_layout(self) -> None:
         """Take the geometry a successful screen search already measured.
 
@@ -2036,7 +2044,6 @@ class MainWindow(QMainWindow):
             app.setWindowIcon(art)
         if getattr(self, "title_bar", None) is not None:
             self.title_bar.refresh_icon()
-        self.overlay_toggle.refresh_icon()
 
     def _toggle_maximised(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()
@@ -2054,10 +2061,6 @@ class MainWindow(QMainWindow):
 
         self.auto_record_check.setChecked(
             bool(self.settings.get("auto_record", True)))
-        if self.settings.get("overlay_enabled") != before.get(
-                "overlay_enabled"):
-            self.overlay_action.setChecked(
-                bool(self.settings.get("overlay_enabled")))
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
@@ -2154,6 +2157,8 @@ class MainWindow(QMainWindow):
             self._consider_auto_record(snap)
             self._capture_recording(snap, allies, enemies)
         self._adopt_measured_layout()
+        with LOOP.stage("learn a new portrait"):
+            self._learn_unknown_portrait(snap)
         with LOOP.stage("status + captions"):
             self._update_status(snap)
             self._update_team_captions(snap)
@@ -2700,7 +2705,6 @@ class MainWindow(QMainWindow):
         return self._names
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        self.overlay_toggle.close()
         # A modeless task owns a subprocess that would otherwise keep POSTing
         # to a port nobody is listening on any more.
         for dialog in list(self._open_tasks):

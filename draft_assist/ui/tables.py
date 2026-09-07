@@ -322,11 +322,14 @@ class MatrixTable(QWidget):
         layout.addWidget(self.empty_note)
 
     def _fit_height(self) -> None:
-        """Size the table to its rows.
+        """Size the table to its rows — EVERYWHERE, not just the callout.
 
-        In a scroll-free callout a table that guesses its own height either
-        clips the last row or leaves a gap; there are never more than six
-        rows here, so the exact number is cheap to compute.
+        A five-row grid left to stretch fills whatever height the layout
+        gives it, and the leftover is dead space inside the widget: half
+        the window was blank and the window could not be made shorter,
+        because a stretching table has no smaller size to offer. There are
+        never more than six rows, so the exact height is cheap to compute
+        and it is always the right one.
         """
         rows = sum(self.table.rowHeight(r)
                    for r in range(self.table.rowCount()))
@@ -429,8 +432,7 @@ class MatrixTable(QWidget):
             # would shrink it back to the height of a line of digits.
             self.table.verticalHeader().setSectionResizeMode(
                 QHeaderView.ResizeMode.ResizeToContents)
-        if cramped:
-            self._fit_height()
+        self._fit_height()
 
     def _show_outline(self) -> None:
         """Five by five of nothing — the shape the grid will have."""
@@ -466,6 +468,7 @@ class MatrixTable(QWidget):
         side.setDefaultSectionSize(BLANK_ROW)
         for row in range(BLANK_SIDE):
             self.table.setRowHeight(row, BLANK_ROW)
+        self._fit_height()
 
     def _apply_icon_box(self) -> None:
         """Give both headers the SAME portrait, sized to the window.
@@ -522,6 +525,7 @@ class MatrixTable(QWidget):
         down.setDefaultSectionSize(height + 4)
         for row in range(self.table.rowCount()):
             self.table.setRowHeight(row, height + 4)
+        self._fit_height()
 
     def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
         super().resizeEvent(event)

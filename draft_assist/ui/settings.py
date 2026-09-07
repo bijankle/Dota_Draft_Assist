@@ -13,7 +13,6 @@ from ..config import REPO_ROOT
 SETTINGS_FILE = REPO_ROOT / "ui_settings.json"
 
 DEFAULTS = {
-    "overlay_enabled": False,
     "overlay_x": 40,
     "overlay_y": 40,
     "overlay_expanded": True,
@@ -33,9 +32,6 @@ DEFAULTS = {
     # preference the app set but this dict did not know about was written
     # by the slider, kept in memory, and dropped on the way to disk.
     "overlay_opacity": 0.7,
-    # Where the floating toggle was left. Same story.
-    "toggle_x": 24,
-    "toggle_y": 24,
 }
 
 
