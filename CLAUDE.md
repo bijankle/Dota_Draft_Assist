@@ -105,10 +105,28 @@ credentials, and put the account at risk. Do not go there.
    than reporting noise as a measurement. Which bank is which is decided
    by x, since Radiant is always the left bank.
 
-   **Use a saved picture…** loads a `frame_*.png` off disk so this can be
-   done without Dota on screen — the frames are already there from Ctrl+S,
-   and making calibration wait for a live game is what made it never
-   happen.
+   **Use a saved picture…** loads a saved frame off disk so this can be
+   done without Dota on screen — `debug_out/<stamp>/frame.png` from Ctrl+S,
+   or any `recordings/<stamp>/frames/00042.png` — because making
+   calibration wait for a live game is what made it never happen.
+
+   **A MEASUREMENT NEVER OVERWRITES WHAT THE USER CALIBRATED.**
+   `_adopt_measured_layout` claimed in its own docstring to save "the first
+   time and never again" and had no such guard: it fired on every
+   measurement, so boxes dragged onto the portraits and visibly landing
+   were silently replaced by whatever the next match measured. A
+   calibration the user set is an ANSWER; an automatic measurement is a
+   guess, and the guess does not get to overwrite the answer. It is adopted
+   only when `CALIBRATION_FILE` does not exist — a fresh install — and
+   otherwise says it was kept. Setup ▸ Measure from this game is how you
+   ask for the new one deliberately.
+
+   **`load_layout` and `save_calibration` resolve the path at CALL time**,
+   never as a default argument. A default is evaluated once at import, so a
+   test that repointed `CALIBRATION_FILE` still wrote into the real
+   repository — which is how a test run left a stray
+   `calibration_local.json` behind and broke an unrelated test on the next
+   run. Same rule as `ui_settings.load`.
 
    **The layout is measured, not guessed** (`vision/autocal.py`). At
    strategy time the app holds a frame AND the ten heroes the minimap named

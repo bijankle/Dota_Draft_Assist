@@ -1780,15 +1780,25 @@ class MainWindow(QMainWindow):
         search again — and on a real 3440x1440 session that was 25 seconds
         of frozen window.
 
-        Saved the first time it happens and never again, so a later match
-        cannot quietly move the boxes: `_measure_calibration` is still
-        there for doing it deliberately.
+        **Only when nothing is calibrated yet.** This claimed to save "the
+        first time and never again" and did no such thing: it ran on every
+        measurement, so a user who dragged their boxes onto the portraits
+        and watched them land had them silently replaced by whatever the
+        next match measured. A calibration the user set is an ANSWER, and a
+        measurement is a guess that happens to be automatic — the guess
+        does not get to overwrite the answer. Setup ▸ Measure from this
+        game is still there for asking for one deliberately.
         """
         result = getattr(self.provider, "measured_layout", None)
         if result is None:
             return
         self.provider.measured_layout = None
         if not result.ok:
+            return
+        if CALIBRATION_FILE.exists():
+            self.cal_label.setText(
+                "measured this game, but your saved calibration was kept — "
+                "press Measure from this game to take the new one")
             return
         self.layout_spec = result.layout
         session = getattr(self.provider, "session", None)

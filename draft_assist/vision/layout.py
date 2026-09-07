@@ -86,7 +86,9 @@ class DraftLayout:
                         slot.y + self.role_dy, slot.w, self.role_h)
 
 
-def load_layout(calibration_file: Path = CALIBRATION_FILE) -> DraftLayout:
+def load_layout(calibration_file: Path | None = None) -> DraftLayout:
+    """Same rule as `save_calibration`: resolved at call time."""
+    calibration_file = calibration_file or CALIBRATION_FILE
     layout = DraftLayout()
     if calibration_file.exists():
         overrides = json.loads(calibration_file.read_text(encoding="utf-8"))
@@ -101,6 +103,13 @@ def load_layout(calibration_file: Path = CALIBRATION_FILE) -> DraftLayout:
 
 
 def save_calibration(layout: DraftLayout,
-                     calibration_file: Path = CALIBRATION_FILE) -> None:
-    calibration_file.write_text(
-        json.dumps(asdict(layout), indent=2), encoding="utf-8")
+                     calibration_file: Path | None = None) -> None:
+    """The destination is resolved at CALL time, never bound as a default.
+
+    A default argument is evaluated once at import, so a test that repoints
+    `CALIBRATION_FILE` still wrote into the real repository — which is how
+    a test run left a stray calibration_local.json behind and broke an
+    unrelated test on the next run. Same rule as `ui_settings.load`.
+    """
+    path = calibration_file or CALIBRATION_FILE
+    path.write_text(json.dumps(asdict(layout), indent=2), encoding="utf-8")

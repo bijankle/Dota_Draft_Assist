@@ -325,3 +325,49 @@ def test_dragging_needs_a_picture(window):
     win.drag_button.setChecked(True)
     assert not win.drag_button.isChecked()
     assert "No picture" in win.drag_label.text()
+
+
+def test_a_measurement_never_overwrites_what_you_calibrated(window,
+                                                            monkeypatch):
+    """It claimed to save once and never again, and did no such thing: it
+    ran on every measurement, so boxes dragged onto the portraits were
+    silently replaced by whatever the next match measured."""
+    from draft_assist.vision import autocal, layout as layout_mod
+
+    win, saved = window
+    truth = DraftLayout(radiant_x=0.1102, dire_x=0.5707, y=0.0090,
+                        slot_w=0.0605, slot_h=0.0743, pitch=0.0633)
+    win._still = pick_bar(truth)
+    win.drag_button.setChecked(True)
+    for rect in both_banks(truth):
+        win.debug_image.boxed.emit(*rect)
+    mine = win.layout_spec.radiant_x
+    assert saved.exists()
+
+    # A later match measures something different and offers it up.
+    monkeypatch.setattr(layout_mod, "CALIBRATION_FILE", saved)
+    monkeypatch.setattr("draft_assist.ui.app.CALIBRATION_FILE", saved)
+    win.provider.measured_layout = autocal.Calibration(
+        layout=DraftLayout(radiant_x=0.4), found=[1] * 10, note="measured")
+    win._adopt_measured_layout()
+
+    assert win.layout_spec.radiant_x == mine, "the measurement overwrote it"
+    assert "kept" in win.cal_label.text()
+
+
+def test_a_measurement_is_taken_when_nothing_is_calibrated(window,
+                                                           monkeypatch):
+    """The automatic path still has to work on a fresh install — that is
+    the whole reason the search bothers to hand its geometry back."""
+    from draft_assist.vision import autocal, layout as layout_mod
+
+    win, saved = window
+    assert not saved.exists()
+    monkeypatch.setattr(layout_mod, "CALIBRATION_FILE", saved)
+    monkeypatch.setattr("draft_assist.ui.app.CALIBRATION_FILE", saved)
+    win.provider.measured_layout = autocal.Calibration(
+        layout=DraftLayout(radiant_x=0.4), found=[1] * 10, note="measured")
+    win._adopt_measured_layout()
+
+    assert win.layout_spec.radiant_x == pytest.approx(0.4)
+    assert saved.exists()
