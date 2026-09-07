@@ -1984,3 +1984,50 @@ def test_a_hand_edited_settings_file_cannot_ask_for_two_hundred_tiles(
     window._refresh_views()
     qapp.processEvents()
     assert len(window.suggest_row.heroes) <= ui_settings.MAX_SHOWN
+
+
+def _silent_gsi_snapshot(fault: bool):
+    from draft_assist.ui.providers import Snapshot
+    snap = Snapshot()
+    snap.warning = ("no data from Dota yet — GSI config installed: Run "
+                    "Game > Set up game data (GSI).")
+    snap.gsi_setup_broken = fault
+    return snap
+
+
+def test_a_dead_game_feed_gets_a_banner_not_a_status_segment(window, qapp):
+    """It cost a whole ranked game as one segment of a pipe-separated line
+    at the bottom of the window, between the capture mode and how old the
+    data is. "Where is the warning line" is a fair question about that."""
+    window._update_first_run_banner(_silent_gsi_snapshot(True))
+    qapp.processEvents()
+    # isHidden, not isVisible: the window itself has not been shown, so
+    # isVisible answers "is the window up" rather than "did we hide this".
+    assert not window.banner.isHidden()
+    assert "not sending game data" in window.banner_label.text()
+    assert "Set up game data" in window.banner_label.text(), \
+        "the banner must carry the specific broken link, not just a nudge"
+    assert window.banner_button.text() == "Check game data"
+
+
+def test_the_banner_button_opens_the_diagnosis(window, qapp, monkeypatch):
+    """The button has to do what the banner is about — it was hard-wired to
+    the data download whatever the message said."""
+    opened = []
+    monkeypatch.setattr(window, "_diagnose_gsi", lambda: opened.append(1))
+    window._update_first_run_banner(_silent_gsi_snapshot(True))
+    window.banner_button.click()
+    assert opened == [1]
+
+
+def test_dota_being_closed_is_not_a_fault_worth_a_banner(window, qapp):
+    """Silence with nothing wrong is normal, and a banner that is up all
+    evening is one nobody reads on the night it matters."""
+    window._update_first_run_banner(_silent_gsi_snapshot(False))
+    qapp.processEvents()
+    assert "not sending game data" not in window.banner_label.text()
+
+
+def test_the_warning_leads_the_status_line(window, qapp):
+    window._update_status(_silent_gsi_snapshot(True))
+    assert window.status.currentMessage().startswith("WARNING:")

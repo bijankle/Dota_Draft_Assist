@@ -21,6 +21,11 @@ from .manual import ManualDraft, merge
 # How often the "why is Dota silent" diagnosis is recomputed. It reads
 # Steam's config off disk and opens a socket, so not on every tick.
 DIAGNOSE_PERIOD = 20.0
+# Checks whose failure is NOT something to put a banner up about. Dota
+# being closed is silence with nothing wrong, and so is a match not having
+# started: both are normal, and a banner that is up all evening is one
+# nobody reads on the night it matters.
+NOT_A_FAULT = frozenset({"Dota is running", "Payloads received"})
 
 
 @dataclass
@@ -45,6 +50,12 @@ class Snapshot:
     player_name: str = ""
     my_team: str = ""
     gsi_live: bool = False
+    # The feed is silent AND the reason is something the user has to fix —
+    # a missing config, the wrong port, no launch option. Dota simply not
+    # being open is silence too, and is not a fault, so it does not set
+    # this: a banner that is up whenever the game is closed is a banner
+    # nobody reads when it matters.
+    gsi_setup_broken: bool = False
     gsi_notes: list[str] = field(default_factory=list)
     gsi_capabilities: dict = field(default_factory=dict)
     # Which part of the feed the line-ups came out of, so the
@@ -254,6 +265,7 @@ class GsiProvider:
         # The diagnosis behind "no data from Dota yet", refreshed rarely
         # because it reads Steam's config off disk and pokes the port.
         self._silence_reason = ""
+        self._silence_is_a_fault = False
         self._diagnosed_at = 0.0
 
     def start(self) -> str:
@@ -301,16 +313,19 @@ class GsiProvider:
                 first = failing[0]
                 self._silence_reason = (
                     f"{first.name}: {first.fix or first.detail}")
+                self._silence_is_a_fault = first.name not in NOT_A_FAULT
             else:
                 self._silence_reason = (
                     "every GSI check passes, so this is Dota being quiet — "
                     "it sends nothing from the main menu, only once you are "
                     "in a match")
+                self._silence_is_a_fault = False
         except Exception:               # noqa: BLE001 - never worth a crash
             self._silence_reason = (
                 "run Setup ▸ Set up game data (GSI), add "
                 "-gamestateintegration to Dota's launch options, and "
                 "restart Dota")
+            self._silence_is_a_fault = False
         return self._silence_reason
 
     def poll(self) -> Snapshot:
@@ -333,6 +348,7 @@ class GsiProvider:
         if reception.payload is None:
             snap.sides_known = True
             snap.warning = "no data from Dota yet — " + self._why_silent()
+            snap.gsi_setup_broken = self._silence_is_a_fault
             snap.needs_manual = True
             snap.left = merge([], self.manual.entered("ally"))
             snap.right = merge([], self.manual.entered("enemy"))

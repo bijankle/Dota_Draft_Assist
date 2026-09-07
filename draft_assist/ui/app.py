@@ -507,7 +507,11 @@ class MainWindow(QMainWindow):
         blay.addWidget(self.banner_label, 1)
         self.banner_button = QPushButton("Download now")
         self.banner_button.setProperty("accent", True)
-        self.banner_button.clicked.connect(lambda: self.run_task("update_data"))
+        # The banner says several different things, so the button cannot be
+        # wired to one of them: it runs whatever the current message is
+        # about.
+        self._banner_action = lambda: self.run_task("update_data")
+        self.banner_button.clicked.connect(lambda: self._banner_action())
         blay.addWidget(self.banner_button)
         outer.addWidget(self.banner)
 
@@ -1111,32 +1115,56 @@ class MainWindow(QMainWindow):
             return ("+".join(cached), "+".join(wanted))
         return None
 
-    def _update_first_run_banner(self) -> None:
+    def _show_banner(self, message: str, button: str, action) -> None:
+        set_label(self.banner_label, message)
+        if self.banner_button.text() != button:
+            self.banner_button.setText(button)
+        self._banner_action = action
+        self.banner.setVisible(True)
+
+    def _update_first_run_banner(self, snap=None) -> None:
+        """The one strip at the top that says what is wrong RIGHT NOW.
+
+        The game feed being dead is first, ahead of anything about the
+        statistics, because it is the fault that costs a whole draft — and
+        it used to be one segment of a pipe-separated status line at the
+        bottom of the window, between the capture mode and how old the data
+        is. "Where is the warning line" is a fair question about that.
+
+        Only a fault the user can fix puts it up: Dota simply not being
+        open is silence too, and a banner that is up all evening is one
+        nobody reads on the night it matters.
+        """
+        if snap is not None and getattr(snap, "gsi_setup_broken", False):
+            reason = snap.warning.split("—", 1)[-1].strip()
+            self._show_banner(
+                f"<b>Dota is not sending game data.</b> {reason}<br>"
+                "Without it the app cannot tell when a draft starts or "
+                "which side is yours.",
+                "Check game data", self._diagnose_gsi)
+            return
         mismatch = self._bracket_mismatch()
         if mismatch:
             cached, wanted = mismatch
-            self.banner_label.setText(
+            self._show_banner(
                 f"<b>Statistics are for {cached}, but {wanted} is "
                 "selected.</b> The numbers below are still the old bracket "
-                "until the data is rebuilt.")
-            self.banner_button.setText("Rebuild now")
-            self.banner.setVisible(True)
+                "until the data is rebuilt.",
+                "Rebuild now", lambda: self.run_task("update_data"))
             return
         if self.ds.is_empty:
-            self.banner_label.setText(
+            self._show_banner(
                 "<b>No statistics downloaded yet.</b> The hero list stays "
                 "empty until the first download, which fetches match "
                 "statistics for Ancient+Divine and the hero portraits used "
-                "to read the draft off the screen.")
-            self.banner_button.setText("Download now")
-            self.banner.setVisible(True)
+                "to read the draft off the screen.",
+                "Download now", lambda: self.run_task("update_data"))
         elif self.ds.is_stale():
-            self.banner_label.setText(
+            self._show_banner(
                 f"<b>Statistics are {self.ds.age_hours():.0f} hours old.</b> "
                 "Recommendations still work, but a refresh keeps them "
-                "current with the patch.")
-            self.banner_button.setText("Update now")
-            self.banner.setVisible(True)
+                "current with the patch.",
+                "Update now", lambda: self.run_task("update_data"))
         else:
             self.banner.setVisible(False)
 
@@ -2217,6 +2245,7 @@ class MainWindow(QMainWindow):
         self._adopt_measured_layout()
         with LOOP.stage("learn a new portrait"):
             self._learn_unknown_portrait(snap)
+        self._update_first_run_banner(snap)
         with LOOP.stage("status + captions"):
             self._update_status(snap)
             self._update_team_captions(snap)
@@ -2618,13 +2647,18 @@ class MainWindow(QMainWindow):
 
     # ---- status / debug ------------------------------------------------
     def _update_status(self, snap) -> None:
-        parts = [f"mode: {snap.mode}"]
+        # The warning LEADS. It used to sit fourth, after the mode, the
+        # source and the game state, in a pipe-separated line at the bottom
+        # of the window — which is how "no data from Dota" went unread for
+        # a whole ranked game.
+        parts = []
+        if snap.warning:
+            parts.append(f"WARNING: {snap.warning}")
+        parts.append(f"mode: {snap.mode}")
         if snap.source:
             parts.append(snap.source)
         if snap.game_state:
             parts.append(snap.game_state.replace("DOTA_GAMERULES_STATE_", ""))
-        if snap.warning:
-            parts.append(f"WARNING: {snap.warning}")
         if snap.stalled:
             parts.append("CAPTURE STALLED — occluded window may have "
                          "stopped presenting")

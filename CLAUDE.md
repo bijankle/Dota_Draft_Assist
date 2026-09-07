@@ -404,6 +404,22 @@ credentials, and put the account at risk. Do not go there.
   player's own team, which would settle the split. Unverified; measure it
   before building on it.
 
+  **A dead game feed is a BANNER, not a status segment.** It was one
+  pipe-separated segment at the bottom of the window, between the capture
+  mode and how old the statistics are, and it went unread through a whole
+  ranked game — "where is the warning line" is a fair question about that.
+  `_update_first_run_banner(snap)` now puts it in the strip at the top,
+  ahead of everything about the statistics, because it is the fault that
+  costs a draft; the button becomes **Check game data** and opens Game ▸
+  Diagnose game data. The banner's button is dispatched through
+  `_banner_action` rather than hard-wired to the data download, since the
+  banner says several different things. The warning also leads the status
+  line instead of coming fourth.
+  **Only a fault the user can FIX raises it** (`gsi_setup_broken`,
+  `providers.NOT_A_FAULT`). Dota not being open is silence too, and so is
+  a match not having started; a banner that is up all evening is one
+  nobody reads on the night it matters.
+
   **"No data from Dota" names the ONE broken link** (`gsi/diagnose.
   run_checks`, `GsiProvider._why_silent`). GSI has several independent
   requirements and gives no feedback when one is missing — Dota simply
