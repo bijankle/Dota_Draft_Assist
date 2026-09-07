@@ -7,6 +7,7 @@ prompt.
 """
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPlainTextEdit,
                              QProgressBar, QPushButton, QVBoxLayout)
 
@@ -18,6 +19,10 @@ class TaskDialog(QDialog):
         super().__init__(parent)
         self.task = task
         self.succeeded = False
+        # Set by the caller for a task that ends in the app relaunching:
+        # pressing Close on a progress box and then watching the app you
+        # just updated restart anyway is one click for nothing.
+        self.close_on_success = False
         self.setWindowTitle(task.title)
         self.setMinimumSize(760, 460)
 
@@ -87,6 +92,12 @@ class TaskDialog(QDialog):
         self.cancel_button.setEnabled(False)
         self.close_button.setEnabled(True)
         self.close_button.setFocus()
+        if self.succeeded and self.close_on_success:
+            # Queued, not called here: this runs inside the worker's
+            # finished signal, and accepting a dialog from inside one of
+            # its own children's signals is how a half-torn-down event
+            # loop happens.
+            QTimer.singleShot(0, self.accept)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if self.worker.isRunning():

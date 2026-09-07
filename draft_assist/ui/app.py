@@ -462,7 +462,10 @@ class MainWindow(QMainWindow):
         self.data_pill.setProperty("pill", True)
         toolbar.addWidget(self.data_pill)
 
-        tabs = QTabWidget()
+        # BandedTabs, not QTabWidget: the tab row has to be one dark band
+        # edge to edge, and the gap between the tabs and the toolbar is
+        # painted by the tab widget itself where no stylesheet reaches.
+        tabs = chrome.BandedTabs()
         self.tabs = tabs
 
         shell = chrome.FramedShell()
@@ -485,11 +488,6 @@ class MainWindow(QMainWindow):
         # back explicitly. Bottom-right only: one grip is enough to size a
         # window and four would be four things to mis-hit.
         self._shell_lay = shell_lay
-        grip_row = QHBoxLayout()
-        grip_row.setContentsMargins(0, 0, 0, 0)
-        grip_row.addStretch(1)
-        grip_row.addWidget(ResizeGrip(shell))
-        shell_lay.addLayout(grip_row)
         self.setCentralWidget(shell)
 
         # ----- Draft tab: the two teams, and the grids under them.
@@ -907,7 +905,14 @@ class MainWindow(QMainWindow):
         # the bottom strip is a border that has been forgotten about.
         self.status = QStatusBar()
         self.status.setSizeGripEnabled(False)
-        self._shell_lay.insertWidget(self._shell_lay.count() - 1, self.status)
+        # The grip goes INSIDE the status bar, at its right end. It used to
+        # have a row of its own below, which left a strip of window under
+        # the status message with nothing in it — the message should end
+        # where the window does. Sharing the bar means the grip sits on the
+        # message's own background, which is what a resize corner does in
+        # every other application.
+        self.status.addPermanentWidget(ResizeGrip(self.status))
+        self._shell_lay.addWidget(self.status)
 
     def _build_sessions_tab(self) -> QWidget:
         """Past recordings, each one discrete, with its report ready to
@@ -1035,6 +1040,11 @@ class MainWindow(QMainWindow):
         if argument:
             task = task.with_argument(argument)
         dialog = TaskDialog(task, self)
+        # A task that is going to relaunch the app closes its own dialog
+        # when it works. Nobody wants to press Close on a progress box and
+        # then watch the app they just updated restart anyway.
+        restarting = getattr(self, "_restart_after_task", "") == task.key
+        dialog.close_on_success = restarting
         if task.modeless:
             # A feeding task drives the main window, so it must not sit on
             # top of it modally: the point of simulating a draft is to click
@@ -1047,15 +1057,19 @@ class MainWindow(QMainWindow):
             return
         dialog.start()
         dialog.exec()
-        if dialog.succeeded and task.reload_after:
-            self.reload_backend()
+        # THE SAME ENDING FOR BOTH PATHS. `_task_finished` was wired only
+        # to the modeless one, so a modal task's restart request was
+        # recorded and then never acted on — which is why Update pulled the
+        # new version and left the old one running, waiting to be closed
+        # and reopened by hand.
+        self._task_finished(dialog)
 
     def _task_finished(self, dialog) -> None:
         if dialog in self._open_tasks:
             self._open_tasks.remove(dialog)
         if dialog.succeeded and dialog.task.reload_after:
             self.reload_backend()
-        # Only the Update button asks for a restart, and only a pull that
+        # Only the Update commands ask for a restart, and only a pull that
         # actually worked earns one — relaunching after a failure would
         # hide the error the dialog is showing.
         if getattr(self, "_restart_after_task", "") == dialog.task.key:
@@ -2077,8 +2091,13 @@ class MainWindow(QMainWindow):
         must not inherit a half-torn-down Qt event loop.
         """
         try:
-            subprocess.Popen([sys.executable, "-m", "draft_assist.ui.app"],
-                             cwd=str(REPO_ROOT), close_fds=True)
+            # `__main__.py` rather than `-m`, so the new process does not
+            # depend on inheriting our working directory — the same target
+            # the taskbar pin launches.
+            subprocess.Popen(
+                [sys.executable, str(REPO_ROOT / "draft_assist"
+                                     / "__main__.py")],
+                cwd=str(REPO_ROOT), close_fds=True)
         except OSError as exc:
             self.status.showMessage(f"Could not restart: {exc}", 10000)
             return

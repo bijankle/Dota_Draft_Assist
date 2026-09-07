@@ -136,8 +136,11 @@ def test_an_item_with_no_icon_shows_its_name_once(icons, qapp):
         ItemTile(advice("Nothing Downloaded")).grab()
     finally:
         row_mod.QPainter = monkey
+    # ONCE. It used to be drawn in a band AND under the art. At a tile
+    # this size a long name elides — the tooltip carries the whole of it —
+    # so what is checked is that it is drawn, and drawn once.
     named = [text for text in drawn
-             if isinstance(text, str) and "Nothing" in text]
+             if isinstance(text, str) and text.startswith("Noth")]
     assert len(named) == 1, f"the name was drawn {len(named)} times"
 
 

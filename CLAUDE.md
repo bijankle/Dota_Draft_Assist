@@ -536,8 +536,16 @@ credentials, and put the account at risk. Do not go there.
   decision it informed was made. Icons rather than names because the strip
   is read in the corner of the eye — a player recognises a BKB by its shape
   long before reading the words — with the strongest trigger's severity as
-  a colour bar and the whole reasoning in the tooltip, since a strip that
-  explained itself in place would be the paragraph again. Icons are
+  the whole reasoning in the tooltip and behind a click, since a strip
+  that explained itself in place would be the paragraph again. **There is
+  no severity bar under the icon**: the strip is already ORDERED by
+  severity, so the bar said in colour what position was already saying.
+  **Each strip's tile takes its own art's aspect** — a hero portrait is
+  16:9, an item icon is Valve's 88x64 — sharing only the HEIGHT, so the
+  strips line up with each other without any icon sitting in a box wider
+  than itself. A tile wider than its picture is dead space either side of
+  every icon, which reads as the items being spaced further apart than the
+  heroes above them. Icons are
   downloaded with the portraits into `assets/items/`, named by a slug of
   the DISPLAY name so `rules/items.yaml` can go on saying "Black King Bar"
   the way a person writes it; a missing icon draws the name and is normal,
@@ -847,10 +855,18 @@ credentials, and put the account at risk. Do not go there.
   — a corner widget is sized to its contents and a spacer pushes the
   controls off the right edge. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
-  **The tab strip is one BAND.** The tab widget's own background is the
-  dark row, so the tabs on the left and the record, auto and transparency
-  controls on the right sit on the same surface instead of the controls
-  floating above it. The record control is a round red dot
+  **The tab strip is one BAND** (`chrome.BandedTabs`). The tabs paint
+  their own strip and the corner widget paints its own, and between them —
+  and past the corner widget to the window's edge — the tab widget's own
+  background showed through in the CONTENT colour: three tones across one
+  row, so the controls read as floating above the tabs rather than sitting
+  beside them. No stylesheet reaches that gap (`QTabWidget { background }`
+  does not paint the tab-bar area and `::pane` is only the part below it),
+  so the band is filled in `paintEvent` before anything else draws. The
+  TAB BAR sets its height and the corner widget is held to it, because
+  left to itself the corner widget is as tall as its own contents — which
+  is a different number, and that seam is the thing the band exists to
+  remove. The record control is a round red dot
   (`chrome.RecordButton`) — circle to record, square to stop, no label,
   because the symbol needs no words and this row has to stay readable at
   the window's minimum width — and Auto is a `chrome.TickBox`, which
@@ -858,21 +874,24 @@ credentials, and put the account at risk. Do not go there.
   cannot put a mark in it without an image file, and a filled square says
   something is different about a control, not that it is switched on.
   **The whole window wears a painted frame** (`ui/ornate.py`,
-  `chrome.FramedShell`). A bevelled bronze band with amethyst studs, the
-  shape of the Warcraft frame the user asked for — the artwork itself is
-  Blizzard's and is not in this repository, so this is the vocabulary
-  (band, bevel, round studs) and not their carving. Three rules it lives
-  by: it is painted by the SHELL and not by the window, because a QWidget
-  under the app's stylesheet paints its background across its whole
-  rectangle including the margins and covered a window-painted frame
-  completely; the hole in the middle is FILLED with the app's background
-  rather than cleared, since clearing leaves black anywhere the content
-  does not cover to the pixel; and there are nine studs at fixed points
-  rather than one every N pixels, which turns into a dotted line on a
-  small window and a chain on a large one. The status bar is OUR OWN,
-  inside the shell layout, rather than `QMainWindow.statusBar()` — hung
-  off the window it sat outside the frame, and a border round everything
-  except the bottom strip is a border that has been forgotten about.
+  `chrome.FramedShell`). A bevelled bronze hairline, the shape of the
+  Warcraft frame the user asked for — the artwork itself is Blizzard's and
+  is not in this repository, so this is the vocabulary and not their
+  carving. **Three pixels, and no ornament.** The first attempt was ten
+  pixels of band with amethyst studs at the corners and mid-sides and read
+  as jewellery round a tool: the frame's job is to give a frameless
+  always-on-top window an edge against whatever is behind it, and past a
+  few pixels it competes with the draft instead. Two rules it lives by: it
+  is painted by the SHELL and not by the window, because a QWidget under
+  the app's stylesheet paints its background across its whole rectangle
+  including the margins and covered a window-painted frame completely; and
+  the hole in the middle is FILLED with the app's background rather than
+  cleared, since clearing leaves black anywhere the content does not cover
+  to the pixel. The status bar is OUR OWN, inside the shell layout, rather
+  than `QMainWindow.statusBar()` — hung off the window it sat outside the
+  frame — and the `ResizeGrip` sits INSIDE it rather than in a row of its
+  own below, which had left a strip of empty window under the status
+  message. The message ends where the window does.
   **Everything on the bar is centred on the bar's middle line.** A layout
   left to itself stretches each child to the bar's full height, and a
   QMenuBar given 48px draws its titles hard against the top edge — which is
@@ -1018,13 +1037,23 @@ credentials, and put the account at risk. Do not go there.
   in a `QScrollArea`, where they ask for nothing; the floor went from 1321
   to 571. `test_a_tall_tab_does_not_set_the_windows_floor` keeps it there,
   because the next long panel added to Debug would do it again silently.
-- **A grid is exactly as tall as its rows** (`MatrixTable._fit_height`,
+- **A grid is exactly as tall as its rows, and it NEVER SCROLLS**
+  (`MatrixTable._fit_height`,
   applied everywhere rather than only in the callout). A five-row table
   left to stretch fills whatever height the layout hands it, and the
   leftover is dead space INSIDE the widget: half the window was blank and,
   worse, the window had no shorter size to offer, because a stretching
   widget never asks for less. The stretch goes at the BOTTOM of the tab
   instead, so every card is its own height and the slack is slack.
+  Both scrollbars are off: five rows sized to fit means a scrollbar can
+  only mean the fit was wrong, and it hides part of the answer while
+  making the widget look correct — off, so a bad fit shows up as a
+  squashed grid instead of as a grid that quietly stopped showing a row.
+  The height is measured from `verticalHeader().length()` and the larger
+  of the header's `height()` and its size hint, because adding up
+  `rowHeight` before the layout has run — and reading a header height that
+  is stale until it has been shown — is short by a few pixels, and a few
+  pixels short is exactly what puts a scrollbar on a five-row grid.
 - **The window has a minimum width, and it is derived rather than picked**
   (`tables.minimum_grid_width`, `teams.minimum_panel_width`). Two things
   compete for it: five matrix columns wide enough to print "+12.34"
@@ -1051,6 +1080,15 @@ credentials, and put the account at risk. Do not go there.
   nothing is wrong is read once and skipped forever.
 - **Update restarts the app, and it lives in Help** (`_update_and_restart`,
   `_update_app`).
+  **BOTH task paths must end in `_task_finished`.** It was connected only
+  to the modeless one, so a modal task's restart request was recorded and
+  then never acted on — Update pulled the new version and left the old
+  process running, waiting to be closed and reopened by hand, which is the
+  one thing the button exists to avoid. And a task that is going to
+  relaunch sets `TaskDialog.close_on_success`, because pressing Close on a
+  progress box and then watching the app restart anyway is a click for
+  nothing. The relaunch targets `draft_assist/__main__.py` rather than
+  `-m`, so it does not depend on inheriting a working directory.
   Reloading in place works and `reload_backend` does it, but the restart is
   the only way to be certain nothing is still holding the old data, and the
   user asked not to close and reopen by hand. It relaunches ONLY after the

@@ -109,13 +109,21 @@ def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
 
 def test_the_three_strips_are_one_look(qapp):
     """Items, suggestions and picks were three tile designs; the point of
-    `tilekit` is that they cannot drift apart again."""
+    `tilekit` is that they cannot drift apart again.
+
+    Same HEIGHT, not the same size: each strip takes its own art's aspect
+    — a hero portrait is 16:9 and an item icon is 88x64 — because a tile
+    wider than its picture is dead space either side of every icon, which
+    reads as the items being spaced further apart than the heroes.
+    """
     from draft_assist.model.items import ItemAdvice
     from draft_assist.ui import teams
     suggestion = SuggestTile(1, "Anti-Mage", 0.05)
     item = ItemTile(ItemAdvice(item="Black King Bar", score=1.0,
                                any_stale=False, triggers=[]))
-    assert suggestion.size() == item.size()
+    assert suggestion.height() == item.height()
+    assert abs(suggestion.width() / suggestion.height() - 16 / 9) < 0.06
+    assert abs(item.width() / item.height() - 88 / 64) < 0.06
     assert teams.NAME_MAX_PT == tilekit.NAME_MAX_PT
     assert teams.CHROME == tilekit.CHROME
 

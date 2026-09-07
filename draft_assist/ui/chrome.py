@@ -16,8 +16,9 @@ from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize,
                           Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QHBoxLayout,
-                             QLabel, QPushButton, QSizeGrip, QSpinBox,
-                             QWidget)
+                             QLabel, QPushButton, QSizeGrip, QSizePolicy,
+                             QSpinBox, QStyle, QStyleOptionSpinBox,
+                             QTabWidget, QWidget)
 
 from . import appicon, theme
 
@@ -273,9 +274,24 @@ class CountBox(QSpinBox):
         self.setRange(low, high)
         self.setValue(value)
         self.setAccelerated(True)
-        self.setFixedWidth(58)
         self.setAlignment(Qt.AlignmentFlag.AlignRight
                           | Qt.AlignmentFlag.AlignVCenter)
+        # SIZED TO ITS CONTENTS, not to a number somebody guessed. A fixed
+        # 58px cut the digits off the moment the theme's padding grew, and
+        # a control that cannot show its own value is worse than no
+        # control. The widest value it can ever hold, plus what the frame
+        # and the arrows actually measure.
+        widest = max(len(str(low)), len(str(high)))
+        digits = self.fontMetrics().horizontalAdvance("8" * widest)
+        style = self.style()
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        arrows = style.subControlRect(
+            QStyle.ComplexControl.CC_SpinBox, option,
+            QStyle.SubControl.SC_SpinBoxUp, self).width()
+        self.setMinimumWidth(digits + max(arrows, 12) + 18)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum,
+                           QSizePolicy.Policy.Fixed)
 
 
 class FramedShell(QWidget):
@@ -300,3 +316,47 @@ class FramedShell(QWidget):
         painter = QPainter(self)
         ornate.paint_frame(painter, QRectF(self.rect()))
         painter.end()
+
+
+class BandedTabs(QTabWidget):
+    """A tab widget whose tab row is ONE dark band, edge to edge.
+
+    The tabs paint their own strip and the corner widget paints its own,
+    and between the two — and past the corner widget to the window's edge —
+    the tab widget's background showed through in the content colour. Three
+    tones across one row, so the record and transparency controls read as
+    floating above the tabs rather than sitting beside them.
+
+    A stylesheet cannot reach that gap: `QTabWidget { background: ... }`
+    does not paint the tab-bar area, and `::pane` is only the part below
+    it. So the band is filled here, before anything else draws.
+
+    **The TAB BAR sets the height**, and the corner widget is held to it.
+    Left to itself the corner widget is as tall as its own contents, which
+    is not the same number — so one side of the same row was taller than
+    the other, which is exactly the seam the band exists to remove.
+    """
+
+    def _band_height(self) -> int:
+        return max(self.tabBar().sizeHint().height(), self.tabBar().height())
+
+    def _hold_corner_to_the_band(self) -> None:
+        corner = self.cornerWidget(Qt.Corner.TopRightCorner)
+        band = self._band_height()
+        if corner is not None and band > 0 and corner.height() != band:
+            corner.setFixedHeight(band)
+
+    def showEvent(self, event) -> None:             # noqa: N802 - Qt naming
+        super().showEvent(event)
+        self._hold_corner_to_the_band()
+
+    def resizeEvent(self, event) -> None:           # noqa: N802
+        super().resizeEvent(event)
+        self._hold_corner_to_the_band()
+
+    def paintEvent(self, event) -> None:            # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(0, 0, self.width(), self._band_height(),
+                         QColor(theme.BG_DEEP))
+        painter.end()
+        super().paintEvent(event)

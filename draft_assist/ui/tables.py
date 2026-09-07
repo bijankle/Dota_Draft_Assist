@@ -315,6 +315,15 @@ class MatrixTable(QWidget):
             PortraitHeader(Qt.Orientation.Horizontal, self.table))
         self.table.setVerticalHeader(
             PortraitHeader(Qt.Orientation.Vertical, self.table))
+        # NEITHER BAR, EVER. The grid is five rows and it is sized to fit
+        # them, so a scrollbar can only mean the fit was wrong — and it
+        # hides part of the answer while making the widget look correct.
+        # Off, so getting it wrong shows up as a squashed grid instead of
+        # as a grid that quietly stopped showing a row.
+        self.table.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self.table, 1)
         self.empty_note = QLabel("")
         self.empty_note.setWordWrap(True)
@@ -331,11 +340,18 @@ class MatrixTable(QWidget):
         never more than six rows, so the exact height is cheap to compute
         and it is always the right one.
         """
-        rows = sum(self.table.rowHeight(r)
-                   for r in range(self.table.rowCount()))
+        # `verticalHeader().length()` is the sum of the sections Qt has
+        # actually laid out, which is not the same as adding up rowHeight
+        # before the layout has run — and being short by a few pixels puts
+        # a scrollbar on a five-row grid, which is a grid you cannot read
+        # without moving it. The header is measured the same way: its
+        # `height()` is stale until it has been shown, so the larger of
+        # that and its size hint is the honest number.
+        head = self.table.horizontalHeader()
+        header_h = max(head.height(), head.sizeHint().height())
+        rows = self.table.verticalHeader().length()
         self.table.setFixedHeight(
-            self.table.horizontalHeader().height() + rows
-            + 2 * self.table.frameWidth() + 2)
+            header_h + rows + 2 * self.table.frameWidth() + 2)
 
     def set_compact(self, compact: bool = True,
                     short_names: bool = True) -> None:

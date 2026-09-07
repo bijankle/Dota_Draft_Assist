@@ -36,9 +36,7 @@ def framed(width: int, height: int, band: int = ornate.WIDTH) -> QPixmap:
 
 def test_it_draws_a_band_and_leaves_the_middle_alone(qapp):
     image = framed(300, 200).toImage()
-    # Away from the mid-side stud, which is a purple stone rather than
-    # metal — sampling it would test the gem, not the band.
-    edge = QColor(image.pixel(4, 40))
+    edge = QColor(image.pixel(1, 40))
     middle = QColor(image.pixel(150, 40))
     assert edge.red() > edge.blue(), "the band should read as warm metal"
     assert middle.name() != edge.name(), "it painted over the content"
@@ -61,12 +59,14 @@ def test_it_survives_being_small(qapp):
         assert not framed(160, 120, band).isNull()
 
 
-def test_the_studs_are_nine_and_not_a_chain(qapp):
-    """A stud every N pixels is a dotted line when the window is small and
-    a chain when it is large; nine fixed points read the same at both."""
-    small = framed(200, 150).toImage()
-    large = framed(1400, 900).toImage()
-    for image in (small, large):
-        top = image.height() // 2
-        gem = QColor(image.pixel(ornate.WIDTH // 2, top))
-        assert gem.blue() > gem.green(), "no stud at the middle of the side"
+def test_it_is_a_hairline_with_no_ornament_on_it(qapp):
+    """It started as ten pixels of band with amethyst stones on it and read
+    as jewellery round a tool. A frame's job here is to give a frameless
+    always-on-top window an edge against whatever is behind it; past a few
+    pixels it competes with the draft instead."""
+    assert ornate.WIDTH <= 3
+    image = framed(400, 300).toImage()
+    for y in range(6, 294, 7):
+        band = QColor(image.pixel(1, y))
+        assert band.red() >= band.blue(), \
+            f"something purple at y={y}: the studs are meant to be gone"

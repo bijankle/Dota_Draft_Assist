@@ -8,10 +8,12 @@ enemy is known.
 
 Icons rather than names because the strip is read in the corner of the eye:
 a Dota player recognises a BKB by its shape long before they read the words
-"Black King Bar". The severity of the strongest trigger colours the bar
-under each icon, and the full reasoning — which enemy, and why — is the
-tooltip, because a strip that explained itself in place would be the
-paragraph again.
+"Black King Bar". **There is no severity bar under the icon**: the strip
+is already ORDERED by severity, so the bar said in colour what position
+was already saying, and it cost every tile three pixels of height and a
+line of chrome under an otherwise clean picture. The reasoning — which
+enemy, how urgent, and why — is the tooltip and the click, because a strip
+that explained itself in place would be the paragraph again.
 """
 
 from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
@@ -26,10 +28,15 @@ from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 # The same box the suggested picks use, and the same name band the ten
 # picks use. Three strips that look like three different apps was the
 # complaint; `tilekit` is the answer.
-ICON_W = tilekit.STRIP_W
+# THE ICON'S OWN SHAPE. Valve publishes item art at 88x64, and the tile
+# used to be the hero strip's 78x44 box — so every icon was scaled down to
+# fit the height and centred with dead pixels either side, which reads as
+# the items being spaced further apart than the heroes above them. Each
+# strip takes its own art's aspect; the HEIGHT is shared, so the two
+# strips still line up with each other.
 ICON_H = tilekit.STRIP_ART_H
+ICON_W = round(ICON_H * 88 / 64)
 NAME_H = tilekit.STRIP_BAND_H
-SEVERITY_COLOUR = {3: theme.BAD, 2: theme.WARN, 1: theme.TEXT_DIM}
 # HOW MANY IS THE CALLER'S DECISION — it is a setting, edited on the strip
 # itself. A cap in here would silently overrule it, and a number you set
 # that does not take effect is worse than no setting at all.
@@ -65,7 +72,7 @@ def forget_scaled() -> None:
 class ItemTile(QWidget):
     """One recommended item, laid out exactly like a pick.
 
-    The picture, and severity as a bar along its bottom edge. The NAME is
+    Just the picture. The NAME is
     the tooltip's job: a player recognises a BKB by its shape long before
     reading the words, and a row of labelled pictures reads as a list where
     a row of pictures reads at a glance. Clicking it asks WHY, which for an
@@ -120,11 +127,6 @@ class ItemTile(QWidget):
             tilekit.paint_band(painter,
                                box.adjusted(0, 0, 0, -box.height() // 4),
                                self.advice.item, self.font())
-
-        severity = (self.advice.triggers[0].severity
-                    if self.advice.triggers else 1)
-        painter.fillRect(QRect(0, box.bottom() - 2, ICON_W, 3),
-                         QColor(SEVERITY_COLOUR.get(severity, theme.TEXT_DIM)))
 
         painter.end()
 
