@@ -36,7 +36,7 @@ from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
 from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
                          QPen, QPixmap, QPolygonF)
 
-from ..config import ASSETS_DIR
+from ..config import ASSETS_DIR, REPO_ROOT
 from . import theme
 
 # Anything here wins over everything below, in this order.
@@ -52,6 +52,9 @@ FALLBACK_HERO = 4
 # Windows groups by this string rather than by executable, so setting it
 # is what stops the taskbar showing Python's icon.
 APP_ID = "DotaDraftAssist.App"
+# What the taskbar and the jump list call it. Without it the
+# window's jump list is headed "Python".
+APP_NAME = "Dota Draft Assist"
 
 _icon: QIcon | None = None
 
@@ -204,6 +207,118 @@ def claim_taskbar_identity() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     except Exception:
         pass
+
+
+# {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} — the AppUserModel property set.
+# The names are in pscon, but not in every pywin32, so the keys are built
+# from the GUID and the property id and pscon is only a preference.
+_AUM_FMTID = "{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}"
+_AUM_PIDS = {"RelaunchCommand": 2, "RelaunchIconResource": 3,
+             "RelaunchDisplayNameResource": 4, "ID": 5}
+
+
+def launch_python() -> str:
+    """pythonw from the app's own venv, so relaunching opens no console.
+
+    The venv the launcher builds is the one with PyQt6 in it; whatever
+    interpreter is running right now might not be, if it was started some
+    other way.
+    """
+    import sys
+    for candidate in (REPO_ROOT / ".venv/Scripts/pythonw.exe",
+                      Path(sys.executable).with_name("pythonw.exe"),
+                      Path(sys.executable)):
+        if candidate.exists():
+            return str(candidate)
+    return sys.executable
+
+
+def relaunch_command() -> str:
+    """The command line that starts this app from any working directory.
+
+    `-m draft_assist.ui.app` is what the .bat runs and it needs the
+    repository as the working directory. A pin has none, so this points at
+    `draft_assist/__main__.py`, which puts the root on `sys.path` itself.
+    """
+    target = REPO_ROOT / "draft_assist" / "__main__.py"
+    return f'"{launch_python()}" "{target}"'
+
+
+def shell_ico() -> Path | None:
+    """A real .ico for Windows to draw the pin and the shortcut from.
+
+    The shell will not take a .png here — it draws blank — so a supplied
+    .ico is used as it is and anything else is rendered into one next to
+    it. Never fatal: no icon is worse than the right icon and better than
+    not starting.
+    """
+    supplied = ASSETS_DIR / "app.ico"
+    if supplied.exists():
+        return supplied
+    try:
+        return write_ico(ASSETS_DIR / "app-generated.ico")
+    except Exception:                   # noqa: BLE001 - see the docstring
+        return None
+
+
+def _property_key(name: str, pscon, pythoncom):
+    """`pscon.PKEY_AppUserModel_<name>` if this pywin32 has it, else built."""
+    key = getattr(pscon, f"PKEY_AppUserModel_{name}", None)
+    if key is not None:
+        return key
+    return (pythoncom.MakeIID(_AUM_FMTID), _AUM_PIDS[name])
+
+
+def claim_window_identity(hwnd: int) -> bool:
+    """Put the app's identity and relaunch details ON THE WINDOW.
+
+    `claim_taskbar_identity` is only half the story. Pinning a RUNNING
+    window does not pin the window: Windows pins an app identity and then
+    has to work out what to launch and what to draw for it. Given only an
+    AppUserModelID it goes looking for a Start-menu shortcut carrying the
+    same string, and with none it falls back to the executable — which is
+    pythonw.exe, so the pinned button turns into the Python icon labelled
+    "Python", which is exactly what it did.
+
+    A window can answer that question itself. `PKEY_AppUserModel_Relaunch*`
+    on the window's own property store tell the shell what to run, what to
+    draw and what to call it, and the pin is built from those with no
+    shortcut anywhere in it. They must be set before the window is shown,
+    because the taskbar reads them when it creates the button.
+
+    Returns whether it was written, and is never fatal: an icon is not
+    worth failing to start over.
+    """
+    import sys
+    if sys.platform != "win32" or not hwnd:
+        return False
+    try:
+        import pythoncom
+        from win32com.propsys import propsys, pscon
+    except ImportError:
+        return False
+    try:
+        store = propsys.SHGetPropertyStoreForWindow(
+            int(hwnd), propsys.IID_IPropertyStore)
+        values = {"ID": APP_ID,
+                  "RelaunchCommand": relaunch_command(),
+                  "RelaunchDisplayNameResource": APP_NAME}
+        icon_file = shell_ico()
+        if icon_file is not None:
+            # ",0" is the resource index, and it is not optional: without
+            # one the shell reads the string as a resource reference it
+            # cannot parse and draws nothing.
+            values["RelaunchIconResource"] = f"{icon_file},0"
+        for name, value in values.items():
+            # PROPVARIANTType takes ONE argument. Handing it an explicit
+            # variant type killed the interpreter outright with
+            # STATUS_STACK_BUFFER_OVERRUN, which no `except` can catch.
+            store.SetValue(_property_key(name, pscon, pythoncom),
+                           propsys.PROPVARIANTType(value))
+        store.Commit()
+        return True
+    except Exception:                   # noqa: BLE001 - see the docstring
+        return False
 
 
 def pixmap(size: int) -> QPixmap:

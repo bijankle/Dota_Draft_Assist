@@ -240,11 +240,13 @@ class MainWindow(QMainWindow):
         self._update_first_run_banner()
         self.setWindowOpacity(
             float(self.settings.get("overlay_opacity", 0.7)))
-        # Not shown here: it appears only when the window is hidden, so the
-        # app is never two windows at once.
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
+        # Before the window is shown, because the taskbar reads a window's
+        # relaunch properties when it creates the button — and a pin of the
+        # running window is built from those, not from the window icon.
+        appicon.claim_window_identity(int(self.winId()))
 
     # ---- menus ---------------------------------------------------------
     def _act(self, menu, text, slot, shortcut=None, tip=""):
@@ -2052,10 +2054,10 @@ class MainWindow(QMainWindow):
     def _apply_app_icon(self) -> None:
         """Push the current icon at everything that draws one.
 
-        Four places, and they are easy to leave out of step: the window
-        (Alt-Tab), the application (the taskbar), our own title bar, and
-        the floating toggle, which is the only part of the app on screen
-        when the window is hidden.
+        The window (Alt-Tab), the application (the taskbar), our own
+        title bar, and the relaunch icon Windows builds a pin from — which
+        is a file on disk rather than a QIcon, and is the one that is easy
+        to leave out of step.
         """
         art = appicon.icon()
         self.setWindowIcon(art)
@@ -2064,6 +2066,10 @@ class MainWindow(QMainWindow):
             app.setWindowIcon(art)
         if getattr(self, "title_bar", None) is not None:
             self.title_bar.refresh_icon()
+        # Five places, not four: the pin draws from the window's own
+        # relaunch icon, which is a FILE, so a new icon has to be written
+        # out again for it.
+        appicon.claim_window_identity(int(self.winId()))
 
     def _toggle_maximised(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()

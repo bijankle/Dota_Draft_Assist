@@ -656,6 +656,11 @@ credentials, and put the account at risk. Do not go there.
   It has never been run against the real API: the network policy where it
   was written blocks the site, so `--dry-run` prints the whole mapping and
   names any hero in `EXPECTED` that came back with nothing.
+  **Everything filed under a hero goes in `assets/portraits/variants/<HERO
+  ID>/`** — the numeric id, not the name, and the same folder the app's own
+  learned crops go to. So `variants/` itself looks empty when it is full,
+  which is what "I can't see them in the variants folder" was; the
+  downloader prints the path on every run and the task blurb says it.
 - **Ranked-role-queue role icons are ground truth** for roles, read from the
   draft screen; a manual override exists in the UI for when reading fails.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
@@ -772,23 +777,47 @@ credentials, and put the account at risk. Do not go there.
   taskbar, 256 for Alt-Tab), so a QIcon carrying ONE pixmap gets scaled by
   the shell into something blurry: the icon is built at every size in
   `SIZES`. A supplied .ico is used as it is, since it already carries them.
-  **Pinning the RUNNING WINDOW is a third problem, and the shortcut is
-  its answer.** Right-clicking a running window's taskbar button and
-  choosing Pin does not pin the window: Windows pins the app IDENTITY,
-  then looks for a Start-menu shortcut whose `System.AppUserModel.ID`
-  matches and takes the pinned button's icon, name and launch command from
-  THAT. With no matching shortcut it falls back to the executable —
-  pythonw.exe — and shows Python's icon. So `tools/make_shortcut.py`
-  (Setup ▸ Add to the Start menu) writes `PKEY_AppUserModel_ID` into the
-  .lnk, which means building it through IShellLink and IPropertyStore:
-  WScript.Shell cannot write a property-store value. A pin made BEFORE
-  that shortcut existed keeps the old identity — it has to be unpinned and
-  pinned again.
+  **Pinning the RUNNING WINDOW is a third problem, and the WINDOW answers
+  it.** Right-clicking a running window's taskbar button and choosing Pin
+  does not pin the window: Windows pins the app IDENTITY and then has to
+  decide what to launch and what to draw for it. An AppUserModelID alone
+  does not tell it — it goes looking for a Start-menu shortcut carrying the
+  same string, and with none it falls back to the executable, so the pinned
+  button became pythonw.exe's icon over the label "Python" while the live
+  window went on showing ours. The jump list headed **Python** is the tell:
+  that is the shell naming the .exe it resolved to.
+  A window can answer the question itself, and that is the fix that works
+  with nothing installed anywhere: `PKEY_AppUserModel_RelaunchCommand`,
+  `_RelaunchIconResource` and `_RelaunchDisplayNameResource` on the
+  WINDOW'S OWN property store (`SHGetPropertyStoreForWindow`,
+  `appicon.claim_window_identity`) are what the shell builds the pin from.
+  They must be set BEFORE the window is shown, because the taskbar reads
+  them when it creates the button — so the call sits at the end of
+  `MainWindow.__init__` on `int(self.winId())`, and again in
+  `_apply_app_icon` because the relaunch icon is a FILE and a newly chosen
+  icon has to be written out for it.
+  **The relaunch command has no working directory**, which is why
+  `draft_assist/__main__.py` exists: the shell runs that string from
+  wherever it likes, `-m draft_assist.ui.app` needs the repository as the
+  cwd, and a file inside the package would put the package's own folder on
+  `sys.path` and fail to import `draft_assist`. `__main__.py` puts the root
+  on the path itself. Both halves of the command are quoted — "Dota Draft
+  Assist" has a space in it.
+  The Start-menu shortcut is still made and is still the fallback:
+  `tools/make_shortcut.py` (Setup ▸ Make a pinnable shortcut…) writes
+  `PKEY_AppUserModel_ID` into the .lnk, which means building it through
+  IShellLink and IPropertyStore — WScript.Shell cannot write a
+  property-store value — and it launches the same `__main__.py`. Either
+  way **a pin keeps whatever identity it was made with**: an existing pin
+  has to be removed, the app restarted, and the pin made again.
   The shortcut's icon must be a real .ico; `IconLocation` pointed at a
   .png draws blank. `appicon.write_ico` writes a multi-size one (PNG-
   compressed entries, which every Windows since Vista reads) from whatever
-  the app's icon currently is, so there is always one to point at. A .bat
-  cannot be pinned usefully at all, because Windows pins the shell rather
+  the app's icon currently is, so there is always one to point at, and
+  `appicon.shell_ico` is the one place that decides between a supplied
+  `app.ico` and a generated `app-generated.ico` — the shortcut and the
+  window's relaunch icon must not disagree about which file that is. A
+  .bat cannot be pinned usefully at all, because Windows pins the shell rather
   than the app and the icon is the console's.
   **Nothing can pin to the taskbar on the user's behalf** — Windows removed
   the verb — so the tool opens the shortcut's folder and they drag it. And

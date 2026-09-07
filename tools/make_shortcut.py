@@ -5,16 +5,20 @@ shell, not the thing it launches, and the icon is the console's. A .lnk can
 be pinned, carries its own icon, and starts without a console window, so
 that is what this makes.
 
-**The shortcut also carries the app's AppUserModelID, and that is the part
-that makes PINNING THE RUNNING WINDOW work.** Right-clicking a running
-window's taskbar button and choosing Pin does not pin the window: Windows
-pins the app identity, then goes looking for a Start-menu shortcut whose
-`System.AppUserModel.ID` matches, and takes the pinned button's icon,
-name and launch command from THAT. With no matching shortcut it falls back
-to the executable — pythonw.exe — and shows Python's icon, which is
-exactly what a pin of this app looked like. WScript.Shell cannot write
-that property, so the shortcut is built through IShellLink and
-IPropertyStore directly.
+**The shortcut also carries the app's AppUserModelID**, which is how
+Windows matches a pin to it. Right-clicking a running window's taskbar
+button and choosing Pin does not pin the window: Windows pins an app
+identity and then has to decide what to launch and what to draw for it.
+Left to itself it falls back to the executable — pythonw.exe — and shows
+Python's icon, which is what a pin of this app looked like. WScript.Shell
+cannot write that property, so the shortcut is built through IShellLink
+and IPropertyStore directly.
+
+That is now the SECOND answer to the pin, not the first: the window sets
+its own relaunch command and icon (`appicon.claim_window_identity`), so
+pinning the running window works with no shortcut involved. This is still
+worth having for the Start menu, and as the fallback if those properties
+cannot be written.
 
 The icon must be a real .ico. Point `IconLocation` at a .png and the
 shortcut draws blank, so one is generated from whatever icon the app is
@@ -29,27 +33,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from draft_assist.config import ASSETS_DIR, REPO_ROOT  # noqa: E402
+from draft_assist.config import REPO_ROOT  # noqa: E402
 # Must match what the app declares before its first window: the pin is
 # matched to this shortcut by that string and nothing else.
+from draft_assist.ui import appicon  # noqa: E402
 from draft_assist.ui.appicon import APP_ID  # noqa: E402
 
 NAME = "Dota Draft Assist"
 
 
 def python_for_launch() -> str:
-    """pythonw from the app's own venv, so no console window appears.
-
-    The venv the launcher builds is the one that has PyQt6 in it; the
-    interpreter running this script might not be, if it was started some
-    other way.
-    """
-    for candidate in (REPO_ROOT / ".venv/Scripts/pythonw.exe",
-                      Path(sys.executable).with_name("pythonw.exe"),
-                      Path(sys.executable)):
-        if candidate.exists():
-            return str(candidate)
-    return sys.executable
+    """pythonw from the app's own venv, so no console window appears."""
+    return appicon.launch_python()
 
 
 def icon_path() -> str | None:
@@ -58,18 +53,15 @@ def icon_path() -> str | None:
     A shortcut cannot use a .png — it draws blank — so a supplied .ico is
     used as it is and anything else is rendered into one.
     """
-    supplied = ASSETS_DIR / "app.ico"
-    if supplied.exists():
-        return str(supplied)
     try:
         from PyQt6.QtWidgets import QApplication
-        from draft_assist.ui import appicon
         QApplication.instance() or QApplication([])
-        return str(appicon.write_ico(ASSETS_DIR / "app-generated.ico"))
+        found = appicon.shell_ico()
     except Exception as exc:            # an icon is never worth failing over
         print(f"Could not build an .ico ({exc}); the shortcut will use "
               "Python's icon.")
         return None
+    return str(found) if found else None
 
 
 def stamp_identity(link, propsys, pscon) -> bool:
@@ -126,7 +118,10 @@ def main() -> None:
         shell.CLSID_ShellLink, None, pythoncom.CLSCTX_INPROC_SERVER,
         shell.IID_IShellLink)
     link.SetPath(python_for_launch())
-    link.SetArguments("-m draft_assist.ui.app")
+    # The same target the window's relaunch command uses, so a pin made
+    # from the shortcut and a pin made from the running window start the
+    # app exactly the same way.
+    link.SetArguments(f'"{REPO_ROOT / "draft_assist" / "__main__.py"}"')
     link.SetWorkingDirectory(str(REPO_ROOT))
     link.SetDescription("Read the Dota 2 draft and suggest picks and items")
     icon = icon_path()
@@ -158,9 +153,12 @@ def main() -> None:
           "pin itself — that verb was removed — so drag the shortcut onto "
           "the taskbar, or right-click it and choose Pin to taskbar "
           "(Windows 11 hides that under 'Show more options').")
-    print("Already pinned the RUNNING WINDOW? Unpin it and pin it again — "
-          "Windows caches the old identity, and the pin only picks this "
-          "shortcut up on a fresh pin.")
+    print("")
+    print("You may not need this at all any more: the window now carries "
+          "its own relaunch command and icon, so pinning the RUNNING "
+          "window should work on its own. Either way a pin keeps whatever "
+          "identity it was made with — unpin it, restart the app, and pin "
+          "it again.")
     open_containing_folder(link_path)
 
 

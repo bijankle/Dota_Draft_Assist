@@ -38,6 +38,7 @@ all and produces exactly the picture your HUD draws.
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -156,10 +157,10 @@ def main() -> None:
         got = {ds.name(hid) for hid, _s, _t in mapped}
         missing = [name for name in EXPECTED if name not in got]
         if missing:
-            print("\\nExpected an alternative portrait for these and found "
-                  f"none — the mapping or the category has missed them:\\n  "
+            print("\nExpected an alternative portrait for these and found "
+                  f"none — the mapping or the category has missed them:\n  "
                   + ", ".join(missing))
-        print("\\nDry run: nothing downloaded. Check those mappings, then "
+        print("\nDry run: nothing downloaded. Check those mappings, then "
               "run again without --dry-run.")
         return
 
@@ -185,9 +186,17 @@ def main() -> None:
         if args.limit and written >= args.limit:
             break
 
-    print(f"\\n{written} downloaded, {skipped} already had.")
+    print(f"\n{written} downloaded, {skipped} already had.")
+    # Where they went, always — they are filed under the hero's numeric id
+    # rather than its name, so an empty-looking `variants` folder is what a
+    # user sees when they go to check.
+    print(f"They are filed by hero id under {library.VARIANTS_DIR}"
+          f"{os.sep}<hero id>{os.sep}, e.g. "
+          f"{library.VARIANTS_DIR}{os.sep}14{os.sep}Feast_of_Abscession"
+          "_Pudge_icon.png for Pudge.")
     if written:
-        print("Rebuild so they are searchable: python tools/build_library.py")
+        print("The app rebuilds its library when a file there is newer "
+              "than the cache, so they are searchable at the next start.")
 
 
 if __name__ == "__main__":

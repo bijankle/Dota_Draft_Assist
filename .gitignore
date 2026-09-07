@@ -18,6 +18,14 @@ assets/items/
 assets/synth/
 assets/gate/
 assets/role_icons/
+# The app icon: whatever the user chose, and the .ico written
+# from it for the shortcut and the taskbar pin.
+assets/app.ico
+assets/app.png
+assets/app.jpg
+assets/app.jpeg
+assets/app.bmp
+assets/app-generated.ico
 calibration_local.json
 
 # OS / editor
