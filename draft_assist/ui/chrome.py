@@ -338,13 +338,30 @@ class BandedTabs(QTabWidget):
     """
 
     def _band_height(self) -> int:
-        return max(self.tabBar().sizeHint().height(), self.tabBar().height())
+        """The band covers WHATEVER the tab row actually occupies.
+
+        Filling only the tab bar's height left a lighter strip above the
+        corner widget on any machine where the toolbar came out taller —
+        which is the discontinuity this class exists to remove. Painting
+        the larger of the two can never leave a gap; holding the corner to
+        the tab bar (below) is what stops there being one to cover.
+        """
+        corner = self.cornerWidget(Qt.Corner.TopRightCorner)
+        return max(self.tabBar().sizeHint().height(), self.tabBar().height(),
+                   corner.height() if corner is not None else 0)
 
     def _hold_corner_to_the_band(self) -> None:
+        """The TAB BAR sets the height and the toolbar is held to it.
+
+        Left to itself the corner widget is as tall as its own contents,
+        and QTabWidget then grows the whole tab row to fit it — so the
+        tabs sat high in a taller band and the controls sat low in it,
+        which is the step in the padding the user drew a circle round.
+        """
         corner = self.cornerWidget(Qt.Corner.TopRightCorner)
-        band = self._band_height()
-        if corner is not None and band > 0 and corner.height() != band:
-            corner.setFixedHeight(band)
+        bar = max(self.tabBar().sizeHint().height(), self.tabBar().height())
+        if corner is not None and bar > 0 and corner.height() != bar:
+            corner.setFixedHeight(bar)
 
     def showEvent(self, event) -> None:             # noqa: N802 - Qt naming
         super().showEvent(event)

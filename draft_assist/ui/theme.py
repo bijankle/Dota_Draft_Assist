@@ -64,7 +64,12 @@ QToolBar {{
 QToolBar#tabStripTools {{
     background: {BG_DEEP}; border: none; padding: 0 2px; spacing: 8px;
 }}
-QToolBar#tabStripTools QLabel {{ background: {BG_DEEP}; }}
+/* Every child, not just the labels: a QSlider left to the base
+   QWidget rule painted a rectangle of CONTENT colour inside the dark
+   band, which is the same discontinuity from the other direction. */
+QToolBar#tabStripTools QLabel,
+QToolBar#tabStripTools QCheckBox,
+QToolBar#tabStripTools QSlider {{ background: {BG_DEEP}; }}
 QToolBar#tabStripTools QPushButton {{ padding: 4px 12px; }}
 QToolBar#tabStripTools QLabel {{ color: {TEXT_DIM}; }}
 
@@ -250,6 +255,13 @@ QLabel[dim="true"] {{ color: {TEXT_DIM}; }}
 QLabel[pill="true"] {{
     background: {BG_INPUT}; border: 1px solid {BORDER};
     border-radius: 9px; padding: 2px 9px; color: {TEXT_DIM};
+}}
+/* No box at all: used where a pill would be a badge for nothing being
+   wrong, and where its border made a toolbar taller than the row it sits
+   in. */
+QLabel[pill="quiet"] {{
+    background: transparent; border: none; padding: 0 2px;
+    color: {TEXT_DIM};
 }}
 QLabel[pill="warn"] {{
     background: #3d3524; border: 1px solid {WARN};

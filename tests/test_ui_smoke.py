@@ -2205,3 +2205,44 @@ def test_a_hero_with_nothing_on_the_board_says_so_rather_than_nothing(qapp):
     heading, lines, note = reasons.hero_reasons("Lion", 0.0, [])
     assert lines == []
     assert "Nothing on the board" in note
+
+
+def test_the_tab_row_is_one_unbroken_band(window, qapp):
+    """The tabs paint their own strip, the corner widget paints its own,
+    and between them — and inside a QSlider left to the base QWidget rule —
+    the CONTENT colour showed through. Three tones across one row, which is
+    what "discontinuity in the height of the padding" was.
+
+    Scanned rather than asserted about, because every one of those gaps was
+    somewhere nobody thought to look.
+    """
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import theme
+    qapp.setStyleSheet(theme.STYLESHEET)
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    image = window.grab().toImage()
+    top_left = window.tabs.mapTo(window, window.tabs.rect().topLeft())
+    band = window.tabs.tabBar().height()
+    assert band > 0
+    stray = [(x, y)
+             for y in range(top_left.y(), top_left.y() + band)
+             for x in range(top_left.x() + 2,
+                            top_left.x() + window.tabs.width() - 4)
+             if QColor(image.pixel(x, y)).name() == theme.BG]
+    assert not stray, (
+        f"{len(stray)} pixels of content colour inside the tab band, "
+        f"first at {stray[0]}")
+
+
+def test_the_controls_are_the_same_height_as_the_tabs(window, qapp):
+    """Left to itself the corner widget is as tall as its own contents and
+    QTabWidget grows the whole row to fit it — so the tabs sat high in a
+    taller band and the controls sat low in it."""
+    from PyQt6.QtCore import Qt
+    window.show()
+    _settle(qapp)
+    corner = window.tabs.cornerWidget(Qt.Corner.TopRightCorner)
+    assert corner is not None
+    assert corner.height() == window.tabs.tabBar().height()

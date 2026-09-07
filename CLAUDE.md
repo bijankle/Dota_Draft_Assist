@@ -864,9 +864,22 @@ credentials, and put the account at risk. Do not go there.
   does not paint the tab-bar area and `::pane` is only the part below it),
   so the band is filled in `paintEvent` before anything else draws. The
   TAB BAR sets its height and the corner widget is held to it, because
-  left to itself the corner widget is as tall as its own contents — which
-  is a different number, and that seam is the thing the band exists to
-  remove. The record control is a round red dot
+  left to itself the corner widget is as tall as its own contents and
+  QTabWidget then grows the whole row to fit it — so the tabs sat high in
+  a taller band and the controls sat low in it, which is the step in the
+  padding the user drew a circle round. The fill uses the LARGER of the
+  two so a gap is impossible even if the corner ever wins, and every child
+  of the toolbar gets the band's colour explicitly: a QSlider left to the
+  base `QWidget` rule painted a rectangle of CONTENT colour inside the
+  dark band, the same discontinuity from the other direction. A test
+  SCANS the band for content-coloured pixels rather than asserting about
+  the widgets, because each of those gaps was somewhere nobody thought to
+  look.
+  **A pill is for something being WRONG.** The data age wore a green
+  outline when it was healthy — a badge for the absence of a problem, and
+  its border was part of what made the toolbar taller than the tab bar.
+  Fresh data is plain dim text (`pill="quiet"`); stale or missing data
+  keeps the amber pill. The record control is a round red dot
   (`chrome.RecordButton`) — circle to record, square to stop, no label,
   because the symbol needs no words and this row has to stay readable at
   the window's minimum width — and Auto is a `chrome.TickBox`, which

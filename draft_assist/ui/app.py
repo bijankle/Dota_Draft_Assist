@@ -459,7 +459,7 @@ class MainWindow(QMainWindow):
         # bar in less room, one line higher up. Keeping it around invisible
         # is how it became a window of its own.
         self.data_pill = QLabel("data: —")
-        self.data_pill.setProperty("pill", True)
+        self.data_pill.setProperty("pill", "quiet")
         toolbar.addWidget(self.data_pill)
 
         # BandedTabs, not QTabWidget: the tab row has to be one dark band
@@ -2805,13 +2805,20 @@ class MainWindow(QMainWindow):
             parts.append(f"{n_stale_rules} item rules unverified this patch")
         self.status.showMessage("   |   ".join(parts))
 
+        # A BOX ONLY WHEN SOMETHING IS WRONG. Healthy data in a green
+        # outline is a badge for the absence of a problem — it drew the eye
+        # every tick, and its border made the toolbar taller than the tab
+        # bar beside it. Fresh data is plain dim text; stale or missing
+        # data keeps the amber pill, because that one is worth looking at.
         if self.ds.is_empty:
             self.data_pill.setText("no data")
             self.data_pill.setProperty("pill", "warn")
+        elif self.ds.is_stale():
+            self.data_pill.setText(f"data {self.ds.age_hours():.0f}h")
+            self.data_pill.setProperty("pill", "warn")
         else:
             self.data_pill.setText(f"data {self.ds.age_hours():.0f}h")
-            self.data_pill.setProperty(
-                "pill", "warn" if self.ds.is_stale() else "good")
+            self.data_pill.setProperty("pill", "quiet")
         self.data_pill.style().unpolish(self.data_pill)
         self.data_pill.style().polish(self.data_pill)
 
