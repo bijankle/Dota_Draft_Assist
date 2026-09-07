@@ -141,6 +141,28 @@ credentials, and put the account at risk. Do not go there.
    be ten times the work for one answer. Round-trip tested to under a pixel
    on synthetic pick bars at 16:9 and 21:9.
 
+2b. **The GAME outranks the gate, and until it did the app was blind for
+   the whole draft.** The gate (`capture/gate.py`) is an economiser: a
+   cheap signature comparison deciding whether this looks like a draft
+   screen, so the expensive recognition is skipped in the menus. Its
+   references are HARVESTED from whichever screen confirmed first, so a
+   set harvested at strategy time does not describe hero selection — one
+   real session sat at **gate 0.707 against a 0.50 threshold for the whole
+   of hero selection**, recognised nothing, and filled in only once every
+   pick was already made. Which is the one moment the app exists for.
+
+   GSI reports `HERO_SELECTION` outright, so `HybridProvider.poll` sets
+   `CaptureSession.set_required(...)` from `DRAFTING_STATES` and the guess
+   loses its vote. The gate still earns its keep when the game feed is off
+   or silent. Recognition then confirms the screen and saves a gate
+   reference for it, so the gate learns hero selection as a side effect.
+   Two traps in that code: the recognition condition must be re-asked
+   AFTER the state machine runs, never reusing the `active` flag computed
+   before it — otherwise the tick that deactivates also reads — and
+   `last_frame` is published on EVERY tick, not only when recognition
+   runs, because a session that never tripped reported `frame=none` and
+   left the debug view blank exactly when a picture is what you need.
+
 3. **An unknown slot is a legitimate state, not an error.** Whether a slot is
    unresolved because GSI did not report it or because a portrait hash margin
    was too small, it is marked unknown and scoring proceeds using only the

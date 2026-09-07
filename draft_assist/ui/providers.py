@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from ..capture.window import DOTA_TITLE
+from ..gsi.state import DRAFTING_STATES
 from ..data.store import Dataset
 from ..vision.recognize import DraftRead
 from .demo import DemoDraft
@@ -84,6 +85,9 @@ class SessionProvider:
 
     def set_forced(self, forced: bool) -> None:
         self.session.set_forced(forced)
+
+    def set_required(self, required: bool) -> None:
+        self.session.set_required(required)
 
     def stop(self) -> None:
         self.session.stop()
@@ -567,6 +571,15 @@ class HybridProvider:
         snap = self.gsi.poll()
         if self.vision is None:
             return snap
+
+        # The GAME says whether a draft is on screen, so the gate does not
+        # have to guess. Its references are harvested from whichever screen
+        # confirmed first, and one real session sat at 0.707 against a 0.50
+        # threshold for the whole of hero selection — recognising nothing
+        # until every pick was already in.
+        require = getattr(self.vision, "set_required", None)
+        if require is not None:
+            require(snap.game_state in DRAFTING_STATES)
 
         screen = self.vision.poll()
         # Always carry the frame and the read: the Debug tab is how a

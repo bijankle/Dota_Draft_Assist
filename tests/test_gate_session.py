@@ -261,3 +261,88 @@ def test_maintenance_tasks_are_well_formed():
             assert PY not in argv           # placeholder fully resolved
             if argv[0] == sys.executable and argv[1] not in ("-m", "-u"):
                 assert (REPO_ROOT / argv[1]).exists(), argv[1]
+
+
+# ---- the game outranks the gate ----------------------------------------
+
+def test_a_wrong_gate_no_longer_blocks_recognition(draft_frame, menu_frame):
+    """The gate is a guess about pixels, and its references are harvested
+    from whichever screen confirmed first. One real session sat at 0.707
+    against a 0.50 threshold for the whole of hero selection and recognised
+    nothing until every pick was already in — while GSI was reporting
+    HERO_SELECTION the entire time."""
+    session = make_session()
+    # References that do NOT describe this screen: the gate will refuse.
+    session._refs = [gate.signature(menu_frame)]
+    session.inject_frame(draft_frame)
+    state = tick_now(session)
+    assert state.gate_score > gate.DEFAULT_THRESHOLD
+    assert state.mode == "idle"
+    assert state.last_read is None, "the gate should have refused this"
+
+    # The game says a draft is happening, so the guess does not get a vote.
+    session.set_required(True)
+    state = tick_now(session)
+    assert state.last_read_raw is not None
+    assert 10 - state.last_read_raw.unknown_count() >= 8
+
+
+def test_the_frame_is_published_even_while_idle(menu_frame):
+    """It used to be set only when recognition ran, so a session that never
+    tripped the gate reported `frame=none` and the debug view had nothing
+    to show — exactly when a picture is what you need to see why."""
+    session = make_session()
+    session.inject_frame(menu_frame)
+    state = tick_now(session)
+    assert state.mode == "idle"
+    assert state.last_frame is not None
+
+
+def test_the_gate_still_works_when_nothing_is_required(draft_frame,
+                                                       menu_frame):
+    """It is an economiser and it still earns its keep — with the game feed
+    off or silent, the pixels are all there is."""
+    session = make_session()
+    session._refs = [gate.signature(draft_frame)]
+    session.inject_frame(menu_frame)
+    for _ in range(MISSES_TO_DEACTIVATE + 1):
+        tick_now(session)
+    assert session.state.mode == "idle"
+    assert session.state.last_read is None
+
+
+def test_the_game_state_drives_it(monkeypatch):
+    """HERO_SELECTION and STRATEGY_TIME are the two states a draft is in;
+    anything else and the gate is back in charge."""
+    from draft_assist.gsi import state as gsi_state
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import HybridProvider, Snapshot
+
+    asked = []
+
+    class FakeGsi:
+        game_state = ""
+
+        def poll(self):
+            return Snapshot(game_state=self.game_state)
+
+    class FakeVision:
+        session = None
+
+        def set_required(self, required):
+            asked.append(required)
+
+        def poll(self):
+            return Snapshot()
+
+    gsi = FakeGsi()
+    gsi.manual = ManualDraft()
+    provider = HybridProvider(gsi, FakeVision())
+
+    for state, expected in ((gsi_state.STATE_HERO_SELECTION, True),
+                            (gsi_state.STATE_STRATEGY, True),
+                            (gsi_state.STATE_IN_PROGRESS, False),
+                            ("", False)):
+        gsi.game_state = state
+        provider.poll()
+        assert asked[-1] is expected, f"{state} asked for {asked[-1]}"

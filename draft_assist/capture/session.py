@@ -42,6 +42,9 @@ STALL_AFTER = 5.0      # no frames for this long -> "stalled" flag
 class SessionState:
     mode: str = "idle"              # idle | active
     forced: bool = False            # manual override
+    # The GAME says a draft is happening. The gate is a guess about pixels;
+    # this is Dota's own answer, so it outranks the guess.
+    required: bool = False
     gate_score: float = float("inf")
     frames_arrived: int = 0
     stalled: bool = False
@@ -171,6 +174,23 @@ class CaptureSession:
             self._arrived_at = time.monotonic()
             self._count += 1
 
+    def set_required(self, required: bool) -> None:
+        """Recognise regardless of the gate, because the GAME said so.
+
+        The gate is an economiser: a cheap pixel comparison that decides
+        whether this looks like a draft screen, so the expensive path is
+        skipped in the menus. It is a guess, and a guess with references
+        harvested from whichever screen happened to confirm first — one
+        real session sat at 0.707 against a 0.50 threshold for the whole of
+        hero selection and recognised nothing until the picks were over.
+
+        GSI reports `HERO_SELECTION` outright. That is Dota's own answer to
+        the question the gate is guessing at, so when it is available the
+        guess does not get a vote. The gate still earns its keep whenever
+        the game feed is off or silent.
+        """
+        self.state.required = bool(required)
+
     def set_forced(self, forced: bool) -> None:
         self.state.forced = forced
 
@@ -191,7 +211,14 @@ class CaptureSession:
         if frame.ndim == 3 and frame.shape[2] == 4:
             frame = frame[:, :, :3]
 
-        active = self.state.forced or self.state.mode == "active"
+        # Always publish the frame, even while idle. It used to be set only
+        # when recognition ran, so a session that never tripped the gate
+        # reported `frame=none` and the debug view had nothing to show —
+        # exactly when a picture is what you need.
+        self.state.last_frame = frame
+
+        active = (self.state.forced or self.state.required
+                  or self.state.mode == "active")
         self._next_tick = now + (ACTIVE_PERIOD if active else IDLE_PERIOD)
 
         with LOOP.stage("  gate (is this the draft screen)"):
@@ -215,12 +242,16 @@ class CaptureSession:
             self.state.last_read_raw = None
             self._stabilizer.reset()
 
-        if self.state.mode == "active" or self.state.forced:
+        # Re-asked AFTER the state machine, never reusing `active` from
+        # before it: the mode may have just flipped to idle, and the tick
+        # that deactivates must not also read. `active` above is only the
+        # cadence for the NEXT tick.
+        if (self.state.mode == "active" or self.state.forced
+                or self.state.required):
             with LOOP.stage("  recognise (10 crops vs the library)"):
                 raw = read_draft(frame, self.layout, self.lib, self.params)
             self.state.last_read_raw = raw
             self.state.last_read = self._stabilizer.update(raw)
-            self.state.last_frame = frame
             # A frame the recogniser itself resolves is the draft screen;
             # judge that on the raw read so gate bootstrap isn't delayed.
             if 10 - raw.unknown_count() >= CONFIRM_SLOTS:
