@@ -619,9 +619,17 @@ credentials, and put the account at risk. Do not go there.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
-  Colour is reserved for meaning — green/red for signed deltas, blurple for
-  the one action a screen wants, amber for warnings — and everything else
-  is grey, so a number in colour is always worth reading.
+  Colour is reserved for meaning — green/red for signed deltas, the accent
+  for the one action a screen wants, amber for warnings — and everything
+  else is grey, so a number in colour is always worth reading.
+  **The accent is RED, not blurple**, at the user's request and because it
+  sits with the Warcraft-inspired frame where a blue did not. It is a
+  DEEPER red than `BAD` on purpose: `BAD` is the bright coral a negative
+  number is printed in, and if the two matched, a selected tab would read
+  as a warning. Keep them apart if either is ever retuned.
+  **The team headings are Dota's own colours** — Radiant green, Dire red —
+  and they say only the side name. "Your team — Bijson · Radiant" said
+  three things where one does, and the side is what the eye is looking for.
 - **Recording needs no interaction at all** (`record.py`,
   `recordings/<timestamp>/`). With `auto_record` on (the default),
   `_consider_auto_record` starts a session the moment `game_state` reaches a
@@ -721,34 +729,65 @@ credentials, and put the account at risk. Do not go there.
   downloader prints the path on every run and the task blurb says it.
 - **Ranked-role-queue role icons are ground truth** for roles, read from the
   draft screen; a manual override exists in the UI for when reading fails.
-- **How many tiles each strip shows is a SETTING, and it is a CAP rather
-  than a quota** (`ui_settings.suggested_picks` / `suggested_items`,
-  `MAX_SHOWN` 20, `MainWindow._how_many`). Items are filtered by severity
-  FIRST and then cut to the cap, so raising it to twenty does not produce
-  twenty items — it only stops advice that already cleared the floor being
-  truncated. Three things this touches: the cap lives in ONE place per
-  strip (`suggest_row` no longer caps what it is handed, because a second
-  cap silently overruling the setting is a bug with nothing on screen to
-  explain it); `clamp_count` applies the ceiling on the way IN as well as
-  out, since a hand-edited file must not be able to ask for two hundred
-  tiles; and both strips are wrapped in `_SideScroller`, because twenty
-  fixed-width tiles in a row is 1700px of layout minimum and a widget's
-  minimum is the WINDOW's minimum — the same bug as the Debug tab setting
-  the height floor, in the other axis. Changing the setting also has to
-  call `_refresh_views`: the strips are redrawn when a PICK changes, so
-  otherwise the new number sits in the file until the next hero is picked.
-  **That wrapper must ASK for its height, never stamp it.** The first
-  version called `setMinimumHeight(strip.sizeHint().height())` at build
-  time — measuring a strip that held nothing but a hidden label — so every
-  tile put in it afterwards was sliced and the portraits showed as a band
-  with their bottoms cut off. `sizeHint` is computed per call, includes
-  the horizontal scrollbar whenever that bar is up (it takes its room out
-  of the viewport, so ignoring it crops by exactly one scrollbar), and the
-  scroller filters the strip's `LayoutRequest` to call `updateGeometry`:
-  Qt caches a child's size hint and only re-asks when the child says it
-  changed, so overriding `sizeHint` alone leaves the old number in place.
-  A size-hint change reaches the parent through a POSTED event, so tests
-  have to drive the event loop a few passes before measuring.
+- **How many tiles each strip shows is set ON the strip, and it is a CAP
+  rather than a quota** (`chrome.CountBox` beside each heading,
+  `ui_settings.suggested_picks` / `suggested_items`, `MAX_SHOWN` 20,
+  `MainWindow._how_many`). It was in Settings, two menus away from the
+  thing it sizes, which is the wrong place for a number you tune by
+  looking at the result. Items are filtered by severity FIRST and then cut
+  to the cap, so raising it to twenty does not produce twenty items — it
+  only stops advice that already cleared the floor being truncated.
+  **Nought means "as many as fit on one row"**, and that is the default,
+  because a fixed eight is too many on a narrow window and too few on a
+  wide one (`flowlayout.fits_in_one_row`). Setting the box makes the
+  number yours and it stops moving with the window.
+  The cap lives in ONE place per strip — neither `suggest_row` nor
+  `item_row` caps what it is handed any more, because a second cap
+  silently overruling the setting is a bug with nothing on screen to
+  explain it — and `clamp_count` applies the ceiling on the way IN as well
+  as out, since a hand-edited file must not be able to ask for two hundred
+  tiles. Changing it also calls `_refresh_views`: the strips are redrawn
+  when a PICK changes, so otherwise the new number would sit in the file
+  until the next hero was picked.
+- **The strips WRAP; they never scroll** (`ui/flowlayout.py`). Twenty
+  fixed-width tiles in a row is 1700px of layout minimum, and a widget's
+  minimum is the WINDOW's minimum, so a long strip would otherwise leave a
+  window that cannot be made narrow again — the same bug as the Debug tab
+  setting the height floor, in the other axis. A scroll area fixed that
+  and bought two worse problems: a strip you have to scroll to read is a
+  strip you do not read at a glance, which is the one thing it is for, and
+  the wrapper kept getting its own height wrong. Its first version stamped
+  `setMinimumHeight(strip.sizeHint().height())` at BUILD time — measuring
+  a strip holding nothing but a hidden label — so every tile added
+  afterwards was sliced and the portraits drew as a band with their
+  bottoms cut off. Wrapping answers all of it: the strip is one tile wide
+  at its narrowest, as tall as the rows it needs, and every tile is on
+  screen. `heightForWidth` is the whole mechanism and a layout that does
+  not answer it honestly gets its last row cut off.
+- **THE TILES HAVE NO NAMES ON THEM.** The user plays the game: a face is
+  read faster than four letters, and a row of pictures reads at a glance
+  where a row of labelled pictures reads as a list. The name band in
+  `tilekit` is now a FALLBACK — drawn only when there is no art — because
+  a tile with neither picture nor name is nothing, and a fresh install has
+  no art at all. The name is the tooltip either way. Two consequences: the
+  pick tiles are 16:9 rather than square (the band used to take the
+  difference, so a square tile became a portrait with a dead strip above
+  and below it on all ten picks), and the fallback name is given most of
+  the tile rather than a 22px strip — squeezed into a strip it can fail to
+  fit at ALL and draw nothing, which is the one outcome worse than a name.
+- **Clicking a suggestion says what is behind its number, and never more**
+  (`ui/reasons.py`, `SuggestTile.asked_why` / `ItemTile.asked_why`). A sum
+  is exactly the thing that can look reasonable for bad reasons: a +5 out
+  of one enormous matchup is a different suggestion from a +5 out of five
+  small ones and the tile cannot say which. **The hero popup must not
+  explain.** The dataset knows this hero wins more than expected against
+  that one; it does not know why, and neither does the app — so it lists
+  the terms that made the number and says outright that the reason is not
+  in the data. An invented sentence about lane pressure would be worse
+  than the blank it replaced. Item rules are the other way round: they are
+  hand-authored, so they carry a reason in words, and it is quoted with
+  "hand-authored, not measured" attached. Clicking a suggestion still does
+  not ENTER it — a pick is entered by clicking a slot.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   At most `suggested_items` items above a severity floor. Silence in many games is correct
@@ -808,6 +847,32 @@ credentials, and put the account at risk. Do not go there.
   — a corner widget is sized to its contents and a spacer pushes the
   controls off the right edge. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
+  **The tab strip is one BAND.** The tab widget's own background is the
+  dark row, so the tabs on the left and the record, auto and transparency
+  controls on the right sit on the same surface instead of the controls
+  floating above it. The record control is a round red dot
+  (`chrome.RecordButton`) — circle to record, square to stop, no label,
+  because the symbol needs no words and this row has to stay readable at
+  the window's minimum width — and Auto is a `chrome.TickBox`, which
+  paints an actual TICK: Qt's stylesheet can colour the indicator but
+  cannot put a mark in it without an image file, and a filled square says
+  something is different about a control, not that it is switched on.
+  **The whole window wears a painted frame** (`ui/ornate.py`,
+  `chrome.FramedShell`). A bevelled bronze band with amethyst studs, the
+  shape of the Warcraft frame the user asked for — the artwork itself is
+  Blizzard's and is not in this repository, so this is the vocabulary
+  (band, bevel, round studs) and not their carving. Three rules it lives
+  by: it is painted by the SHELL and not by the window, because a QWidget
+  under the app's stylesheet paints its background across its whole
+  rectangle including the margins and covered a window-painted frame
+  completely; the hole in the middle is FILLED with the app's background
+  rather than cleared, since clearing leaves black anywhere the content
+  does not cover to the pixel; and there are nine studs at fixed points
+  rather than one every N pixels, which turns into a dotted line on a
+  small window and a chain on a large one. The status bar is OUR OWN,
+  inside the shell layout, rather than `QMainWindow.statusBar()` — hung
+  off the window it sat outside the frame, and a border round everything
+  except the bottom strip is a border that has been forgotten about.
   **Everything on the bar is centred on the bar's middle line.** A layout
   left to itself stretches each child to the bar's full height, and a
   QMenuBar given 48px draws its titles hard against the top edge — which is
@@ -973,10 +1038,12 @@ credentials, and put the account at risk. Do not go there.
   is anything to put in them. A line saying "items appear as the draft
   fills in" is read once and skipped forever, and a card that vanishes
   until the draft fills in makes everything below it jump when it comes
-  back. The outline needs its grid lines turned back ON for that state
-  alone: the app's stylesheet sets `gridline-color: transparent`, which is
-  right for a filled grid — the numbers are the structure — but leaves an
-  empty one a blank rectangle rather than a grid. A reason still worth
+  back. **Grid lines are ON everywhere**, filled grid and empty outline
+  alike. They used to be transparent on the theory that the numbers are
+  the structure, and across five columns of signed deltas they are not —
+  the eye loses which column it is in halfway across, and an empty grid
+  was a blank rectangle rather than a grid. One app-wide rule now, so
+  there is no per-state stylesheet to keep in step. A reason still worth
   saying ("Fill in both teams", "this source publishes no ally-pair data")
   sits beside the outline, never in place of it. **"Nothing urgent
   flagged" is not one of those reasons**: silence IS the answer there, the

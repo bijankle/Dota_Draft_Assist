@@ -451,12 +451,9 @@ class MatrixTable(QWidget):
                 cell = QTableWidgetItem("")
                 cell.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.table.setItem(row, col, cell)
-        # The app's stylesheet hides the grid lines, which is right for a
-        # filled grid — the numbers are the structure. An empty one has no
-        # numbers, so without the lines it is not a grid at all, just a
-        # blank rectangle.
-        self.table.setStyleSheet(
-            f"QTableWidget {{ gridline-color: {theme.BORDER}; }}")
+        # Grid lines are on everywhere now (the numbers alone were not
+        # enough structure to keep a column straight across five), so
+        # nothing extra is needed here — an empty grid draws as a grid.
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
         for col in range(BLANK_SIDE):

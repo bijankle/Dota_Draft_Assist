@@ -105,23 +105,30 @@ def test_a_panel_is_five_tiles_that_know_their_slot(qapp):
 
 # ---- the tile is square, whatever the window does -----------------------
 
-def test_a_tile_is_always_square(qapp):
-    """Full-screening the window used to hand each tile the leftover width
-    at a fixed height, which stretched every portrait into a letterbox with
-    the hero's head cropped off."""
+def test_a_tile_keeps_the_PORTRAITS_shape_at_every_size(qapp):
+    """It was square because the name band across the top took the
+    difference. With the name gone, a square tile is a 16:9 picture with a
+    dead strip above and below it on all ten picks — so the tile is the
+    art's own shape and the window gets that height back.
+
+    The aspect must be FIXED whatever the width: handing each tile the
+    leftover width at a fixed height is what stretched every portrait into
+    a slice with the hero's head cropped off."""
     tile = teams.HeroTile("ally", 0)
     for edge in (40, 90, 200, 1000):
         tile.set_edge(edge)
-        assert tile.width() == tile.height()
         assert teams.TILE_MIN <= tile.width() <= teams.TILE_MAX
+        assert abs(tile.width() / tile.height() - 16 / 9) < 0.06, \
+            f"{tile.width()}x{tile.height()} is not the portrait's shape"
 
 
-def test_a_panel_keeps_its_tiles_square_at_every_width(qapp):
+def test_a_panel_keeps_that_shape_at_every_width(qapp):
     panel = teams.TeamPanel("ally", "Your team")
     for width in (420, 700, 1200, 2400):
         panel.resize(width, 200)
         for tile in panel.slots:
-            assert tile.width() == tile.height(), f"stretched at {width}px"
+            assert abs(tile.width() / tile.height() - 16 / 9) < 0.06, \
+                f"stretched at {width}px"
             assert tile.width() <= teams.TILE_MAX
 
 

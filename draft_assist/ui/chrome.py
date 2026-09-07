@@ -12,9 +12,11 @@ window has neither. Both are deliberately dumb: eight-pixel margins, a
 press, a move, a release.
 """
 
-from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen
-from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizeGrip,
+from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize,
+                          Qt, pyqtSignal)
+from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QHBoxLayout,
+                             QLabel, QPushButton, QSizeGrip, QSpinBox,
                              QWidget)
 
 from . import appicon, theme
@@ -150,3 +152,151 @@ def edge_at(window, pos: QPoint) -> Qt.Edge | None:
     if pos.y() >= rect.height() - EDGE:
         edges |= Qt.Edge.BottomEdge
     return edges or None
+
+
+class TickBox(QCheckBox):
+    """A check box that draws an actual TICK when it is on.
+
+    Qt's stylesheet can colour the indicator but cannot put a mark in it
+    without an image file, so a checked box read as "a blue square" — which
+    says something is different about it, not that it is selected. The mark
+    is what makes it obvious, so the indicator is painted here: the label
+    still comes from QCheckBox, only the box is ours.
+    """
+
+    BOX = 15
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        top = (self.height() - self.BOX) // 2
+        box = QRectF(0, top, self.BOX, self.BOX)
+        painter.setPen(QPen(QColor(theme.ACCENT if self.isChecked()
+                                   else theme.BORDER), 1))
+        painter.setBrush(QColor(theme.ACCENT) if self.isChecked()
+                         else QColor(theme.BG_INPUT))
+        painter.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+        if self.isChecked():
+            # Three points, thick and round-capped, so it still reads as a
+            # tick at fifteen pixels rather than as a smudge.
+            pen = QPen(QColor("#ffffff"), 2.0)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            left, top_y = box.left(), box.top()
+            painter.drawPolyline(QPolygonF([
+                QPointF(left + self.BOX * 0.24, top_y + self.BOX * 0.52),
+                QPointF(left + self.BOX * 0.42, top_y + self.BOX * 0.71),
+                QPointF(left + self.BOX * 0.78, top_y + self.BOX * 0.29)]))
+        painter.setPen(QColor(theme.TEXT))
+        painter.drawText(
+            QRectF(self.BOX + 7, 0, self.width() - self.BOX - 7,
+                   self.height()),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            self.text())
+        painter.end()
+
+    def sizeHint(self):                             # noqa: N802
+        hint = super().sizeHint()
+        return QSize(self.BOX + 9 + self.fontMetrics()
+                     .horizontalAdvance(self.text()),
+                     max(hint.height(), self.BOX + 4))
+
+
+class RecordButton(QAbstractButton):
+    """The record control as the round red dot everyone already knows.
+
+    It was a 110px "● Record" / "■ Stop" button, which is a lot of a narrow
+    toolbar for one action whose symbol needs no words. Circle to record,
+    square to stop, and the label was never carrying anything the shape
+    does not.
+    """
+
+    SIZE = 24
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._recording = False
+        self.set_recording(False)
+
+    def set_recording(self, recording: bool) -> None:
+        self._recording = bool(recording)
+        self.setToolTip("Stop recording" if recording
+                        else "Record this game — what Dota sends, what the "
+                             "screen showed, and what the app concluded")
+        self.update()
+
+    def paintEvent(self, event) -> None:            # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        edge = QRectF(1.5, 1.5, self.SIZE - 3, self.SIZE - 3)
+        hot = self.underMouse()
+        painter.setPen(QPen(QColor(theme.BAD if hot or self._recording
+                                   else theme.BORDER), 1.4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(edge)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(theme.BAD))
+        inner = edge.adjusted(4.5, 4.5, -4.5, -4.5)
+        if self._recording:
+            painter.drawRoundedRect(inner, 1.5, 1.5)   # stop
+        else:
+            painter.drawEllipse(inner)                 # record
+        painter.end()
+
+    def enterEvent(self, event) -> None:            # noqa: N802
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:            # noqa: N802
+        self.update()
+        super().leaveEvent(event)
+
+
+class CountBox(QSpinBox):
+    """The "how many to show" control, ON the thing it controls.
+
+    It lived in Settings, two menus away from the strip whose length it
+    sets, which is the wrong place for a number you tune by looking at the
+    result. Small enough to sit beside a card heading, typable, and
+    arrow-steppable.
+    """
+
+    def __init__(self, value: int, low: int, high: int, parent=None):
+        super().__init__(parent)
+        self.setRange(low, high)
+        self.setValue(value)
+        self.setAccelerated(True)
+        self.setFixedWidth(58)
+        self.setAlignment(Qt.AlignmentFlag.AlignRight
+                          | Qt.AlignmentFlag.AlignVCenter)
+
+
+class FramedShell(QWidget):
+    """The window's contents, with the ornate band painted round them.
+
+    It has to be THIS widget rather than the window: a QWidget under the
+    app's stylesheet paints its own background across its whole rectangle,
+    margins included, so a frame drawn by the window behind it was covered
+    up completely. Here the background is transparent, the layout is inset
+    by the band's width, and the band is painted in the inset before any
+    child draws.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("appShell")
+        self.setStyleSheet("#appShell { background: transparent; }")
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        from PyQt6.QtCore import QRectF
+        from . import ornate
+        painter = QPainter(self)
+        ornate.paint_frame(painter, QRectF(self.rect()))
+        painter.end()

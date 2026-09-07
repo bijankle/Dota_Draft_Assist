@@ -5,14 +5,17 @@ commands, from when the two were alternatives. They are not: the game feed
 says when a draft is happening and which side you are on, the screen says
 what the picks are, and the app wants both. So they are tick boxes, both on
 by default, and turning one off is a debugging step rather than a mode.
+
+"How many suggestions to show" is NOT here. It was, and it was wrong: a
+number you tune by looking at the result belongs on the result, so it is a
+small box beside each strip's heading instead.
 """
 
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog,
-                             QDialogButtonBox, QFormLayout, QFrame, QLabel,
-                             QRadioButton, QSpinBox, QVBoxLayout)
+                             QDialogButtonBox, QFrame, QLabel, QRadioButton,
+                             QVBoxLayout)
 
 from ..config import DEFAULT_PAIR_SOURCE
-from . import settings as ui_settings
 
 # Which site's matchup and synergy numbers the matrices are built from.
 # Exactly one at a time, so these are radio buttons: averaging two sites'
@@ -26,21 +29,6 @@ PAIR_SOURCES = (
      "Matchups only, all brackets pooled — OpenDota publishes no ally-pair "
      "data and no rank filter, so the synergy grid comes out empty and the "
      "counter numbers are not bracket-specific."),
-)
-
-# How many tiles each strip shows at most. A CAP, not a quota — the item
-# strip already stops at whatever clears the severity floor, so raising
-# this does not manufacture advice, it only stops good advice being cut.
-# key, label, explanation
-COUNTS = (
-    ("suggested_picks", "Suggested picks",
-     "Heroes in the strip under the draft, best draft fit first. The "
-     "Analysis tab always lists every hero — this is how much of its head "
-     "is worth having in front of you while the timer runs."),
-    ("suggested_items", "Suggested items",
-     "The MOST it will show. Items are filtered by how urgent they are "
-     "first, so a quiet draft still shows two and a nightmare one shows "
-     "more; raising this only stops the list being cut short."),
 )
 
 # key, label, explanation
@@ -89,30 +77,6 @@ class SettingsDialog(QDialog):
         rule = QFrame()
         rule.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(rule)
-        counts_heading = QLabel("How much each strip shows")
-        counts_heading.setProperty("heading", True)
-        layout.addWidget(counts_heading)
-
-        self.spins = {}
-        for key, label, explanation in COUNTS:
-            spin = QSpinBox()
-            spin.setRange(1, ui_settings.MAX_SHOWN)
-            spin.setValue(ui_settings.clamp_count(
-                settings.get(key), ui_settings.DEFAULTS[key]))
-            form = QFormLayout()
-            form.setContentsMargins(0, 0, 0, 0)
-            form.addRow(f"{label}:", spin)
-            layout.addLayout(form)
-            note = QLabel(explanation)
-            note.setWordWrap(True)
-            note.setProperty("dim", True)
-            note.setContentsMargins(22, 0, 0, 8)
-            layout.addWidget(note)
-            self.spins[key] = spin
-
-        rule2 = QFrame()
-        rule2.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(rule2)
         stats_heading = QLabel("Where the numbers come from")
         stats_heading.setProperty("heading", True)
         layout.addWidget(stats_heading)
@@ -149,7 +113,6 @@ class SettingsDialog(QDialog):
 
     def values(self) -> dict:
         out = {key: box.isChecked() for key, box in self.boxes.items()}
-        out.update({key: spin.value() for key, spin in self.spins.items()})
         out["pair_source"] = self.pair_source()
         return out
 

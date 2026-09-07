@@ -6,9 +6,15 @@ every day costs no attention to parse. Discord's greys are also unusually
 well tuned for exactly this job — a dense dark surface where the only
 saturated colour is meaning.
 
-Colour is reserved for meaning: green and red for signed deltas, blurple
-for the one action a screen wants, amber for warnings. Everything else is
-grey, so a number in colour is always worth reading.
+Colour is reserved for meaning: green and red for signed deltas, the
+accent for the one action a screen wants, amber for warnings. Everything
+else is grey, so a number in colour is always worth reading.
+
+**The accent is RED, not Discord's blurple** — the user asked for it, and
+it sits better beside a Warcraft-inspired frame than a blue does. It is a
+DEEPER red than `BAD` on purpose: `BAD` is the bright coral a negative
+number is printed in, and if the two were the same colour a selected tab
+would read as a warning. Keep them apart if either is ever retuned.
 """
 
 # Discord's dark theme, by role rather than by name.
@@ -21,8 +27,8 @@ BORDER = "#3f4147"
 TEXT = "#dbdee1"
 TEXT_STRONG = "#f2f3f5"
 TEXT_DIM = "#949ba4"
-ACCENT = "#5865f2"        # blurple
-ACCENT_HOVER = "#4752c4"
+ACCENT = "#b5342c"        # deep vermilion; see the note above
+ACCENT_HOVER = "#95271f"
 GOOD = "#23a55a"
 BAD = "#f23f43"
 WARN = "#f0b232"
@@ -56,11 +62,16 @@ QToolBar {{
 }}
 /* On the tab strip it is part of the strip, not a band above it. */
 QToolBar#tabStripTools {{
-    background: transparent; border: none; padding: 0 8px; spacing: 10px;
+    background: {BG_DEEP}; border: none; padding: 0 2px; spacing: 8px;
 }}
+QToolBar#tabStripTools QLabel {{ background: {BG_DEEP}; }}
 QToolBar#tabStripTools QPushButton {{ padding: 4px 12px; }}
 QToolBar#tabStripTools QLabel {{ color: {TEXT_DIM}; }}
 
+/* One BAND, not a strip with controls floating above it: the tab widget's
+   own background is the dark row, so the tabs on the left and the record,
+   auto and transparency controls on the right sit on the same surface. */
+QTabWidget {{ background: {BG_DEEP}; }}
 QTabWidget::pane {{ border: none; background: {BG}; }}
 QTabBar {{ background: {BG_DEEP}; }}
 QTabBar::tab {{
@@ -121,6 +132,18 @@ QComboBox QAbstractItemView {{
     border: 1px solid {BORDER};
     selection-background-color: {ACCENT};
 }}
+QSlider::groove:horizontal {{
+    height: 4px; border-radius: 2px; background: {BG_INPUT};
+}}
+QSlider::sub-page:horizontal {{
+    height: 4px; border-radius: 2px; background: {ACCENT};
+}}
+QSlider::handle:horizontal {{
+    background: {ACCENT}; border: none; width: 12px; height: 12px;
+    margin: -4px 0; border-radius: 6px;
+}}
+QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
+
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{
     width: 15px; height: 15px; border-radius: 3px;
@@ -131,7 +154,10 @@ QCheckBox::indicator:checked {{ background: {ACCENT}; border-color: {ACCENT}; }}
 QTableWidget {{
     background: {BG};
     alternate-background-color: {ROW_ALT};
-    gridline-color: transparent;
+    /* Cell borders are ON. The numbers alone were meant to be the
+       structure, and in a 5x5 of signed deltas they are not: the eye
+       loses which column it is in halfway across. */
+    gridline-color: {BORDER};
     border: 1px solid {BORDER};
     border-radius: 6px;
     selection-background-color: {ACCENT};

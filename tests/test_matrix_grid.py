@@ -151,11 +151,16 @@ def test_an_empty_grid_is_an_outline_not_a_hole(qapp):
     assert table.table.rowCount() == BLANK_SIDE
     assert table.table.columnCount() == BLANK_SIDE
     assert table.empty_note.text() == "Fill in both teams."
-    # Grid lines are hidden app-wide, which leaves an empty grid a blank
-    # rectangle rather than a grid.
-    assert "gridline-color" in table.table.styleSheet()
 
 
-def test_filling_a_grid_puts_the_stylesheet_back(art, qapp):
+def test_every_cell_has_a_border(art, qapp):
+    """The numbers were meant to be the structure, and across five columns
+    of signed deltas they are not — the eye loses which column it is in.
+    The lines are on for the filled grid and the empty outline alike, so
+    there is no per-state stylesheet to keep in step."""
+    from draft_assist.ui import theme
+    assert f"gridline-color: {theme.BORDER}" in theme.STYLESHEET
     table = built(qapp)
-    assert "gridline-color" not in table.table.styleSheet()
+    assert "gridline-color" not in table.table.styleSheet(), \
+        "no local override: the app-wide rule is the only one"
+    assert table.table.showGrid()

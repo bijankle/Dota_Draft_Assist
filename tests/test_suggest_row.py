@@ -100,7 +100,11 @@ def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
     finally:
         strip.QPainter = keep
     assert "+5.4" in drawn
-    assert "Anti-Mage" in drawn
+    # And the NAME is not drawn. The picture is the tile: a player who
+    # knows the game reads the face faster than four letters, and a row of
+    # pictures reads at a glance where a row of labelled pictures reads as
+    # a list. The name is the tooltip's job.
+    assert "Anti-Mage" not in drawn
 
 
 def test_the_three_strips_are_one_look(qapp):
@@ -114,3 +118,30 @@ def test_the_three_strips_are_one_look(qapp):
     assert suggestion.size() == item.size()
     assert teams.NAME_MAX_PT == tilekit.NAME_MAX_PT
     assert teams.CHROME == tilekit.CHROME
+
+
+def test_without_a_portrait_the_name_comes_back(qapp, monkeypatch):
+    """A blank plate names nothing, and a fresh install has no art at all.
+
+    So the band is a FALLBACK rather than gone: no picture, no tile — put
+    the name back and the strip still says something.
+    """
+    import draft_assist.ui.suggest_row as strip
+    monkeypatch.setattr(strip, "scaled", lambda *a, **k: None)
+    drawn = []
+    real = strip.QPainter.drawText
+
+    class Spy(strip.QPainter):
+        def drawText(self, *args):        # noqa: N802 - Qt naming
+            drawn.append(args[-1])
+            return real(self, *args)
+
+    keep = strip.QPainter
+    strip.QPainter = Spy
+    try:
+        tile = SuggestTile(1, "Anti-Mage", 0.0542)
+        tile.grab()
+    finally:
+        strip.QPainter = keep
+    assert "Anti-Mage" in drawn
+    assert "Anti-Mage" in tile.toolTip()

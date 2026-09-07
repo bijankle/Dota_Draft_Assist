@@ -45,6 +45,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QScrollArea, QSizePolicy, QSlider,
                              QSplitter,
                              QTableWidget,
+                             QStatusBar,
                              QTableWidgetItem, QTabWidget,
                              QToolBar, QVBoxLayout, QWidget)
 
@@ -62,6 +63,10 @@ from ..model import scoring
 from . import settings as ui_settings
 from .. import record as record_mod
 from . import theme
+from . import chrome
+from . import ornate
+from . import reasons
+from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
 from .chrome import ResizeGrip, TitleBar
@@ -70,6 +75,7 @@ from . import item_icons
 from . import portraits
 from .framebox import FrameView
 from .item_row import ItemRow
+from .flowlayout import fits_in_one_row
 from .suggest_row import SuggestRow
 from .manual import ManualDraft
 from .tables import (BreakdownPanel, MatrixTable, ValueItem,
@@ -152,83 +158,19 @@ def _scrolling(page: QWidget) -> QScrollArea:
     return area
 
 
-class _SideScroller(QScrollArea):
-    """A tile strip that scrolls sideways and is exactly as tall as it is.
-
-    Two jobs, and the second one was got wrong first time. **Length must
-    not dictate the window's width**: twenty fixed-width tiles in a row is
-    over 1700px of layout minimum, and a widget's minimum is the WINDOW's
-    minimum, so the "how many to show" setting would otherwise have left a
-    window that could not be made narrow again — the same bug as the Debug
-    tab setting the height floor, in the other axis.
-
-    **And height must not be frozen at what the strip wanted when it was
-    EMPTY.** A plain QScrollArea given `setMinimumHeight(sizeHint)` at
-    build time measured a strip holding nothing but a hidden label, so
-    every tile put in it afterwards was sliced off — the portraits showed
-    as a band with their bottoms cut. The height is therefore ASKED FOR
-    every time rather than stamped once, and it includes the horizontal
-    scrollbar whenever that bar is up, because the bar takes its room out
-    of the viewport and would crop the tiles by its own height.
-    """
-
-    def __init__(self, strip: QWidget, parent=None):
-        super().__init__(parent)
-        self.setWidgetResizable(True)
-        self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setSizeAdjustPolicy(
-            QScrollArea.SizeAdjustPolicy.AdjustToContents)
-        self.setWidget(strip)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred,
-                           QSizePolicy.Policy.Fixed)
-        # Qt caches a widget's size hint and only re-asks when the widget
-        # says it changed. Overriding sizeHint is therefore not enough on
-        # its own: without this the strip fills with tiles and the wrapper
-        # goes on reporting the height an EMPTY strip wanted, which is
-        # exactly how the tiles came to be sliced.
-        strip.installEventFilter(self)
-
-    def eventFilter(self, watched, event):     # noqa: N802 - Qt naming
-        if (watched is self.widget()
-                and event.type() == QEvent.Type.LayoutRequest):
-            self.updateGeometry()
-        return super().eventFilter(watched, event)
-
-    def _wanted_height(self) -> int:
-        strip = self.widget()
-        if strip is None:
-            return 0
-        height = max(strip.sizeHint().height(),
-                     strip.minimumSizeHint().height())
-        bar = self.horizontalScrollBar()
-        if bar is not None and bar.isVisible():
-            height += bar.sizeHint().height()
-        return height
-
-    def sizeHint(self):
-        # Width 0: the strip's length is exactly what must not reach the
-        # window. Height: whatever the tiles currently need.
-        return QSize(0, self._wanted_height())
-
-    def minimumSizeHint(self):
-        return self.sizeHint()
-
-
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
     st.replace("DOTA_GAMERULES_STATE_", "") for st in DRAFTING_STATES)
 
 
-def _side_scrolling(strip: QWidget) -> QScrollArea:
-    """See `_SideScroller`."""
-    return _SideScroller(strip)
+def card(title: str | None = None,
+         corner: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """A titled panel. `corner` rides on the heading's right-hand end.
 
-
-def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    That is where a control BELONGS when it changes the panel under it —
+    "how many of these do I want" is answered by looking at the answer, and
+    it was two menus away in Settings.
+    """
     frame = QFrame()
     frame.setProperty("card", True)
     layout = QVBoxLayout(frame)
@@ -237,7 +179,16 @@ def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
     if title:
         label = QLabel(title)
         label.setProperty("heading", True)
-        layout.addWidget(label)
+        if corner is None:
+            layout.addWidget(label)
+        else:
+            head = QHBoxLayout()
+            head.setContentsMargins(0, 0, 0, 0)
+            head.addWidget(label)
+            head.addSpacing(8)
+            head.addWidget(corner)
+            head.addStretch(1)
+            layout.addLayout(head)
     return frame, layout
 
 
@@ -294,6 +245,8 @@ class MainWindow(QMainWindow):
         # on screen at the moment the user has time to do it.
         self._still = None
         self.scored: list[scoring.ScoredHero] = []
+        self._last_advice: list = []
+        self._reason_popup = None
         self.settings = ui_settings.load()
         self.setWindowTitle("Dota Draft Assist")
         self.setWindowIcon(appicon.icon())
@@ -448,18 +401,16 @@ class MainWindow(QMainWindow):
         # menu tick for payloads, a separate probe for frames and Ctrl+S for
         # snapshots, in three folders — so the evidence for any one game was
         # scattered and usually incomplete.
-        self.record_button = QPushButton("● Record")
-        self.record_button.setProperty("accent", True)
-        self.record_button.setMinimumWidth(110)
-        self.record_button.setToolTip(
-            "Record everything for this game — the data Dota sends, the "
-            "draft on screen, and what the app made of both.\n"
-            "Press it before you queue; it stops itself a minute after the "
-            "draft ends.")
+        # The round red dot everyone already knows, rather than 110px of
+        # "● Record" / "■ Stop": the symbol needs no words, and this row
+        # has to stay readable at the narrowest the window goes.
+        self.record_button = chrome.RecordButton()
         self.record_button.clicked.connect(self._toggle_recording)
         toolbar.addWidget(self.record_button)
 
-        self.auto_record_check = QCheckBox("Auto")
+        # A TICK, not a filled square: a coloured box says something is
+        # different about this control, not that it is switched on.
+        self.auto_record_check = chrome.TickBox("Auto")
         self.auto_record_check.setToolTip(
             "Start recording by itself when Dota reaches the draft, and "
             "stop a minute after it ends")
@@ -514,9 +465,13 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         self.tabs = tabs
 
-        shell = QWidget()
+        shell = chrome.FramedShell()
         shell_lay = QVBoxLayout(shell)
-        shell_lay.setContentsMargins(0, 0, 0, 0)
+        # Inset by the frame's width so the border has somewhere to be
+        # drawn that is not on top of the content — a border painted over
+        # the app eats the resize corner and the first pixels of the tabs.
+        shell_lay.setContentsMargins(ornate.WIDTH, ornate.WIDTH,
+                                     ornate.WIDTH, ornate.WIDTH)
         shell_lay.setSpacing(0)
         self.title_bar = TitleBar("Dota Draft Assist")
         self.title_bar.add_menu_bar(self.menu_bar)
@@ -529,6 +484,7 @@ class MainWindow(QMainWindow):
         # A frameless window has no resize border, so the corner is put
         # back explicitly. Bottom-right only: one grip is enough to size a
         # window and four would be four things to mis-hit.
+        self._shell_lay = shell_lay
         grip_row = QHBoxLayout()
         grip_row.setContentsMargins(0, 0, 0, 0)
         grip_row.addStretch(1)
@@ -593,14 +549,19 @@ class MainWindow(QMainWindow):
         # The board is the top of the screen and everything under it is
         # advice about the board: first which hero to take, then what to
         # build against what is already there.
-        picks_card, playy = card("Suggested picks · best draft fit")
+        self.count_boxes = {}
+        picks_card, playy = card(
+            "Suggested picks", self._count_box("suggested_picks"))
         self.suggest_row = SuggestRow()
-        playy.addWidget(_side_scrolling(self.suggest_row))
+        self.suggest_row.asked_why.connect(self._why_this_hero)
+        playy.addWidget(self.suggest_row)
         outer.addWidget(picks_card)
 
-        items_card, ilay = card("Items")
+        items_card, ilay = card(
+            "Suggested items", self._count_box("suggested_items"))
         self.item_row = ItemRow()
-        ilay.addWidget(_side_scrolling(self.item_row))
+        self.item_row.asked_why.connect(self._why_this_item)
+        ilay.addWidget(self.item_row)
         outer.addWidget(items_card)
 
         # ----- the grids, each under the team whose heroes head it.
@@ -940,7 +901,13 @@ class MainWindow(QMainWindow):
                           "Recordings")
         tabs.addTab(debug_tabs, "Debug")
 
-        self.status = self.statusBar()
+        # Our own, INSIDE the shell, rather than QMainWindow's: the
+        # ornate frame is drawn round the shell, and a status bar hung off
+        # the window sits outside it — a border round everything except
+        # the bottom strip is a border that has been forgotten about.
+        self.status = QStatusBar()
+        self.status.setSizeGripEnabled(False)
+        self._shell_lay.insertWidget(self._shell_lay.count() - 1, self.status)
 
     def _build_sessions_tab(self) -> QWidget:
         """Past recordings, each one discrete, with its report ready to
@@ -1549,10 +1516,7 @@ class MainWindow(QMainWindow):
 
     def _update_record_button(self) -> None:
         recording = self.recorder.active
-        self.record_button.setText("■ Stop" if recording else "● Record")
-        self.record_button.setProperty("recording", recording)
-        self.record_button.style().unpolish(self.record_button)
-        self.record_button.style().polish(self.record_button)
+        self.record_button.set_recording(recording)
         if not recording:
             self.recording_label.setText(
                 "auto — waiting for a draft"
@@ -2311,14 +2275,23 @@ class MainWindow(QMainWindow):
         self.side_label.setVisible(not known)
         self.side_combo.setVisible(not known)
 
-        name = getattr(snap, "player_name", "")
-        team = getattr(snap, "my_team", "")
-        bits = [b for b in (name, team.title()) if b]
-        self.team_captions["ally"].setText(
-            f"Your team — {' · '.join(bits)}" if bits else "Your team")
-        self.team_captions["enemy"].setText(
-            "Enemy team — " + ("Dire" if team == "radiant" else "Radiant")
-            if team else "Enemy team")
+        # Just the side name. "Your team — Bijson · Radiant" said three
+        # things where one does: which bank this is. The player's own name
+        # is in the status bar and the side is what the eye is looking for.
+        team = (getattr(snap, "my_team", "") or "").lower()
+        if team in ("radiant", "dire"):
+            mine = team.title()
+            theirs = "Dire" if team == "radiant" else "Radiant"
+        else:
+            mine, theirs = "Your team", "Enemy team"
+        for side, caption in (("ally", mine), ("enemy", theirs)):
+            label = self.team_captions[side]
+            set_label(label, caption)
+            # Dota's own colours, so the heading agrees with the game the
+            # user is looking at rather than with our ally/enemy idea.
+            colour = (theme.GOOD if caption == "Radiant" else
+                      theme.BAD if caption == "Dire" else theme.TEXT)
+            label.setStyleSheet(f"color: {colour};")
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -2631,15 +2604,92 @@ class MainWindow(QMainWindow):
             footnote="Percentage points against this hero alone.",
             empty="No matchup data for this hero yet.")
 
-    def _how_many(self, key: str) -> int:
-        """A strip's cap, from the settings. A CAP, not a quota.
+    def _why_this_hero(self, hero_id: int) -> None:
+        """The terms behind a suggestion's number — never a story about it.
 
-        The item strip stops at whatever clears the severity floor, so
-        raising this does not manufacture advice — it only stops advice
-        that was already worth showing from being cut off at five.
+        The dataset knows this hero wins more than expected against that
+        one. It does not know WHY, so neither does the app, and a sentence
+        about lane pressure would be invented. The terms are the evidence;
+        the reading is the user's.
         """
-        return ui_settings.clamp_count(self.settings.get(key),
-                                       ui_settings.DEFAULTS[key])
+        draft = self._current_draft()
+        if hero_id not in self.ds.index:
+            return
+        fit = next((s.score for s in self.scored if s.hero_id == hero_id), 0.0)
+        heading, lines, note = reasons.hero_reasons(
+            self.ds.name(hero_id), fit,
+            scoring.breakdown(self.ds, hero_id, draft))
+        self._pop_reasons(heading, lines, note, self.suggest_row)
+
+    def _why_this_item(self, item: str) -> None:
+        """Item rules ARE written in words, so this one has a real answer."""
+        entry = next((a for a in self._last_advice if a.item == item), None)
+        if entry is None:
+            return
+        heading, lines, note = reasons.item_reasons(
+            entry.item, entry.triggers, entry.any_stale)
+        self._pop_reasons(heading, lines, note, self.item_row)
+
+    def _pop_reasons(self, heading, lines, note, near) -> None:
+        popup = reasons.ReasonPopup(heading, lines, note, self)
+        self._reason_popup = popup          # kept alive while it is up
+        popup.pop_at(near.mapToGlobal(near.rect().bottomLeft()))
+
+    def _count_box(self, key: str):
+        """The little number beside a strip's heading.
+
+        It used to be in Settings, two menus away from the strip whose
+        length it sets — which is the wrong place for a number you tune by
+        looking at the result.
+        """
+        box = chrome.CountBox(self._how_many(key), 1, ui_settings.MAX_SHOWN)
+        box.setToolTip(
+            "How many to show. They wrap onto another row rather than "
+            "scrolling, and the default is however many fit on one row.\n"
+            "For items this is a CAP, not a quota: a quiet draft still "
+            "shows two.")
+        box.valueChanged.connect(
+            lambda value, k=key: self._set_count(k, value))
+        self.count_boxes[key] = box
+        return box
+
+    def _set_count(self, key: str, value: int) -> None:
+        if self.settings.get(key) == value:
+            return
+        self.settings[key] = ui_settings.clamp_count(value, value)
+        ui_settings.save(self.settings)
+        self._refresh_views()
+
+    def _row_capacity(self, key: str) -> int:
+        """How many tiles fit across the strip as it is RIGHT NOW."""
+        # getattr: the count box is built BEFORE the strip it measures —
+        # the heading is what it rides on — so on the first pass there is
+        # nothing to measure and the window's own width stands in.
+        strip = getattr(
+            self, "suggest_row" if key == "suggested_picks" else "item_row",
+            None)
+        width = strip.width() if strip is not None else 0
+        if width <= 1:                      # before the first layout pass
+            width = max(0, self.width() - 60)
+        return fits_in_one_row(width, tilekit.STRIP_W)
+
+    def _how_many(self, key: str) -> int:
+        """A strip's cap. A CAP, not a quota, and auto until you set it.
+
+        `0` in the settings means "as many as fit on one row", which is the
+        default because it is the number that looks right at whatever size
+        the window happens to be — a fixed eight is too many on a narrow
+        window and too few on a wide one. Setting the box makes it yours
+        and it stops moving.
+
+        The item strip stops at whatever clears the severity floor either
+        way, so raising this does not manufacture advice — it only stops
+        advice that was already worth showing from being cut off.
+        """
+        stored = self.settings.get(key, ui_settings.DEFAULTS[key])
+        if not stored:
+            return self._row_capacity(key)
+        return ui_settings.clamp_count(stored, self._row_capacity(key))
 
     def _update_suggestions(self, draft: scoring.DraftState) -> None:
         """The top of the ranked list, as a strip above the items.
@@ -2674,6 +2724,7 @@ class MainWindow(QMainWindow):
         ally_names = [self.ds.name(h) for h in draft.allies
                       if h != draft.my_hero]
         if not enemy_names and not ally_names:
+            self._last_advice = []
             self.item_row.show_items([])
             return
         advice = items_mod.recommend(
@@ -2683,6 +2734,9 @@ class MainWindow(QMainWindow):
         # No sentence when there is nothing to flag: silence IS the answer
         # here, and the empty plates already say the strip is working and
         # has nothing for you.
+        # Kept so a click on a tile can be answered without recomputing
+        # the advice — and so the answer is the one on screen.
+        self._last_advice = advice
         self.item_row.show_items(advice)
         # One missing icon is normal; NONE at all means the pack has never
         # been fetched, and a strip of grey plates looks broken rather than

@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from draft_assist.model.items import ItemAdvice, Trigger  # noqa: E402
 from draft_assist.ui import item_icons  # noqa: E402
+from draft_assist.ui import tilekit
 from draft_assist.ui.item_row import ItemRow, ItemTile  # noqa: E402
 
 
@@ -89,11 +90,18 @@ def test_the_row_swaps_its_contents_without_piling_up(icons, qapp):
     assert row.message.text() == "nothing to flag"
 
 
-def test_the_strip_is_capped_so_it_cannot_run_off_the_window(icons, qapp):
-    from draft_assist.ui.item_row import MAX_SHOWN
+def test_it_cannot_run_off_the_window_because_it_WRAPS(icons, qapp):
+    """It used to cap at eight so a long strip could not overflow, and the
+    cap silently overruled the user's setting. Wrapping removes the need:
+    the strip is one tile wide at its narrowest and as tall as the rows it
+    needs, so every tile is on screen at any window width."""
     row = ItemRow()
-    row.show_items([advice(f"Item {i}") for i in range(MAX_SHOWN + 6)], "none")
-    assert len(row.items) == MAX_SHOWN
+    row.show_items([advice(f"Item {i}") for i in range(14)], "none")
+    assert len(row.items) == 14
+    assert row.minimumSizeHint().width() <= tilekit.STRIP_W + 4
+    tall = row.layout().heightForWidth(tilekit.STRIP_W * 3)
+    wide = row.layout().heightForWidth(tilekit.STRIP_W * 14 + 200)
+    assert tall > wide, "a narrow strip must use more rows, not scroll"
 
 
 def test_a_long_item_name_shrinks_and_wraps_rather_than_being_cut(icons, qapp):

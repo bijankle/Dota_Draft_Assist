@@ -53,8 +53,8 @@ SLOT_MIME = "application/x-dota-draft-slot"
 # posters, and floored at the matrix's own column width so that when the
 # window is at its narrowest the tiles still line up with the grid below.
 TILE_MAX = 132
-# Below this the name band leaves no room for the portrait and the tile
-# stops being a picture of a hero, which is the only reason it exists.
+# Below this there is no room for a portrait and the tile stops being a
+# picture of a hero, which is the only reason it exists.
 TILE_MIN = 64
 PANEL_MARGIN = 12
 TILE_GAP = 6
@@ -92,7 +92,7 @@ class HeroTile(QAbstractButton):
         self._delta_colour = theme.TEXT_DIM
         self._focused = False
         self._drop_target = False
-        self.setFixedSize(TILE_MAX, TILE_MAX)
+        self.setFixedSize(TILE_MAX, round(TILE_MAX * 9 / 16))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         # Focusable so Tab walks the ten slots in order.
@@ -167,10 +167,17 @@ class HeroTile(QAbstractButton):
             return None
 
     def set_edge(self, edge: int) -> None:
-        """Square, always — the panel decides how big."""
+        """The PORTRAIT'S shape, 16:9 — the panel decides how big.
+
+        It used to be square, because the name band across the top took
+        the difference. With the name gone a square tile is a 16:9 picture
+        with a dead strip above and below it, on all ten picks; matching
+        the art's own aspect gives that height back to the window.
+        """
         edge = max(TILE_MIN, min(TILE_MAX, int(edge)))
-        if edge != self.width():
-            self.setFixedSize(edge, edge)
+        height = max(TILE_MIN * 9 // 16, round(edge * 9 / 16))
+        if (edge, height) != (self.width(), self.height()):
+            self.setFixedSize(edge, height)
 
     # ---- what the tile holds -------------------------------------------
     def set_pick(self, name: str | None, role: str | None,
@@ -227,20 +234,21 @@ class HeroTile(QAbstractButton):
             painter.end()
             return
 
-        # The name owns a strip of its own; the art gets everything under
-        # it, so nothing is drawn over the face.
-        band = QRect(box.left(), box.top(), box.width(),
-                     self._band_height(box))
-        art_box = QRect(box.left(), band.bottom() + 1, box.width(),
-                        box.bottom() - band.bottom())
-        art = (scaled(self.property("hero_id"), art_box.width(),
-                      art_box.height()) if art_box.height() > 4 else None)
+        # THE PICTURE IS THE TILE. The name was a strip across the top of
+        # every pick, and a player who knows the game reads the face faster
+        # than the four letters — a board of ten portraits reads at a
+        # glance where ten labelled portraits read as a list. The name is
+        # still the tooltip, and it comes BACK below when there is no art,
+        # because a blank plate names nothing.
+        art = scaled(self.property("hero_id"), box.width(), box.height())
         if art is not None:
             painter.drawPixmap(
-                art_box.left() + (art_box.width() - art.width()) // 2,
-                art_box.top() + (art_box.height() - art.height()) // 2, art)
-
-        self._paint_name(painter, band)
+                box.left() + (box.width() - art.width()) // 2,
+                box.top() + (box.height() - art.height()) // 2, art)
+        else:
+            self._paint_name(painter, QRect(box.left(), box.top(),
+                                            box.width(),
+                                            self._band_height(box)))
         self._paint_number(painter, box)
         if self.role:
             painter.setFont(self._font(8))

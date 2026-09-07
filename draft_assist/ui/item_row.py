@@ -14,11 +14,12 @@ tooltip, because a strip that explained itself in place would be the
 paragraph again.
 """
 
-from PyQt6.QtCore import QRect, QSize, Qt
+from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 from . import theme, tilekit
+from .flowlayout import FlowLayout
 from .item_icons import icon
 from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 
@@ -29,7 +30,9 @@ ICON_W = tilekit.STRIP_W
 ICON_H = tilekit.STRIP_ART_H
 NAME_H = tilekit.STRIP_BAND_H
 SEVERITY_COLOUR = {3: theme.BAD, 2: theme.WARN, 1: theme.TEXT_DIM}
-MAX_SHOWN = 8
+# HOW MANY IS THE CALLER'S DECISION — it is a setting, edited on the strip
+# itself. A cap in here would silently overrule it, and a number you set
+# that does not take effect is worse than no setting at all.
 # How many blank plates stand in for the strip before it has anything to
 # say. Five, because five is what a full strip usually holds, so the row
 # does not change height the moment the first item arrives.
@@ -62,20 +65,25 @@ def forget_scaled() -> None:
 class ItemTile(QWidget):
     """One recommended item, laid out exactly like a pick.
 
-    Name band across the top, picture underneath, severity as a bar along
-    the bottom of the picture. The name used to sit under the art at a
-    smaller size with no band, which made the item strip and the pick tiles
-    read as two different apps.
+    The picture, and severity as a bar along its bottom edge. The NAME is
+    the tooltip's job: a player recognises a BKB by its shape long before
+    reading the words, and a row of labelled pictures reads as a list where
+    a row of pictures reads at a glance. Clicking it asks WHY, which for an
+    item is a real answer: the rules are hand-authored, so they carry a
+    reason in words. The name band comes back only when
+    there is no icon on disk to draw.
 
     The name is drawn ONCE. An earlier version put it in the picture's
     place as a fallback AND kept the label underneath, so an item with no
     downloaded icon showed its name twice.
     """
 
+    asked_why = pyqtSignal(str)
+
     def __init__(self, advice, parent=None):
         super().__init__(parent)
         self.advice = advice
-        self.setFixedSize(ICON_W, NAME_H + ICON_H)
+        self.setFixedSize(ICON_W, ICON_H)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setToolTip(self._tooltip())
 
@@ -88,23 +96,36 @@ class ItemTile(QWidget):
         lines.append("<i>Hand-authored rule, not measured.</i>")
         return "<br>".join(lines)
 
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.asked_why.emit(self.advice.item)
+        super().mouseReleaseEvent(event)
+
     def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        band = QRect(0, 0, ICON_W, NAME_H)
-        box = QRect(0, NAME_H, ICON_W, ICON_H)
+        box = QRect(0, 0, ICON_W, ICON_H)
         art = _fitted(self.advice.item, box.width(), box.height())
         if not tilekit.paint_art(painter, box, art):
-            # No picture: a plain plate, not the name again.
+            # No icon on disk: the plate plus the name, because a blank
+            # plate names nothing. With an icon the name is the tooltip's.
             tilekit.paint_plate(painter, box)
+            # Most of the tile rather than a band across the top: there
+            # is no art competing for the space, and a name squeezed into
+            # a 22px strip can fail to fit at all and draw NOTHING, which
+            # is a tile that says neither picture nor name. The bottom
+            # quarter is left clear so the badge does not land on it.
+            tilekit.paint_band(painter,
+                               box.adjusted(0, 0, 0, -box.height() // 4),
+                               self.advice.item, self.font())
 
         severity = (self.advice.triggers[0].severity
                     if self.advice.triggers else 1)
         painter.fillRect(QRect(0, box.bottom() - 2, ICON_W, 3),
                          QColor(SEVERITY_COLOUR.get(severity, theme.TEXT_DIM)))
 
-        tilekit.paint_band(painter, band, self.advice.item, self.font())
         painter.end()
 
     def sizeHint(self) -> QSize:                # noqa: N802
@@ -123,7 +144,7 @@ class PlaceholderTile(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(ICON_W, NAME_H + ICON_H)
+        self.setFixedSize(ICON_W, ICON_H)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
@@ -139,15 +160,17 @@ class PlaceholderTile(QWidget):
 class ItemRow(QWidget):
     """A line of item tiles, or one line of text saying why there are none."""
 
+    asked_why = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.row = QHBoxLayout(self)
-        self.row.setContentsMargins(0, 0, 0, 0)
-        self.row.setSpacing(8)
+        # WRAPS rather than scrolls: a strip you have to scroll to read is
+        # a strip you do not read at a glance, which is the one thing it is
+        # for. Past the width it has been given the tiles go to a new row.
+        self.row = FlowLayout(self, spacing=8)
         self.message = QLabel("")
         self.message.setProperty("dim", True)
         self.row.addWidget(self.message)
-        self.row.addStretch(1)
         self.note = QLabel("")
         self.note.setProperty("dim", True)
         self.note.setVisible(False)
@@ -177,8 +200,9 @@ class ItemRow(QWidget):
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)
             return
-        for entry in advice[:MAX_SHOWN]:
+        for entry in advice:
             tile = ItemTile(entry, self)
+            tile.asked_why.connect(self.asked_why)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)
 

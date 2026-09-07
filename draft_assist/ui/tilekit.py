@@ -7,12 +7,19 @@ band under the art, and nothing said they were the same kind of thing. The
 user asked for one look, so the parts every tile shares live here and the
 tiles are the layout around them.
 
-The three shared parts:
+**The names are gone, and the band is now a FALLBACK.** The user plays the
+game; they know Pudge from his face faster than from four letters, and a
+row of pictures reads at a glance where a row of labelled pictures reads
+as a list. But a tile with no art AND no name is nothing, and a fresh
+install has no art at all — so the band is still drawn, only when there is
+no picture to draw instead. The name lives in the tooltip either way.
 
-* a NAME BAND across the top, tinted rather than transparent. It sits above
-  the art rather than on it because a label over a portrait hides the half
-  of the portrait you recognise the hero by, and the art is only worth
-  drawing because it is quicker to read than the name.
+The shared parts:
+
+* a NAME BAND across the top, tinted rather than transparent, drawn ONLY
+  when the tile has no art. It sits above the art rather than on it
+  because a label over a portrait hides the half of the portrait you
+  recognise the hero by.
 * a NUMBER BADGE in the bottom-right, cut to the size of the digits and
   wearing the same tint, so the two pieces of text read as one layer over
   the picture instead of two ideas.
@@ -41,12 +48,15 @@ BADGE_PAD_X = 5
 BADGE_PAD_Y = 2
 
 # A tile in one of the two STRIPS (items, suggested picks). The ten picks
-# size themselves from the panel instead; these are fixed, because a strip
-# scrolls sideways rather than reflowing.
+# size themselves from the panel instead; these are fixed, and the strip
+# WRAPS to another row rather than running off the window.
 STRIP_W = 78
-STRIP_ART_H = 50
-STRIP_BAND_H = 26
-STRIP_H = STRIP_BAND_H + STRIP_ART_H
+# 16:9, because that is the shape of a top-bar portrait — the art is the
+# whole tile now that the name band has gone, so the tile is the picture's
+# own shape rather than a picture with a label bolted above it.
+STRIP_ART_H = 44
+STRIP_BAND_H = 22          # only ever drawn when there is no art
+STRIP_H = STRIP_ART_H
 
 
 def band_height(box_height: int) -> int:

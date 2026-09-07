@@ -558,10 +558,13 @@ def test_side_selector_is_hidden_when_the_game_reports_your_team(qapp):
         win.refresh()
         assert win.side_combo.isHidden()
         assert win.side_label.isHidden()
-        # And it says who it thinks you are, from the game's own report.
-        assert "Bijson" in win.team_captions["ally"].text()
-        assert "Dire" in win.team_captions["ally"].text()
-        assert "Radiant" in win.team_captions["enemy"].text()
+        # The headings are just the two side names, in Dota's own colours:
+        # "Your team — Bijson · Dire" said three things where one does.
+        assert win.team_captions["ally"].text() == "Dire"
+        assert win.team_captions["enemy"].text() == "Radiant"
+        from draft_assist.ui import theme
+        assert theme.BAD in win.team_captions["ally"].styleSheet()
+        assert theme.GOOD in win.team_captions["enemy"].styleSheet()
     finally:
         win.close()
 
@@ -690,18 +693,24 @@ def recording_window(qapp, monkeypatch, tmp_path):
     return window
 
 
-def test_record_button_toggles_and_names_its_state(qapp, monkeypatch,
+def test_record_button_toggles_and_shows_its_state(qapp, monkeypatch,
                                                    tmp_path):
+    """It is the round red dot everyone already knows, so the state is the
+    SHAPE — a circle to record, a square to stop — and the tooltip says it
+    in words for anyone who wants them."""
     window = recording_window(qapp, monkeypatch, tmp_path)
     try:
-        assert window.record_button.text() == "● Record"
+        assert window.record_button._recording is False
+        assert "Record" in window.record_button.toolTip()
+        window.record_button.grab()          # it must actually paint
         window.record_button.click()
         assert window.recorder.active
-        assert window.record_button.text() == "■ Stop"
-        assert window.record_button.property("recording") is True
+        assert window.record_button._recording is True
+        assert "Stop" in window.record_button.toolTip()
+        window.record_button.grab()
         window.record_button.click()
         assert not window.recorder.active
-        assert window.record_button.text() == "● Record"
+        assert window.record_button._recording is False
     finally:
         window.close()
 
@@ -857,7 +866,7 @@ def test_the_window_stops_the_recording_by_itself(qapp, monkeypatch,
         window._capture_recording(Snap(), [], [])
 
         assert not window.recorder.active
-        assert window.record_button.text() == "● Record"
+        assert window.record_button._recording is False
         assert "after the draft ended" in window.status.currentMessage()
     finally:
         window.close()
@@ -1937,10 +1946,10 @@ def test_a_long_strip_does_not_set_the_windows_width_floor(window, qapp):
     window.settings["suggested_items"] = 20
     window._refresh_views()
     qapp.processEvents()
-    assert window.minimumSizeHint().width() == before, \
+    assert window.minimumSizeHint().width() <= before, \
         ("twenty tiles widened the window's floor to "
          f"{window.minimumSizeHint().width()} from {before} — the strips "
-         "are not scrolling sideways")
+         "are not wrapping")
 
 
 def test_the_settings_decide_how_many_are_shown(window, qapp):
@@ -2041,47 +2050,78 @@ def _settle(qapp, times=4):
         qapp.processEvents()
 
 
-def _strip_is_fully_visible(scroller):
-    """Every tile's bottom edge inside the viewport, in viewport space."""
-    strip = scroller.widget()
-    tiles = getattr(strip, "_tiles", []) or getattr(strip, "_blanks", [])
+def _tiles_of(strip):
+    return (getattr(strip, "_tiles", []) or getattr(strip, "_blanks", []))
+
+
+def _all_tiles_inside(strip):
+    """Every tile's rectangle within the strip's own, in strip space."""
+    tiles = _tiles_of(strip)
     if not tiles:
         return True, "no tiles to check"
-    room = scroller.viewport().height()
-    tallest = max(t.sizeHint().height() for t in tiles)
-    return tallest <= room, f"tiles want {tallest}px, viewport gives {room}px"
+    room = strip.rect()
+    outside = [t for t in tiles if not room.contains(t.geometry())]
+    return not outside, (f"{len(outside)} of {len(tiles)} tiles fall outside "
+                         f"{room.width()}x{room.height()}")
 
 
 def test_the_strips_are_not_sliced_off(window, qapp):
-    """The scroll area's height was stamped once, from a strip holding
-    nothing but a hidden label — so every tile put in it afterwards had its
-    bottom cut off and the portraits showed as a band. The height has to be
-    asked for, not frozen at what an EMPTY strip wanted."""
+    """They used to be one row in a scroll area whose height was stamped
+    once, from a strip holding nothing but a hidden label — so every tile
+    added afterwards had its bottom cut off. They WRAP now, and a wrapping
+    layout is only honest if `heightForWidth` is."""
     window.show()
     window.refresh()
     _settle(qapp)
     for name in ("suggest_row", "item_row"):
         strip = getattr(window, name)
-        scroller = strip.parentWidget().parentWidget()
-        ok, detail = _strip_is_fully_visible(scroller)
+        ok, detail = _all_tiles_inside(strip)
         assert ok, f"{name} is cropped: {detail}"
 
 
-def test_the_strips_grow_when_they_are_filled(window, qapp):
-    """An empty strip and a full one are different heights, and the wrapper
-    has to follow — which is the half that was got wrong."""
+def test_a_narrow_strip_wraps_rather_than_scrolling(window, qapp):
+    """A strip you have to scroll to read is a strip you do not read at a
+    glance, which is the one thing it is for."""
+    from draft_assist.ui import tilekit
     window.show()
-    qapp.processEvents()
-    scroller = window.suggest_row.parentWidget().parentWidget()
-    window.suggest_row.show_heroes([])
+    window.settings["suggested_picks"] = 14
+    window.refresh()
+    window._refresh_views()
     _settle(qapp)
-    empty = scroller.sizeHint().height()
+    layout = window.suggest_row.layout()
+    one_row = layout.heightForWidth(tilekit.STRIP_W * 20)
+    narrow = layout.heightForWidth(tilekit.STRIP_W * 3)
+    assert narrow > one_row, "the tiles are not wrapping"
+    assert window.suggest_row.minimumSizeHint().width() <= tilekit.STRIP_W + 8
+
+
+def test_the_default_is_however_many_fit_on_one_row(window, qapp):
+    """A fixed number is too many on a narrow window and too few on a wide
+    one; nought means "fill the row I have"."""
+    from draft_assist.ui.flowlayout import fits_in_one_row
+    from draft_assist.ui import tilekit
+    window.settings["suggested_picks"] = 0
+    window.show()
+    window.resize(1400, 900)
     window.refresh()
     _settle(qapp)
-    assert window.suggest_row.heroes, "the fixture should have suggestions"
-    assert scroller.sizeHint().height() >= empty
-    ok, detail = _strip_is_fully_visible(scroller)
-    assert ok, detail
+    expected = fits_in_one_row(window.suggest_row.width(), tilekit.STRIP_W)
+    assert window._how_many("suggested_picks") == expected
+    assert expected >= 1
+
+
+def test_the_count_box_sets_it_and_keeps_it(window, qapp):
+    """Once you set the number it is yours and stops moving with the
+    window."""
+    window.show()
+    _settle(qapp)
+    box = window.count_boxes["suggested_picks"]
+    box.setValue(4)
+    window.refresh()
+    _settle(qapp)
+    assert window.settings["suggested_picks"] == 4
+    assert window._how_many("suggested_picks") == 4
+    assert len(window.suggest_row.heroes) == 4
 
 
 def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
@@ -2111,3 +2151,57 @@ def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
     snap.game_state = gsi_state.STATE_HERO_SELECTION
     window._update_debug(snap)
     assert "not the pick screen" not in window.debug_text.toPlainText()
+
+
+def test_clicking_a_suggested_hero_shows_the_terms_behind_its_number(
+        window, qapp):
+    """A sum is exactly the thing that can look reasonable for bad reasons:
+    a +5 built out of one enormous matchup is a different suggestion from a
+    +5 built out of five small ones, and the tile cannot say which."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    assert window.suggest_row.heroes, "the fixture should have suggestions"
+    tile = window.suggest_row._tiles[0]
+    tile.asked_why.emit(tile.hero_id)
+    popup = window._reason_popup
+    try:
+        assert popup is not None
+        from PyQt6.QtWidgets import QLabel
+        text = " ".join(lbl.text() for lbl in popup.findChildren(QLabel))
+        assert window.ds.name(tile.hero_id) in text
+        assert "fit " in text
+        # And it must NOT invent an explanation.
+        assert "not why" in text, "the honesty line is the point of it"
+    finally:
+        popup.close()
+
+
+def test_clicking_a_suggested_item_quotes_its_hand_authored_rule(window,
+                                                                 qapp):
+    """Item rules are written in words, so this one has a real answer — and
+    it is labelled as authored rather than measured."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    if not window.item_row._tiles:
+        pytest.skip("the scripted draft flagged no items")
+    tile = window.item_row._tiles[0]
+    tile.asked_why.emit(tile.advice.item)
+    popup = window._reason_popup
+    try:
+        from PyQt6.QtWidgets import QLabel
+        text = " ".join(lbl.text() for lbl in popup.findChildren(QLabel))
+        assert tile.advice.item in text
+        assert "Hand-authored" in text
+        assert tile.advice.triggers[0].hero in text
+    finally:
+        popup.close()
+
+
+def test_a_hero_with_nothing_on_the_board_says_so_rather_than_nothing(qapp):
+    """Blank beats invented, and "nothing moves this yet" is not blank."""
+    from draft_assist.ui import reasons
+    heading, lines, note = reasons.hero_reasons("Lion", 0.0, [])
+    assert lines == []
+    assert "Nothing on the board" in note
