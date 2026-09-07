@@ -163,6 +163,36 @@ credentials, and put the account at risk. Do not go there.
    runs, because a session that never tripped reported `frame=none` and
    left the debug view blank exactly when a picture is what you need.
 
+   **`required` has THREE values, because silence is not a no.** True is
+   "the game says a draft is on", False is "the game says it is not", and
+   None is "the game is not saying" — `HybridProvider.poll` passes None
+   when `game_state` is blank. Collapsing None into False put the gate
+   back in sole charge whenever GSI was down, which is exactly when it has
+   no help: one real ranked game with the feed dead read four heroes in
+   two seconds, missed four gate checks, went idle, and never looked again
+   for the remaining twenty seconds of a draft that was still on screen.
+
+   **A silent feed buys a PROBE** (`session._should_probe`, `PROBE_PERIOD`
+   3s, `PROBE_SLOTS` 2). The gate is self-sustaining when it is wrong: its
+   references are harvested from frames recognition confirmed, so a gate
+   that does not recognise hero selection never gets a hero-selection
+   reference and goes on not recognising it. The probe is the way out —
+   one recognition every few seconds against the gate's advice, and when
+   the library resolves two or more heroes INSIDE the calibrated boxes,
+   under the distance ceiling and over the margin floor, that outvotes the
+   gate and the session goes active. A menu does not produce two confident
+   portrait matches at those coordinates. It runs only while `required is
+   None`: when the game says a draft is on there is nothing to probe for,
+   and when it says one is not, that is an answer.
+
+   **Going idle no longer throws the reading away** (`FORGET_AFTER`, 30s).
+   Deactivating used to null `last_read` and reset the stabiliser, so four
+   missed gate checks — four seconds — deleted every pick the app had
+   already read. That is what "it found four heroes and then showed none"
+   was, and a pick does not un-pick. Idle now only drops the cadence; the
+   reading is forgotten after thirty continuous seconds of not-the-draft-
+   screen, which is a different game rather than a wobble.
+
 3. **An unknown slot is a legitimate state, not an error.** Whether a slot is
    unresolved because GSI did not report it or because a portrait hash margin
    was too small, it is marked unknown and scoring proceeds using only the
@@ -373,6 +403,18 @@ credentials, and put the account at risk. Do not go there.
   what vision-limited data looks like — so those five are plausibly the
   player's own team, which would settle the split. Unverified; measure it
   before building on it.
+
+  **"No data from Dota" names the ONE broken link** (`gsi/diagnose.
+  run_checks`, `GsiProvider._why_silent`). GSI has several independent
+  requirements and gives no feedback when one is missing — Dota simply
+  says nothing — so the symptom is identical whichever link is down, and
+  the app used to answer it with the whole checklist. The checks already
+  test each link separately (install, config file, config/listener port
+  agreement, launch option, who owns the port, is Dota running, what
+  arrived), so the warning is the FIRST failing one and its fix. Cached
+  for `DIAGNOSE_PERIOD`: it reads Steam's `localconfig.vdf` off disk and
+  opens a socket, which is not a per-tick cost. `install_hint` is gone —
+  it was check 1 of 7, guessed at ahead of the other six.
 
   `GsiState.lineup_source` says which of these produced the picks, and the
   UI shows it. `PLAYER_COMPONENTS` / `SPECTATOR_COMPONENTS` are a guide to

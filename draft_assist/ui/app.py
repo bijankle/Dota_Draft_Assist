@@ -2837,14 +2837,10 @@ def make_provider(args, ds: Dataset, manual: ManualDraft):
 
     from ..gsi import install as gsi_install
     from ..gsi.server import GsiServer
-    hint = ""
-    try:
-        gsi_install.find_dota_dir()
-    except gsi_install.DotaNotFound:
-        hint = ("Dota install not found — use Game ▸ Set up game data once "
-                "Dota is installed")
+    # No install hint here: GsiProvider diagnoses the silence itself,
+    # naming the one broken link rather than guessing at the first one.
     server = GsiServer(args.port, token=gsi_install.read_installed_token())
-    gsi = GsiProvider(ds, server, manual, install_hint=hint)
+    gsi = GsiProvider(ds, server, manual)
     if args.no_vision:
         return gsi
     session = _capture_session()

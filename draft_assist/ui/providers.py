@@ -18,6 +18,10 @@ from ..vision.recognize import DraftRead
 from .demo import DemoDraft
 from .manual import ManualDraft, merge
 
+# How often the "why is Dota silent" diagnosis is recomputed. It reads
+# Steam's config off disk and opens a socket, so not on every tick.
+DIAGNOSE_PERIOD = 20.0
+
 
 @dataclass
 class Snapshot:
@@ -232,12 +236,11 @@ class GsiProvider:
     the Snapshot says which is which so the UI can be honest about it.
     """
 
-    def __init__(self, dataset: Dataset, server, manual: ManualDraft | None = None,
-                 install_hint: str = ""):
+    def __init__(self, dataset: Dataset, server,
+                 manual: ManualDraft | None = None):
         self.ds = dataset
         self.server = server
         self.manual = manual if manual is not None else ManualDraft()
-        self.install_hint = install_hint
         self.last_state = None
         # A complete minimap line-up is kept for the rest of the match. One
         # recorded session read a correct split at 16s and a scrambled one
@@ -248,6 +251,10 @@ class GsiProvider:
         # A failed bind must be sticky, not a status message that scrolls
         # away: an unbound listener looks exactly like Dota being silent.
         self.bind_error = ""
+        # The diagnosis behind "no data from Dota yet", refreshed rarely
+        # because it reads Steam's config off disk and pokes the port.
+        self._silence_reason = ""
+        self._diagnosed_at = 0.0
 
     def start(self) -> str:
         try:
@@ -266,6 +273,45 @@ class GsiProvider:
 
     def set_forced(self, forced: bool) -> None:
         """No gate to override: the game tells us when a draft is happening."""
+
+    def _why_silent(self) -> str:
+        """WHICH link is broken, not a checklist to guess through.
+
+        GSI has several independent requirements and no feedback when one
+        is missing — Dota simply says nothing — so the symptom is the same
+        four words whichever link is down, and the app was handing back a
+        list of every step to try. `diagnose.run_checks` already tests each
+        link separately; this is that answer in one line, and it names the
+        launch option only when the launch option is the thing that is
+        actually missing.
+
+        Refreshed at most every DIAGNOSE_PERIOD seconds: it reads Steam's
+        config off disk and opens a socket, which is not something to do
+        four times a second for a line nobody is reading yet.
+        """
+        now = time.monotonic()
+        if self._silence_reason and now - self._diagnosed_at < DIAGNOSE_PERIOD:
+            return self._silence_reason
+        self._diagnosed_at = now
+        try:
+            from ..gsi import diagnose
+            checks = diagnose.run_checks(self.server)
+            failing = [c for c in checks if c.ok is False]
+            if failing:
+                first = failing[0]
+                self._silence_reason = (
+                    f"{first.name}: {first.fix or first.detail}")
+            else:
+                self._silence_reason = (
+                    "every GSI check passes, so this is Dota being quiet — "
+                    "it sends nothing from the main menu, only once you are "
+                    "in a match")
+        except Exception:               # noqa: BLE001 - never worth a crash
+            self._silence_reason = (
+                "run Setup ▸ Set up game data (GSI), add "
+                "-gamestateintegration to Dota's launch options, and "
+                "restart Dota")
+        return self._silence_reason
 
     def poll(self) -> Snapshot:
         from ..gsi import state as gsi_state
@@ -286,12 +332,7 @@ class GsiProvider:
 
         if reception.payload is None:
             snap.sides_known = True
-            snap.warning = (
-                "no data from Dota yet — "
-                + (self.install_hint or
-                   "run Setup ▸ Set up game data (GSI), add "
-                   "-gamestateintegration to Dota's launch options, and "
-                   "restart Dota"))
+            snap.warning = "no data from Dota yet — " + self._why_silent()
             snap.needs_manual = True
             snap.left = merge([], self.manual.entered("ally"))
             snap.right = merge([], self.manual.entered("enemy"))
@@ -579,7 +620,13 @@ class HybridProvider:
         # until every pick was already in.
         require = getattr(self.vision, "set_required", None)
         if require is not None:
-            require(snap.game_state in DRAFTING_STATES)
+            # THREE answers, not two. A silent feed is not the game saying
+            # "no draft" — it is the game saying nothing, and passing that
+            # on as False put the gate back in sole charge, which is how a
+            # ranked game with GSI down read four heroes and then went
+            # blind for the rest of the draft. None lets the session probe.
+            require(snap.game_state in DRAFTING_STATES
+                    if snap.game_state else None)
 
         screen = self.vision.poll()
         # Always carry the frame and the read: the Debug tab is how a

@@ -1,10 +1,13 @@
 """Gate and capture-session state machine, exercised entirely with injected
 synthetic frames — no Windows, no Dota."""
 
+import time
+
 import numpy as np
 import pytest
 
 from draft_assist.capture import gate
+from draft_assist.capture import session as session_mod
 from draft_assist.capture.session import (CaptureSession, MISSES_TO_DEACTIVATE,
                                           STABLE_CONFIRMS, TRIPS_TO_ACTIVATE)
 from draft_assist.proving.evaluate import build_library_from_images
@@ -83,11 +86,42 @@ def test_session_activates_and_reads(draft_frame, menu_frame):
     for _ in range(MISSES_TO_DEACTIVATE):
         state = tick_now(session)
     assert state.mode == "idle"
-    assert state.last_read is None
+    # The reading SURVIVES the drop to idle. Four missed gate checks is
+    # four seconds, and a pick does not un-pick in four seconds — wiping it
+    # here is what deleted every hero the app had read mid-draft.
+    assert state.last_read is not None
+    assert 10 - state.last_read.unknown_count() >= 8
+
+
+def test_a_reading_is_forgotten_once_the_screen_is_long_gone(draft_frame,
+                                                             menu_frame):
+    """Kept across a wobble, dropped when it is a different game.
+
+    Thirty seconds of not-the-draft-screen is not a draft any more, so the
+    reading has to expire — otherwise last game's picks greet the next one.
+    """
+    session = make_session()
+    session._refs = [gate.signature(draft_frame)]
+    session.inject_frame(draft_frame)
+    for _ in range(TRIPS_TO_ACTIVATE + STABLE_CONFIRMS + 1):
+        tick_now(session)
+    assert session.state.last_read is not None
+
+    session.inject_frame(menu_frame)
+    for _ in range(MISSES_TO_DEACTIVATE):
+        tick_now(session)
+    assert session.state.mode == "idle"
+    session.set_required(False)         # the game says no, so no probing
+    session._idle_since = time.monotonic() - session_mod.FORGET_AFTER - 1
+    state = tick_now(session)
+    assert state.last_read is None and state.last_read_raw is None
 
 
 def test_manual_override_forces_recognition_without_gate(draft_frame):
     session = make_session()   # no gate references at all
+    # The game says no draft is on, which switches the probe off — this is
+    # about the manual override beating the gate, nothing else.
+    session.set_required(False)
     session.inject_frame(draft_frame)
     state = tick_now(session)
     assert state.mode == "idle" and state.last_read is None
@@ -274,6 +308,7 @@ def test_a_wrong_gate_no_longer_blocks_recognition(draft_frame, menu_frame):
     session = make_session()
     # References that do NOT describe this screen: the gate will refuse.
     session._refs = [gate.signature(menu_frame)]
+    session.set_required(False)          # the game says no: the gate rules
     session.inject_frame(draft_frame)
     state = tick_now(session)
     assert state.gate_score > gate.DEFAULT_THRESHOLD
@@ -285,6 +320,40 @@ def test_a_wrong_gate_no_longer_blocks_recognition(draft_frame, menu_frame):
     state = tick_now(session)
     assert state.last_read_raw is not None
     assert 10 - state.last_read_raw.unknown_count() >= 8
+
+
+def test_a_silent_feed_probes_past_a_wrong_gate(draft_frame, menu_frame):
+    """With GSI down the gate is the only vote, so it must not be the last.
+
+    Its references are harvested from frames recognition confirmed, which
+    makes a wrong gate self-sustaining: it never runs the recognition that
+    would correct it. One real ranked game read four heroes in two seconds,
+    missed four gate checks, went idle, and never looked again for the
+    remaining twenty — with the draft still on screen. A probe every few
+    seconds is the way out, and the library disagreeing with the gate
+    inside the calibrated boxes is better evidence than the gate.
+    """
+    session = make_session()
+    session._refs = [gate.signature(menu_frame)]
+    assert session.state.required is None, "silence is the default"
+    session.inject_frame(draft_frame)
+    state = tick_now(session)
+    assert state.gate_score > gate.DEFAULT_THRESHOLD, "the gate said no"
+    assert state.last_read_raw is not None, "and the probe went anyway"
+    assert 10 - state.last_read_raw.unknown_count() >= 8
+    assert state.mode == "active", "the library outvoted the gate"
+
+
+def test_a_probe_is_occasional_not_every_tick(draft_frame, menu_frame):
+    """It is the expensive path, so it runs once per PROBE_PERIOD."""
+    session = make_session()
+    session._refs = [gate.signature(draft_frame)]   # gate agrees: no probe
+    session.inject_frame(menu_frame)
+    tick_now(session)                               # spends the first probe
+    before = session._next_probe
+    assert before > time.monotonic()
+    tick_now(session)
+    assert session._next_probe == before, "a second probe came too soon"
 
 
 def test_the_frame_is_published_even_while_idle(menu_frame):
@@ -304,6 +373,7 @@ def test_the_gate_still_works_when_nothing_is_required(draft_frame,
     off or silent, the pixels are all there is."""
     session = make_session()
     session._refs = [gate.signature(draft_frame)]
+    session.set_required(False)     # the GAME says no, which is an answer
     session.inject_frame(menu_frame)
     for _ in range(MISSES_TO_DEACTIVATE + 1):
         tick_now(session)
@@ -339,10 +409,13 @@ def test_the_game_state_drives_it(monkeypatch):
     gsi.manual = ManualDraft()
     provider = HybridProvider(gsi, FakeVision())
 
+    # A blank state is the feed saying NOTHING, which is not the feed
+    # saying no: it asks for None so the session can probe past a wrong
+    # gate. Reporting it as False is what put the gate back in sole charge.
     for state, expected in ((gsi_state.STATE_HERO_SELECTION, True),
                             (gsi_state.STATE_STRATEGY, True),
                             (gsi_state.STATE_IN_PROGRESS, False),
-                            ("", False)):
+                            ("", None)):
         gsi.game_state = state
         provider.poll()
         assert asked[-1] is expected, f"{state} asked for {asked[-1]}"

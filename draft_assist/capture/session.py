@@ -36,6 +36,19 @@ MISSES_TO_DEACTIVATE = 4
 # draft screen (feeds gate references).
 CONFIRM_SLOTS = 6
 STALL_AFTER = 5.0      # no frames for this long -> "stalled" flag
+# While the game feed is SILENT, recognition runs this often even when the
+# gate says no, because a gate that never runs recognition never learns the
+# screen it is wrong about. See `_should_probe`.
+PROBE_PERIOD = 3.0
+# Confident distinct heroes in a probe's read that promote it to active.
+# Two portraits matching the library inside the calibrated boxes, each
+# under the distance ceiling and over the margin floor, is not something a
+# menu produces.
+PROBE_SLOTS = 2
+# A reading survives this long of continuous idle before it is forgotten.
+# Four missed gate checks is four seconds, and a pick does not un-pick in
+# four seconds; thirty seconds of not-the-draft-screen is another game.
+FORGET_AFTER = 30.0
 
 
 @dataclass
@@ -43,8 +56,12 @@ class SessionState:
     mode: str = "idle"              # idle | active
     forced: bool = False            # manual override
     # The GAME says a draft is happening. The gate is a guess about pixels;
-    # this is Dota's own answer, so it outranks the guess.
-    required: bool = False
+    # this is Dota's own answer, so it outranks the guess. THREE states,
+    # not two: True is "a draft is on", False is "the game says it is not",
+    # and None is "the game is not saying" — which is not the same as no,
+    # and treating it as no is what left the app blind for a whole draft
+    # with GSI switched off.
+    required: bool | None = None
     gate_score: float = float("inf")
     frames_arrived: int = 0
     stalled: bool = False
@@ -111,6 +128,8 @@ class CaptureSession:
         self._trips = 0
         self._misses = 0
         self._next_tick = 0.0
+        self._next_probe = 0.0
+        self._idle_since = 0.0
         # gate.GATE_DIR is read at call time (not bound as a default) so
         # tests can repoint it.
         self._refs = gate.load_references(gate.GATE_DIR)
@@ -174,7 +193,7 @@ class CaptureSession:
             self._arrived_at = time.monotonic()
             self._count += 1
 
-    def set_required(self, required: bool) -> None:
+    def set_required(self, required: bool | None) -> None:
         """Recognise regardless of the gate, because the GAME said so.
 
         The gate is an economiser: a cheap pixel comparison that decides
@@ -188,11 +207,41 @@ class CaptureSession:
         the question the gate is guessing at, so when it is available the
         guess does not get a vote. The gate still earns its keep whenever
         the game feed is off or silent.
+
+        NONE means the feed said nothing at all, which is not the same as
+        it saying no: with GSI dead the gate is the only vote, and a gate
+        that is wrong stays wrong because it is the thing deciding whether
+        the recognition that would correct it ever runs. So silence buys a
+        probe (see `_should_probe`) and a flat no does not.
         """
-        self.state.required = bool(required)
+        self.state.required = None if required is None else bool(required)
 
     def set_forced(self, forced: bool) -> None:
         self.state.forced = forced
+
+    def _should_probe(self, now: float) -> bool:
+        """Run recognition against the gate's advice, occasionally.
+
+        The gate is a self-fulfilling prophecy: its references are
+        harvested from frames recognition confirmed, so a gate that does
+        not recognise hero selection never gets a hero-selection reference
+        and goes on not recognising it. One real ranked game read four
+        heroes in the first two seconds, missed four gate checks, went idle
+        and never looked again for the remaining twenty — with the draft
+        still on screen.
+
+        A probe is one recognition every `PROBE_PERIOD`, and it is the way
+        out of that loop: it costs ten small correlations, it publishes
+        what it finds, and a confirmed frame saves the gate reference that
+        stops it being needed. It runs ONLY while the game feed is silent
+        (`required is None`) — when the game says a draft is on there is
+        nothing to probe for, and when it says one is not, that is an
+        answer and the app should believe it.
+        """
+        return (self.state.required is None
+                and self.state.mode == "idle"
+                and not self.state.forced
+                and now >= self._next_probe)
 
     # -- state machine ---------------------------------------------------
     def tick(self) -> SessionState:
@@ -234,10 +283,21 @@ class CaptureSession:
             self._trips, self._misses = 0, self._misses + 1
         if self.state.mode == "idle" and self._trips >= TRIPS_TO_ACTIVATE:
             self.state.mode = "active"
+            self._idle_since = 0.0
         elif (self.state.mode == "active"
               and self._misses >= MISSES_TO_DEACTIVATE
               and not self.state.forced):
+            # Drop to the cheap cadence, but KEEP the reading. Wiping it
+            # here meant four missed gate checks — four seconds — deleted
+            # every pick the app had read, which is what "it found four
+            # heroes and then showed none" was. A pick does not un-pick.
             self.state.mode = "idle"
+            self._idle_since = now
+        if (self.state.mode == "idle" and self._idle_since
+                and now - self._idle_since > FORGET_AFTER
+                and self.state.last_read is not None):
+            # Thirty seconds of not-the-draft-screen is a different game,
+            # so at that point it IS stale and goes.
             self.state.last_read = None
             self.state.last_read_raw = None
             self._stabilizer.reset()
@@ -246,15 +306,26 @@ class CaptureSession:
         # before it: the mode may have just flipped to idle, and the tick
         # that deactivates must not also read. `active` above is only the
         # cadence for the NEXT tick.
+        probing = self._should_probe(now)
+        if probing:
+            self._next_probe = now + PROBE_PERIOD
         if (self.state.mode == "active" or self.state.forced
-                or self.state.required):
+                or self.state.required or probing):
             with LOOP.stage("  recognise (10 crops vs the library)"):
                 raw = read_draft(frame, self.layout, self.lib, self.params)
             self.state.last_read_raw = raw
             self.state.last_read = self._stabilizer.update(raw)
+            resolved = 10 - raw.unknown_count()
+            if probing and resolved >= PROBE_SLOTS:
+                # The gate said no and the library disagreed with it, in
+                # the calibrated boxes, with confident margins. Believe the
+                # library: it is looking at the actual portraits.
+                self.state.mode = "active"
+                self._trips, self._misses = TRIPS_TO_ACTIVATE, 0
+                self._idle_since = 0.0
             # A frame the recogniser itself resolves is the draft screen;
             # judge that on the raw read so gate bootstrap isn't delayed.
-            if 10 - raw.unknown_count() >= CONFIRM_SLOTS:
+            if resolved >= CONFIRM_SLOTS:
                 with LOOP.stage("  save gate reference"):
                     if gate.save_reference(frame, gate.GATE_DIR) is not None:
                         self._refs = gate.load_references(gate.GATE_DIR)

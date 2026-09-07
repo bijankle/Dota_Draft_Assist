@@ -292,14 +292,61 @@ def test_provider_does_not_need_manual_when_game_reports_everything(dataset):
     assert len(snap.left) == 5 and len(snap.right) == 5
 
 
-def test_provider_explains_silence_from_dota(dataset):
-    manual = ManualDraft()
-    provider = GsiProvider(dataset, FakeServer(payload=None, count=0), manual,
-                           install_hint="hint text")
+def test_provider_explains_silence_from_dota(dataset, monkeypatch):
+    """It names the BROKEN LINK, not the whole checklist.
+
+    GSI has several independent requirements and no feedback when one is
+    missing, so "no data" is the symptom whichever one is down — and a
+    checklist of every step is what a whole ranked game of silence used to
+    produce. `diagnose.run_checks` tests each link separately; the warning
+    is its first failure.
+    """
+    from draft_assist.gsi import diagnose
+    monkeypatch.setattr(diagnose, "run_checks", lambda server=None, port=None: [
+        diagnose.Check("Dota installation", True, "somewhere"),
+        diagnose.Check("GSI config installed", False, "no file at C:/x",
+                       "Run Game > Set up game data (GSI)."),
+        diagnose.Check("Dota launch options", False, "(empty)", "later fix"),
+    ])
+    provider = GsiProvider(dataset, FakeServer(payload=None, count=0),
+                           ManualDraft())
     snap = provider.poll()
     assert "no data from Dota yet" in snap.warning
-    assert "hint text" in snap.warning
+    assert "GSI config installed" in snap.warning
+    assert "Run Game > Set up game data (GSI)." in snap.warning
+    assert "launch options" not in snap.warning, "that is the NEXT link"
     assert snap.needs_manual
+
+
+def test_the_diagnosis_is_not_recomputed_every_tick(dataset, monkeypatch):
+    """It reads Steam's config off disk and opens a socket."""
+    from draft_assist.gsi import diagnose
+    calls = []
+
+    def counted(server=None, port=None):
+        calls.append(1)
+        return [diagnose.Check("Dota installation", False, "not found", "fix")]
+
+    monkeypatch.setattr(diagnose, "run_checks", counted)
+    provider = GsiProvider(dataset, FakeServer(payload=None, count=0),
+                           ManualDraft())
+    for _ in range(10):
+        provider.poll()
+    assert len(calls) == 1
+
+
+def test_a_diagnosis_that_blows_up_still_leaves_a_usable_warning(dataset,
+                                                                monkeypatch):
+    from draft_assist.gsi import diagnose
+
+    def boom(server=None, port=None):
+        raise OSError("Steam's config is a directory today")
+
+    monkeypatch.setattr(diagnose, "run_checks", boom)
+    provider = GsiProvider(dataset, FakeServer(payload=None, count=0),
+                           ManualDraft())
+    snap = provider.poll()
+    assert "-gamestateintegration" in snap.warning
 
 
 def test_provider_warns_when_the_feed_goes_quiet(dataset):
