@@ -386,10 +386,6 @@ class MainWindow(QMainWindow):
         # Update is in Help, not up here. It is pressed once a patch, and
         # the row it was in has to stay readable at the narrowest the
         # window goes. It still closes and reopens the app by itself.
-        self.update_button = QPushButton("Update")
-        self.update_button.setVisible(False)
-        self.update_button.clicked.connect(self._update_and_restart)
-
         self.report_button = QPushButton("Report")
         self.report_button.clicked.connect(self._show_latest_report)
 
@@ -411,10 +407,9 @@ class MainWindow(QMainWindow):
             lambda value: self._set_see_through(value / 100.0))
         toolbar.addWidget(self.opacity_slider)
 
-        # No capture pill: it said the same sentence as the status bar,
-        # in less room, one line higher up.
-        self.capture_pill = QLabel("capture: —")
-        self.capture_pill.setVisible(False)
+        # There is no capture pill: it said the same sentence as the status
+        # bar in less room, one line higher up. Keeping it around invisible
+        # is how it became a window of its own.
         self.data_pill = QLabel("data: —")
         self.data_pill.setProperty("pill", True)
         toolbar.addWidget(self.data_pill)
@@ -657,6 +652,11 @@ class MainWindow(QMainWindow):
         self.bind_button.clicked.connect(self._bind_source)
         src_row.addWidget(self.bind_button)
         slay.addLayout(src_row)
+        # It belongs beside the picture it affects. It was CREATED and then
+        # added to nothing, and a parentless QWidget becomes a top-level
+        # WINDOW the moment anything shows it — which is what the second
+        # "Dota Draft Assist" window holding one checkbox was.
+        slay.addWidget(self.force_check)
         if not hasattr(self.provider, "available_sources"):
             self.source_combo.addItem(
                 "(screen capture only — the current source is game data)")
@@ -885,6 +885,7 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.open_recordings_button)
         self.open_recordings_button.setToolTip(
             "Open the recordings folder")
+        buttons.addWidget(self.recording_label)
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
         buttons.addWidget(open_session)
@@ -2579,9 +2580,6 @@ class MainWindow(QMainWindow):
             parts.append(f"{n_stale_rules} item rules unverified this patch")
         self.status.showMessage("   |   ".join(parts))
 
-        self.capture_pill.setText(snap.source or f"mode: {snap.mode}")
-        self.capture_pill.setProperty(
-            "pill", "warn" if (snap.warning or snap.stalled) else True)
         if self.ds.is_empty:
             self.data_pill.setText("no data")
             self.data_pill.setProperty("pill", "warn")
@@ -2589,9 +2587,8 @@ class MainWindow(QMainWindow):
             self.data_pill.setText(f"data {self.ds.age_hours():.0f}h")
             self.data_pill.setProperty(
                 "pill", "warn" if self.ds.is_stale() else "good")
-        for pill in (self.capture_pill, self.data_pill):
-            pill.style().unpolish(pill)
-            pill.style().polish(pill)
+        self.data_pill.style().unpolish(self.data_pill)
+        self.data_pill.style().polish(self.data_pill)
 
     def _update_debug(self, snap) -> None:
         # NOTHING here is worth doing while the tab is hidden. It draws an

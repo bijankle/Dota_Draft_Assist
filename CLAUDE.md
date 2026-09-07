@@ -661,6 +661,17 @@ credentials, and put the account at risk. Do not go there.
   would strand the app running and invisible. It is checkable so it reads
   as on or off, and it is draggable by the same press-becomes-a-drag rule
   the old badge used, so moving it never also toggles the window.
+  **A PARENTLESS QWidget IS A WINDOW.** Not a hidden widget — a top-level
+  window, the moment anything shows it. `force_check` was created, wired
+  up, and added to no layout, so `_sync_source_controls` calling
+  `setVisible(True)` on it opened a second "Dota Draft Assist" holding one
+  checkbox. Two more (`update_button`, `capture_pill`) were sitting there
+  invisible for the same reason — kept alive so the code touching them
+  would not crash, which is exactly how the first one happened. Everything
+  the window creates now has a parent, and
+  `test_no_widget_is_left_without_a_parent` walks the window's own
+  attributes to keep it that way, because this class of bug is invisible
+  until the one line that shows it runs.
   **THE FLOATING TOGGLE IS GONE, and so is hiding the window.** Making it
   appear only when the window was hidden was not enough: it is a second
   top-level window, so the app still showed up twice in the taskbar and in

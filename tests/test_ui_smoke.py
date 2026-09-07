@@ -1722,6 +1722,37 @@ def test_there_is_only_one_window(window, qapp):
     assert not hasattr(window, "overlay_toggle")
 
 
+def test_no_widget_is_left_without_a_parent(window):
+    """A QWidget added to no layout is not invisible — it is a TOP-LEVEL
+    WINDOW as soon as anything shows it. That is how a second "Dota Draft
+    Assist" window containing one checkbox appeared, and the class of bug
+    is invisible until the line that shows it runs."""
+    from PyQt6.QtWidgets import QWidget
+    orphans = [name for name, value in vars(window).items()
+               if isinstance(value, QWidget) and value.parent() is None]
+    assert orphans == [], f"these would open as their own windows: {orphans}"
+
+
+def test_capture_controls_do_not_open_windows_of_their_own(window,
+                                                           monkeypatch):
+    """_sync_source_controls shows them when the source is pixels, which is
+    the line that turned the orphan into a window."""
+    from PyQt6.QtWidgets import QWidget
+
+    class Session:
+        layout = None
+
+    monkeypatch.setattr(type(window.provider), "session",
+                        property(lambda self: Session()), raising=False)
+    window.show()
+    window._sync_source_controls()
+    qapp = QApplication.instance()
+    qapp.processEvents()
+    tops = [w for w in qapp.topLevelWidgets()
+            if isinstance(w, QWidget) and not w.isHidden()]
+    assert tops == [window], f"a second window opened: {tops}"
+
+
 def test_the_window_is_frameless_see_through_and_on_top(window):
     """Three overlays became one. Windows' own title bar read as a
     different program bolted on top of a dark app, and a window that is
@@ -1748,7 +1779,7 @@ def test_the_title_bar_carries_the_window_buttons(window):
     assert {"win_min", "win_max", "win_close"} <= names
 
 
-def test_the_update_button_only_restarts_after_a_pull_that_worked(window):
+def test_updating_only_restarts_after_a_pull_that_worked(window):
     """Relaunching after a failure would close the dialog showing the
     error, and every other task must not restart the app at all."""
     calls = []
@@ -1866,9 +1897,10 @@ def test_the_toolbar_keeps_only_what_belongs_there(window):
     # It rides on the tab strip rather than in a band of its own: three
     # controls do not need a whole row of window height.
     assert window.tabs.cornerWidget(Qt.Corner.TopRightCorner) is toolbar
-    labels = {w.text() for w in toolbar.findChildren(type(window.update_button))}
+    from PyQt6.QtWidgets import QPushButton
+    labels = {w.text() for w in toolbar.findChildren(QPushButton)}
     # Update went to Help: it is pressed once a patch and it was taking
     # width from the row that has to survive the narrowest window.
     assert "Update" not in labels
     assert "Recordings" not in labels and "Report" not in labels
-    assert not window.capture_pill.isVisibleTo(toolbar)
+    assert not hasattr(window, "capture_pill")
