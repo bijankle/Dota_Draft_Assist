@@ -133,6 +133,24 @@ def set_label(widget, text: str) -> None:
     widget.setText(text)
 
 
+def _scrolling(page: QWidget) -> QScrollArea:
+    """Wrap a long page so its height stops dictating the WINDOW's.
+
+    A QTabWidget's minimum is the LARGEST of its pages, so the Debug tab —
+    a full-resolution picture, a log, a timing table and a row of
+    calibration controls, 1200px of minimum between them — set the floor
+    for the whole window even while the Draft tab was the one on screen.
+    The window could not be made shorter than the tab nobody was looking
+    at. Inside a scroll area a page asks for nothing, and the floor becomes
+    the tab you are actually using.
+    """
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.setWidget(page)
+    return area
+
+
 def card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setProperty("card", True)
@@ -834,8 +852,9 @@ class MainWindow(QMainWindow):
         # and what a past session recorded. They want different screens.
         debug_tabs = QTabWidget()
         self.debug_tabs = debug_tabs
-        debug_tabs.addTab(dbg, "Live")
-        debug_tabs.addTab(self._build_sessions_tab(), "Recordings")
+        debug_tabs.addTab(_scrolling(dbg), "Live")
+        debug_tabs.addTab(_scrolling(self._build_sessions_tab()),
+                          "Recordings")
         tabs.addTab(debug_tabs, "Debug")
 
         self.status = self.statusBar()

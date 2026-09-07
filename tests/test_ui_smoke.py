@@ -1722,6 +1722,22 @@ def test_there_is_only_one_window(window, qapp):
     assert not hasattr(window, "overlay_toggle")
 
 
+def test_a_tall_tab_does_not_set_the_windows_floor(window, qapp):
+    """A QTabWidget's minimum is the LARGEST of its pages, so the Debug tab
+    — a full-resolution picture, a log, a timing table and the calibration
+    row, 1200px between them — set the floor for the whole window even
+    while the Draft tab was the one on screen. The window took up the
+    entire desktop height and would not shrink."""
+    window.show()
+    qapp.processEvents()
+    pages = {window.tabs.tabText(i): window.tabs.widget(i)
+             for i in range(window.tabs.count())}
+    assert pages["Debug"].minimumSizeHint().height() < 200, \
+        "the Debug tab is not scrolling; it will dictate the window height"
+    assert window.minimumSizeHint().height() < 900, \
+        f"the window cannot be made short: {window.minimumSizeHint()}"
+
+
 def test_no_widget_is_left_without_a_parent(window):
     """A QWidget added to no layout is not invisible — it is a TOP-LEVEL
     WINDOW as soon as anything shows it. That is how a second "Dota Draft

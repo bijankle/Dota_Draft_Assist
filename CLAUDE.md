@@ -806,6 +806,16 @@ credentials, and put the account at risk. Do not go there.
   in the menu hides the ten seconds of draft that were bad. This exists
   because guessing has already been wrong once: the stutter that looked
   like scoring was a hidden widget being smooth-scaled.
+- **A TAB WIDGET'S MINIMUM IS ITS TALLEST PAGE, whether or not you are
+  looking at it** (`app._scrolling`). The Debug tab holds a
+  full-resolution picture, a log, a timing table and the calibration row —
+  1200px of minimum between them — and that set the floor for the WHOLE
+  WINDOW while the Draft tab, which needs 656, was the one on screen. The
+  window took the entire desktop height and would not shrink, and nothing
+  about the tab being shown pointed at the tab that was not. Long pages go
+  in a `QScrollArea`, where they ask for nothing; the floor went from 1321
+  to 571. `test_a_tall_tab_does_not_set_the_windows_floor` keeps it there,
+  because the next long panel added to Debug would do it again silently.
 - **A grid is exactly as tall as its rows** (`MatrixTable._fit_height`,
   applied everywhere rather than only in the callout). A five-row table
   left to stretch fills whatever height the layout hands it, and the
