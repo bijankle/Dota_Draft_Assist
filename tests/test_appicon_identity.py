@@ -79,3 +79,16 @@ def test_claiming_the_window_identity_is_a_no_op_off_windows():
 def test_no_handle_is_never_an_attempt():
     """A window with no native handle yet answers 0, and 0 is not an hwnd."""
     assert appicon.claim_window_identity(0) is False
+
+
+def test_a_failure_says_which_half_failed():
+    """A silent False leaves a pin that still shows Python undiagnosable.
+
+    The note goes into Debug ▸ Copy everything, so whatever went wrong
+    arrives with the rest of the report rather than needing another round
+    trip to find out.
+    """
+    appicon.claim_window_identity(0)
+    assert appicon.identity_note == "no window handle"
+    appicon.claim_window_identity(12345)
+    assert appicon.identity_note != "no window handle"

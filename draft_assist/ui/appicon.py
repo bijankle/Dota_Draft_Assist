@@ -57,6 +57,10 @@ APP_ID = "DotaDraftAssist.App"
 APP_NAME = "Dota Draft Assist"
 
 _icon: QIcon | None = None
+# What the last attempt at the taskbar identity did. A pin that
+# still shows Python's icon has to be diagnosable from a paste,
+# and a silent False says nothing about which half failed.
+identity_note = "not attempted"
 
 
 def _drawn(size: int = 256) -> QPixmap:
@@ -289,13 +293,22 @@ def claim_window_identity(hwnd: int) -> bool:
     Returns whether it was written, and is never fatal: an icon is not
     worth failing to start over.
     """
+    global identity_note
     import sys
-    if sys.platform != "win32" or not hwnd:
+    # The handle first: a window with no native handle yet is a caller
+    # mistake on any platform, and reading "not Windows" for it would
+    # point at the wrong half.
+    if not hwnd:
+        identity_note = "no window handle"
+        return False
+    if sys.platform != "win32":
+        identity_note = "not Windows"
         return False
     try:
         import pythoncom
         from win32com.propsys import propsys, pscon
     except ImportError:
+        identity_note = "pywin32 is not installed"
         return False
     try:
         store = propsys.SHGetPropertyStoreForWindow(
@@ -316,8 +329,10 @@ def claim_window_identity(hwnd: int) -> bool:
             store.SetValue(_property_key(name, pscon, pythoncom),
                            propsys.PROPVARIANTType(value))
         store.Commit()
+        identity_note = f"set on hwnd {int(hwnd)}: {values['RelaunchCommand']}"
         return True
-    except Exception:                   # noqa: BLE001 - see the docstring
+    except Exception as exc:            # noqa: BLE001 - see the docstring
+        identity_note = f"{type(exc).__name__}: {exc}"
         return False
 
 
