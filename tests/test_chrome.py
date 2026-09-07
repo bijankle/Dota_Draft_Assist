@@ -15,6 +15,7 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt                                 # noqa: E402
 from PyQt6.QtGui import QColor, QPixmap                     # noqa: E402
 from PyQt6.QtWidgets import QApplication, QMenuBar          # noqa: E402
 
@@ -189,3 +190,35 @@ def test_the_shortcut_and_the_app_claim_the_same_identity():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.APP_ID == appicon.APP_ID
+
+
+def test_the_title_bar_actually_paints_its_background(qapp):
+    """`QWidget#titleBar { background: ... }` was parsed and then ignored.
+
+    Qt paints a stylesheet background on a plain QWidget subclass only when
+    WA_StyledBackground is set, so the bar drew in the BODY's grey while
+    the tab row below it was properly dark. It was invisible for as long as
+    everything above the tabs was the same grey, and became the step in the
+    padding the moment the tab band went dark.
+    """
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import theme
+    qapp.setStyleSheet(theme.STYLESHEET)
+    bar = chrome.TitleBar("Dota Draft Assist")
+    assert bar.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+    bar.resize(600, chrome.BAR_HEIGHT)
+    image = bar.grab().toImage()
+    # A column clear of the icon, the title and the window buttons.
+    painted = QColor(image.pixel(400, chrome.BAR_HEIGHT - 2)).name()
+    assert painted == theme.BG_DEEP, (
+        f"the title bar drew {painted}, not {theme.BG_DEEP} — the "
+        "stylesheet background is being ignored again")
+
+
+def test_the_app_asks_for_warcrafts_face_and_survives_not_having_it():
+    """It is a licensed typeface and this repository ships no font file, so
+    the stack has to degrade to something that exists."""
+    from draft_assist.ui import theme
+    assert theme.FONT_STACK.startswith('"Friz Quadrata TT"')
+    assert "sans-serif" in theme.FONT_STACK
+    assert f"font-family: {theme.FONT_STACK}" in theme.STYLESHEET

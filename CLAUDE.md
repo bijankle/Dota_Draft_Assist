@@ -627,6 +627,12 @@ credentials, and put the account at risk. Do not go there.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
+  **The FACE is Warcraft's, asked for by name, and is NOT SHIPPED.** Friz
+  Quadrata is a licensed typeface and this repository carries no font
+  file; `FONT_STACK` names it first and Qt takes the first family actually
+  installed, so a machine without it gets the previous stack and nothing
+  breaks. A missing font is normal, not an error — the same rule the
+  portraits and the app icon follow.
   Colour is reserved for meaning — green/red for signed deltas, the accent
   for the one action a screen wants, amber for warnings — and everything
   else is grey, so a number in colour is always worth reading.
@@ -875,6 +881,15 @@ credentials, and put the account at risk. Do not go there.
   SCANS the band for content-coloured pixels rather than asserting about
   the widgets, because each of those gaps was somewhere nobody thought to
   look.
+  **A stylesheet background on a plain QWidget subclass needs
+  `WA_StyledBackground`.** `QWidget#titleBar { background: ... }` was
+  parsed and then IGNORED, so the title bar drew in the body's grey while
+  the tab row below it was properly dark. It was invisible for as long as
+  everything above the tabs was that same grey, and became the step in the
+  padding the moment the band went dark — three separate attempts at the
+  tab strip missed it because the fault was in the strip ABOVE the one
+  being looked at. Any new frameless-chrome widget that expects a colour
+  from the stylesheet needs the same attribute.
   **A pill is for something being WRONG.** The data age wore a green
   outline when it was healthy — a badge for the absence of a problem, and
   its border was part of what made the toolbar taller than the tab bar.

@@ -46,6 +46,14 @@ class TitleBar(QWidget):
         super().__init__(parent)
         self.setFixedHeight(BAR_HEIGHT)
         self.setObjectName("titleBar")
+        # WITHOUT THIS THE BAR IS THE CONTENT COLOUR. Qt paints a
+        # stylesheet background on a plain QWidget subclass only when this
+        # attribute is set, so `QWidget#titleBar { background: ... }` was
+        # being parsed and then ignored — the bar drew in the body's grey
+        # while the tab row below it was properly dark, which is the step
+        # the user kept pointing at. It was invisible while everything
+        # above the tabs was the same grey.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._press: QPoint | None = None
 
         lay = QHBoxLayout(self)

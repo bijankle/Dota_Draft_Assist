@@ -34,8 +34,15 @@ BAD = "#f23f43"
 WARN = "#f0b232"
 ROW_ALT = "#2e3035"
 HIGHLIGHT_ROW = "#28352c"
-# Discord ships "gg sans"; anyone who has the client has it installed.
-FONT_STACK = '"gg sans", "Noto Sans", "Inter", "Segoe UI", system-ui, sans-serif'
+# WARCRAFT'S FACE FIRST, at the user's request, and NOT SHIPPED: Friz
+# Quadrata is a licensed typeface and this repository carries no font
+# file. Qt takes the first family that is actually installed, so the rest
+# of the stack is what the app looks like on a machine without it —
+# Discord's "gg sans" and then the usual system faces, which is what it
+# looked like before. A missing font is normal, not an error.
+FONT_STACK = ('"Friz Quadrata TT", "Friz Quadrata", FrizQuadrataTT, '
+              '"gg sans", "Noto Sans", "Inter", "Segoe UI", system-ui, '
+              'sans-serif')
 
 STYLESHEET = f"""
 QWidget {{
@@ -206,7 +213,11 @@ QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 
 /* Our own title bar: the system one is a white strip above a dark app. */
 QWidget#titleBar {{ background: {BG_DEEP}; }}
-QLabel#titleText {{ color: {TEXT_DIM}; font-weight: 600; }}
+/* Half again the body size: it is the app's name in its own frame, and
+   at 13px it read as another label rather than as the title. */
+QLabel#titleText {{
+    color: {TEXT_DIM}; font-weight: 600; font-size: 20px;
+}}
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
 QMenuBar#titleMenus::item:selected {{ background: {BG_HOVER}; }}
