@@ -2592,14 +2592,31 @@ def test_the_count_box_is_only_as_wide_as_its_digits(qapp):
     box = chrome.CountBox(8, 1, 20)
     box.show()
     _settle(qapp)
-    digits = box.fontMetrics().horizontalAdvance("88")
-    room = chrome.CountBox.ARROWS_W + 2 * chrome.CountBox.PAD
-    # Snug: the digits, the arrows, and a little fat. The tolerance is for
-    # the font metrics moving between construction and here — what is
-    # being asserted is that nothing STRETCHES it.
-    assert digits + chrome.CountBox.ARROWS_W <= box.width() <= digits + room + 8
+    from PyQt6.QtWidgets import QSpinBox
+    # Qt's OWN minimum plus our arrow strip, and nothing else. Adding up
+    # the digits and a guess at the padding came out NARROWER than the
+    # widget's minimum and clipped the number to its left half — the
+    # stylesheet's padding and border are part of the box too, and Qt
+    # already measures all of it against the real font.
+    assert box.width() == QSpinBox.minimumSizeHint(box).width() \
+        + chrome.CountBox.ARROWS_W
+    assert box.width() >= QSpinBox.minimumSizeHint(box).width()
     assert box.sizePolicy().horizontalPolicy() == \
         box.sizePolicy().horizontalPolicy().Fixed
+    box.close()
+
+
+def test_the_widest_value_is_never_clipped(qapp):
+    """The number is the whole point of the control."""
+    from draft_assist.ui import chrome
+    box = chrome.CountBox(20, 1, 20)
+    box.show()
+    _settle(qapp)
+    for value in (1, 9, 10, 20):
+        box.setValue(value)
+        _settle(qapp)
+        assert box.fontMetrics().horizontalAdvance(str(value)) \
+            <= box.lineEdit().width(), f"{value} does not fit"
     box.close()
 
 

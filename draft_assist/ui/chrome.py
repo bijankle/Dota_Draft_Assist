@@ -339,12 +339,9 @@ class CountBox(QSpinBox):
 
     # The strip we keep for the arrows, and how big the arrowheads in it
     # are. Both are drawn, never styled — see the class docstring.
-    ARROWS_W = 14
-    ARROW_W = 7
-    ARROW_H = 4
-    # A little fat either side of the digits, and no more: the box is
-    # beside a heading, so its width is chrome and the number is content.
-    PAD = 7
+    ARROWS_W = 18
+    ARROW_W = 9
+    ARROW_H = 5
 
     def __init__(self, value: int, low: int, high: int, parent=None):
         super().__init__(parent)
@@ -360,14 +357,21 @@ class CountBox(QSpinBox):
         # became a plain field you could not step. Same trap as the tick
         # box and the three window buttons, and the same answer.
         self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        # SIZED TO ITS CONTENTS, not to a number somebody guessed, and
-        # FIXED: a minimum let the layout hand it whatever was going, which
-        # is how a two-digit box ended up the width of a heading.
-        widest = max(len(str(low)), len(str(high)))
-        digits = self.fontMetrics().horizontalAdvance("8" * widest)
-        # The text keeps clear of the arrows rather than running under them.
+        # SIZED TO ITS CONTENTS, and FIXED: a Minimum policy let the
+        # layout hand it whatever was going, which is how a two-digit box
+        # ended up the width of a heading.
+        #
+        # The width comes from Qt'S OWN minimum, plus the strip we took for
+        # the arrows. Adding up the digits and a guess at the padding does
+        # not work: the stylesheet's padding and border are part of the
+        # box too, so the arithmetic came out NARROWER than the widget's
+        # own minimum and the number was clipped to its left half. Qt
+        # already measures the widest value the range can hold against the
+        # real font and the real chrome — the only thing it does not know
+        # about is our arrow strip, because we draw that ourselves.
         self.setStyleSheet(f"padding-right: {self.ARROWS_W}px;")
-        self.setFixedWidth(digits + self.ARROWS_W + 2 * self.PAD)
+        self.setFixedWidth(
+            QSpinBox.minimumSizeHint(self).width() + self.ARROWS_W)
         self.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Fixed)
 
