@@ -36,21 +36,19 @@ ROW_ALT = "#2e3035"
 # The window frame's lit edge (see `ui/ornate.py`), so the app's name and
 # the border round it read as one piece rather than two decisions.
 FRAME_GOLD = "#c9a45a"
-# The app's own name, in a face supplied by the user rather than installed
-# — `ui/fonts.load_bundled` registers whatever is in `assets/fonts/` at
-# startup, and this is the family it makes resolvable. Missing file, and
-# the stylesheet falls through to FONT_STACK.
-TITLE_FAMILY = "LifeCraft"
+# The app's own name. The same family as the body at its heaviest weight
+# — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
+# app's own voice raised rather than a second typeface arguing with it.
+TITLE_FAMILY = "Alegreya Black"
 HIGHLIGHT_ROW = "#28352c"
-# The body face the user supplied: ITC Novarese, registered from
+# Alegreya, under the SIL Open Font License — registered from
 # `assets/fonts/` at startup by `ui/fonts.load_bundled` rather than
-# installed. Everything after it is the fallback if the file is not there
-# — the app must still open with a readable UI, which is the same rule a
-# missing portrait or a missing app icon follows.
-BODY_FAMILY = "ITC Novarese Std"
-FONT_STACK = (f'"{BODY_FAMILY}", "Century Gothic", "URW Gothic", '
-              '"Questrial", "gg sans", "Noto Sans", "Segoe UI", '
-              'system-ui, sans-serif')
+# installed. Everything after it is the fallback if the files are not
+# there: the app must still open with a readable UI, which is the same
+# rule a missing portrait or a missing app icon follows.
+BODY_FAMILY = "Alegreya"
+FONT_STACK = (f'"{BODY_FAMILY}", "Palatino Linotype", "Book Antiqua", '
+              '"Georgia", "Noto Serif", "Segoe UI", system-ui, serif')
 
 STYLESHEET = f"""
 QWidget {{

@@ -627,24 +627,30 @@ credentials, and put the account at risk. Do not go there.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
-  **The FACES are supplied, not installed** (`ui/fonts.load_bundled`,
-  `assets/fonts/`). The user handed over two files: LifeCraft for the
-  app's own name in the title bar, ITC Novarese for everything else. Qt
+  **The FACES are bundled, not installed** (`ui/fonts.load_bundled`,
+  `assets/fonts/`). Alegreya, in three weights: regular and bold for the
+  body, black for the app's own name in the title bar — one family at two
+  ends of its range rather than two typefaces arguing with each other. Qt
   will only use a family it knows about, so they are registered with
   `QFontDatabase` BEFORE the stylesheet is applied — a family registered
   afterwards is not picked up by rules already resolved, and the app opens
-  in the fallback face. `FONT_STACK` names Novarese first and the old
-  stack behind it, and the title rule names LifeCraft with `FONT_STACK`
-  behind that, so a checkout WITHOUT the files still opens a readable app;
-  a missing font is normal, not an error.
-  **These two are COMMITTED, and they are the exception.** The user
-  confirmed their licences permit redistribution — that statement is the
-  whole basis for it, and it is recorded in `assets/fonts/README.md`. It
-  does not generalise: the hero portraits, the item icons and a supplied
-  `app.ico` are Valve's and Blizzard's artwork and stay out of the
-  repository, downloaded to the user's own disk at runtime. A future font
-  gets the same question asked again rather than being waved through by
-  this precedent.
+  in the fallback face. `FONT_STACK` names Alegreya first and system
+  serifs behind it, and the title rule names Alegreya Black with
+  `FONT_STACK` behind that, so a checkout WITHOUT the files still opens a
+  readable app; a missing font is normal, not an error.
+  **The bar for committing a font is that its LICENCE says yes on its
+  own.** Alegreya is under the SIL Open Font License 1.1 — stated in the
+  fonts' own name table, with `OFL.txt` beside them — which permits
+  redistribution outright, so nobody has to take anyone's word for it.
+  `test_every_committed_font_states_its_own_licence` READS the name table
+  rather than trusting the filename, because two fonts have already failed
+  this bar and been removed: ITC Novarese (a commercial retail face, whose
+  EULA generally forbids redistributing the file at all) and LifeCraft
+  (**no copyright and no licence in the font at all** — absence of a
+  stated licence is not permission, whoever supplied it). None of this
+  generalises to the artwork: the hero portraits, the item icons and a
+  supplied `app.ico` are Valve's and Blizzard's and stay out, downloaded
+  to the user's own disk at runtime.
   The family name is spelled in TWO places (`ui/fonts.py` and
   `ui/theme.py`) and they have to agree — two spellings of one family is a
   font that silently never loads, which `tests/test_fonts.py` checks.
