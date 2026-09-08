@@ -80,6 +80,29 @@ def scaled(hero_id: int | None, width: int, height: int) -> QPixmap | None:
     return hit
 
 
+def filling(hero_id: int | None, width: int, height: int) -> QPixmap | None:
+    """The portrait scaled to COVER width x height, cropped to centre.
+
+    `scaled` fits inside the box and leaves bars; that is right for a
+    header, where the whole picture is the point. Behind a grid cell the
+    picture is a backdrop for a number and a letterboxed portrait reads as
+    a mistake, so this one fills the cell and loses the edges instead.
+    """
+    art = portrait(hero_id)
+    if art is None or width < 1 or height < 1:
+        return None
+    key = ("fill", int(hero_id), int(width), int(height))
+    hit = _scaled.get(key)
+    if hit is None:
+        grown = art.scaled(width, height,
+                           Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                           Qt.TransformationMode.SmoothTransformation)
+        hit = grown.copy((grown.width() - width) // 2,
+                         (grown.height() - height) // 2, width, height)
+        _scaled[key] = hit
+    return hit
+
+
 def forget() -> None:
     """Drop the caches — after a portrait download, or in tests."""
     global _paths

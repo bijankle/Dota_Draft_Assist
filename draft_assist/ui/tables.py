@@ -16,8 +16,8 @@ Two things live here that Qt does not give for free:
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
-                             QTableWidget, QTableWidgetItem,
-                             QVBoxLayout, QWidget)
+                             QStyledItemDelegate, QTableWidget,
+                             QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import theme
 
@@ -291,6 +291,51 @@ class PortraitHeader(QHeaderView):
         painter.restore()
 
 
+# The roles a paired-triangle cell carries: whose portrait backs it, the
+# figure to print over that, and whether this is the bottom header row.
+PAIR_HERO = int(Qt.ItemDataRole.UserRole) + 10
+PAIR_VALUE = PAIR_HERO + 1
+PAIR_HEADER = PAIR_HERO + 2
+# How far the portrait behind a number is knocked back. It is a backdrop,
+# not the subject: at full strength the artwork competes with the figure it
+# is meant to be labelling.
+PAIR_VEIL = 110
+
+
+class PairCellDelegate(QStyledItemDelegate):
+    """A grid cell with its hero's portrait behind the number.
+
+    The synergy grid used to carry a column of portraits down its left
+    edge to name the rows. Half that grid is blank — synergy is symmetric —
+    so the row's own face goes INTO its cells instead: the pair names
+    itself, the header column's width goes back to the numbers, and the
+    blank half is free for the other team's triangle.
+
+    The number is outlined rather than plated, the same way a tile's is and
+    for the same reason: a plate behind it is a rectangle of the portrait
+    gone.
+    """
+
+    def paint(self, painter, option, index):        # noqa: N802 - Qt naming
+        from .portraits import filling
+        from . import tilekit
+        rect = option.rect
+        painter.save()
+        painter.fillRect(rect, QColor(theme.BG))
+        hero = index.data(PAIR_HERO)
+        art = filling(hero, rect.width(), rect.height()) if hero else None
+        if art is not None:
+            painter.drawPixmap(rect.topLeft(), art)
+            # Knocked back, so the figure over it stays the subject.
+            painter.fillRect(rect, QColor(0, 0, 0, PAIR_VEIL))
+        value = index.data(PAIR_VALUE)
+        if value is not None and not index.data(PAIR_HEADER):
+            tilekit.paint_centred_number(
+                painter, rect, f"{float(value) * 100:+.2f}",
+                theme.GOOD if float(value) > 0 else theme.BAD)
+        painter.restore()
+
+
 class MatrixTable(QWidget):
     """A drafted-hero grid: allies against enemies, or allies with allies.
 
@@ -449,6 +494,88 @@ class MatrixTable(QWidget):
             self.table.verticalHeader().setSectionResizeMode(
                 QHeaderView.ResizeMode.ResizeToContents)
         self._fit_height()
+
+    def show_pairs(self, grid, empty_text: str = "") -> None:
+        """Both teams' synergies, as the two triangles of one square.
+
+        Yours above the diagonal read against the ally portraits along the
+        TOP; theirs below it read against the enemy portraits along the
+        BOTTOM, which is an ordinary last ROW of the table rather than a
+        second header — Qt has no bottom header and a separate widget
+        under the table would not keep its columns in step with it.
+
+        There is no left-hand header at all: every cell carries its own row
+        hero's portrait, so the pair names itself.
+        """
+        self.caption.setVisible(False)
+        self.empty_note.setText("" if not grid.empty else empty_text)
+        self.empty_note.setVisible(bool(grid.empty and empty_text))
+        self.table.setVisible(True)
+        self.table.setStyleSheet("")
+        self._icon_box = None
+        # Before the empty check too: an empty synergy grid is the same
+        # grid waiting to fill, so it should not sprout a header column
+        # that the filled one does not have.
+        self.table.verticalHeader().setVisible(False)
+        if grid.empty:
+            self._show_outline()
+            return
+        side = grid.side
+        self.table.setColumnCount(side)
+        # One extra row: the enemy portraits, which are this grid's second
+        # header and the axis its lower triangle is read against.
+        self.table.setRowCount(side + 1)
+        self.table.setItemDelegate(self._pair_delegate())
+
+        for row in range(side):
+            for col in range(side):
+                cell = grid.cells[row][col]
+                item = QTableWidgetItem()
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                if cell is not None:
+                    item.setData(PAIR_HERO, cell.hero_id)
+                    item.setData(PAIR_VALUE, cell.delta)
+                    item.setData(SORT_ROLE, cell.delta)
+                self.table.setItem(row, col, item)
+        for col, (hero_id, name) in enumerate(grid.enemies):
+            item = QTableWidgetItem()
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setData(PAIR_HERO, hero_id)
+            item.setData(PAIR_HEADER, True)
+            item.setToolTip(name)
+            self.table.setItem(side, col, item)
+
+        self._set_pair_columns(grid)
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        for col in range(side):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        self._apply_icon_box()
+        self._fit_height()
+
+    def _pair_delegate(self):
+        if getattr(self, "_pairs", None) is None:
+            # Kept on the widget: a delegate the table does not own is
+            # garbage-collected the moment this method returns, and the
+            # cells then draw with Qt's default one and no portraits.
+            self._pairs = PairCellDelegate(self.table)
+        return self._pairs
+
+    def _set_pair_columns(self, grid) -> None:
+        """The TOP header is the allies; there is no left header."""
+        from .portraits import portrait
+        by_index = {}
+        for index, (hero_id, name) in enumerate(grid.allies):
+            item = QTableWidgetItem()
+            if portrait(hero_id) is None:
+                item.setText(name)
+            else:
+                by_index[index] = hero_id
+                item.setToolTip(name)
+            self.table.setHorizontalHeaderItem(index, item)
+        head = self.table.horizontalHeader()
+        if isinstance(head, PortraitHeader):
+            head.set_heroes(by_index)
 
     def _show_outline(self) -> None:
         """Five by five of nothing — the shape the grid will have."""

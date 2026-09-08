@@ -181,6 +181,80 @@ def matchup_matrix(ds: Dataset, draft: DraftState) -> Matrix:
                           "percentage points. Positive favours you.")
 
 
+@dataclass
+class PairCell:
+    """One pair in the synergy grid: whose face backs it, and the figure."""
+    hero_id: int            # the ROW hero — the portrait drawn behind
+    other_id: int           # the column hero, for the tooltip
+    delta: float
+
+
+@dataclass
+class SynergyGrid:
+    """BOTH teams' synergies in one square, as two triangles.
+
+    Synergy is symmetric, so a team's own pairings only ever fill half a
+    square and the other half was blank. It is exactly the right shape to
+    hold the other team's, so the grid carries both: your five above the
+    diagonal, read against the ally portraits along the TOP, and their five
+    below it, read against the enemy portraits along the BOTTOM. The
+    diagonal stays empty — a hero with itself means nothing, and the gap
+    running corner to corner is what separates the two halves.
+
+    Every cell is backed by its own ROW hero's portrait, which is what
+    replaced the left-hand header column: with the picture in the cell the
+    pair names itself, and the width that column was taking goes back to
+    the numbers.
+
+    **The enemy half is NOT sign-flipped**, which is the one place in this
+    app where a green number is not good for you. It is deliberate and it
+    is the user's call: each triangle is read as "how well does THIS
+    team's pair work", so a strong enemy pairing is a big green number on
+    their side of the grid. The rule for reading it is the halves, not the
+    colour — theirs green is bad for you, yours red is bad for you. The
+    click view and `net_contributions` still flip, because there the
+    enemy figures sit among your own and there is no line between them.
+    """
+    allies: list[tuple[int, str]]
+    enemies: list[tuple[int, str]]
+    cells: list[list[PairCell | None]]
+
+    @property
+    def empty(self) -> bool:
+        return not any(cell for line in self.cells for cell in line)
+
+    @property
+    def side(self) -> int:
+        return len(self.cells)
+
+
+def team_synergy_grid(ds: Dataset, draft: DraftState) -> SynergyGrid:
+    """Both teams' own pairings, as the two triangles of one square."""
+    allies = [h for h in draft.allies if h in ds.index]
+    enemies = [h for h in draft.enemies if h in ds.index]
+    side = max(len(allies), len(enemies), 0)
+
+    def pair(a: int, b: int) -> PairCell:
+        return PairCell(a, b, float(ds.delta_with[ds.index[a], ds.index[b]]))
+
+    cells: list[list[PairCell | None]] = []
+    for row in range(side):
+        line: list[PairCell | None] = []
+        for col in range(side):
+            if col > row and row < len(allies) and col < len(allies):
+                line.append(pair(allies[row], allies[col]))
+            elif col < row and row < len(enemies) and col < len(enemies):
+                # Their half is read against the BOTTOM header, so the row
+                # hero is theirs and the column is theirs too.
+                line.append(pair(enemies[row], enemies[col]))
+            else:
+                line.append(None)       # the diagonal, and any short side
+        cells.append(line)
+    return SynergyGrid(allies=[(h, ds.name(h)) for h in allies],
+                       enemies=[(h, ds.name(h)) for h in enemies],
+                       cells=cells)
+
+
 def synergy_matrix(ds: Dataset, draft: DraftState) -> Matrix:
     """Your team with itself.
 

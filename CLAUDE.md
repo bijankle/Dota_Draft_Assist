@@ -532,10 +532,40 @@ credentials, and put the account at risk. Do not go there.
   left, theirs on the right (`ui/teams.py`), because that is where they sit
   on the pick bar, with the two grids directly under the sides they
   describe: counters (`scoring.matchup_matrix`) on the left, synergy
-  (`scoring.synergy_matrix`) on the right. A comfortable total can conceal
-  one lane losing badly, which is what the grids exist to show; the synergy
-  grid fills only the upper triangle, since synergy is symmetric and the
-  diagonal means nothing. Everything that ranks heroes NOT in the game —
+  (`scoring.team_synergy_grid`) on the right. A comfortable total can
+  conceal one lane losing badly, which is what the grids exist to show.
+- **THE SYNERGY GRID IS TWO TRIANGLES, and the row headers are IN the
+  cells** (`scoring.team_synergy_grid`, `tables.PairCellDelegate`,
+  `MatrixTable.show_pairs`). Synergy is symmetric, so a team's own pairings
+  only ever fill half a square — and that blank half is exactly the shape
+  of the other team's. So the one square carries both: YOURS above the
+  diagonal, read against the ally portraits along the TOP, and THEIRS below
+  it, read against the enemy portraits along the BOTTOM. The bottom axis is
+  an ordinary last ROW of the table rather than a second header, because Qt
+  has no bottom header and a separate widget under the table would not keep
+  its columns in step with it. The diagonal stays empty: a hero with itself
+  means nothing, and the gap corner to corner is what separates the two
+  halves.
+  The left-hand portrait column is GONE — every cell is backed by its own
+  ROW hero's portrait with the figure over it, so the pair names itself and
+  the width that column took goes back to the numbers. The portrait FILLS
+  the cell (`portraits.filling`, expand-and-crop) rather than fitting
+  inside it: `scaled` leaves bars, which is right for a header where the
+  whole picture is the point and wrong for a backdrop, where a letterboxed
+  portrait reads as a mistake. It is veiled (`PAIR_VEIL`) so the number
+  stays the subject, and the number is outlined rather than plated, the
+  same way a tile's is.
+  **The enemy half is NOT sign-flipped**, and this is the one place in the
+  app where a green number is not good for you. It is deliberate and it is
+  the user's call: each triangle is read as "how well does THIS team's pair
+  work", so a strong enemy pairing is a big green number on their side —
+  theirs green is bad for you, yours red is bad for you. The HALVES are the
+  rule there, not the colour. `relations_to` and `net_contributions` still
+  flip, because there the enemy figures sit among your own with no line
+  between them.
+  **COUNTERS IS UNCHANGED**: it is a full 5x5 of your five against their
+  five, so it has no spare half to reclaim and it keeps its portrait column
+  down the left. Everything that ranks heroes NOT in the game —
   the ranked list, the filter, "Why this score", the counters list and the
   items panel — moved to the **Analysis** tab, because 120 candidates
   beside the ten picks made the ten harder to read. There is no longer a

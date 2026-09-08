@@ -164,3 +164,83 @@ def test_every_cell_has_a_border(art, qapp):
     assert "gridline-color" not in table.table.styleSheet(), \
         "no local override: the app-wide rule is the only one"
     assert table.table.showGrid()
+
+
+# --------------------------------------------------------------------------
+# The synergy grid: both teams, as the two triangles of one square.
+# --------------------------------------------------------------------------
+
+def test_a_pair_cell_actually_draws_its_portrait_and_number(qapp, tmp_path,
+                                                            monkeypatch):
+    """RENDER the portrait branch, don't just assert about the data.
+
+    This grid's whole point is a picture behind a figure, and the portrait
+    branch of a painter is exactly the kind of code that ships with a
+    mistyped enum and no test to catch it — there is no portrait on disk in
+    a dev checkout, so nothing takes that branch by accident.
+    """
+    from PyQt6.QtCore import QRect, Qt
+    from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap
+    from PyQt6.QtWidgets import QStyleOptionViewItem, QTableWidget, \
+        QTableWidgetItem
+    from draft_assist.ui import portraits, theme
+    from draft_assist.ui.tables import PAIR_HERO, PAIR_VALUE, PairCellDelegate
+
+    blue = QPixmap(256, 144)
+    blue.fill(QColor("#3050a0"))
+    blue.save(str(tmp_path / "1_anti-mage.png"))
+    monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
+    portraits.forget()
+    try:
+        table = QTableWidget(1, 1)
+        item = QTableWidgetItem()
+        item.setData(PAIR_HERO, 1)
+        item.setData(PAIR_VALUE, 0.0421)
+        table.setItem(0, 0, item)
+
+        picture = QImage(90, 40, QImage.Format.Format_ARGB32)
+        picture.fill(0)
+        painter = QPainter(picture)
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 90, 40)
+        PairCellDelegate(table).paint(painter, option,
+                                      table.model().index(0, 0))
+        painter.end()
+
+        colours = {picture.pixelColor(x, y).name()
+                   for y in range(picture.height())
+                   for x in range(picture.width())}
+        # The portrait FILLS the cell — no letterbox bars of background —
+        # and it is knocked back rather than drawn at full strength.
+        assert "#3050a0" not in colours, "the veil never went on"
+        assert any(c.startswith("#1") or c.startswith("#2") for c in colours)
+        assert theme.GOOD in colours, "the number is not on top of it"
+        assert "#000000" in colours, "no outline round the digits"
+        corner = picture.pixelColor(2, 2)
+        assert corner.alpha() == 255, "a corner of the cell is unpainted"
+    finally:
+        portraits.forget()
+
+
+def test_the_portrait_fills_the_cell_rather_than_fitting_inside_it(qapp,
+                                                                   tmp_path,
+                                                                   monkeypatch):
+    """`scaled` fits and leaves bars, which is right for a header and wrong
+    for a backdrop: a letterboxed portrait behind a number reads as a
+    mistake."""
+    from PyQt6.QtGui import QColor, QPixmap
+    from draft_assist.ui import portraits
+
+    wide = QPixmap(256, 144)
+    wide.fill(QColor("#3050a0"))
+    wide.save(str(tmp_path / "1_anti-mage.png"))
+    monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
+    portraits.forget()
+    try:
+        art = portraits.filling(1, 90, 40)
+        assert (art.width(), art.height()) == (90, 40)
+        fitted = portraits.scaled(1, 90, 40)
+        assert (fitted.width(), fitted.height()) != (90, 40), \
+            "the fitting one is the contrast this test is about"
+    finally:
+        portraits.forget()

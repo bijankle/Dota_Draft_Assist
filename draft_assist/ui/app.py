@@ -2815,14 +2815,17 @@ class MainWindow(QMainWindow):
         # so the grid would be a wall of +0.00 that looks like "no synergy
         # anywhere" rather than "this source does not publish it".
         if self.ds.meta.get("has_synergy") is False:
-            self.synergy_matrix.show_matrix(
-                scoring.Matrix(rows=[], cols=[], cells=[]),
+            self.synergy_matrix.show_pairs(
+                scoring.SynergyGrid(allies=[], enemies=[], cells=[]),
                 f"{self.ds.meta.get('pair_source', 'this source')} publishes "
                 "no ally-pair data — switch the statistics source to Stratz "
                 "in Settings and re-pull.")
         else:
-            self.synergy_matrix.show_matrix(
-                scoring.synergy_matrix(self.ds, draft))
+            # BOTH teams, as the two triangles of one square: synergy is
+            # symmetric, so your five only ever filled half of it and the
+            # other half is exactly the right shape for theirs.
+            self.synergy_matrix.show_pairs(
+                scoring.team_synergy_grid(self.ds, draft))
 
     def _apply_filter(self) -> None:
         needle = self.search_box.text().strip().lower()

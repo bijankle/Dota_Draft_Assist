@@ -1293,17 +1293,80 @@ def _cell_value(table, row, col):
     return None if item is None else item.data(SORT_ROLE)
 
 
-def test_synergy_matrix_shows_each_pair_once(window):
-    """Synergy is symmetric, so the lower half would only repeat the upper
-    and the diagonal means nothing."""
+def test_the_synergy_grid_is_two_triangles(window):
+    """Synergy is symmetric, so a team's own pairings only ever fill half a
+    square — and that is exactly the shape of the other team's. Yours above
+    the diagonal against the ally portraits on TOP, theirs below it against
+    the enemy portraits along the BOTTOM row. The diagonal stays empty."""
+    from draft_assist.ui.tables import PAIR_HEADER, PAIR_HERO, PAIR_VALUE
     window.refresh()
-    allies = filled(window, "ally")
+    draft = window._current_draft()
+    allies, enemies = list(draft.allies), list(draft.enemies)
     table = window.synergy_matrix.table
-    assert table.rowCount() == table.columnCount() == len(allies)
-    pairs = [(r, c) for r in range(len(allies)) for c in range(len(allies))
-             if table.item(r, c).text()]
-    assert len(pairs) == len(allies) * (len(allies) - 1) // 2
-    assert all(c > r for r, c in pairs)
+    side = max(len(allies), len(enemies))
+    # One row more than the square: the enemy portraits are this grid's
+    # second header, and Qt has no bottom header to put them in.
+    assert table.columnCount() == side
+    assert table.rowCount() == side + 1
+
+    def value(row, col):
+        item = table.item(row, col)
+        return None if item is None else item.data(PAIR_VALUE)
+
+    upper = [(r, c) for r in range(side) for c in range(side)
+             if value(r, c) is not None and c > r]
+    lower = [(r, c) for r in range(side) for c in range(side)
+             if value(r, c) is not None and c < r]
+    assert len(upper) == len(allies) * (len(allies) - 1) // 2
+    assert len(lower) == len(enemies) * (len(enemies) - 1) // 2
+    assert all(value(i, i) is None for i in range(side)), "the diagonal"
+
+    # Every cell is backed by its own ROW hero — which is what replaced the
+    # left-hand header column.
+    for row, col in upper:
+        assert table.item(row, col).data(PAIR_HERO) == allies[row]
+    for row, col in lower:
+        assert table.item(row, col).data(PAIR_HERO) == enemies[row]
+    # And the bottom row is the enemy axis, portraits with no numbers.
+    for col, hero in enumerate(enemies):
+        item = table.item(side, col)
+        assert item.data(PAIR_HEADER) and item.data(PAIR_HERO) == hero
+        assert item.data(PAIR_VALUE) is None
+
+
+def test_the_synergy_grid_has_no_left_header_and_counters_still_does(window):
+    """The row portraits moved into the cells, which is what freed the
+    lower triangle. Counters is a full 5x5 with no spare half, so it keeps
+    its column."""
+    window.refresh()
+    # `isHidden`, not `isVisible`: nothing inside an unshown window is
+    # visible, so only the first asks "did we hide this".
+    assert window.synergy_matrix.table.verticalHeader().isHidden()
+    assert not window.matchup_matrix.table.verticalHeader().isHidden()
+
+
+def test_the_enemy_half_is_not_sign_flipped(window):
+    """The one place in this app where green is not good for you, and it is
+    deliberate: each triangle is read as "how well does THIS team's pair
+    work", so a strong enemy pairing is a big green number on their side.
+    The halves are the rule, not the colour."""
+    from draft_assist.model import scoring
+    from draft_assist.ui.tables import PAIR_VALUE
+    window.refresh()
+    draft = window._current_draft()
+    enemies = list(draft.enemies)
+    if len(enemies) < 2:
+        pytest.skip("needs two enemies to have a pair at all")
+    table = window.synergy_matrix.table
+    raw = float(window.ds.delta_with[window.ds.index[enemies[1]],
+                                     window.ds.index[enemies[0]]])
+    assert table.item(1, 0).data(PAIR_VALUE) == pytest.approx(raw)
+    # The click view still flips, because there the enemy figures sit among
+    # your own with no line between them.
+    flipped = next(r for r in scoring.relations_to(window.ds, enemies[0],
+                                                   draft)
+                   if r.hero_id == enemies[1] and r.kind == "with")
+    assert flipped.delta == pytest.approx(-raw)
 
 
 def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
