@@ -44,6 +44,10 @@ FRAME_GOLD = "#c9a45a"
 RULE = "#808080"
 # The card and team headings — "Radiant", "Suggested picks".
 HEADING_PX = 21
+# The body, and with it every signed number in the app: the grids print
+# their deltas at this size, so the figure on a portrait is set from the
+# same value rather than from one that happens to match today.
+BODY_PX = 18
 
 # The app's own name. The same family as the body at its heaviest weight
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
@@ -69,7 +73,7 @@ QWidget {{
        game, so weight is legibility rather than decoration — and
        Alegreya's bold is one of the files bundled, so it resolves rather
        than being synthesised. */
-    font-size: 18px;
+    font-size: {BODY_PX}px;
     font-weight: bold;
 }}
 /* A QLabel INHERITS the rule above, so every label in the app painted a

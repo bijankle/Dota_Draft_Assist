@@ -115,19 +115,19 @@ def test_the_two_headers_agree_at_every_width(art, qapp):
     the card — so the portrait settles at a size of its own instead of
     following the window up. What has to hold at every width is that the
     two axes land on the same one."""
-    sizes = set()
     for width in (200, 340, 700, 1400):
         table = built(qapp, width=width)
         across, down = boxes(table)
         assert across == down, f"at {width}: {across} vs {down}"
-        sizes.add(across)
-    assert len(sizes) == 1, f"the size should not chase the window: {sizes}"
     # THE NUMBER SETS THE FLOOR, not HEADER_ICON_MAX: a column has to print
     # "+12.34" whatever the portrait would have liked to be, so the picture
-    # is whichever of the two is bigger.
-    table = built(qapp, width=1400)
-    digits = table.table.fontMetrics().horizontalAdvance("+12.34") + 10
-    assert boxes(table)[0] == max(HEADER_ICON_MAX, digits - 4)
+    # is whichever of the two is bigger. Above the width where the room
+    # runs out, that is the whole answer and more window does not move it.
+    roomy = [built(qapp, width=w) for w in (700, 1400)]
+    digits = roomy[0].table.fontMetrics().horizontalAdvance("+12.34") + 10
+    want = max(HEADER_ICON_MAX, digits - 4)
+    assert [boxes(t)[0] for t in roomy] == [want, want], \
+        "with room to spare the size should stop chasing the window"
 
 
 def test_the_portraits_are_never_smaller_than_the_floor(art, qapp):
@@ -460,3 +460,32 @@ def test_a_heros_total_is_its_four_pairs_not_a_row_of_the_grid(qapp):
             expected = sum(float(ds.delta_with[ds.index[hero], ds.index[other]])
                            for other in team if other != hero)
             assert totals[hero] == pytest.approx(expected)
+
+
+def test_a_counters_cell_has_the_same_halo_as_a_tiles_number(qapp):
+    """The grids printed their deltas as plain table text, which made them
+    the one place in the app where a signed number had no outline round
+    it. The halo is what separates a figure from whatever is behind it and
+    what makes a number in a cell and a number on a portrait read as the
+    same kind of object."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtGui import QImage, QPainter
+    from PyQt6.QtWidgets import QStyleOptionViewItem, QTableWidget
+    from draft_assist.ui import theme
+    from draft_assist.ui.tables import DeltaCellDelegate, delta_item
+
+    table = QTableWidget(1, 1)
+    table.setItem(0, 0, delta_item(0.0234))
+    picture = QImage(90, 30, QImage.Format.Format_ARGB32)
+    picture.fill(0)
+    painter = QPainter(picture)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 90, 30)
+    DeltaCellDelegate(table).paint(painter, option, table.model().index(0, 0))
+    painter.end()
+    colours = {picture.pixelColor(x, y).name()
+               for y in range(picture.height())
+               for x in range(picture.width())
+               if picture.pixelColor(x, y).alpha() > 0}
+    assert theme.GOOD in colours, "the number itself"
+    assert "#000000" in colours, "no halo round it"

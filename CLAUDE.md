@@ -677,18 +677,28 @@ credentials, and put the account at risk. Do not go there.
   the fill on top leaves the digit its full weight with the black only
   outside. (`CHROME` still exists and is still opaque — the NAME band uses
   it, and that is only ever drawn when there is no art to see through.)
-  **IT IS ONE FIXED SIZE** (`NUMBER_PX` = `theme.HEADING_PX`). It was
-  briefly scaled to the tile, to stop a badge covering the portrait on a
-  narrow window — and that made the digits unreadable at exactly the size
-  where the window is smallest and the number matters most. With the plate
-  gone the size no longer has to buy back space from the art, so it is
-  fixed and it stays fixed: shrink the window and the tiles get smaller
-  under a number that goes on being legible. It is the CARD HEADING's
-  size, which makes the figure on a portrait exactly the size of the
-  "-3.0" in "Radiant | -3.0" beside it — one value, `theme.HEADING_PX`, so
-  the two cannot drift apart. The SYNERGY AND COUNTER GRIDS are not part
-  of this and were never changed: they have no font rule of their own and
-  take the body size.
+  **IT IS ONE FIXED SIZE, AND IT IS THE GRIDS'** (`NUMBER_PX` =
+  `theme.BODY_PX`). It was briefly scaled to the tile, to stop a badge
+  covering the portrait on a narrow window — and that made the digits
+  unreadable at exactly the size where the window is smallest and the
+  number matters most. With the plate gone the size no longer has to buy
+  back space from the art, so it is fixed and it stays fixed: shrink the
+  window and the tiles get smaller under a number that goes on being
+  legible. It was briefly the CARD HEADING's size, so a figure on a
+  portrait was the height of the "-3.0" beside "Radiant"; at the user's
+  request it is now the BODY size, which is what the grids print their
+  deltas at. EVERY signed number in the app is therefore one size —
+  on a pick, on a suggestion, in a triangle, in a counters cell — and
+  there is one value to change rather than two to keep in step.
+  **AND EVERY ONE OF THEM IS HALOED** (`tilekit.paint_number`,
+  `tables.DeltaCellDelegate`). The two grids printed their deltas as
+  ordinary table text, which made them the one place in the app where a
+  signed number had no outline round it. The halo is not decoration: it
+  separates the figure from whatever is behind it, and it is what makes a
+  number in a cell and a number on a portrait read as the same kind of
+  object rather than as two conventions. `tilekit.stroked` is the one
+  place the stroke-then-fill happens, so the corner badge and the centred
+  cell cannot drift apart.
   **Except when it will not fit** (`NUMBER_MIN_PX`). At the window's
   narrowest a "+21.7" is wider than the tile, and a number clipped to
   "+21." is not a smaller number, it is a WRONG one — so there, and only
@@ -791,13 +801,28 @@ credentials, and put the account at risk. Do not go there.
   wrong shape. It is CENTRED in a full-width slot rather than stretched,
   because a leaderboard is a fixed-size creative wherever it is served, and
   it fits inside the window's own ~1464px floor.
+  **ON MEANS ON: the banner is up the whole time**, at the user's request.
+  It began as five seconds in every fifteen, which was worse in both
+  directions — an ad that appears out of nothing mid-draft pulls the eye
+  at exactly the wrong moment, and one that is always there is furniture
+  after ten minutes. There is no timer in the widget at all now.
   **It reserves its height while ads are ON and NONE while they are off.**
-  A banner that appears and disappears while pushing the ten picks up and
-  down is a board that moves under the cursor mid-draft, which is how a
-  pick gets misclicked — so between the showing and hidden halves of the
-  cycle only the CONTENT changes. But with the feature switched off there
-  is no cycle to hold still for, and reserving the space anyway was a strip
-  of dead window above the draft for something nobody turned on.
+  A banner that came and went while pushing the ten picks up and down
+  would be a board that moves under the cursor mid-draft, which is how a
+  pick gets misclicked. With the feature switched off there is nothing to
+  hold still for, and reserving the space anyway was a strip of dead
+  window above the draft for something nobody turned on.
+  **THE CREATIVE IS PAINTED, and it is nobody's real advertisement**
+  (`adslot.leaderboard`). A genuine banner off the web is somebody's
+  copyrighted artwork, and this repository carries no artwork that is not
+  its own — the same rule that keeps Valve's portraits out of it. So the
+  slot is filled by a house creative drawn in code for a product that does
+  not exist: brand, headline, one line of copy, a call to action and the
+  "Ad" marker every network requires, at the right size and with the right
+  amount of noise beside a draft. The copy is ELIDED against the button's
+  left edge rather than positioned by hand, because a line of copy running
+  under the call to action is the one mistake a real banner never makes
+  and the one a fixed x position makes as soon as the wording changes.
   Whatever eventually fills it must fetch on its own timer, off the draft
   path — the live loop still never makes network calls.
   **THE REVENUE PLAN DEPENDS ON THE WEB VERSION, which is parked.** The ad
@@ -1192,7 +1217,29 @@ credentials, and put the account at risk. Do not go there.
   layout for the same reason rather than through `addToolBar`. What the
   system bar was providing has to be put back by hand and that is the whole
   cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
-  the bottom-right does the sizing. **The toolbar rides on the TAB STRIP**
+  the bottom-right does the sizing.
+  **THE WINDOW IS LOCKED AT ITS SIZE, and View ▸ Resize window (lock)
+  unlocks it** (`_apply_window_lock`, `ui_settings.window_locked`, default
+  on, at the user's request). A draft is read at a glance with the cursor
+  moving fast near the window's edges, and a window that resizes when you
+  meant to click a pick has cost the pick. Ticked is locked — the "(lock)"
+  in the label is what the tick does — and the way to change a locked size
+  is untick, drag the corner, tick again, which locks whatever it is NOW
+  and writes that to disk, or the next start would undo it. Four things
+  make the lock real rather than decorative: `setFixedSize`, the grip
+  HIDDEN (a corner that cannot size anything reads as broken rather than
+  as switched off), maximise refused with a line saying why, and Reset
+  window position moving without resizing. The size is clamped to the
+  layout's own minimum on the way in, because `setFixedSize` replaces the
+  minimum as well as the maximum and a remembered size from a narrower
+  build would otherwise clip the grids rather than being refused; and
+  unlocking puts the derived floor back and takes the ceiling OFF, or the
+  window would unlock into a cage. Two traps: the tick is set at startup
+  with SIGNALS BLOCKED, since setting it to match the file is not the user
+  ticking it and letting it through announced "Window size locked" over
+  the status line on every start; and a locked window makes `resize()` a
+  no-op, so a test that sizes the window has to unlock it first or it is
+  testing one width. **The toolbar rides on the TAB STRIP**
   (`tabs.setCornerWidget`), not in a band of its own: Record, Auto and
   Transparency are three controls and did not need a whole row of window
   height beside a half-empty tab row. It carries no expanding spacer there

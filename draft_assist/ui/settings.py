@@ -59,9 +59,18 @@ DEFAULTS = {
     # the prompt off.
     "data_reminder_days": DATA_REMINDER_DAYS,
     # Off by default. It is the user's own app on the user's own machine,
-    # and something that covers part of the draft every ten seconds has to
-    # be asked for rather than assumed.
+    # and something that sits above the draft the whole time it is running
+    # has to be asked for rather than assumed.
     "ads_enabled": False,
+    # THE WINDOW IS LOCKED AT ITS SIZE, at the user's request, and it is
+    # unlocked from View > Resize window (lock). A draft is read at a
+    # glance with the cursor moving fast near the window's edges, and a
+    # window that resizes when you meant to click a pick has cost the
+    # pick. The size it is locked AT is remembered too, or unlocking,
+    # resizing and locking again would be undone by the next restart.
+    "window_locked": True,
+    "window_w": 1240,
+    "window_h": 820,
 }
 
 

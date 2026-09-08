@@ -274,9 +274,11 @@ class MainWindow(QMainWindow):
         # five matrix columns wide enough to print "+12.34", and five pick
         # tiles wide enough to still show a portrait — so the floor is
         # whichever of them needs more, doubled for the two halves.
-        self.setMinimumWidth(
-            2 * max(minimum_grid_width(), minimum_panel_width()) + 44)
-        self.resize(1240, 820)
+        self._floor_w = 2 * max(minimum_grid_width(),
+                                minimum_panel_width()) + 44
+        self.setMinimumWidth(self._floor_w)
+        self.resize(int(self.settings.get("window_w", 1240) or 1240),
+                    int(self.settings.get("window_h", 820) or 820))
         self._build_menus()
         self._build()
         self._refresh_sources()
@@ -287,6 +289,20 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
+        # AFTER `_build`, because a fixed size has to be at least what the
+        # layout can honestly draw and there is no layout to ask before
+        # that. The action's own tick is set here rather than when it was
+        # created, for the same reason.
+        # SIGNALS BLOCKED: setting the tick to match the file is not the
+        # user ticking it, and letting it through announced "Window size
+        # locked" in the status bar on every start — which then held the
+        # line for five seconds against everything the app had to say
+        # about the game.
+        self.lock_action.blockSignals(True)
+        self.lock_action.setChecked(
+            bool(self.settings.get("window_locked", True)))
+        self.lock_action.blockSignals(False)
+        self._apply_window_lock()
         # Before the window is shown, because the taskbar reads a window's
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
@@ -363,6 +379,16 @@ class MainWindow(QMainWindow):
         # `_add_transparency_menu`), once the slider it holds exists — the
         # toolbar is built after the menu bar and the slider belongs to it.
         self.view_menu = view_menu
+        # LOCKED BY DEFAULT, at the user's request. Ticked is locked —
+        # the "(lock)" in the label is what the tick does — and unticking
+        # it hands the size back to the resize corner.
+        self.lock_action = QAction("&Resize window (lock)", self)
+        self.lock_action.setCheckable(True)
+        self.lock_action.setStatusTip(
+            "Ticked: the window stays exactly the size it is now. Untick "
+            "to resize it, then tick again to lock the new size.")
+        self.lock_action.toggled.connect(self._set_window_locked)
+        view_menu.addAction(self.lock_action)
         self._act(view_menu, "&Reset window position",
                   self._reset_overlay_position)
         view_menu.addSeparator()
@@ -981,7 +1007,8 @@ class MainWindow(QMainWindow):
         # where the window does. Sharing the bar means the grip sits on the
         # message's own background, which is what a resize corner does in
         # every other application.
-        self.status.addPermanentWidget(ResizeGrip(self.status))
+        self.resize_grip = ResizeGrip(self.status)
+        self.status.addPermanentWidget(self.resize_grip)
         self._shell_lay.addWidget(self.status)
 
     def _build_sessions_tab(self) -> QWidget:
@@ -1339,10 +1366,65 @@ class MainWindow(QMainWindow):
     def _reset_overlay_position(self) -> None:
         """Rescue for a window dragged off-screen or onto a monitor that is
         no longer attached. A frameless window has no system menu to do
-        this from, so the app has to offer it."""
+        this from, so the app has to offer it.
+
+        It MOVES; it only resizes when the size is not locked. Rescuing a
+        window from off-screen and having it change size on the way back
+        is two things where the user asked for one.
+        """
         self.move(60, 60)
-        self.resize(1240, 820)
+        if not self._locked():
+            self.resize(1240, 820)
         self._say("Window moved back to the top-left", 5000)
+
+    # ---- the window's own size -----------------------------------------
+    def _locked(self) -> bool:
+        return bool(self.settings.get("window_locked", True))
+
+    def _set_window_locked(self, on: bool) -> None:
+        """View ▸ Resize window (lock). Ticked is locked.
+
+        Locking takes the size the window is NOW, so the way to change a
+        locked size is untick, drag the corner, tick again — and that new
+        size is written to disk, because otherwise the next start would
+        undo it.
+        """
+        self.settings["window_locked"] = bool(on)
+        self._apply_window_lock()
+        ui_settings.save(self.settings)
+        self._say("Window size locked" if on
+                  else "Window size unlocked — drag the bottom-right corner",
+                  5000)
+
+    def _apply_window_lock(self) -> None:
+        """Fix the window at its current size, or hand it back.
+
+        The size is clamped to what the layout can actually draw:
+        `setFixedSize` replaces the minimum as well as the maximum, so a
+        remembered size from a narrower build would otherwise clip the
+        grids rather than being refused. Unlocking puts the derived floor
+        back and takes the ceiling off, or unlocking would leave the
+        window capped at whatever size it was locked at.
+        """
+        locked = self._locked()
+        if locked:
+            floor = self.minimumSizeHint()
+            width = max(self.width(), self._floor_w, floor.width())
+            height = max(self.height(), floor.height())
+            self.settings["window_w"] = int(width)
+            self.settings["window_h"] = int(height)
+            self.setFixedSize(width, height)
+        else:
+            self.setMinimumSize(self._floor_w, 0)
+            # Qt's own "no maximum". There is no constant for it in PyQt's
+            # namespace, and leaving the locked size in place as a maximum
+            # would unlock the window into a cage.
+            self.setMaximumSize(16_777_215, 16_777_215)
+        grip = getattr(self, "resize_grip", None)
+        if grip is not None:
+            # A corner that cannot size anything is a control that does
+            # nothing, which reads as broken rather than as switched off.
+            grip.setVisible(not locked)
 
     # ---- game data (GSI) ----------------------------------------------
     def _install_gsi(self) -> None:
@@ -2448,6 +2530,10 @@ class MainWindow(QMainWindow):
         appicon.claim_window_identity(int(self.winId()))
 
     def _toggle_maximised(self) -> None:
+        if self._locked() and not self.isMaximized():
+            self._say("The window size is locked — View ▸ Resize window "
+                      "(lock) unlocks it", 6000)
+            return
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
     def _open_settings(self) -> None:
@@ -3405,6 +3491,11 @@ class MainWindow(QMainWindow):
         return self._names
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        # The size it was left at, so an unlocked window reopens where the
+        # user left it rather than at the built-in 1240x820.
+        self.settings["window_w"] = int(self.width())
+        self.settings["window_h"] = int(self.height())
+        ui_settings.save(self.settings)
         # A modeless task owns a subprocess that would otherwise keep POSTing
         # to a port nobody is listening on any more.
         for dialog in list(self._open_tasks):

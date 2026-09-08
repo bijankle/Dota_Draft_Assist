@@ -43,6 +43,13 @@ def window(qapp):
     rules, meta = items_mod.load_rules(RULES_FILE)
     win = MainWindow(ds, provider, rules, meta)
     win.timer.stop()  # drive refresh manually
+    # UNLOCKED for the tests that size the window. The window ships locked
+    # at its own size (View ▸ Resize window), which is a fixed size and so
+    # makes `resize()` a no-op — a layout test that cannot change the
+    # width is testing one width. Set on the dict rather than through
+    # `_set_window_locked`, which would also claim the status line.
+    win.settings["window_locked"] = False
+    win._apply_window_lock()
     yield win
     win.close()
 
@@ -2669,20 +2676,21 @@ def test_the_number_is_outlined_rather_than_plated(qapp):
             f"{width}x{height}: that is a plate, not an outline"
 
 
-def test_the_number_is_one_fixed_size_tied_to_the_headings(qapp):
+def test_every_signed_number_in_the_app_is_one_size(qapp):
     """It was briefly scaled to the tile, which fixed a badge covering the
     portrait on a narrow window and then made the digits unreadable at
     exactly the size where the window is smallest. With the plate gone the
-    size no longer has to buy back space from the art."""
+    size no longer has to buy back space from the art.
+
+    And it is the GRIDS' size, at the user's request: the counters cells
+    print their deltas at the body size, so a figure on a portrait is set
+    from that same value rather than from one that happens to match."""
     from PyQt6.QtCore import QRect
     from PyQt6.QtGui import QFont, QImage, QPainter
     from draft_assist.ui import theme, tilekit
-    assert tilekit.NUMBER_PX == theme.HEADING_PX
-    assert f"font-size: {theme.HEADING_PX}px" in theme.STYLESHEET, \
-        "the heading and the number have to be sized off one number"
-    # The grids were NOT part of this: they have no font rule of their own
-    # and take the body size, which has not moved.
-    assert "font-size: 18px;" in theme.STYLESHEET
+    assert tilekit.NUMBER_PX == theme.BODY_PX
+    assert f"font-size: {theme.BODY_PX}px" in theme.STYLESHEET, \
+        "the body and the number have to be sized off one number"
 
     def ink(width, height):
         picture = QImage(width, height, QImage.Format.Format_ARGB32)
@@ -3062,6 +3070,10 @@ def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
     ds = demo_dataset()
     win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
     win.timer.stop()
+    # Unlocked, or `resize` is a no-op and this measures one width — the
+    # window ships locked at its own size (View ▸ Resize window).
+    win.settings["window_locked"] = False
+    win._apply_window_lock()
     try:
         win.show()
         win.resize(1500, 950)
@@ -3291,44 +3303,41 @@ def test_a_full_board_leaves_the_two_grids_the_same_size(window, qapp):
 
 def test_the_ad_slot_is_off_unless_it_is_asked_for(qapp):
     """It is the user's own app on their own machine, and something that
-    covers part of the board every few seconds has to be asked for."""
+    sits over the board has to be asked for."""
     from draft_assist.ui import settings as ui_settings
     from draft_assist.ui.adslot import AdSlot
     assert ui_settings.DEFAULTS["ads_enabled"] is False
     slot = AdSlot()
     assert not slot.showing
     slot.set_enabled(True)
-    assert not slot.showing, "it waits its turn rather than opening on one"
-    slot._turn()
-    assert slot.showing
-    slot._turn()
-    assert not slot.showing
+    assert slot.showing, "on means on, from the moment it is switched on"
     slot.set_enabled(False)
     assert not slot.showing
     slot.close()
 
 
-def test_the_ad_slot_holds_its_height_across_the_cycle(qapp):
-    """A banner that appears and disappears while pushing the ten picks up
-    and down the window is a board that moves under the cursor mid-draft,
-    which is how a pick gets misclicked. So between the showing and hidden
-    halves only the CONTENT changes."""
+def test_an_ad_that_is_on_stays_on(qapp):
+    """It began as five seconds in every fifteen, which was worse in both
+    directions: an ad that appears out of nothing mid-draft pulls the eye
+    at exactly the wrong moment. At the user's request it is constant —
+    off is off, and on is a strip that never moves."""
     from draft_assist.ui import adslot
     slot = adslot.AdSlot()
     slot.set_enabled(True)
     tall = slot.height()
     assert tall == adslot.HEIGHT
-    slot._turn()
+    assert slot.creative.pixmap() is not None
+    assert not slot.creative.pixmap().isNull(), "an empty slot is not an ad"
+    # Nothing on a clock: no timer anywhere on the widget to turn it over.
+    from PyQt6.QtCore import QTimer
+    assert not slot.findChildren(QTimer), "the cycle is gone"
     assert slot.showing and slot.height() == tall
-    slot._turn()
-    assert not slot.showing and slot.height() == tall
     slot.close()
 
 
 def test_ads_switched_off_cost_no_window_at_all(qapp):
-    """With no cycle running there is nothing to hold still for, and a
-    permanent strip of dead window above the draft for a switched-off
-    feature is worse than either."""
+    """A strip of dead window above the draft for a switched-off feature
+    is worse than either state."""
     from draft_assist.ui import adslot
     slot = adslot.AdSlot()
     assert slot.height() == 0, "off by default, so it must take no room"
@@ -3352,6 +3361,17 @@ def test_the_creative_is_a_real_ad_unit(qapp):
     slot.resize(3440, adslot.HEIGHT)
     _settle(qapp)
     assert slot.creative.width() == adslot.AD_WIDTH, "it stretched"
+    # And the creative itself is that unit, drawn rather than downloaded:
+    # a real banner off the web is somebody's copyrighted artwork, and
+    # this repository carries nobody else's.
+    art = adslot.leaderboard()
+    assert (art.width(), art.height()) == (adslot.AD_WIDTH, adslot.AD_HEIGHT)
+    picture = art.toImage()
+    colours = {picture.pixelColor(x, y).name()
+               for y in range(0, picture.height(), 3)
+               for x in range(0, picture.width(), 3)}
+    assert len(colours) > 20, "a flat rectangle is not a creative"
+    assert adslot.AD_ACCENT in colours, "no call to action on it"
     slot.close()
 
 
@@ -3373,3 +3393,82 @@ def test_the_ad_setting_reaches_the_slot(window):
     window.settings["ads_enabled"] = False
     window.ad_slot.set_enabled(False)
     assert not window.ad_slot._enabled
+
+
+def test_the_window_ships_locked_at_its_own_size(qapp):
+    """A draft is read at a glance with the cursor moving fast near the
+    window's edges, and a window that resizes when you meant to click a
+    pick has cost the pick. Locked is the default and the tick in View
+    says so."""
+    from draft_assist.ui import settings as ui_settings
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    assert ui_settings.DEFAULTS["window_locked"] is True
+    ds = demo_dataset()
+    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
+    win.timer.stop()
+    try:
+        assert win.lock_action.isChecked()
+        size = win.size()
+        assert win.minimumSize() == win.maximumSize() == size, \
+            "a locked window has one size, not a range"
+        win.resize(size.width() + 300, size.height() + 200)
+        _settle(qapp)
+        assert win.size() == size, "it should not have moved"
+        assert win.resize_grip.isHidden(), \
+            "a corner that cannot size anything reads as broken"
+    finally:
+        win.close()
+
+
+def test_unticking_the_lock_hands_the_size_back(qapp):
+    """Untick, drag the corner, tick again — and the new size is written
+    to disk, or the next start would undo it."""
+    from draft_assist.ui import settings as ui_settings
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    ds = demo_dataset()
+    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
+    win.timer.stop()
+    try:
+        win.lock_action.setChecked(False)          # as the menu does it
+        assert win.maximumWidth() > win.width(), "still capped"
+        assert not win.resize_grip.isHidden()
+        # The floor is still the derived one: a window narrower than that
+        # is a grid that has stopped being a grid.
+        assert win.minimumWidth() == win._floor_w
+        win.resize(win._floor_w + 260, win.height() + 120)
+        _settle(qapp)
+        win.lock_action.setChecked(True)
+        # Locked at whatever it is NOW — the size is read off the window
+        # rather than remembered from before, because an unshown window
+        # applies a resize a beat later than it is asked for.
+        assert win.minimumSize() == win.maximumSize() == win.size()
+        assert win.width() >= win._floor_w + 260, "it kept the wider size"
+        saved = ui_settings.load()
+        assert saved["window_locked"] is True
+        assert saved["window_w"] == win.width()
+        assert saved["window_h"] == win.height()
+    finally:
+        win.close()
+
+
+def test_locking_never_squeezes_the_window_below_what_it_can_draw(qapp):
+    """`setFixedSize` replaces the minimum as well as the maximum, so a
+    remembered size from a narrower build would clip the grids rather than
+    being refused."""
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    ds = demo_dataset()
+    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
+    win.timer.stop()
+    try:
+        win.settings["window_locked"] = False
+        win._apply_window_lock()
+        win.resize(400, 200)                  # narrower than the floor
+        win.settings["window_locked"] = True
+        win._apply_window_lock()
+        assert win.width() >= win._floor_w
+        assert win.height() >= win.minimumSizeHint().height()
+    finally:
+        win.close()

@@ -410,6 +410,31 @@ PAIR_SIDE = PAIR_HERO + 3
 PAIR_VEIL = 110
 
 
+class DeltaCellDelegate(QStyledItemDelegate):
+    """A grid cell's number, with the same black halo the tiles' numbers have.
+
+    The two grids printed their deltas as ordinary table text, which made
+    them the one place in the app where a signed number had no outline
+    round it. The halo is not decoration: it separates the figure from
+    whatever is behind it, and it is what makes a number in a cell and a
+    number on a portrait read as the same kind of object rather than as
+    two conventions. Nothing else about the cell changes — same text, same
+    colour rule, same centred position.
+    """
+
+    def paint(self, painter, option, index):        # noqa: N802 - Qt naming
+        from . import tilekit
+        text = index.data(Qt.ItemDataRole.DisplayRole)
+        if not text:
+            return
+        # The colour the item was given, which is the sign's colour; a
+        # cell of exactly zero is given none and takes the body colour.
+        brush = index.data(Qt.ItemDataRole.ForegroundRole)
+        colour = brush.color().name() if brush is not None else theme.TEXT
+        tilekit.paint_number(painter, option.rect, str(text), colour,
+                             option.font)
+
+
 class PairCellDelegate(QStyledItemDelegate):
     """A grid cell with its hero's portrait behind the number.
 
@@ -672,6 +697,7 @@ class MatrixTable(QWidget):
             self._show_outline()
             return
         self.table.setStyleSheet("")            # back to the app's own
+        self.table.setItemDelegate(self._delta_delegate())
 
         # The sections this was last applied to are about to be replaced,
         # so the cached figure no longer describes anything.
@@ -802,6 +828,14 @@ class MatrixTable(QWidget):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._apply_icon_box()
         self._fit_height()
+
+    def _delta_delegate(self):
+        if getattr(self, "_deltas", None) is None:
+            # Kept on the widget for the same reason the pair one is: a
+            # delegate the table does not own is collected the moment this
+            # returns, and the cells fall back to Qt's own with no halo.
+            self._deltas = DeltaCellDelegate(self.table)
+        return self._deltas
 
     def _pair_delegate(self):
         if getattr(self, "_pairs", None) is None:

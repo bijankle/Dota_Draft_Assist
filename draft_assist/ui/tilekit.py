@@ -44,17 +44,21 @@ from .textfit import fit
 # readable rather than what makes them shout.
 NAME_MAX_PT = 14
 NAME_MIN_PT = 9
-# THE NUMBER IS ONE FIXED SIZE. It was briefly scaled to the tile — which
-# fixed a badge covering the portrait on a narrow window, and then made
-# the digits unreadable at exactly the size where the window is smallest
-# and the number matters most. With the plate gone (see `paint_badge`) the
-# size no longer has to buy back space from the art, so it is fixed and it
-# stays fixed: shrink the window and the tiles get smaller under a number
-# that goes on being legible. It is the CARD HEADING's size — 1.6x what a
-# first pass at "fixed" tried, which was too small to read once the halo
-# went round it, and the same height as "Radiant" is a size with a reason
-# rather than a number somebody picked.
-NUMBER_PX = theme.HEADING_PX
+# THE NUMBER IS ONE FIXED SIZE, AND IT IS THE GRIDS'. It was briefly
+# scaled to the tile — which fixed a badge covering the portrait on a
+# narrow window, and then made the digits unreadable at exactly the size
+# where the window is smallest and the number matters most. With the plate
+# gone (see `paint_badge`) the size no longer has to buy back space from
+# the art, so it is fixed and it stays fixed: shrink the window and the
+# tiles get smaller under a number that goes on being legible.
+#
+# It was briefly the CARD HEADING's size, so a figure on a portrait was
+# the height of the "-3.0" beside "Radiant". At the user's request it is
+# now the BODY size, which is what the counters grid prints its deltas at
+# — so every signed number in the app is one size, whether it sits on a
+# pick, on a suggestion, in a triangle or in a counters cell, and there is
+# one value to change rather than two to keep in step.
+NUMBER_PX = theme.BODY_PX
 # Only ever used when the tile is too narrow to print the figure at all.
 NUMBER_MIN_PX = 9
 
@@ -137,9 +141,7 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     behind it — and costs only the ink of the outline itself, so the art
     shows through between and around the characters.
 
-    The stroke is drawn FIRST and the fill on top, because a centred
-    stroke eats half its width into the glyph; painting the colour over it
-    leaves the letter its full weight with the black only outside.
+    The stroke goes on first and the fill over it — see `stroked`.
     """
     if not text:
         return
@@ -164,19 +166,57 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # which on a small tile is a number apparently hovering in the middle
     # of the art rather than sitting in its corner.
     edge = BADGE_INSET + stroke_width() / 2
+    stroked(painter, QPointF(box.right() - edge - width,
+                             box.bottom() - edge - metrics.descent()),
+            text, colour, font)
+
+
+def paint_number(painter: QPainter, box: QRect, text: str, colour: str,
+                 base: QFont) -> None:
+    """The same number, CENTRED in a grid cell rather than in a corner.
+
+    The two grids print their deltas as ordinary table text, which meant
+    the one place in the app where a signed number had no outline round
+    it — and the halo is not decoration: it is what keeps a figure legible
+    against whatever is behind it, and what makes a number in a cell and a
+    number on a portrait read as the same kind of thing. Same size, same
+    stroke, same colour rule; only the position differs, because a cell
+    has no picture to sit in the corner of.
+    """
+    if not text:
+        return
+    font = QFont(base)
+    font.setPixelSize(NUMBER_PX)
+    font.setBold(True)
+    metrics = QFontMetricsF(font)
+    width = metrics.horizontalAdvance(text)
+    origin = QPointF(box.center().x() - width / 2,
+                     box.center().y() + (metrics.ascent()
+                                         - metrics.descent()) / 2)
+    stroked(painter, origin, text, colour, font)
+
+
+def stroked(painter: QPainter, origin: QPointF, text: str, colour: str,
+            font: QFont) -> None:
+    """Text with a black halo round it, at a baseline-left origin.
+
+    The stroke is drawn FIRST and the fill on top, because a centred
+    stroke eats half its width into the glyph; painting the colour over it
+    leaves the letter its full weight with the black only outside.
+    """
     path = QPainterPath()
-    path.addText(QPointF(box.right() - edge - width,
-                         box.bottom() - edge - metrics.descent()),
-                 font, text)
+    path.addText(origin, font, text)
+    painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(STROKE, stroke_width(),
+    painter.setPen(QPen(STROKE, stroke_width(font.pixelSize()),
                         Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
                         Qt.PenJoinStyle.RoundJoin))
     painter.drawPath(path)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(colour))
     painter.drawPath(path)
+    painter.restore()
 
 
 def paint_art(painter: QPainter, box: QRect, art) -> bool:
