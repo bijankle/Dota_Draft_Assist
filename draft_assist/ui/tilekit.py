@@ -30,8 +30,9 @@ One point size for both names, because the request was that they match:
 10pt, between the items' 9 and the heroes' 11.
 """
 
-from PyQt6.QtCore import QRect, QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
+from PyQt6.QtCore import QPointF, QRect, QRectF, Qt
+from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QPainter,
+                         QPainterPath, QPen)
 
 from . import theme
 from .textfit import fit
@@ -43,7 +44,17 @@ from .textfit import fit
 # readable rather than what makes them shout.
 NAME_MAX_PT = 14
 NAME_MIN_PT = 9
+# THE NUMBER SCALES WITH THE TILE. It was a flat 14pt whatever the tile
+# was, and the tiles now run from 36 to 74 pixels tall — so on a narrow
+# window, or with twenty suggestions wrapped onto two rows, the badge
+# covered most of the portrait it was annotating. A number you cannot
+# read the hero under is a number about nothing. The fraction is set so
+# the biggest tile still gets NUMBER_PT and everything below it comes
+# down in step; the floor is where the digits stop being legible at all,
+# and below that the badge is better small than gone.
 NUMBER_PT = 14
+NUMBER_MIN_PT = 7
+NUMBER_OF_HEIGHT = 0.19
 
 # The name strip and the number badge share one plate, and it is SOLID
 # BLACK. It was 65% black, which let the portrait through behind the
@@ -55,6 +66,13 @@ NUMBER_PT = 14
 CHROME = QColor(0, 0, 0)
 BADGE_PAD_X = 5
 BADGE_PAD_Y = 2
+# The outline round the digits, and how thick it is relative to the point
+# size — a 7pt number needs proportionally more than a 14pt one to read at
+# all, hence the floor in `stroke_width`.
+STROKE = QColor(0, 0, 0)
+STROKE_OF_SIZE = 0.22
+# How far the number sits off the tile's bottom-right corner.
+BADGE_INSET = 1
 
 # A tile in one of the two STRIPS (items, suggested picks). These are the
 # FALLBACK size only — before the draft panel has been laid out there is
@@ -101,30 +119,57 @@ def paint_band(painter: QPainter, band: QRect, text: str, base: QFont,
                   for line in lines))
 
 
+def number_pt(box_height: int) -> int:
+    """The badge's point size on a tile this tall."""
+    return max(NUMBER_MIN_PT,
+               min(NUMBER_PT, round(int(box_height) * NUMBER_OF_HEIGHT)))
+
+
+def stroke_width(point_size: int) -> float:
+    """How thick the outline round the digits is, at this size."""
+    return max(2.0, point_size * STROKE_OF_SIZE)
+
+
 def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
                 base: QFont) -> None:
-    """The signed number, bottom-right, no bigger than the digits need.
+    """The signed number, snug into the bottom-right, OUTLINED not plated.
 
-    A full-width bar there would hide as much of the picture as the name
-    used to, which is the whole reason the badge is cut to fit.
+    It used to sit on a solid black rounded plate. The plate is the part
+    that hides the hero: even cut to the digits it is a rectangle of the
+    portrait gone, and on a small tile that rectangle is most of the face
+    you are reading the tile by. A stroke traced round the letterforms
+    does the same job — it separates the number from whatever colour is
+    behind it — and costs only the ink of the outline itself, so the art
+    shows through between and around the characters.
+
+    The stroke is drawn FIRST and the fill on top, because a centred
+    stroke eats half its width into the glyph; painting the colour over it
+    leaves the letter its full weight with the black only outside.
     """
     if not text:
         return
     font = QFont(base)
-    font.setPointSize(NUMBER_PT)
+    font.setPointSize(number_pt(box.height()))
     font.setBold(True)
-    painter.setFont(font)
     metrics = QFontMetricsF(font)
     width = metrics.horizontalAdvance(text)
-    badge = QRectF(box.right() - 3 - width - 2 * BADGE_PAD_X,
-                   box.bottom() - 3 - metrics.height() - 2 * BADGE_PAD_Y,
-                   width + 2 * BADGE_PAD_X,
-                   metrics.height() + 2 * BADGE_PAD_Y)
+    # SNUG INTO THE CORNER. It used to float three pixels off both edges,
+    # which on a small tile is a number apparently hovering in the middle
+    # of the art rather than sitting in its corner.
+    edge = BADGE_INSET + stroke_width(font.pointSize()) / 2
+    path = QPainterPath()
+    path.addText(QPointF(box.right() - edge - width,
+                         box.bottom() - edge - metrics.descent()),
+                 font, text)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(STROKE, stroke_width(font.pointSize()),
+                        Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin))
+    painter.drawPath(path)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(CHROME)
-    painter.drawRoundedRect(badge, 3, 3)
-    painter.setPen(QColor(colour))
-    painter.drawText(badge, int(Qt.AlignmentFlag.AlignCenter), text)
+    painter.setBrush(QColor(colour))
+    painter.drawPath(path)
 
 
 def paint_art(painter: QPainter, box: QRect, art) -> bool:

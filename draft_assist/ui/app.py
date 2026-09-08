@@ -351,6 +351,10 @@ class MainWindow(QMainWindow):
                   "Shows the real GSI limitation: enemy slots stay empty")
 
         view_menu = bar.addMenu("&View")
+        # Transparency is inserted at the TOP of this menu later (see
+        # `_add_transparency_menu`), once the slider it holds exists — the
+        # toolbar is built after the menu bar and the slider belongs to it.
+        self.view_menu = view_menu
         self._act(view_menu, "&Reset window position",
                   self._reset_overlay_position)
         view_menu.addSeparator()
@@ -414,6 +418,10 @@ class MainWindow(QMainWindow):
         self.record_button = chrome.RecordButton()
         self.record_button.clicked.connect(self._toggle_recording)
         toolbar.addWidget(self.record_button)
+        # Recording and Auto are two separate decisions — press this now,
+        # versus do it by itself every time — so they get a rule between
+        # them like everything else on the row.
+        toolbar.addWidget(chrome.Divider())
 
         # A TICK, not a filled square: a coloured box says something is
         # different about this control, not that it is switched on.
@@ -470,21 +478,10 @@ class MainWindow(QMainWindow):
         # No expanding spacer: on the tab strip the toolbar is sized to
         # its contents, and a spacer there would push the controls off the
         # right edge of the window.
-        # OUR rule, not `addSeparator`: a QToolBar separator under a
-        # stylesheet draws whatever the style feels like, which here was
-        # nothing at all.
-        toolbar.addWidget(chrome.Divider())
-        toolbar.addWidget(QLabel("Transparency"))
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setFixedWidth(90)
-        self.opacity_slider.setRange(30, 100)
-        self.opacity_slider.setToolTip(
-            "How much of Dota shows through this window")
-        self.opacity_slider.setValue(
-            int(float(self.settings.get("overlay_opacity", 0.7)) * 100))
-        self.opacity_slider.valueChanged.connect(
-            lambda value: self._set_see_through(value / 100.0))
-        toolbar.addWidget(self.opacity_slider)
+        # TRANSPARENCY IS IN THE VIEW MENU, not on this row. It is set
+        # once and then left alone for the evening, and a row read at a
+        # glance mid-draft should hold the things pressed mid-draft.
+        self._add_transparency_menu()
 
         # There is no capture pill: it said the same sentence as the status
         # bar in less room, one line higher up. Keeping it around invisible
@@ -1531,6 +1528,57 @@ class MainWindow(QMainWindow):
         self.manual.clear()
         self.last_draft_key = None
         self._say("Cleared hand-entered draft slots", 5000)
+
+    def _add_transparency_menu(self) -> None:
+        """View ▸ Transparency: the same slider, in a menu.
+
+        A submenu of fixed percentages would have been more menu-like and
+        worse: this is a value tuned by eye against a running game, a few
+        percent at a time, so it stays a slider. A `QWidgetAction` is how a
+        real widget goes in a menu, and the menu stays open while the
+        handle is dragged, which is the whole point.
+        """
+        from PyQt6.QtWidgets import QWidgetAction
+
+        menu = self.view_menu.addMenu("&Transparency")
+        row = QWidget(menu)
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(14, 6, 14, 6)
+        lay.setSpacing(10)
+        # Parented from the start: a parentless QWidget is a WINDOW the
+        # moment anything shows it, and this one is built long before the
+        # menu is ever opened.
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal, row)
+        self.opacity_slider.setFixedWidth(140)
+        self.opacity_slider.setRange(30, 100)
+        self.opacity_slider.setToolTip(
+            "How much of Dota shows through this window")
+        self.opacity_slider.setValue(
+            int(float(self.settings.get("overlay_opacity", 0.7)) * 100))
+        self.opacity_readout = QLabel("", row)
+        self.opacity_readout.setMinimumWidth(46)
+        self.opacity_slider.valueChanged.connect(self._on_opacity_moved)
+        lay.addWidget(self.opacity_slider)
+        lay.addWidget(self.opacity_readout)
+        holder = QWidgetAction(menu)
+        holder.setDefaultWidget(row)
+        menu.addAction(holder)
+        self.transparency_menu = menu
+        self._show_opacity(self.opacity_slider.value())
+        # At the TOP of View: it is the one thing in there anybody opens
+        # the menu for.
+        first = self.view_menu.actions()[0]
+        if first is not menu.menuAction():
+            self.view_menu.removeAction(menu.menuAction())
+            self.view_menu.insertMenu(first, menu)
+            self.view_menu.insertSeparator(first)
+
+    def _on_opacity_moved(self, value: int) -> None:
+        self._show_opacity(value)
+        self._set_see_through(value / 100.0)
+
+    def _show_opacity(self, value: int) -> None:
+        self.opacity_readout.setText(f"{value}%")
 
     def _capture_session(self):
         """The live capture session, whichever provider is wrapping it."""

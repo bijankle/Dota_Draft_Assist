@@ -2535,14 +2535,42 @@ def test_the_reminder_interval_survives_a_round_trip(tmp_path):
         ui_settings.MAX_REMINDER_DAYS
 
 
-def test_the_number_plate_on_a_tile_is_solid_black(window):
-    """It was 65% black, so a "+12.34" had to be read against whatever
-    colour of the portrait happened to be behind it. The plate is small
-    and cut to the digits, so opaque costs almost none of the picture."""
+def test_the_number_is_outlined_rather_than_plated(qapp):
+    """The number used to sit on a solid black rounded plate, and the
+    plate is the part that hides the hero: even cut to the digits it is a
+    rectangle of the portrait gone, and on a small tile that rectangle is
+    most of the face you read the tile by. A black outline traced round
+    the digits separates them from whatever is behind just as well and
+    costs only the ink of the outline."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtGui import QFont, QImage, QPainter
+    from draft_assist.ui import theme, tilekit
+    assert tilekit.STROKE.alpha() == 255
+    for width, height in ((64, 36), (78, 44), (132, 74)):
+        picture = QImage(width, height, QImage.Format.Format_ARGB32)
+        picture.fill(0)                      # nothing but the badge
+        painter = QPainter(picture)
+        tilekit.paint_badge(painter, QRect(0, 0, width, height),
+                            "+21.7", theme.GOOD, QFont())
+        painter.end()
+        painted = sum(1
+                      for y in range(height) for x in range(width)
+                      if picture.pixelColor(x, y).alpha() > 0)
+        # A plate cut to the digits covered about a fifth of the tile.
+        assert painted / (width * height) < 0.14, \
+            f"{width}x{height}: still hiding too much of the portrait"
+        assert painted > 0, "the number has to be there at all"
+
+
+def test_the_number_shrinks_with_the_tile(qapp):
+    """A flat 14pt over tiles running 36 to 74 pixels tall meant the badge
+    covered most of the portrait it was annotating on a narrow window."""
     from draft_assist.ui import tilekit
-    assert tilekit.CHROME.alpha() == 255
-    assert (tilekit.CHROME.red(), tilekit.CHROME.green(),
-            tilekit.CHROME.blue()) == (0, 0, 0)
+    sizes = [tilekit.number_pt(h) for h in (36, 44, 60, 74, 200)]
+    assert sizes == sorted(sizes), "it has to grow with the tile"
+    assert sizes[0] >= tilekit.NUMBER_MIN_PT
+    assert sizes[-1] == tilekit.NUMBER_PT, "and cap at the full size"
+    assert tilekit.number_pt(36) < tilekit.number_pt(74)
 
 
 def test_the_body_size_is_the_one_the_user_asked_for():
@@ -2636,8 +2664,10 @@ def test_the_last_control_keeps_clear_of_the_window_edge(window, qapp):
     window.refresh()
     _settle(qapp)
     strip = window.tabs.strip
-    slider = window.opacity_slider
-    right = slider.mapTo(strip, slider.rect().topRight()).x()
+    # The transparency slider moved into View ▸ Transparency, so the last
+    # thing on the row is now Detect all.
+    last = window.detect_all_button
+    right = last.mapTo(strip, last.rect().topRight()).x()
     assert strip.width() - right >= chrome.BandedTabs.EDGE_GAP
 
 
@@ -2923,3 +2953,25 @@ def test_a_message_the_user_asked_for_is_not_stamped_on_by_the_next_tick(
     window._quiet_until = 0.0
     window.refresh()
     assert "Dota window" in window.status.currentMessage()
+
+
+def test_the_row_controls_are_tab_labels_not_buttons(window, qapp):
+    """Clear all and Detect all sit on the tab bar's own line, so they read
+    as one series with Draft / Analysis / Debug. A raised plate with a
+    radius round it was a second kind of object on a row that has one."""
+    from draft_assist.ui import theme
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    tab_font = window.tabs.bar.font()
+    for button in (window.clear_all_button, window.detect_all_button):
+        font = button.font()
+        assert (font.family(), font.pixelSize(), font.bold()) == \
+            (tab_font.family(), tab_font.pixelSize(), tab_font.bold())
+        colours = _colours_in(button)
+        assert theme.BG_INPUT not in colours, "still wearing a button plate"
+        assert theme.BG_HOVER not in colours
+        assert theme.TEXT_DIM in colours, "same ink as an unselected tab"
+        # And on the same line: within a pixel of the tab bar's height.
+        assert abs(button.height() - window.tabs.bar.height()) <= 2

@@ -105,8 +105,29 @@ QToolBar#tabStripTools {{
 QToolBar#tabStripTools QLabel,
 QToolBar#tabStripTools QCheckBox,
 QToolBar#tabStripTools QSlider {{ background: {BG_DEEP}; }}
-QToolBar#tabStripTools QPushButton {{ padding: 4px 12px; }}
-QToolBar#tabStripTools QLabel {{ color: {TEXT_DIM}; }}
+/* THE CONTROLS ON THIS ROW ARE TAB LABELS, not buttons. They are on the
+   tab bar's own line and read as one series with it, so a raised plate in
+   {BG_INPUT} with a radius round it was a second kind of object on a row
+   that only has one. Every value below is the QTabBar::tab rule further
+   down, copied deliberately: same padding, same {TEXT_DIM}, same lift to
+   {TEXT} under the cursor. `font-weight` has to be said again because the
+   base QPushButton rule sets 500 and would otherwise win over the app's
+   bold. */
+QToolBar#tabStripTools QPushButton {{
+    background: transparent; border: none;
+    padding: 8px 18px; color: {TEXT_DIM}; font-weight: bold;
+}}
+QToolBar#tabStripTools QPushButton:hover {{
+    background: transparent; border: none; color: {TEXT};
+}}
+QToolBar#tabStripTools QPushButton:pressed {{
+    background: transparent; border: none; color: {TEXT_STRONG};
+}}
+QToolBar#tabStripTools QPushButton:disabled {{
+    background: transparent; color: {BORDER};
+}}
+QToolBar#tabStripTools QLabel,
+QToolBar#tabStripTools QCheckBox {{ color: {TEXT_DIM}; }}
 
 /* One BAND, laid out as one row (see chrome.BandedTabs): the strip is a
    plain widget holding the tab bar and the toolbar, so there is no gap

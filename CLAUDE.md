@@ -1116,6 +1116,21 @@ credentials, and put the account at risk. Do not go there.
   **The last control keeps `BandedTabs.EDGE_GAP` clear of the frame.** The
   transparency slider ran its handle into the window's edge, which reads
   as the row having been cut off rather than as it ending.
+  **THE CONTROLS ON THIS ROW ARE TAB LABELS, not buttons.** They sit on
+  the tab bar's own line and read as one series with Draft / Analysis /
+  Debug, so a raised plate in `BG_INPUT` with a radius round it was a
+  second kind of object on a row that only has one kind. The stylesheet
+  rule copies `QTabBar::tab` deliberately — same padding, same `TEXT_DIM`,
+  same lift to `TEXT` under the cursor — and has to repeat `font-weight:
+  bold`, because the base `QPushButton` rule sets 500 and would otherwise
+  beat the app's bold.
+  **TRANSPARENCY IS IN THE VIEW MENU** (`_add_transparency_menu`), not on
+  the row: it is set once and left alone for the evening, and this row
+  should hold the things pressed mid-draft. It is still a SLIDER, in a
+  `QWidgetAction` — a submenu of fixed percentages would have been more
+  menu-like and worse, since this is a value tuned by eye against a
+  running game a few percent at a time. The menu stays open while the
+  handle is dragged, which is the whole point.
   The record control is a round red dot
   (`chrome.RecordButton`) — circle to record, square to stop, no label,
   because the symbol needs no words and this row has to stay readable at

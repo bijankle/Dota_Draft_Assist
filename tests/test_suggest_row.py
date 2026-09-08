@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtGui import QColor, QPixmap                     # noqa: E402
 from PyQt6.QtWidgets import QApplication                    # noqa: E402
 
-from draft_assist.ui import portraits, tilekit              # noqa: E402
+from draft_assist.ui import portraits, theme, tilekit       # noqa: E402
 from draft_assist.ui.item_row import ItemTile               # noqa: E402
 from draft_assist.ui.suggest_row import (PLACEHOLDERS,      # noqa: E402
                                          SuggestRow, SuggestTile)
@@ -85,6 +85,7 @@ def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
     """Same figure, same corner, same colours, so a suggestion and a pick
     can be compared without translating between two layouts."""
     drawn = []
+    badges = []
     import draft_assist.ui.suggest_row as strip
     real = strip.QPainter.drawText
 
@@ -93,13 +94,23 @@ def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
             drawn.append(args[-1])
             return real(self, *args)
 
-    keep = strip.QPainter
+    real_badge = strip.tilekit.paint_badge
+
+    def spy_badge(painter, box, text, colour, base):
+        badges.append((text, colour))
+        return real_badge(painter, box, text, colour, base)
+
+    keep, keep_badge = strip.QPainter, strip.tilekit.paint_badge
     strip.QPainter = Spy
+    strip.tilekit.paint_badge = spy_badge
     try:
         SuggestTile(1, "Anti-Mage", 0.0542).grab()
     finally:
         strip.QPainter = keep
-    assert "+5.4" in drawn
+        strip.tilekit.paint_badge = keep_badge
+    # Through `paint_badge` rather than `drawText`: the number is an
+    # OUTLINED path now, so that the portrait shows through around it.
+    assert ("+5.4", theme.GOOD) in badges
     # And the NAME is not drawn. The picture is the tile: a player who
     # knows the game reads the face faster than four letters, and a row of
     # pictures reads at a glance where a row of labelled pictures reads as
