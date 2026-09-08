@@ -196,21 +196,33 @@ class ItemRow(QWidget):
         self._tiles: list[ItemTile] = []
         self._blanks: list[PlaceholderTile] = []
         self._tile_size = (ICON_W, ICON_H)
+        self._blank_size = (ICON_W, ICON_H)
 
-    def set_tile_size(self, height: int) -> None:
-        """Take the picks' HEIGHT and keep the icon's own width."""
+    def set_tile_size(self, width: int, height: int) -> None:
+        """The picks' box. A FILLED tile keeps the icon's own 88x64 shape —
+        a 16:9 box round an item icon is dead space either side of every
+        one — but an EMPTY plate has no icon whose shape to respect, so it
+        takes the whole box. On a freshly opened app every blank plate in
+        the window is then the same rectangle, which is what a row of
+        identical holes should look like."""
         height = max(1, int(height))
         size = (width_for(height), height)
-        if size == self._tile_size:
+        blank = (max(1, int(width)), height)
+        if (size, blank) == (self._tile_size, self._blank_size):
             return
-        self._tile_size = size
-        for tile in self._tiles + self._blanks:
+        self._tile_size, self._blank_size = size, blank
+        for tile in self._tiles:
             tile.setFixedSize(*size)
+        for tile in self._blanks:
+            tile.setFixedSize(*blank)
         self.row.invalidate()
         self.updateGeometry()
 
     def tile_width(self) -> int:
         return self._tile_size[0]
+
+    def blank_width(self) -> int:
+        return self._blank_size[0]
 
     def set_note(self, text: str) -> None:
         """A word about the strip itself, beside it rather than in place of
@@ -230,7 +242,7 @@ class ItemRow(QWidget):
         self.message.setVisible(bool(empty) and not advice)
         if not advice:
             for _ in range(PLACEHOLDERS):
-                blank = PlaceholderTile(self, self._tile_size)
+                blank = PlaceholderTile(self, self._blank_size)
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)
             return

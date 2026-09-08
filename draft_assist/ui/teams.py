@@ -305,7 +305,8 @@ class HeroTile(QAbstractButton):
             pen = QPen(QColor(theme.BORDER), 1, Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(box, 6, 6)
+        painter.drawRoundedRect(box, tilekit.PLATE_RADIUS,
+                                tilekit.PLATE_RADIUS)
 
     def _paint_empty(self, painter: QPainter, box: QRect) -> None:
         """An empty slot is an invitation, not a pick."""

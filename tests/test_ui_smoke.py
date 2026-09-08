@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 
+import copy
+
 import pytest
 
 pytest.importorskip("PyQt6")
@@ -422,6 +424,11 @@ def test_manual_hint_explains_missing_picks(qapp, monkeypatch):
         win.refresh()
         assert "come off the Dota window" in \
             win.manual_hint.text()
+        # Auto-record has just claimed the line for its eight seconds — a
+        # transient message now HOLDS instead of being stamped on by the
+        # next tick (see `_say`). Hand the line back and re-ask.
+        win._quiet_until = 0.0
+        win.refresh()
         assert "HERO_SELECTION" in win.status.currentMessage()
 
         # Entering a pick by hand puts it straight into the draft.
@@ -2820,3 +2827,99 @@ def test_a_rule_is_drawn_between_the_things_on_the_row(window, qapp):
 def test_the_rule_is_the_grey_halfway_between_black_and_white():
     from draft_assist.ui import theme
     assert theme.RULE == "#808080"
+
+
+def test_clear_all_empties_a_board_the_game_is_reporting(window, qapp):
+    """The picks are the GAME's and precedence is game > hand entry, so
+    wiping the manual slots changed nothing on screen and the next payload
+    put all ten straight back. A clean-slate button has to produce one."""
+    window.refresh()
+    assert any(b.property("hero_id") is not None
+               for b in window.team_buttons["ally"])
+    window._clear_all()
+    window.refresh()
+    for side in ("ally", "enemy"):
+        assert all(b.property("hero_id") is None
+                   for b in window.team_buttons[side]), \
+            "the board filled straight back in"
+    # And it STAYS empty while the same board is being reported.
+    window.refresh()
+    assert all(b.property("hero_id") is None
+               for b in window.team_buttons["ally"])
+
+
+def test_a_cleared_board_comes_back_the_moment_the_draft_changes(window):
+    """Blanked, never suppressed: a board stuck empty for the rest of the
+    evening is worse than the thing being fixed."""
+    window.refresh()
+    window._clear_all()
+    window.refresh()
+    assert all(b.property("hero_id") is None
+               for b in window.team_buttons["ally"])
+    # One different pick is enough. Asked of the mechanism directly: the
+    # provider would hand back its own snapshot on the next refresh and
+    # overwrite anything poked into this one.
+    moved = copy.copy(window.snapshot)
+    moved.left = list(moved.left)[:-1] + [window.ds.hero_ids[-1]]
+    assert not window._is_cleared(moved), "a changed draft must show again"
+    assert window._cleared is None, "and the blanking is over for good"
+
+
+def test_detect_all_cancels_the_blanking(qapp):
+    """The two buttons are a pair: Detect all is the way out of Clear all."""
+    window, manual = _manual_window(qapp)
+    try:
+        window.refresh()
+        window._clear_all()
+        assert window._cleared is not None or window.snapshot is None
+        window._detect_all()
+        assert window._cleared is None
+    finally:
+        window.close()
+
+
+def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
+    """A freshly opened app is three rows of identical holes — the picks
+    rounded their corners while the strips squared theirs, and the item
+    plates were narrower than the rest."""
+    from draft_assist.ui import tilekit
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    ds = demo_dataset()
+    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
+    win.timer.stop()
+    try:
+        win.show()
+        win.resize(1500, 950)
+        win.refresh()
+        _settle(qapp)
+        pick = win.team_panels["ally"].slots[0]
+        assert not pick.filled
+        for strip in (win.suggest_row, win.item_row):
+            blanks = strip._blanks
+            assert blanks, "an empty strip should show its shape"
+            for blank in blanks:
+                assert blank.size() == pick.size(), \
+                    "an empty plate is an empty plate, whatever strip"
+        # One radius for all of them, so the corners agree too.
+        assert tilekit.PLATE_RADIUS > 0
+    finally:
+        win.close()
+
+
+def test_a_message_the_user_asked_for_is_not_stamped_on_by_the_next_tick(
+        window, qapp):
+    """`_update_status` rewrites the whole line four times a second with no
+    timeout, and a QStatusBar replaces a timed message with the next one it
+    is handed — so every "Board cleared" in this app showed for under a
+    quarter of a second. Which is why pressing a button and seeing nothing
+    happen was the report: the button HAD said something."""
+    window.refresh()
+    window._say("something the user did", 6000)
+    for _ in range(4):
+        window.refresh()
+    assert window.status.currentMessage() == "something the user did"
+    # And the state comes back once it has had its moment.
+    window._quiet_until = 0.0
+    window.refresh()
+    assert "Dota window" in window.status.currentMessage()

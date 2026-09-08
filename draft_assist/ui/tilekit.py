@@ -141,11 +141,18 @@ def paint_art(painter: QPainter, box: QRect, art) -> bool:
     return True
 
 
+# An empty tile's corner radius. ONE number, because an empty pick slot
+# and an empty plate in a strip are the same object seen twice: the picks
+# rounded their corners and the strips squared theirs, so on a freshly
+# opened app the two rows of identical boxes did not look identical.
+PLATE_RADIUS = 6
+
+
 def paint_plate(painter: QPainter, box: QRect, dashed: bool = False) -> None:
     """The empty plate an unfilled tile shows: a hole, not an error."""
-    painter.fillRect(box, QColor(theme.BG_INPUT if not dashed
-                                 else theme.BG_DEEP))
+    inner = box.adjusted(0, 0, -1, -1)
     painter.setPen(QPen(QColor(theme.BORDER), 1,
                         Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine))
+    painter.setBrush(QColor(theme.BG_INPUT if not dashed else theme.BG_DEEP))
+    painter.drawRoundedRect(inner, PLATE_RADIUS, PLATE_RADIUS)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawRect(box.adjusted(0, 0, -1, -1))

@@ -233,6 +233,12 @@ class MainWindow(QMainWindow):
             provider, "manual", None) or ManualDraft()
         self.snapshot = None
         self.last_draft_key = None
+        # The board Clear all was pressed on, blanked until something on it
+        # changes (see `_is_cleared`). None means nothing is being blanked.
+        self._cleared = None
+        # Until when the status line belongs to something the user did
+        # rather than to the state (see `_say`).
+        self._quiet_until = 0.0
         # The hero whose relations the other nine slots are showing, as
         # (side, hero id). Clicking it again clears it; it survives a
         # refresh but not the hero leaving the draft.
@@ -1021,7 +1027,7 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(1)
         self.debug_tabs.setCurrentIndex(1)
         if not self.sessions:
-            self.status.showMessage(
+            self._say(
                 "No recordings yet — press Record before a game", 8000)
 
     def _refresh_sessions(self) -> None:
@@ -1060,7 +1066,7 @@ class MainWindow(QMainWindow):
         if not text:
             return
         QApplication.clipboard().setText(text)
-        self.status.showMessage("Report copied to the clipboard", 5000)
+        self._say("Report copied to the clipboard", 5000)
 
     def _replay_session(self) -> None:
         """Replay the selected recording. It lives here rather than in a
@@ -1068,7 +1074,7 @@ class MainWindow(QMainWindow):
         recording is what you already have selected."""
         folder = self._current_session()
         if folder is None or not (folder / "gsi").is_dir():
-            self.status.showMessage(
+            self._say(
                 "Select a recording with game data first", 6000)
             return
         self.run_task("replay_gsi", str(folder / "gsi"))
@@ -1147,7 +1153,7 @@ class MainWindow(QMainWindow):
         self.last_draft_key = None
         self._update_first_run_banner()
         self._refresh_views()
-        self.status.showMessage(
+        self._say(
             "Reloaded: "
             + (f"{len(self.ds.hero_ids)} heroes" if not self.ds.is_empty
                else "no data downloaded yet"), 5000)
@@ -1290,7 +1296,7 @@ class MainWindow(QMainWindow):
                                 f"Could not load rules/items.yaml:\n\n{exc}")
             return
         self._refresh_views()
-        self.status.showMessage(f"Loaded {len(self.rules)} item rules", 5000)
+        self._say(f"Loaded {len(self.rules)} item rules", 5000)
 
     def _about(self) -> None:
         QMessageBox.information(
@@ -1315,7 +1321,7 @@ class MainWindow(QMainWindow):
         this from, so the app has to offer it."""
         self.move(60, 60)
         self.resize(1240, 820)
-        self.status.showMessage("Window moved back to the top-left", 5000)
+        self._say("Window moved back to the top-left", 5000)
 
     # ---- game data (GSI) ----------------------------------------------
     def _install_gsi(self) -> None:
@@ -1464,7 +1470,7 @@ class MainWindow(QMainWindow):
         from .providers import GsiProvider
 
         if isinstance(self.provider, GsiProvider):
-            self.status.showMessage("Already using game data (GSI)", 5000)
+            self._say("Already using game data (GSI)", 5000)
             return
         token = gsi_install.read_installed_token()
         server = GsiServer(gsi_install.DEFAULT_PORT, token=token)
@@ -1474,7 +1480,7 @@ class MainWindow(QMainWindow):
         from .providers import LiveProvider
 
         if isinstance(self.provider, LiveProvider):
-            self.status.showMessage("Already using screen capture", 5000)
+            self._say("Already using screen capture", 5000)
             return
         answer = QMessageBox.question(
             self, "Use screen capture",
@@ -1505,7 +1511,7 @@ class MainWindow(QMainWindow):
         self.provider = provider
         self.last_draft_key = None
         message = provider.start()
-        self.status.showMessage(message, 8000)
+        self._say(message, 8000)
         self._refresh_sources()
         self._sync_source_controls()
 
@@ -1524,7 +1530,7 @@ class MainWindow(QMainWindow):
     def _clear_manual(self) -> None:
         self.manual.clear()
         self.last_draft_key = None
-        self.status.showMessage("Cleared hand-entered draft slots", 5000)
+        self._say("Cleared hand-entered draft slots", 5000)
 
     def _capture_session(self):
         """The live capture session, whichever provider is wrapping it."""
@@ -1549,11 +1555,18 @@ class MainWindow(QMainWindow):
         session = self._capture_session()
         if session is not None:
             # Otherwise the screen's own last reading survives the wipe and
-            # the board fills straight back in, which reads as the button
-            # not having worked.
+            # the board fills straight back in.
             session.detect_now()
+        # And the GAME's reading survives it too — precedence is game >
+        # hand entry, so on a live match wiping the manual slots changed
+        # nothing at all on screen. Remember the board being cleared and
+        # blank it until there is something different to show.
+        self._cleared = (self._board_key(self.snapshot)
+                         if self.snapshot is not None else None)
         self.last_draft_key = None
-        self.status.showMessage("Board cleared", 5000)
+        self._say(
+            "Board cleared — it fills again when the draft changes, or "
+            "press Detect all", 8000)
         self.refresh()
 
     def _detect_all(self) -> None:
@@ -1566,15 +1579,23 @@ class MainWindow(QMainWindow):
         stabiliser would otherwise let the old answer outvote the new
         frame for another few ticks.
         """
+        # FIRST, whatever happens next: asking to see the board again
+        # cancels the blanking Clear all put on it. The two buttons are a
+        # pair and this is the way out of the first, so it must not depend
+        # on there being a capture session to read from — otherwise a
+        # cleared board in game-data-only mode has no way back.
+        self._cleared = None
         session = self._capture_session()
         if session is None:
-            self.status.showMessage(
+            self.last_draft_key = None
+            self._say(
                 "Nothing to read from — screen capture is off (Settings ▸ "
                 "Read the draft from the Dota window)", 8000)
+            self.refresh()
             return
         session.detect_now()
         self.last_draft_key = None
-        self.status.showMessage(
+        self._say(
             f"Re-reading the draft from {self._capture_target()}", 5000)
         self.refresh()
 
@@ -1638,7 +1659,7 @@ class MainWindow(QMainWindow):
         if server is not None:
             server.set_archive_dir(self.recorder.gsi_dir)
         self._update_record_button()
-        self.status.showMessage(
+        self._say(
             ("Draft detected — recording to " if automatic
              else "Recording to ") + folder.name, 8000)
 
@@ -1653,7 +1674,7 @@ class MainWindow(QMainWindow):
             return
         payloads = len(list((folder / "gsi").glob("gsi_*.json")))
         self._refresh_sessions()
-        self.status.showMessage(
+        self._say(
             f"Saved {folder.name}: {payloads} payloads, {frames} frames, "
             f"{states} states" + (f" — {reason}" if reason else ""), 15000)
 
@@ -1755,7 +1776,7 @@ class MainWindow(QMainWindow):
         self.my_hero_id = hero_id
         if hero_id is None:
             self.my_hero_locked = False
-        self.status.showMessage(
+        self._say(
             f"Your pick: {self.ds.name(hero_id)}" if hero_id is not None
             else "Your pick cleared", 5000)
         self._refresh_views()
@@ -1787,7 +1808,7 @@ class MainWindow(QMainWindow):
         if partner is not None:
             message = (f"{self.ds.name(hero_id)} and "
                        f"{self.ds.name(partner)} exchanged teams")
-        self.status.showMessage(message, 6000)
+        self._say(message, 6000)
         self.refresh()
 
     def _on_slot_dropped(self, from_side: str, from_index: int,
@@ -1811,7 +1832,7 @@ class MainWindow(QMainWindow):
         if landed is not None:
             self.side_overrides[landed] = from_side
         self.last_draft_key = None
-        self.status.showMessage(
+        self._say(
             f"{self.ds.name(moved)} and {self.ds.name(landed)} exchanged "
             "teams" if landed is not None
             else f"{self.ds.name(moved)} moved to the other team", 6000)
@@ -1836,7 +1857,7 @@ class MainWindow(QMainWindow):
         current[i], current[j] = current[j], current[i]
         self.slot_order[side] = current
         self.last_draft_key = None
-        self.status.showMessage(
+        self._say(
             f"{self.ds.name(moved)} and {self.ds.name(landed)} swapped "
             "places", 5000)
         self.refresh()
@@ -1861,7 +1882,7 @@ class MainWindow(QMainWindow):
             # The GAME put it there, so removing it here would not stick —
             # the next payload brings it straight back. Say so rather than
             # doing nothing, which is indistinguishable from being broken.
-            self.status.showMessage(
+            self._say(
                 f"{self.ds.name(hero_id)} came from the game, not from hand "
                 "entry — it cannot be cleared here", 6000)
             return
@@ -1931,13 +1952,13 @@ class MainWindow(QMainWindow):
         chosen = None if dialog.cleared else dialog.selected
         if not self.manual.replace(side, current, chosen):
             if current is not None:
-                self.status.showMessage(
+                self._say(
                     f"{self.ds.name(current)} came from the game, not from "
                     "hand entry — it cannot be changed here", 6000)
                 return
             free = self.manual.first_free(side)
             if free is None:
-                self.status.showMessage(
+                self._say(
                     "All five hand-entered slots on that side are full — "
                     "clear one first", 6000)
                 return
@@ -2044,7 +2065,7 @@ class MainWindow(QMainWindow):
         if saved is None:
             return
         self._learned.add(hero_id)
-        self.status.showMessage(
+        self._say(
             f"Learned {self.ds.name(hero_id)}'s portrait from this game — "
             "it will be recognised from the next reload (F5).", 12000)
 
@@ -2094,7 +2115,7 @@ class MainWindow(QMainWindow):
             self.cal_label.setText(f"measured but could not save: {exc}")
             return
         self.cal_label.setText(f"measured from the game — {result.note}")
-        self.status.showMessage(
+        self._say(
             "Crop boxes measured from this game and saved — recognition "
             "should work from here.", 12000)
 
@@ -2265,7 +2286,7 @@ class MainWindow(QMainWindow):
                                      / "__main__.py")],
                 cwd=str(REPO_ROOT), close_fds=True)
         except OSError as exc:
-            self.status.showMessage(f"Could not restart: {exc}", 10000)
+            self._say(f"Could not restart: {exc}", 10000)
             return
         QApplication.quit()
 
@@ -2300,7 +2321,7 @@ class MainWindow(QMainWindow):
                                 f"Could not use that file:\n\n{exc}")
             return
         self._apply_app_icon()
-        self.status.showMessage(
+        self._say(
             f"App icon set from {Path(path).name} (copied to "
             f"assets/{dest.name}). The taskbar picks it up when the app is "
             "reopened.", 12000)
@@ -2354,7 +2375,7 @@ class MainWindow(QMainWindow):
             # Written to preferences.json, not just the UI settings: the
             # pull runs in a subprocess and reads it there.
             save_pair_source(chosen)
-            self.status.showMessage(
+            self._say(
                 f"Statistics source set to {chosen} — run Data ▸ Update "
                 "statistics to rebuild the matrices from it", 12000)
 
@@ -2408,7 +2429,7 @@ class MainWindow(QMainWindow):
             return
         message = self.provider.rebind(title)
         self.snapshot_label.setText(message)
-        self.status.showMessage(message, 8000)
+        self._say(message, 8000)
         self.last_draft_key = None
         self._refresh_sources()
 
@@ -2538,6 +2559,8 @@ class MainWindow(QMainWindow):
         ally/enemy and the manual swap must not apply — otherwise the app
         would let the user contradict the game.
         """
+        if self._is_cleared(snap):
+            return ([], [])
         if getattr(snap, "sides_known", False):
             # The minimap gives ten heroes but not, reliably, which five are
             # yours — one real match came out inverted. So corrections are
@@ -2550,6 +2573,35 @@ class MainWindow(QMainWindow):
                                else (snap.left, snap.right))
         return (self._apply_order("ally", allies),
                 self._apply_order("enemy", enemies))
+
+    def _is_cleared(self, snap) -> bool:
+        """Is this exactly the board Clear all was pressed on?
+
+        Clear all emptied the hand-entered slots and asked for a fresh
+        reading, and on a live match that did NOTHING visible: the picks
+        were the game's, precedence is game > hand entry, and the next
+        payload put all ten straight back. A button whose whole purpose is
+        a clean slate has to produce one.
+
+        So the cleared line-up is REMEMBERED and blanked, and it stops
+        being blanked the moment there is something different to show — a
+        pick changes, the match changes, or Detect all is pressed. That is
+        a clean slate that cannot become a board stuck empty for the rest
+        of the evening, which is what suppressing the sources outright
+        would have risked.
+        """
+        if self._cleared is None or snap is None:
+            return False
+        if self._cleared == self._board_key(snap):
+            return True
+        self._cleared = None            # something moved; show it
+        return False
+
+    @staticmethod
+    def _board_key(snap):
+        return (getattr(snap, "match_id", "") or "",
+                tuple(getattr(snap, "left", []) or []),
+                tuple(getattr(snap, "right", []) or []))
 
     def _apply_order(self, side: str, ids: list[int]) -> list[int]:
         """Put the bank into the order the user dragged it into.
@@ -2908,7 +2960,7 @@ class MainWindow(QMainWindow):
         if picks is None or items is None:
             return
         picks.set_tile_size(width, height)
-        items.set_tile_size(height)
+        items.set_tile_size(width, height)
         # Bigger tiles means fewer fit on a row, and the default count is
         # "however many fit on one row" — so the strips have to be redrawn
         # or the number stays at whatever the old size allowed.
@@ -3010,6 +3062,19 @@ class MainWindow(QMainWindow):
             self.item_row.set_note("")
 
     # ---- status / debug ------------------------------------------------
+    def _say(self, message: str, millis: int = 6000) -> None:
+        """A transient status message the refresh loop will not stamp on.
+
+        `_update_status` writes the whole line four times a second with no
+        timeout, and a QStatusBar replaces a timed message with the next
+        one it is given — so every "Board cleared" and "Loaded 62 item
+        rules" in this app appeared for under a quarter of a second and
+        was gone. Which is why pressing a button and seeing nothing happen
+        was the report: the button HAD said something.
+        """
+        self._quiet_until = time.monotonic() + millis / 1000.0
+        self.status.showMessage(message, millis)
+
     def _update_status(self, snap) -> None:
         """One short line: what is wrong, what is bound, what is happening.
 
@@ -3021,6 +3086,10 @@ class MainWindow(QMainWindow):
         is wrong, whether the app has found Dota's window, and what it is
         doing with it. Pipes between, nothing else.
         """
+        if time.monotonic() < self._quiet_until:
+            # Something the user just did is on the line and has not had
+            # its few seconds yet. The state will still be here after.
+            return
         parts = []
         if snap.warning:
             # The warning LEADS. It used to sit fourth, which is how "no
@@ -3050,6 +3119,9 @@ class MainWindow(QMainWindow):
             # The one thing about the statistics still worth a segment: with
             # none at all, nothing below is advice.
             parts.append("no statistics — Data ▸ Update statistics")
+        # NOT `_say`: this is the state, written every tick with no
+        # timeout. Through `_say` it would claim the line for six seconds
+        # on every tick and the guard above would then silence it forever.
         self.status.showMessage(" | ".join(parts))
 
     def _update_debug(self, snap) -> None:
@@ -3175,8 +3247,7 @@ class MainWindow(QMainWindow):
         parts += ["", "--- recognition log ---", self.debug_text.toPlainText(),
                   "", "--- loop timings (ms) ---", LOOP.report()]
         QApplication.clipboard().setText("\n".join(parts))
-        self.status.showMessage(
-            "Copied — paste it wherever you are reporting this.", 6000)
+        self._say("Copied — paste it wherever you are reporting this.", 6000)
 
     def _hero_names(self) -> dict[int, str]:
         """Every hero's name, built once per dataset rather than per tick."""
@@ -3249,7 +3320,7 @@ class MainWindow(QMainWindow):
             f"frames_arrived={getattr(snap, 'frames_arrived', 0)}\n"
             + params_line, encoding="utf-8")
         self.snapshot_label.setText(f"Saved to {folder}")
-        self.status.showMessage(f"Snapshot saved to {folder}", 8000)
+        self._say(f"Snapshot saved to {folder}", 8000)
 
     def _grab_dota_frame(self):
         """One-shot capture of the Dota window, independent of the current
