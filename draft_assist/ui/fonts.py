@@ -5,12 +5,16 @@ is not installed — so anything supplied rather than system-installed has
 to be registered with `QFontDatabase` before the stylesheet asks for it by
 name. That is all this does.
 
-**Nothing here is committed.** `assets/fonts/` is gitignored, the same
-rule the portraits, the item icons and a supplied app icon follow: a font
-file is somebody else's work and whether it may be redistributed is not
-ours to assume. The app therefore treats a missing font exactly the way it
-treats a missing portrait — normal, not an error — and the stylesheet
-names a fallback after it.
+**These two ARE committed**, which is the exception rather than the rule:
+the project's owner supplied them and confirmed their licences permit
+redistribution. Everything else fetched from elsewhere — the hero
+portraits, the item icons, a supplied `app.ico` — stays out of the
+repository because it is Valve's or Blizzard's artwork. See
+`assets/fonts/README.md`.
+
+Committed or not, a MISSING font is still normal rather than an error: the
+stylesheet names a fallback behind each family, so a checkout without the
+files opens a readable app. Nothing here raises.
 """
 
 from pathlib import Path

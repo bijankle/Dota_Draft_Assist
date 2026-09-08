@@ -26,10 +26,6 @@ assets/app.jpg
 assets/app.jpeg
 assets/app.bmp
 assets/app-generated.ico
-# Supplied font files. Somebody else's work, and whether they may
-# be redistributed is not ours to assume — the app loads whatever
-# is here at startup and falls back when it is empty.
-assets/fonts/
 calibration_local.json
 
 # OS / editor

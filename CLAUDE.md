@@ -627,21 +627,30 @@ credentials, and put the account at risk. Do not go there.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
-  **The FACES are supplied, not installed, and not committed**
-  (`ui/fonts.load_bundled`, `assets/fonts/`, gitignored). The user handed
-  over two files: LifeCraft for the app's own name in the title bar, ITC
-  Novarese for everything else. Qt will only use a family it knows about,
-  so they are registered with `QFontDatabase` BEFORE the stylesheet is
-  applied — a family registered afterwards is not picked up by rules
-  already resolved, and the app opens in the fallback face. `FONT_STACK`
-  names Novarese first and the old stack behind it, and the title rule
-  names LifeCraft with `FONT_STACK` behind that, so a machine without the
-  files still opens a readable app. Whether somebody else's font may be
-  redistributed is not ours to assume, which is why the folder is ignored
-  — the same rule the portraits, the item icons and a supplied app icon
-  follow. The title is the FRAME'S OWN GOLD (`theme.FRAME_GOLD`, the same
-  value `ornate.LIGHT` paints the border with), so the name and the border
-  round it read as one piece.
+  **The FACES are supplied, not installed** (`ui/fonts.load_bundled`,
+  `assets/fonts/`). The user handed over two files: LifeCraft for the
+  app's own name in the title bar, ITC Novarese for everything else. Qt
+  will only use a family it knows about, so they are registered with
+  `QFontDatabase` BEFORE the stylesheet is applied — a family registered
+  afterwards is not picked up by rules already resolved, and the app opens
+  in the fallback face. `FONT_STACK` names Novarese first and the old
+  stack behind it, and the title rule names LifeCraft with `FONT_STACK`
+  behind that, so a checkout WITHOUT the files still opens a readable app;
+  a missing font is normal, not an error.
+  **These two are COMMITTED, and they are the exception.** The user
+  confirmed their licences permit redistribution — that statement is the
+  whole basis for it, and it is recorded in `assets/fonts/README.md`. It
+  does not generalise: the hero portraits, the item icons and a supplied
+  `app.ico` are Valve's and Blizzard's artwork and stay out of the
+  repository, downloaded to the user's own disk at runtime. A future font
+  gets the same question asked again rather than being waved through by
+  this precedent.
+  The family name is spelled in TWO places (`ui/fonts.py` and
+  `ui/theme.py`) and they have to agree — two spellings of one family is a
+  font that silently never loads, which `tests/test_fonts.py` checks.
+  The title is the FRAME'S OWN GOLD (`theme.FRAME_GOLD`, the same value
+  `ornate.LIGHT` paints the border with), so the name and the border round
+  it read as one piece.
   Colour is reserved for meaning — green/red for signed deltas, the accent
   for the one action a screen wants, amber for warnings — and everything
   else is grey, so a number in colour is always worth reading.
