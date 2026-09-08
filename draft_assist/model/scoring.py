@@ -187,6 +187,11 @@ class PairCell:
     hero_id: int            # the ROW hero — the portrait drawn behind
     other_id: int           # the column hero, for the tooltip
     delta: float
+    # Which triangle this is in, in the terms the rest of the model
+    # reasons in. NOT "radiant"/"dire": which of the two teams is Radiant
+    # is something only the UI knows, and it is what decides the colour
+    # the triangle is outlined in.
+    side: str = "ally"
 
 
 @dataclass
@@ -195,11 +200,19 @@ class SynergyGrid:
 
     Synergy is symmetric, so a team's own pairings only ever fill half a
     square and the other half was blank. It is exactly the right shape to
-    hold the other team's, so the grid carries both: your five above the
-    diagonal, read against the ally portraits along the TOP, and their five
-    below it, read against the enemy portraits along the BOTTOM. The
-    diagonal stays empty — a hero with itself means nothing, and the gap
-    running corner to corner is what separates the two halves.
+    hold the other team's, so the grid carries both: YOUR five in the lower
+    left, read against your portraits along the BOTTOM, and THEIRS in the
+    upper right, read against their portraits along the TOP. Each triangle
+    touches its own axis, which is the only arrangement where a column can
+    be read straight off the faces at the end of it.
+
+    THE TWO TRIANGLES TOUCH: there is no empty diagonal between them. Five
+    heroes a side is ten pairs each and twenty in total, which is exactly a
+    four-by-five rectangle — so the enemy triangle is lifted one row, every
+    cell in the body holds a real pair, and the card comes out the same
+    height as the counters grid beside it instead of a row taller. What
+    separates the halves is the colour drawn round each triangle's outer
+    edge, and the step down the middle where they meet.
 
     Every cell is backed by its own ROW hero's portrait, which is what
     replaced the left-hand header column: with the picture in the cell the
@@ -218,41 +231,86 @@ class SynergyGrid:
     allies: list[tuple[int, str]]
     enemies: list[tuple[int, str]]
     cells: list[list[PairCell | None]]
+    # Each hero's synergy with the REST OF ITS OWN TEAM, printed on its
+    # portrait in the header — the sum of the row and column it heads.
+    ally_totals: dict[int, float] = field(default_factory=dict)
+    enemy_totals: dict[int, float] = field(default_factory=dict)
 
     @property
     def empty(self) -> bool:
         return not any(cell for line in self.cells for cell in line)
 
     @property
-    def side(self) -> int:
-        return len(self.cells)
+    def columns(self) -> int:
+        return len(self.cells[0]) if self.cells else 0
 
 
 def team_synergy_grid(ds: Dataset, draft: DraftState) -> SynergyGrid:
-    """Both teams' own pairings, as the two triangles of one square."""
+    """Both teams' own pairings, as two triangles that TOUCH.
+
+    A first version left the diagonal empty and gave each triangle its own
+    row, which cost a whole row of grid for nothing and made this card a
+    row taller than the counters one beside it. The two triangles fit
+    together exactly instead: n heroes a side is n(n-1)/2 pairs each, and
+    2 x n(n-1)/2 is n(n-1) — precisely an (n-1) x n rectangle with no cell
+    to spare. So the enemy triangle is lifted one row, the diagonal gap
+    closes, every cell in the body is a real pair, and the card is the
+    same height as counters and lines up with it.
+
+    Concretely, at row r and column c of the body:
+      c >  r : their pair (enemy r, enemy c), read against the TOP header
+      c <= r : your pair (ally r+1, ally c), read against the BOTTOM row
+    Both keep the rule that the portrait in a cell is its own row hero.
+
+    WHICH TEAM GETS WHICH TRIANGLE is the user's call and it is YOURS
+    below: the card sits under your own five, and the lower-left triangle
+    is the half of this square that reaches the same edge that panel does.
+    Play Radiant — which is the left panel, and the usual case — and that
+    is Radiant bottom-left, outlined green, exactly as asked. Play Dire and
+    the whole card has already moved to the right with its team, and the
+    outline colours move with it: the triangle at the bottom left is still
+    the team the card is about.
+    """
     allies = [h for h in draft.allies if h in ds.index]
     enemies = [h for h in draft.enemies if h in ds.index]
-    side = max(len(allies), len(enemies), 0)
+    columns = max(len(allies), len(enemies), 0)
 
-    def pair(a: int, b: int) -> PairCell:
-        return PairCell(a, b, float(ds.delta_with[ds.index[a], ds.index[b]]))
+    def pair(a: int, b: int, side: str) -> PairCell:
+        return PairCell(a, b, float(ds.delta_with[ds.index[a], ds.index[b]]),
+                        side)
 
     cells: list[list[PairCell | None]] = []
-    for row in range(side):
+    for row in range(max(0, columns - 1)):
         line: list[PairCell | None] = []
-        for col in range(side):
-            if col > row and row < len(allies) and col < len(allies):
-                line.append(pair(allies[row], allies[col]))
-            elif col < row and row < len(enemies) and col < len(enemies):
-                # Their half is read against the BOTTOM header, so the row
-                # hero is theirs and the column is theirs too.
-                line.append(pair(enemies[row], enemies[col]))
+        for col in range(columns):
+            if col > row:
+                ok = row < len(enemies) and col < len(enemies)
+                line.append(pair(enemies[row], enemies[col], "enemy")
+                            if ok else None)
             else:
-                line.append(None)       # the diagonal, and any short side
+                # LIFTED BY ONE: the lower triangle starts at ally 1, which
+                # is what closes the diagonal and squares the two together.
+                ok = row + 1 < len(allies) and col < len(allies)
+                line.append(pair(allies[row + 1], allies[col], "ally")
+                            if ok else None)
         cells.append(line)
+
+    def totals(team: list[int]) -> dict[int, float]:
+        """One hero's synergy with the four beside it.
+
+        Not a row total off the drawn grid: a hero's pairs are split
+        between a row and a column of its own triangle, so summing what is
+        drawn in either direction alone gives a partial answer. This adds
+        the four pairs the hero is actually in.
+        """
+        return {h: sum(float(ds.delta_with[ds.index[h], ds.index[o]])
+                       for o in team if o != h) for h in team}
+
     return SynergyGrid(allies=[(h, ds.name(h)) for h in allies],
                        enemies=[(h, ds.name(h)) for h in enemies],
-                       cells=cells)
+                       cells=cells,
+                       ally_totals=totals(allies),
+                       enemy_totals=totals(enemies))
 
 
 def synergy_matrix(ds: Dataset, draft: DraftState) -> Matrix:

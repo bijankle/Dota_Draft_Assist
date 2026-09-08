@@ -538,14 +538,50 @@ credentials, and put the account at risk. Do not go there.
   cells** (`scoring.team_synergy_grid`, `tables.PairCellDelegate`,
   `MatrixTable.show_pairs`). Synergy is symmetric, so a team's own pairings
   only ever fill half a square — and that blank half is exactly the shape
-  of the other team's. So the one square carries both: YOURS above the
-  diagonal, read against the ally portraits along the TOP, and THEIRS below
-  it, read against the enemy portraits along the BOTTOM. The bottom axis is
-  an ordinary last ROW of the table rather than a second header, because Qt
-  has no bottom header and a separate widget under the table would not keep
-  its columns in step with it. The diagonal stays empty: a hero with itself
-  means nothing, and the gap corner to corner is what separates the two
-  halves.
+  of the other team's. So the one square carries both: YOURS in the lower
+  left, read against your portraits along the BOTTOM, and THEIRS in the
+  upper right, read against their portraits along the TOP. The bottom axis
+  is an ordinary last ROW of the table rather than a second header, because
+  Qt has no bottom header and a separate widget under the table would not
+  keep its columns in step with it.
+  **THE TWO TRIANGLES TOUCH, and there is no empty diagonal.** Five a side
+  is ten pairs each and twenty across both teams, which is exactly a four-
+  by-five rectangle — so the lower triangle is LIFTED ONE ROW (it starts at
+  ally 1), every cell in the body is a real pair, and with the axis row the
+  table is five rows by five: the same five counters has. That is the whole
+  reason the two cards line up at the bottom as well as the top, with
+  neither told anything about the other. The first version left the
+  diagonal empty on the grounds that a hero with itself means nothing, and
+  paid a whole row of grid for a gap.
+  **WHICH TEAM GETS WHICH TRIANGLE: yours is the lower left**, at the
+  user's request. The card sits under your own five and the lower-left
+  triangle reaches the same edge that panel does; play Radiant — the left
+  panel, and the usual case — and that is Radiant bottom-left in green,
+  which is how it was asked for. Play Dire and the whole card has already
+  moved right with its team, and the colours move with it.
+  **EACH TRIANGLE IS OUTLINED IN ITS TEAM'S COLOUR** — Radiant green, Dire
+  red, Dota's own two — because two triangles that touch need something
+  between them saying which is which. It is drawn PER CELL
+  (`PairCellDelegate._paint_edges`): every cell asks its four neighbours
+  which side they are on and strokes the edges where the answer differs,
+  which gives the stepped diagonal for free, in both colours, and cannot go
+  stale when the columns resize the way a path computed from row and column
+  numbers would. The axis row carries the same side as the triangle it sits
+  under, so the outline encloses a team and its own faces as one region
+  rather than drawing a line between them. The model says `ally` and
+  `enemy`, never `radiant` and `dire`: which team is which side is
+  something only the UI knows (`MatrixTable.set_team_colours`, set from
+  `_update_team_labels`), and on Dire your own triangle is the red one.
+  **EACH HERO'S TOTAL IS ON ITS FACE**, in both axis rows: the sum of that
+  hero's four pairs with its own team, in the same badge and the same
+  bottom-right corner as every other number in the app. It is NOT a row or
+  column total off the drawn grid — a hero's pairs are split between a row
+  and a column of its own triangle, so summing what is drawn in either
+  direction alone is a partial answer.
+  **THE AXIS ROWS ARE NOT VEILED.** They are the subject: they name the ten
+  heroes the card is about. Knocking them back the way a cell behind a
+  number is made the bottom row read as a different kind of thing from the
+  identical portraits along the top.
   The left-hand portrait column is GONE — every cell is backed by its own
   ROW hero's portrait with the figure over it, so the pair names itself and
   the width that column took goes back to the numbers. The portrait is
@@ -570,9 +606,36 @@ credentials, and put the account at risk. Do not go there.
   rule there, not the colour. `relations_to` and `net_contributions` still
   flip, because there the enemy figures sit among your own with no line
   between them.
-  **COUNTERS IS UNCHANGED**: it is a full 5x5 of your five against their
+  **COUNTERS KEEPS ITS SHAPE**: it is a full 5x5 of your five against their
   five, so it has no spare half to reclaim and it keeps its portrait column
-  down the left. Everything that ranks heroes NOT in the game —
+  down the left. What it gained is the same two colours — one GREEN BOX
+  round the ally header strip and one RED round the enemy one
+  (`PortraitHeader.set_outline`) — because your five down the side against
+  their five across the top looked symmetrical while meaning two different
+  things by its axes, and the numbers are read from your point of view
+  either way. Drawn a section at a time, since a header paints one section
+  at a time: the two long edges on every section and an end cap on the
+  first and last, and only round sections that actually have a hero, since
+  a box round the spare column of a 5v4 claims a pick nobody has made.
+  **BOTH GRIDS ARE SNUG IN BOTH AXES, and the slack is on the RIGHT**
+  (`_apply_icon_box`, `_fit_width`, `AlignLeft`). The rows were always the
+  height of the picture in them while the columns stretched to the card, so
+  there was a gap between every pair of columns and none between any pair
+  of rows — the grid read as having come apart horizontally. Each column is
+  now cut to what it draws and the table is aligned left in its card, so
+  the grid still begins under the heading above it and the leftover is
+  plain background. Two traps in that. The column must be as wide as
+  "+12.34" as well as the portrait, MEASURED against the real font
+  (`WIDEST_CELL`), because a portrait is narrower than the number at the
+  app's body size and cutting to the picture alone put "..." where the
+  numbers were; the number is therefore also what sets the portrait's size,
+  and `HEADER_ICON_MAX` is no longer the ceiling. And the room a portrait
+  is allowed is measured from the WINDOW, never from the table's own
+  viewport: the columns are fixed to what that measurement chooses, so
+  measuring inside the table would be measuring the last answer, and the
+  portraits shrank a few pixels on every layout pass. The empty outline
+  works the same numbers out (`_blank_metrics`) rather than using a
+  constant, so the shape does not change when the first hero arrives. Everything that ranks heroes NOT in the game —
   the ranked list, the filter, "Why this score", the counters list and the
   items panel — moved to the **Analysis** tab, because 120 candidates
   beside the ten picks made the ten harder to read. There is no longer a
@@ -693,7 +756,20 @@ credentials, and put the account at risk. Do not go there.
   downloaded with the portraits into `assets/items/`, named by a slug of
   the DISPLAY name so `rules/items.yaml` can go on saying "Black King Bar"
   the way a person writes it; a missing icon draws the name and is normal,
-  not an error. Role and own-hero filtering still apply once known — they
+  not an error.
+  **A MISSING ICON HAS FOUR CAUSES AND ONE APPEARANCE**, so there is a tool
+  that tells them apart (`tools/check_item_icons.py`, Setup > Download >
+  Check item icons). The download 404'd, the rules name an item OpenDota
+  does not list, the rule name is a prefix of TWO icons and is refused
+  rather than guessed at (`item_icons._resolve` — drawing the wrong item is
+  worse than drawing the name), or the file on disk will not decode. All
+  four draw the name, which is why "Eul's Scepter isn't showing the image"
+  cannot be answered from the picture. Ambiguity is NOT resolved by taking
+  the shortest match: a rule saying "Boots" would then silently draw Boots
+  of Travel. A file that was never written is fixed by re-running the
+  download, which skips what is already there and so retries exactly the
+  ones that failed.
+  Role and own-hero filtering still apply once known — they
   just no longer gate the panel.
 - **DEMO fills the board in one press, and the two "Simulate a draft" menu
   items are gone** (`_demo_draft`). They each started a SUBPROCESS posting
@@ -748,7 +824,7 @@ credentials, and put the account at risk. Do not go there.
   did not, and a drag that never starts looks exactly like a feature that
   does not exist.
 - **Captions are gone from the grids.** The card heading says which grid it
-  is ("Counters", "Synergy") and the row and column headers say what the
+  is ("Counters", "Synergies") and the row and column headers say what the
   axes are; a paragraph repeating both only stands between the reader and
   the numbers. `MatrixTable.set_compact(short_names=...)` separates the two
   jobs: dropping the caption is for everywhere, while short names, fixed

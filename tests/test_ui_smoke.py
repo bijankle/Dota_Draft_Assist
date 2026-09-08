@@ -1293,45 +1293,67 @@ def _cell_value(table, row, col):
     return None if item is None else item.data(SORT_ROLE)
 
 
-def test_the_synergy_grid_is_two_triangles(window):
+def test_the_synergy_grid_is_two_triangles_that_touch(window):
     """Synergy is symmetric, so a team's own pairings only ever fill half a
     square — and that is exactly the shape of the other team's. Yours above
     the diagonal against the ally portraits on TOP, theirs below it against
-    the enemy portraits along the BOTTOM row. The diagonal stays empty."""
-    from draft_assist.ui.tables import PAIR_HEADER, PAIR_HERO, PAIR_VALUE
+    the enemy portraits along the BOTTOM row.
+
+    The two triangles TOUCH: n a side is n(n-1) pairs across both teams,
+    which is exactly (n-1) rows of n, so the body has no cell to spare and
+    no diagonal gap. With the bottom axis row that is n by n — the same
+    five rows counters has."""
+    from draft_assist.ui.tables import (PAIR_HEADER, PAIR_HERO, PAIR_SIDE,
+                                        PAIR_VALUE)
     window.refresh()
     draft = window._current_draft()
     allies, enemies = list(draft.allies), list(draft.enemies)
     table = window.synergy_matrix.table
     side = max(len(allies), len(enemies))
-    # One row more than the square: the enemy portraits are this grid's
-    # second header, and Qt has no bottom header to put them in.
+    # Square overall: (side - 1) rows of pairs, plus the enemy axis row,
+    # because Qt has no bottom header to put it in.
     assert table.columnCount() == side
-    assert table.rowCount() == side + 1
+    assert table.rowCount() == side
+    body = side - 1
 
     def value(row, col):
         item = table.item(row, col)
         return None if item is None else item.data(PAIR_VALUE)
 
-    upper = [(r, c) for r in range(side) for c in range(side)
+    upper = [(r, c) for r in range(body) for c in range(side)
              if value(r, c) is not None and c > r]
-    lower = [(r, c) for r in range(side) for c in range(side)
-             if value(r, c) is not None and c < r]
-    assert len(upper) == len(allies) * (len(allies) - 1) // 2
-    assert len(lower) == len(enemies) * (len(enemies) - 1) // 2
-    assert all(value(i, i) is None for i in range(side)), "the diagonal"
+    lower = [(r, c) for r in range(body) for c in range(side)
+             if value(r, c) is not None and c <= r]
+    # THEIRS above the diagonal, YOURS below it: your own five take the
+    # lower left, the half of the square reaching the edge your panel
+    # sits at.
+    assert len(upper) == len(enemies) * (len(enemies) - 1) // 2
+    assert len(lower) == len(allies) * (len(allies) - 1) // 2
+    # With both teams full the body has no hole at all: every cell is a
+    # real pair, which is what "the triangles touch" means. A short side
+    # leaves gaps, and that is the only thing that may.
+    if len(allies) == len(enemies) == side:
+        assert len(upper) + len(lower) == body * side
 
     # Every cell is backed by its own ROW hero — which is what replaced the
-    # left-hand header column.
+    # left-hand header column — and says which triangle it is in, which is
+    # what the green and red outlines are traced from.
     for row, col in upper:
-        assert table.item(row, col).data(PAIR_HERO) == allies[row]
-    for row, col in lower:
         assert table.item(row, col).data(PAIR_HERO) == enemies[row]
-    # And the bottom row is the enemy axis, portraits with no numbers.
-    for col, hero in enumerate(enemies):
-        item = table.item(side, col)
+        assert table.item(row, col).data(PAIR_SIDE) == "enemy"
+    for row, col in lower:
+        # LIFTED BY ONE: your triangle starts at ally 1, which is what
+        # closes the diagonal.
+        assert table.item(row, col).data(PAIR_HERO) == allies[row + 1]
+        assert table.item(row, col).data(PAIR_SIDE) == "ally"
+    # And the bottom row is your own axis: portraits, that hero's total
+    # with its own four, and the same side as the triangle it sits under —
+    # so the outline encloses a team and its faces as one region.
+    for col, hero in enumerate(allies):
+        item = table.item(body, col)
         assert item.data(PAIR_HEADER) and item.data(PAIR_HERO) == hero
-        assert item.data(PAIR_VALUE) is None
+        assert item.data(PAIR_SIDE) == "ally"
+        assert item.data(PAIR_VALUE) is not None
 
 
 def test_the_synergy_grid_has_no_left_header_and_counters_still_does(window):
@@ -1358,9 +1380,10 @@ def test_the_enemy_half_is_not_sign_flipped(window):
     if len(enemies) < 2:
         pytest.skip("needs two enemies to have a pair at all")
     table = window.synergy_matrix.table
-    raw = float(window.ds.delta_with[window.ds.index[enemies[1]],
-                                     window.ds.index[enemies[0]]])
-    assert table.item(1, 0).data(PAIR_VALUE) == pytest.approx(raw)
+    raw = float(window.ds.delta_with[window.ds.index[enemies[0]],
+                                     window.ds.index[enemies[1]]])
+    # (0, 1) is the first cell of THEIR triangle, which is the upper one.
+    assert table.item(0, 1).data(PAIR_VALUE) == pytest.approx(raw)
     # The click view still flips, because there the enemy figures sit among
     # your own with no line between them.
     flipped = next(r for r in scoring.relations_to(window.ds, enemies[0],
@@ -3248,6 +3271,22 @@ def test_both_grids_start_at_the_same_height(window, qapp):
     tops = [m.table.mapTo(window, m.table.rect().topLeft()).y()
             for m in (window.synergy_matrix, window.matchup_matrix)]
     assert tops[0] == tops[1], f"{tops[0]} vs {tops[1]}"
+
+
+def test_a_full_board_leaves_the_two_grids_the_same_size(window, qapp):
+    """The triangles touch, so synergy is (n-1) rows of pairs plus the
+    enemy axis — n rows, exactly the n counters has. That is the whole
+    reason they line up bottom as well as top, with nothing told about
+    the other."""
+    window.show()
+    window.resize(1500, 950)
+    window._demo_draft()
+    window.refresh()
+    _settle(qapp)
+    synergy, counters = window.synergy_matrix, window.matchup_matrix
+    assert synergy.table.rowCount() == counters.table.rowCount()
+    assert synergy.table.height() == counters.table.height(), \
+        f"{synergy.table.height()} vs {counters.table.height()}"
 
 
 def test_the_ad_slot_is_off_unless_it_is_asked_for(qapp):

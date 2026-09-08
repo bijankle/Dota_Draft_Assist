@@ -326,6 +326,9 @@ class MainWindow(QMainWindow):
         self._act(downloads, "&Item icons…",
                   lambda: self.run_task("fetch_item_icons"), None,
                   "Just the item pictures, with the reason if it fails")
+        self._act(downloads, "&Check item icons…",
+                  lambda: self.run_task("check_item_icons"), None,
+                  "Which items in the rules have no picture, and why")
         self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
                   None, "Which ranks the statistics are drawn from")
         self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
@@ -634,7 +637,7 @@ class MainWindow(QMainWindow):
         # portraits rather than the names a second time.
         self.grids_row = grids = QHBoxLayout()
         grids.setSpacing(10)
-        with_card, withlay = card("Synergy")
+        with_card, withlay = card("Synergies")
         self.synergy_matrix = MatrixTable()
         # No caption: the heading says which grid this is and the headers
         # say what the axes are.
@@ -2602,6 +2605,16 @@ class MainWindow(QMainWindow):
             # same two colours for the opposite reason. Colour is reserved
             # for meaning here, and "which side is this" is not one.
             label.setStyleSheet(f"color: {theme.TEXT_STRONG};")
+        # And the grids are outlined in the two teams' own colours —
+        # Radiant green, Dire red, Dota's own — so the counters grid says
+        # which of its axes is whose and the synergy card says which
+        # triangle is whose. Which of ally and enemy gets which changes
+        # with the side the player is on, and this is the only place that
+        # knows.
+        ally_colour = theme.BAD if mine == "Dire" else theme.GOOD
+        enemy_colour = theme.GOOD if mine == "Dire" else theme.BAD
+        for grid in (self.synergy_matrix, self.matchup_matrix):
+            grid.set_team_colours(ally_colour, enemy_colour)
         # The player's five go to the side they actually belong to, rather
         # than always sitting on the left: Radiant is the left bank of
         # Dota's own pick bar, so a panel on the left labelled Dire would

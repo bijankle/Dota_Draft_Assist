@@ -65,6 +65,22 @@ TASKS = {
         needs_network=True,
         reload_after=True,
     ),
+    "check_item_icons": Task(
+        key="check_item_icons",
+        title="Check item icons",
+        steps=[[PY, "tools/check_item_icons.py"]],
+        blurb=("Names every item in the rules that has no picture, and says "
+               "which of the three reasons it is: no file was ever written "
+               "(the download 404'd, or the rules name an item OpenDota "
+               "does not list), the name matches two icons and is refused "
+               "rather than guessed at, or the file on disk will not "
+               "decode. An item with no icon draws its NAME instead, and "
+               "that fallback looks the same whatever went wrong.\n\n"
+               "A missing file is fixed by Download > Item icons, which "
+               "skips what is already there and so retries exactly the "
+               "ones that failed."),
+        needs_network=False,
+    ),
     "fetch_item_icons": Task(
         key="fetch_item_icons",
         title="Fetch item icons",

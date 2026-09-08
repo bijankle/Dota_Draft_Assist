@@ -14,7 +14,7 @@ Two things live here that Qt does not give for free:
 """
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPen
 from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
                              QStyledItemDelegate, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget)
@@ -26,8 +26,12 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 # The empty grid drawn before either team is known: a draft is five a side,
 # so the outline is too.
 BLANK_SIDE = 5
-# The same height a filled row settles at, so nothing jumps when the first
-# pair of heroes arrives.
+# The height a filled row settles at where the headers are plain text.
+# With portrait headers a row is the height of the picture in it, so the
+# outline works its own out (`MatrixTable._blank_metrics`) rather than
+# using this — an empty grid should be the SHAPE the filled one will have,
+# and a number written down here stopped being that the moment the
+# portraits started setting the size.
 BLANK_ROW = 26
 
 
@@ -90,12 +94,16 @@ class BreakdownPanel(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().sectionClicked.connect(self._sort_bank)
-        # TOP, not centred. `_fit_height` gives the table a fixed height, so
-        # a QVBoxLayout puts the slack ABOVE it as well as below — and the
-        # moment the two grids stopped being the same height (the synergy
-        # one grew a bottom header row) the shorter one floated down the
-        # middle of its card and the two stopped lining up.
-        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop)
+        # TOP LEFT, not centred. `_fit_height` and `_fit_width` give the
+        # table a fixed size, so a layout puts the slack ABOVE it as well as
+        # below and either side of it — and the moment the two grids stopped
+        # being the same height (the synergy one grew a bottom header row)
+        # the shorter one floated down the middle of its card and the two
+        # stopped lining up. Left for the same reason: the grid begins under
+        # the heading above it, and the room the columns no longer take is
+        # plain background on the right.
+        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop
+                         | Qt.AlignmentFlag.AlignLeft)
 
         self.footnote = QLabel("")
         self.footnote.setWordWrap(True)
@@ -212,11 +220,27 @@ COMPACT_COLUMN = 72
 # tiles above size themselves against the same number so a column reads
 # down from the tile it belongs to.
 HEADER_ICON = 34
+# How big a header portrait grows on its own account. It is no longer the
+# ceiling: a column must print "+12.34" whatever the picture would have
+# liked to be, so where the number is wider the number wins.
 HEADER_ICON_MAX = 64
 ROW_HEADER = HEADER_ICON + 4
+# The line drawn round a team's own region — green for Radiant, red for
+# Dire. Two triangles that touch need something between them saying which
+# is which, and the same box round a header strip says which axis of the
+# counters grid is whose. It is the ONE thing these colours mean here:
+# inside a team's own region a green number is that team's pair working,
+# whichever team it is.
+PAIR_EDGE_W = 2
 # A cell has to hold "+12.34" without eliding, and that is wider than the
 # portrait above it — so the column, not the icon, sets the floor.
-CELL_MIN = 46
+# The narrowest a cell can be and still print a signed delta. It is a
+# static estimate, used for the WINDOW's floor before any table exists;
+# the live column measures `WIDEST_CELL` against the real font instead,
+# because the body size has been raised twice and a constant does not
+# follow it.
+CELL_MIN = 82
+WIDEST_CELL = "+12.34"
 
 
 def minimum_grid_width(columns: int = 5) -> int:
@@ -255,6 +279,8 @@ class PortraitHeader(QHeaderView):
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
         self.heroes: dict[int, int] = {}
+        self.values: dict[int, float] = {}
+        self.outline: str = ""
         self.box = HEADER_ICON
 
     def set_box(self, size: int) -> None:
@@ -278,6 +304,70 @@ class PortraitHeader(QHeaderView):
         self.updateGeometries()
         self.viewport().update()
 
+    def set_outline(self, colour: str = "") -> None:
+        """Box this whole strip of faces in one team's colour.
+
+        Counters is your five DOWN the side against their five ACROSS the
+        top, and nothing on it said which was which — the numbers are read
+        from your point of view either way, so the grid looked symmetrical
+        while meaning two different things by its axes. One green box round
+        Radiant's portraits and one red box round Dire's answers it in the
+        same vocabulary the synergy triangles use, and costs no space at
+        all.
+        """
+        self.outline = colour
+        self.viewport().update()
+
+    def _paint_outline(self, painter, rect, index) -> None:
+        """This section's share of the box round the whole strip.
+
+        A header paints one section at a time, so the box has to be drawn
+        in pieces: the two long edges on every section, and an end cap on
+        the first and last. Drawn per section rather than over the viewport
+        afterwards because there is no hook for that, and a box painted on
+        top of a scrolled header would be in the wrong place anyway.
+        """
+        if not self.outline:
+            return
+        # Only round the sections that HAVE a hero. The pair grid is as
+        # wide as the longer team, so a 5v4 leaves a column heading
+        # nothing, and a box drawn round it claims a fifth pick that has
+        # not been made. With no portraits at all the header is names and
+        # every section counts.
+        heads = sorted(self.heroes) if self.heroes else list(range(self.count()))
+        if index not in heads:
+            return
+        painter.save()
+        painter.setPen(QPen(QColor(self.outline), PAIR_EDGE_W))
+        inset = PAIR_EDGE_W // 2
+        edge = rect.adjusted(inset, inset, -inset, -inset)
+        across = self.orientation() == Qt.Orientation.Horizontal
+        first, last = heads[0], heads[-1]
+        sides = [(edge.topLeft(), edge.topRight()),
+                 (edge.bottomLeft(), edge.bottomRight())] if across else \
+                [(edge.topLeft(), edge.bottomLeft()),
+                 (edge.topRight(), edge.bottomRight())]
+        if index == first:
+            sides.append((edge.topLeft(), edge.bottomLeft()) if across
+                         else (edge.topLeft(), edge.topRight()))
+        if index == last:
+            sides.append((edge.topRight(), edge.bottomRight()) if across
+                         else (edge.bottomLeft(), edge.bottomRight()))
+        for line in sides:
+            painter.drawLine(*line)
+        painter.restore()
+
+    def set_values(self, values: dict) -> None:
+        """Section index -> a figure to print on the portrait.
+
+        The synergy grid's two axes are its two teams, so the obvious place
+        for a hero's total with its own four is on the face heading its
+        row — bottom-right of the portrait, the same corner and the same
+        badge every other number in the app sits in.
+        """
+        self.values = values
+        self.viewport().update()
+
     def paintSection(self, painter, rect, index):   # noqa: N802 - Qt naming
         from .portraits import scaled
         hero_id = self.heroes.get(index)
@@ -287,13 +377,22 @@ class PortraitHeader(QHeaderView):
         art = (scaled(hero_id, min(self.box, rect.width()), rect.height())
                if hero_id is not None else None)
         if art is None:
-            return super().paintSection(painter, rect, index)
+            super().paintSection(painter, rect, index)
+            return self._paint_outline(painter, rect, index)
         painter.save()
         painter.fillRect(rect, QColor(theme.BG_ELEVATED))
-        painter.drawPixmap(
-            rect.left() + (rect.width() - art.width()) // 2,
-            rect.top() + (rect.height() - art.height()) // 2, art)
+        box = QRect(rect.left() + (rect.width() - art.width()) // 2,
+                    rect.top() + (rect.height() - art.height()) // 2,
+                    art.width(), art.height())
+        painter.drawPixmap(box.topLeft(), art)
+        value = self.values.get(index)
+        if value is not None:
+            from . import tilekit
+            tilekit.paint_badge(painter, box, f"{float(value) * 100:+.2f}",
+                                theme.GOOD if float(value) > 0 else theme.BAD,
+                                self.font())
         painter.restore()
+        self._paint_outline(painter, rect, index)
 
 
 # The roles a paired-triangle cell carries: whose portrait backs it, the
@@ -301,9 +400,13 @@ class PortraitHeader(QHeaderView):
 PAIR_HERO = int(Qt.ItemDataRole.UserRole) + 10
 PAIR_VALUE = PAIR_HERO + 1
 PAIR_HEADER = PAIR_HERO + 2
+PAIR_SIDE = PAIR_HERO + 3
 # How far the portrait behind a number is knocked back. It is a backdrop,
 # not the subject: at full strength the artwork competes with the figure it
-# is meant to be labelling.
+# is meant to be labelling. THE TWO HEADER ROWS ARE NOT VEILED: they are
+# the grid's axes, they name the ten heroes the whole card is about, and
+# knocking them back made the bottom row read as another kind of thing
+# from the identical portraits along the top.
 PAIR_VEIL = 110
 
 
@@ -340,17 +443,65 @@ class PairCellDelegate(QStyledItemDelegate):
                         rect.top() + (rect.height() - art.height()) // 2,
                         art.width(), art.height())
             painter.drawPixmap(box.topLeft(), art)
-            # Knocked back, so the figure over it stays the subject.
-            painter.fillRect(box, QColor(0, 0, 0, PAIR_VEIL))
+            if not index.data(PAIR_HEADER):
+                # Knocked back, so the figure over it stays the subject.
+                # Not the axis rows: those ARE the subject.
+                painter.fillRect(box, QColor(0, 0, 0, PAIR_VEIL))
+        self._paint_edges(painter, index, rect)
         value = index.data(PAIR_VALUE)
-        if value is not None and not index.data(PAIR_HEADER):
+        if value is not None:
             # THE TILE'S OWN BADGE: same font, same size, same corner as
             # the figure on a pick up at the top of the window, so the two
-            # are read the same way rather than as two conventions.
+            # are read the same way rather than as two conventions. The
+            # header rows carry one too — that hero's synergy with its own
+            # four — in the same corner, so a total is read exactly where
+            # the pairs that made it are.
             tilekit.paint_badge(painter, box, f"{float(value) * 100:+.2f}",
                                 theme.GOOD if float(value) > 0 else theme.BAD,
                                 option.font)
         painter.restore()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # ALLY and ENEMY, not Radiant and Dire: the model does not know
+        # which is which, and the answer changes between matches. The UI
+        # sets it (`MatrixTable.set_team_colours`), so a triangle is
+        # outlined in its own team's real colour.
+        self.colours = {"ally": theme.GOOD, "enemy": theme.BAD}
+
+    def _paint_edges(self, painter, index, rect) -> None:
+        """Trace this cell's side of the boundary, if it is on one.
+
+        The outline is drawn PER CELL rather than as one path over the
+        table, because a cell is the only thing that knows where it ended
+        up: the columns stretch with the window, so a path computed from
+        row and column numbers would be redrawn against stale geometry the
+        first time anything resized. Each cell asks its four neighbours
+        which triangle they are in, and draws the edges where the answer
+        differs — which gives the stepped diagonal for free, in both
+        colours, with the two teams' lines meeting along it.
+        """
+        side = index.data(PAIR_SIDE)
+        if not side:
+            return
+        colour = QColor(self.colours.get(side, theme.GOOD))
+        painter.setPen(QPen(colour, PAIR_EDGE_W))
+        model = index.model()
+        # Half the pen's width sits either side of the line it is given, so
+        # an edge drawn on the rectangle itself is half outside the cell
+        # and lands under the neighbour. Inset by half.
+        inset = PAIR_EDGE_W // 2
+        edge = rect.adjusted(inset, inset, -inset, -inset)
+        row, col = index.row(), index.column()
+        for d_row, d_col, line in (
+                (-1, 0, (edge.topLeft(), edge.topRight())),
+                (1, 0, (edge.bottomLeft(), edge.bottomRight())),
+                (0, -1, (edge.topLeft(), edge.bottomLeft())),
+                (0, 1, (edge.topRight(), edge.bottomRight()))):
+            neighbour = model.index(row + d_row, col + d_col)
+            beyond = neighbour.data(PAIR_SIDE) if neighbour.isValid() else None
+            if beyond != side:
+                painter.drawLine(*line)
 
 
 class MatrixTable(QWidget):
@@ -386,16 +537,36 @@ class MatrixTable(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # TOP, not centred. `_fit_height` gives the table a fixed height, so
-        # a QVBoxLayout puts the slack ABOVE it as well as below — and the
-        # moment the two grids stopped being the same height (the synergy
-        # one grew a bottom header row) the shorter one floated down the
-        # middle of its card and the two stopped lining up.
-        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop)
+        # TOP LEFT, not centred. `_fit_height` and `_fit_width` give the
+        # table a fixed size, so a layout puts the slack ABOVE it as well as
+        # below and either side of it — and the moment the two grids stopped
+        # being the same height (the synergy one grew a bottom header row)
+        # the shorter one floated down the middle of its card and the two
+        # stopped lining up. Left for the same reason: the grid begins under
+        # the heading above it, and the room the columns no longer take is
+        # plain background on the right.
+        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop
+                         | Qt.AlignmentFlag.AlignLeft)
         self.empty_note = QLabel("")
         self.empty_note.setWordWrap(True)
         self.empty_note.setProperty("dim", True)
         layout.addWidget(self.empty_note)
+
+    def _fit_width(self) -> None:
+        """As wide as its columns, and no wider.
+
+        `_fit_height` has always done this for the other axis. Left to
+        stretch, the columns take whatever the card is given and the
+        portraits sit in gaps that the rows do not have; fixed to the
+        picture, the table has a width of its own and the layout aligns it
+        left, so the grid still begins under the heading above it and the
+        leftover is plain background rather than five wide columns.
+        """
+        head = self.table.horizontalHeader()
+        down = self.table.verticalHeader()
+        edge = 0 if down.isHidden() else down.width()
+        self.table.setFixedWidth(
+            edge + head.length() + 2 * self.table.frameWidth() + 2)
 
     def _fit_height(self) -> None:
         """Size the table to its rows — EVERYWHERE, not just the callout.
@@ -445,6 +616,38 @@ class MatrixTable(QWidget):
         """
         self._icon_headers = on
         self._icon_size = size
+
+    def set_team_colours(self, ally: str, enemy: str) -> None:
+        """Which colour each team is outlined in, this match.
+
+        Radiant is green and Dire is red — Dota's own two colours, and the
+        ones the user asked for — so which of ALLY and ENEMY gets which
+        depends on the side the player is on. It is set from outside for
+        exactly that reason: nothing below the UI knows.
+        """
+        self._team_colours = (ally, enemy)
+        self._pair_delegate().colours = {"ally": ally, "enemy": enemy}
+        self._apply_team_boxes()
+        self.table.viewport().update()
+
+    def _apply_team_boxes(self) -> None:
+        """Box each header strip in its own team's colour.
+
+        Both grids put the enemies ACROSS the top and the allies DOWN the
+        side — counters because the columns read against their five, the
+        pair grid because its upper triangle is theirs — so one rule does
+        both. An empty grid gets neither: an outline round five blank
+        sections is a claim about heroes nobody has picked.
+        """
+        ally, enemy = getattr(self, "_team_colours", (theme.GOOD, theme.BAD))
+        across = self.table.horizontalHeader()
+        down = self.table.verticalHeader()
+        heroes = bool(getattr(across, "heroes", {}) or
+                      getattr(down, "heroes", {}))
+        if isinstance(across, PortraitHeader):
+            across.set_outline(enemy if heroes else "")
+        if isinstance(down, PortraitHeader):
+            down.set_outline(ally if heroes and not down.isHidden() else "")
 
     def set_margins(self, on: bool) -> None:
         """Draw the Sigma row and column, or leave them off.
@@ -515,19 +718,33 @@ class MatrixTable(QWidget):
             # would shrink it back to the height of a line of digits.
             self.table.verticalHeader().setSectionResizeMode(
                 QHeaderView.ResizeMode.ResizeToContents)
+        # LAST WORD ON THE COLUMNS. The stretch above is for a grid of
+        # names; with portraits the columns are cut to the picture, and
+        # this has to run after that loop rather than before it inside
+        # `_set_headers`, or the stretch puts the gaps straight back.
+        self._apply_icon_box()
         self._fit_height()
 
     def show_pairs(self, grid, empty_text: str = "") -> None:
         """Both teams' synergies, as the two triangles of one square.
 
-        Yours above the diagonal read against the ally portraits along the
-        TOP; theirs below it read against the enemy portraits along the
-        BOTTOM, which is an ordinary last ROW of the table rather than a
-        second header — Qt has no bottom header and a separate widget
+        DIRE above the diagonal, read against the enemy portraits along
+        the TOP; RADIANT below it, read against the ally portraits along
+        the BOTTOM, which is an ordinary last ROW of the table rather than
+        a second header — Qt has no bottom header and a separate widget
         under the table would not keep its columns in step with it.
+        Radiant takes the lower LEFT because that is the half of the square
+        reaching the same edge its panel sits at.
 
         There is no left-hand header at all: every cell carries its own row
         hero's portrait, so the pair names itself.
+
+        THE BODY IS ONE ROW SHORTER THAN IT IS WIDE, because the triangles
+        touch: n heroes a side is n(n-1) pairs across both teams, which is
+        exactly (n-1) rows of n. With the bottom axis row added back the
+        table is n by n — the same five rows the counters grid has, which
+        is what makes the two cards line up without either being told
+        about the other.
         """
         self.caption.setVisible(False)
         self.empty_note.setText("" if not grid.empty else empty_text)
@@ -542,35 +759,46 @@ class MatrixTable(QWidget):
         if grid.empty:
             self._show_outline()
             return
-        side = grid.side
-        self.table.setColumnCount(side)
+        columns = grid.columns
+        rows = len(grid.cells)
+        self.table.setColumnCount(columns)
         # One extra row: the enemy portraits, which are this grid's second
         # header and the axis its lower triangle is read against.
-        self.table.setRowCount(side + 1)
+        self.table.setRowCount(rows + 1)
         self.table.setItemDelegate(self._pair_delegate())
 
-        for row in range(side):
-            for col in range(side):
+        for row in range(rows):
+            for col in range(columns):
                 cell = grid.cells[row][col]
                 item = QTableWidgetItem()
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if cell is not None:
                     item.setData(PAIR_HERO, cell.hero_id)
                     item.setData(PAIR_VALUE, cell.delta)
+                    item.setData(PAIR_SIDE, cell.side)
                     item.setData(SORT_ROLE, cell.delta)
                 self.table.setItem(row, col, item)
-        for col, (hero_id, name) in enumerate(grid.enemies):
+        for col, (hero_id, name) in enumerate(grid.allies):
             item = QTableWidgetItem()
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setData(PAIR_HERO, hero_id)
             item.setData(PAIR_HEADER, True)
+            # IN the triangle, not beside it: the bottom row is Radiant's
+            # own axis and it sits against Radiant's triangle, so giving it
+            # the same side makes the green outline enclose the faces and
+            # the pairs as one region instead of drawing a line between a
+            # team and its own portraits.
+            item.setData(PAIR_SIDE, "ally")
+            total = grid.ally_totals.get(hero_id)
+            if total is not None:
+                item.setData(PAIR_VALUE, total)
             item.setToolTip(name)
-            self.table.setItem(side, col, item)
+            self.table.setItem(rows, col, item)
 
         self._set_pair_columns(grid)
         header = self.table.horizontalHeader()
         header.setStretchLastSection(False)
-        for col in range(side):
+        for col in range(columns):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._apply_icon_box()
         self._fit_height()
@@ -584,20 +812,34 @@ class MatrixTable(QWidget):
         return self._pairs
 
     def _set_pair_columns(self, grid) -> None:
-        """The TOP header is the allies; there is no left header."""
+        """The TOP header is the ENEMIES, whose triangle it sits on; there
+        is no left header at all."""
         from .portraits import portrait
-        by_index = {}
-        for index, (hero_id, name) in enumerate(grid.allies):
+        by_index, totals = {}, {}
+        for index, (hero_id, name) in enumerate(grid.enemies):
             item = QTableWidgetItem()
+            total = grid.enemy_totals.get(hero_id)
             if portrait(hero_id) is None:
-                item.setText(name)
+                # No art to print a badge on, so the total goes in the
+                # text beside the name rather than being dropped.
+                item.setText(name if total is None
+                             else f"{name} {total * 100:+.2f}")
             else:
                 by_index[index] = hero_id
+                if total is not None:
+                    totals[index] = total
                 item.setToolTip(name)
             self.table.setHorizontalHeaderItem(index, item)
+        # BLANK THE REST. The grid is as wide as the LONGER team, so a
+        # 5v4 leaves a column with no hero to head it — and a header
+        # section with no item of its own draws Qt's default label, which
+        # came out as a white box with "5" in it in the corner of the card.
+        for index in range(len(grid.enemies), self.table.columnCount()):
+            self.table.setHorizontalHeaderItem(index, QTableWidgetItem(""))
         head = self.table.horizontalHeader()
         if isinstance(head, PortraitHeader):
             head.set_heroes(by_index)
+            head.set_values(totals)
 
     def _show_outline(self) -> None:
         """Five by five of nothing — the shape the grid will have."""
@@ -609,8 +851,10 @@ class MatrixTable(QWidget):
                                 self.table.setVerticalHeaderItem)):
             if isinstance(header, PortraitHeader):
                 header.set_heroes({})
+                header.set_values({})
             for index in range(BLANK_SIDE):
                 setter(index, QTableWidgetItem(""))
+        self._apply_team_boxes()
         for row in range(BLANK_SIDE):
             for col in range(BLANK_SIDE):
                 cell = QTableWidgetItem("")
@@ -621,16 +865,43 @@ class MatrixTable(QWidget):
         # nothing extra is needed here — an empty grid draws as a grid.
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
+        width, height = self._blank_metrics()
         for col in range(BLANK_SIDE):
-            head.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+            if width is None:
+                head.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+            else:
+                head.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+                self.table.setColumnWidth(col, width)
         # Fixed rows, not ResizeToContents: empty cells have no contents,
         # so the outline would collapse to five hairlines.
         side = self.table.verticalHeader()
         side.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        side.setDefaultSectionSize(BLANK_ROW)
+        side.setDefaultSectionSize(height)
         for row in range(BLANK_SIDE):
-            self.table.setRowHeight(row, BLANK_ROW)
+            self.table.setRowHeight(row, height)
+        if width is not None:
+            if isinstance(side, PortraitHeader) and not side.isHidden():
+                side.setFixedWidth(width)
+            self._fit_width()
         self._fit_height()
+
+    def _blank_metrics(self) -> tuple[int | None, int]:
+        """The cell the empty outline draws, before there is a hero in it.
+
+        The whole point of drawing an empty grid is that it is the SHAPE
+        the answer will have, so it has to be worked out the same way a
+        filled one is: as wide as the widest number, and as tall as the
+        16:9 portrait that width implies. A constant cannot do it — the
+        body size has been raised twice since one was written down here,
+        and the outline quietly stopped matching the grid it stands in for.
+        None means "stretch", which is right where the headers are names
+        rather than pictures and nothing sets a natural width.
+        """
+        if not getattr(self, "_icon_headers", False):
+            return None, BLANK_ROW
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
+        size = max(HEADER_ICON_MAX, digits - 4)
+        return size + 4, round(size * 9 / 16) + 4
 
     def _apply_icon_box(self) -> None:
         """Give both headers the SAME portrait, sized to the window.
@@ -661,6 +932,7 @@ class MatrixTable(QWidget):
         # while making every row 68px tall for nothing.
         heroes = list(getattr(across, "heroes", {}).values()) or \
             list(getattr(down, "heroes", {}).values())
+        self._apply_team_boxes()
         if not heroes:
             self._icon_box = None
             across.setFixedHeight(floor + 4)
@@ -668,25 +940,51 @@ class MatrixTable(QWidget):
             down.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
             return
 
-        room = self.table.viewport().width() // columns - 6
-        size = max(floor, min(HEADER_ICON_MAX, room))
-        if size == getattr(self, "_icon_box", None):
-            return
-        self._icon_box = size
-
-        from .portraits import scaled
-        art = scaled(heroes[0], size, size)
-        width, height = ((art.width(), art.height()) if art is not None
-                         else (size, size))
-        for header in (across, down):
-            if isinstance(header, PortraitHeader):
-                header.set_box(size)
+        # From the WINDOW, never from our own viewport. The columns are
+        # fixed to what this chooses, so measuring the room inside the
+        # table would be measuring the last answer: each pass would take a
+        # few pixels off the one before and the portraits would shrink away
+        # over a handful of layout passes. The window's width cannot depend
+        # on our choice — the floor comes from `minimum_grid_width` and a
+        # snug grid is well inside it.
+        # WIDE ENOUGH FOR THE NUMBER, measured against the real font. A
+        # snug column is cut to its portrait, and a portrait is narrower
+        # than "+12.34" at the app's body size — so cutting to the picture
+        # alone put "..." where the numbers were, which is a grid that has
+        # stopped being a grid. Measured rather than guessed at, because
+        # the body size has been raised twice and a constant does not
+        # follow it.
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
+        room = self.window().width() // columns - 6
+        size = max(floor, min(HEADER_ICON_MAX, room), digits - 4)
+        if size != getattr(self, "_icon_box", None):
+            self._icon_box = size
+            from .portraits import scaled
+            art = scaled(heroes[0], size, size)
+            self._icon_drawn = ((art.width(), art.height()) if art is not None
+                                else (size, size))
+            for header in (across, down):
+                if isinstance(header, PortraitHeader):
+                    header.set_box(size)
+        width, height = self._icon_drawn
         across.setFixedHeight(height + 4)
         down.setFixedWidth(width + 4)
         down.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         down.setDefaultSectionSize(height + 4)
         for row in range(self.table.rowCount()):
             self.table.setRowHeight(row, height + 4)
+        # Every column is CUT TO ITS PORTRAIT, not stretched to the card.
+        # The rows were already snug — a row is the height of the picture
+        # in it — and stretching the other axis meant a gap between every
+        # pair of columns and none between any pair of rows, which reads as
+        # the grid having come apart horizontally. The slack goes to the
+        # RIGHT of the table (see `_fit_width`), so the grid still starts
+        # under the heading above it.
+        column = max(width + 4, digits)
+        for col in range(columns):
+            across.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(col, column)
+        self._fit_width()
         self._fit_height()
 
     def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
@@ -727,4 +1025,8 @@ class MatrixTable(QWidget):
                 setter(index, item)
             if isinstance(header, PortraitHeader):
                 header.set_heroes(by_index)
+                # Counters carries no per-hero total in its headers — each
+                # tile above already has one. Cleared rather than left, or
+                # a synergy grid's numbers would survive onto it.
+                header.set_values({})
         self._apply_icon_box()
