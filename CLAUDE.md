@@ -562,15 +562,27 @@ credentials, and put the account at risk. Do not go there.
   **The name does not sit on the art**: it gets its own strip above it,
   because a label over a portrait hides the half of the portrait you
   recognise the hero by, and the art is only worth drawing because it is
-  quicker to read than the name. The number sits in a small badge in
-  the bottom-right, the same plate as the strip and cut to the size of the
-  digits — a full-width bar there would hide as much as the name used to.
-  **That plate is SOLID BLACK** (`tilekit.CHROME`). At 65% opacity the
-  portrait came through behind the digits, so over a bright piece of art a
-  "+12.34" had to be read against whatever colour happened to be under it
-  — and the number is the one thing on a tile that has to survive being
-  read at a glance. It is cut to the digits, so opaque costs almost none
-  of the picture.
+  quicker to read than the name. The number sits in the bottom-right
+  corner, snug against it.
+  **IT IS OUTLINED, NOT PLATED** (`tilekit.paint_badge`, `STROKE`,
+  `stroke_width`). It sat on a solid black rounded plate, and the plate is
+  the part that hides the hero: even cut to the digits it is a rectangle
+  of the portrait gone, and on a small tile that rectangle is most of the
+  face you read the tile by. A black stroke traced round the letterforms
+  separates the number from whatever colour is behind it just as well and
+  costs only the ink of the outline — the art shows through between and
+  around the characters. Coverage went from about a fifth of the tile to
+  under a tenth. The stroke is drawn FIRST and the colour filled over it,
+  because a centred stroke eats half its width into the letter; painting
+  the fill on top leaves the digit its full weight with the black only
+  outside. (`CHROME` still exists and is still opaque — the NAME band uses
+  it, and that is only ever drawn when there is no art to see through.)
+  **AND IT SCALES WITH THE TILE** (`number_pt`, `NUMBER_OF_HEIGHT`). It
+  was a flat 14pt while the tiles run from 36 to 74 pixels tall, so on a
+  narrow window — or with twenty suggestions wrapped onto two rows — the
+  number covered the portrait it was annotating. A number you cannot read
+  the hero under is a number about nothing. `NUMBER_MIN_PT` is where the
+  digits stop being legible at all; below that, small beats gone.
   **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
   _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
   leftover width at a fixed height meant full-screening the window
