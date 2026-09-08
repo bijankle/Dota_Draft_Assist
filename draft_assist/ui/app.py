@@ -2548,10 +2548,13 @@ class MainWindow(QMainWindow):
         for side, caption in (("ally", mine), ("enemy", theirs)):
             label = self.team_captions[side]
             set_label(label, caption)
-            # Dota's own colours, so the heading agrees with the game the
-            # user is looking at rather than with our ally/enemy idea.
-            colour = theme.GOOD if caption == "Radiant" else theme.BAD
-            label.setStyleSheet(f"color: {colour};")
+            # PLAIN WHITE. They were Dota's own green and red, and that put
+            # the colours that mean "good for you" and "bad for you" on two
+            # words that are not a judgement about anything — with the
+            # side's own signed total sitting right beside them wearing the
+            # same two colours for the opposite reason. Colour is reserved
+            # for meaning here, and "which side is this" is not one.
+            label.setStyleSheet(f"color: {theme.TEXT_STRONG};")
         # The player's five go to the side they actually belong to, rather
         # than always sitting on the left: Radiant is the left bank of
         # Dota's own pick bar, so a panel on the left labelled Dire would

@@ -579,13 +579,19 @@ def test_side_selector_is_hidden_when_the_game_reports_your_team(qapp):
         win.refresh()
         assert win.side_combo.isHidden()
         assert win.side_label.isHidden()
-        # The headings are just the two side names, in Dota's own colours:
-        # "Your team — Bijson · Dire" said three things where one does.
+        # The headings are just the two side names: "Your team — Bijson ·
+        # Dire" said three things where one does.
         assert win.team_captions["ally"].text() == "Dire"
         assert win.team_captions["enemy"].text() == "Radiant"
+        # PLAIN WHITE. Green and red on the side names put the colours
+        # that mean "good for you" and "bad for you" on two words that
+        # judge nothing — with the side's signed total right beside them
+        # wearing the same two colours for the opposite reason.
         from draft_assist.ui import theme
-        assert theme.BAD in win.team_captions["ally"].styleSheet()
-        assert theme.GOOD in win.team_captions["enemy"].styleSheet()
+        for side in ("ally", "enemy"):
+            sheet = win.team_captions[side].styleSheet()
+            assert theme.TEXT_STRONG in sheet
+            assert theme.GOOD not in sheet and theme.BAD not in sheet
     finally:
         win.close()
 
@@ -3109,3 +3115,16 @@ def test_a_blanked_board_does_not_reserve_the_heroes_it_hides(window):
     window._clear_all()
     window.refresh()
     assert not (reported & window._taken_heroes())
+
+
+def test_the_side_total_keeps_its_colour_when_the_name_loses_it(window, qapp):
+    """The heading is white; the number beside it is still green or red by
+    sign, because that IS a judgement and the name is not."""
+    from draft_assist.ui import theme
+    window.refresh()
+    panel = window.team_panels["ally"]
+    assert theme.TEXT_STRONG in window.team_captions["ally"].styleSheet()
+    panel.set_total(0.05)
+    assert theme.GOOD in panel.total.styleSheet()
+    panel.set_total(-0.05)
+    assert theme.BAD in panel.total.styleSheet()

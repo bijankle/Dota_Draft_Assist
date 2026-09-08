@@ -800,9 +800,13 @@ credentials, and put the account at risk. Do not go there.
   DEEPER red than `BAD` on purpose: `BAD` is the bright coral a negative
   number is printed in, and if the two matched, a selected tab would read
   as a warning. Keep them apart if either is ever retuned.
-  **The team headings are Dota's own colours** — Radiant green, Dire red —
-  and they say only the side name. "Your team — Bijson · Radiant" said
-  three things where one does, and the side is what the eye is looking for.
+  **The team headings are PLAIN WHITE**, and they say only the side name.
+  "Your team — Bijson · Radiant" said three things where one does, and the
+  side is what the eye is looking for. They were briefly Dota's own green
+  and red, which put the two colours that mean "good for you" and "bad for
+  you" on two words that judge nothing — with the side's own signed total
+  sitting right beside them wearing the same two colours for the opposite
+  reason. The TOTAL keeps its colour, because that one IS a judgement.
   **They ALWAYS say Radiant and Dire, and LEFT IS ALWAYS RADIANT**
   (`_order_panels`). "Your team" / "Enemy team" was the fallback whenever
   the game had not reported a side, and it named the one thing the user
