@@ -1947,7 +1947,11 @@ class MainWindow(QMainWindow):
         taken = set(self.manual.entered("ally")) | set(
             self.manual.entered("enemy"))
         snap = self.snapshot
-        if snap is not None:
+        # A BLANKED board does not reserve the heroes it is hiding. After
+        # Clear all the picker would otherwise refuse every one of the ten
+        # the game is still reporting — which is most of the heroes you
+        # would want to type back in.
+        if snap is not None and not self._is_cleared(snap):
             taken |= set(snap.left) | set(snap.right)
         return taken
 
@@ -2501,6 +2505,10 @@ class MainWindow(QMainWindow):
         with LOOP.stage("poll (capture + recognition)"):
             snap = self.provider.poll()
         self.snapshot = snap
+        # The blanking lifts here, ONCE a tick, rather than as a side
+        # effect of whoever asks about it first.
+        if self._cleared is not None and self._cleared != self._board_key(snap):
+            self._cleared = None
         allies, enemies = self._sides(snap)
         draft_key = (tuple(allies), tuple(enemies), snap.unknown)
         if draft_key != self.last_draft_key:
@@ -2608,7 +2616,16 @@ class MainWindow(QMainWindow):
         would let the user contradict the game.
         """
         if self._is_cleared(snap):
-            return ([], [])
+            # A blanked board is not empty — it holds whatever has been
+            # TYPED IN since, and nothing else. Returning ([], []) here
+            # made hand entry impossible after Clear all: `merge` puts the
+            # game's five first and cuts to five, so a typed hero was
+            # dropped on the way in, the board key never changed, the
+            # blanking never lifted, and clicking a slot appeared to do
+            # nothing at all. While the board is blanked the game's ten
+            # are not on it, so the manual slots are the whole answer.
+            return (self._apply_order("ally", self.manual.entered("ally")),
+                    self._apply_order("enemy", self.manual.entered("enemy")))
         if getattr(snap, "sides_known", False):
             # The minimap gives ten heroes but not, reliably, which five are
             # yours — one real match came out inverted. So corrections are
@@ -2633,17 +2650,14 @@ class MainWindow(QMainWindow):
 
         So the cleared line-up is REMEMBERED and blanked, and it stops
         being blanked the moment there is something different to show — a
-        pick changes, the match changes, or Detect all is pressed. That is
-        a clean slate that cannot become a board stuck empty for the rest
-        of the evening, which is what suppressing the sources outright
-        would have risked.
+        pick changes, the match changes, or Detect all is pressed (the
+        expiry itself is in `refresh`, once a tick). That is a clean slate
+        that cannot become a board stuck empty for the rest of the
+        evening, which is what suppressing the sources outright would have
+        risked.
         """
-        if self._cleared is None or snap is None:
-            return False
-        if self._cleared == self._board_key(snap):
-            return True
-        self._cleared = None            # something moved; show it
-        return False
+        return (self._cleared is not None and snap is not None
+                and self._cleared == self._board_key(snap))
 
     @staticmethod
     def _board_key(snap):

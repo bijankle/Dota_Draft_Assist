@@ -261,7 +261,17 @@ class TickBox(QCheckBox):
                 QPointF(left + self.BOX * 0.24, top_y + self.BOX * 0.52),
                 QPointF(left + self.BOX * 0.42, top_y + self.BOX * 0.71),
                 QPointF(left + self.BOX * 0.78, top_y + self.BOX * 0.29)]))
-        painter.setPen(QColor(theme.TEXT))
+        # THE LABEL TAKES THE STYLESHEET'S COLOUR, not a hardcoded one.
+        # Painting the text ourselves means the `color:` rule that dims
+        # every other label on this row never reached it, so "Auto" sat
+        # brighter than the tabs and the buttons beside it and read as a
+        # different kind of thing. The palette is where a stylesheet's
+        # `color` lands, so asking it puts this back under the same rule
+        # as everything else — and the hover lift is the tabs' own, done
+        # here because a pseudo-state colour does not reach a widget that
+        # paints its own text.
+        painter.setPen(QColor(theme.TEXT) if self.underMouse()
+                       else self.palette().color(self.foregroundRole()))
         painter.drawText(
             QRectF(self.BOX + 7, 0, self.width() - self.BOX - 7,
                    self.height()),
@@ -348,7 +358,10 @@ class CountBox(QSpinBox):
         self.setRange(low, high)
         self.setValue(value)
         self.setAccelerated(True)
-        self.setAlignment(Qt.AlignmentFlag.AlignRight
+        # LEFT, so the digits start where the box starts. Right-aligned
+        # they were pushed up against the arrows, which reads as the
+        # number belonging to the arrows rather than to the field.
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft
                           | Qt.AlignmentFlag.AlignVCenter)
         # WE DRAW THE ARROWS. Styling the sub-controls (`QSpinBox::up-
         # button`) puts Qt on the stylesheet path for them, and a

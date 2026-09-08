@@ -2556,21 +2556,48 @@ def test_the_number_is_outlined_rather_than_plated(qapp):
         painted = sum(1
                       for y in range(height) for x in range(width)
                       if picture.pixelColor(x, y).alpha() > 0)
-        # A plate cut to the digits covered about a fifth of the tile.
-        assert painted / (width * height) < 0.14, \
-            f"{width}x{height}: still hiding too much of the portrait"
         assert painted > 0, "the number has to be there at all"
+        # The property that matters: THE PORTRAIT SHOWS THROUGH. A plate
+        # fills its whole bounding rectangle, so nothing behind it
+        # survives; an outline leaves the gaps between and inside the
+        # characters clear. Measured inside the ink's own box, so the
+        # empty rest of the tile cannot flatter the number.
+        box = _ink_box(picture)
+        assert box is not None
+        clear = sum(1
+                    for y in range(box.top(), box.bottom() + 1)
+                    for x in range(box.left(), box.right() + 1)
+                    if picture.pixelColor(x, y).alpha() == 0)
+        assert clear > 0.1 * box.width() * box.height(), \
+            f"{width}x{height}: that is a plate, not an outline"
 
 
-def test_the_number_shrinks_with_the_tile(qapp):
-    """A flat 14pt over tiles running 36 to 74 pixels tall meant the badge
-    covered most of the portrait it was annotating on a narrow window."""
-    from draft_assist.ui import tilekit
-    sizes = [tilekit.number_pt(h) for h in (36, 44, 60, 74, 200)]
-    assert sizes == sorted(sizes), "it has to grow with the tile"
-    assert sizes[0] >= tilekit.NUMBER_MIN_PT
-    assert sizes[-1] == tilekit.NUMBER_PT, "and cap at the full size"
-    assert tilekit.number_pt(36) < tilekit.number_pt(74)
+def test_the_number_is_one_fixed_size_tied_to_the_headings(qapp):
+    """It was briefly scaled to the tile, which fixed a badge covering the
+    portrait on a narrow window and then made the digits unreadable at
+    exactly the size where the window is smallest. With the plate gone the
+    size no longer has to buy back space from the art."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtGui import QFont, QImage, QPainter
+    from draft_assist.ui import theme, tilekit
+    assert tilekit.NUMBER_PX == round(theme.HEADING_PX
+                                      * tilekit.NUMBER_OF_HEADING)
+    assert f"font-size: {theme.HEADING_PX}px" in theme.STYLESHEET, \
+        "the heading and the number have to be sized off one number"
+
+    def ink(width, height):
+        picture = QImage(width, height, QImage.Format.Format_ARGB32)
+        picture.fill(0)
+        painter = QPainter(picture)
+        tilekit.paint_badge(painter, QRect(0, 0, width, height),
+                            "+21.7", theme.GOOD, QFont())
+        painter.end()
+        return sum(1 for y in range(height) for x in range(width)
+                   if picture.pixelColor(x, y).alpha() > 0)
+
+    # The same digits at every tile size: a smaller tile does not get a
+    # smaller number, it just has less room around it.
+    assert ink(64, 36) == ink(132, 74)
 
 
 def test_the_body_size_is_the_one_the_user_asked_for():
@@ -2892,6 +2919,11 @@ def test_a_cleared_board_comes_back_the_moment_the_draft_changes(window):
     moved = copy.copy(window.snapshot)
     moved.left = list(moved.left)[:-1] + [window.ds.hero_ids[-1]]
     assert not window._is_cleared(moved), "a changed draft must show again"
+    # The expiry itself is `refresh`'s job, once a tick, rather than a side
+    # effect of whoever happens to ask about it first.
+    window.snapshot = moved
+    if window._cleared != window._board_key(moved):
+        window._cleared = None
     assert window._cleared is None, "and the blanking is over for good"
 
 
@@ -2975,3 +3007,90 @@ def test_the_row_controls_are_tab_labels_not_buttons(window, qapp):
         assert theme.TEXT_DIM in colours, "same ink as an unselected tab"
         # And on the same line: within a pixel of the tab bar's height.
         assert abs(button.height() - window.tabs.bar.height()) <= 2
+
+
+def test_the_auto_box_reads_like_the_rest_of_the_row(window, qapp):
+    """It painted its own label in `theme.TEXT`, so the `color:` rule that
+    dims every other label on the row never reached it and "Auto" sat
+    brighter than the tabs and buttons beside it."""
+    from draft_assist.ui import theme
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    auto = window.auto_record_check
+    tab_font = window.tabs.bar.font()
+    assert (auto.font().family(), auto.font().pixelSize(),
+            auto.font().bold()) == (tab_font.family(), tab_font.pixelSize(),
+                                    tab_font.bold())
+    colours = _colours_in(auto)
+    assert theme.TEXT_DIM in colours, "the label takes the row's own ink"
+    assert theme.TEXT not in colours, "it was brighter than its neighbours"
+
+
+def test_the_count_box_number_starts_at_the_left(qapp):
+    """Right-aligned it was pushed against the arrows, which reads as the
+    number belonging to them rather than to the field."""
+    from PyQt6.QtCore import Qt
+    from draft_assist.ui import chrome
+    box = chrome.CountBox(10, 1, 20)
+    assert box.alignment() & Qt.AlignmentFlag.AlignLeft
+    assert not (box.alignment() & Qt.AlignmentFlag.AlignRight)
+
+
+def test_the_status_line_is_a_footnote(window, qapp):
+    """It is read when something is wrong and ignored the rest of the
+    time, so at the body size it competed with the draft above it."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    body = window.clear_all_button.font().pixelSize()
+    footer = window.status.font().pixelSize()
+    assert 0.6 < footer / body < 0.8, f"{footer}px against a {body}px body"
+
+
+def _ink_box(picture):
+    """The bounding rectangle of everything drawn on a transparent image."""
+    from PyQt6.QtCore import QRect
+    xs = [x for y in range(picture.height()) for x in range(picture.width())
+          if picture.pixelColor(x, y).alpha() > 0]
+    ys = [y for y in range(picture.height()) for x in range(picture.width())
+          if picture.pixelColor(x, y).alpha() > 0]
+    if not xs:
+        return None
+    return QRect(min(xs), min(ys), max(xs) - min(xs) + 1,
+                 max(ys) - min(ys) + 1)
+
+
+def test_a_blanked_board_still_takes_hand_entered_heroes(window, qapp):
+    """Clear all then type a pick in. `merge` puts the game's five first
+    and cuts to five, so a typed hero was dropped on the way in, the board
+    key never changed, the blanking never lifted, and clicking a slot
+    appeared to do nothing at all."""
+    window.refresh()
+    assert any(b.property("hero_id") is not None
+               for b in window.team_buttons["ally"])
+    window._clear_all()
+    window.refresh()
+    assert all(b.property("hero_id") is None
+               for b in window.team_buttons["ally"])
+
+    wanted = window.ds.hero_ids[0]
+    window.manual.set_slot("ally", 0, wanted)
+    window.last_draft_key = None
+    window.refresh()
+    on_board = [b.property("hero_id") for b in window.team_buttons["ally"]]
+    assert wanted in on_board, "a hand-entered hero must land on a blanked board"
+    assert on_board.count(None) == 4, "and nothing else comes back with it"
+
+
+def test_a_blanked_board_does_not_reserve_the_heroes_it_hides(window):
+    """The picker would otherwise refuse every one of the ten the game is
+    still reporting — most of what you would want to type back in."""
+    window.refresh()
+    reported = set(window.snapshot.left) | set(window.snapshot.right)
+    assert reported
+    assert reported & window._taken_heroes()
+    window._clear_all()
+    window.refresh()
+    assert not (reported & window._taken_heroes())

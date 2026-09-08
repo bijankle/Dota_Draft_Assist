@@ -42,6 +42,10 @@ FRAME_GOLD = "#c9a45a"
 # text, and a rule is neither; it has to read on the dark band and on the
 # card alike.
 RULE = "#808080"
+# The card and team headings — "Radiant", "Suggested picks". Named rather
+# than written into the stylesheet, because `tilekit` sizes the number on
+# a tile as a fraction of it and the two must not drift apart.
+HEADING_PX = 21
 # The app's own name. The same family as the body at its heaviest weight
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
 # app's own voice raised rather than a second typeface arguing with it.
@@ -271,7 +275,14 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar:horizontal {{ background: transparent; height: 11px; }}
 QScrollBar::handle:horizontal {{ background: {BG_DEEP}; border-radius: 5px; }}
 
-QStatusBar {{ background: {BG_DEEP}; border-top: 1px solid {BG_DEEP}; }}
+/* The status line is a FOOTNOTE: it is read when something is wrong and
+   ignored the rest of the time, so at the body size it competed with the
+   draft above it for no reason. 70% of the body, at the user's request. */
+QStatusBar {{
+    background: {BG_DEEP}; border-top: 1px solid {BG_DEEP};
+    font-size: 13px;
+}}
+QStatusBar QLabel {{ font-size: 13px; }}
 QStatusBar::item {{ border: none; }}
 
 QProgressBar {{
@@ -333,7 +344,7 @@ QFrame[banner="true"] {{
     border: 1px solid {WARN};
     border-radius: 8px;
 }}
-QLabel[heading="true"] {{ font-size: 21px; font-weight: bold; color: {TEXT_STRONG}; }}
+QLabel[heading="true"] {{ font-size: {HEADING_PX}px; font-weight: bold; color: {TEXT_STRONG}; }}
 /* Discord's section labels: small, upper, wide-tracked, muted. */
 QLabel[eyebrow="true"] {{
     font-size: 15px; font-weight: bold; color: {TEXT_DIM};

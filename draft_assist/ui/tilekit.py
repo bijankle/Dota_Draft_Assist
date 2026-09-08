@@ -44,17 +44,16 @@ from .textfit import fit
 # readable rather than what makes them shout.
 NAME_MAX_PT = 14
 NAME_MIN_PT = 9
-# THE NUMBER SCALES WITH THE TILE. It was a flat 14pt whatever the tile
-# was, and the tiles now run from 36 to 74 pixels tall — so on a narrow
-# window, or with twenty suggestions wrapped onto two rows, the badge
-# covered most of the portrait it was annotating. A number you cannot
-# read the hero under is a number about nothing. The fraction is set so
-# the biggest tile still gets NUMBER_PT and everything below it comes
-# down in step; the floor is where the digits stop being legible at all,
-# and below that the badge is better small than gone.
-NUMBER_PT = 14
-NUMBER_MIN_PT = 7
-NUMBER_OF_HEIGHT = 0.19
+# THE NUMBER IS ONE FIXED SIZE, tied to the headings above it. It was
+# briefly scaled to the tile — which fixed a badge covering the portrait
+# on a narrow window, and then made the digits unreadable at exactly the
+# size where the window is smallest and the number matters most. With the
+# plate gone (see `paint_badge`) the size no longer has to buy back space
+# from the art, so it is simply 60% of the "Radiant" / "Suggested picks"
+# heading and it stays there: shrink the window and the tiles get smaller
+# under a number that goes on being legible.
+NUMBER_OF_HEADING = 0.6
+NUMBER_PX = round(theme.HEADING_PX * NUMBER_OF_HEADING)
 
 # The name strip and the number badge share one plate, and it is SOLID
 # BLACK. It was 65% black, which let the portrait through behind the
@@ -66,9 +65,8 @@ NUMBER_OF_HEIGHT = 0.19
 CHROME = QColor(0, 0, 0)
 BADGE_PAD_X = 5
 BADGE_PAD_Y = 2
-# The outline round the digits, and how thick it is relative to the point
-# size — a 7pt number needs proportionally more than a 14pt one to read at
-# all, hence the floor in `stroke_width`.
+# The outline round the digits, and how thick it is relative to the text
+# size.
 STROKE = QColor(0, 0, 0)
 STROKE_OF_SIZE = 0.22
 # How far the number sits off the tile's bottom-right corner.
@@ -119,15 +117,9 @@ def paint_band(painter: QPainter, band: QRect, text: str, base: QFont,
                   for line in lines))
 
 
-def number_pt(box_height: int) -> int:
-    """The badge's point size on a tile this tall."""
-    return max(NUMBER_MIN_PT,
-               min(NUMBER_PT, round(int(box_height) * NUMBER_OF_HEIGHT)))
-
-
-def stroke_width(point_size: int) -> float:
-    """How thick the outline round the digits is, at this size."""
-    return max(2.0, point_size * STROKE_OF_SIZE)
+def stroke_width(pixel_size: int = NUMBER_PX) -> float:
+    """How thick the outline round the digits is."""
+    return max(2.0, pixel_size * STROKE_OF_SIZE)
 
 
 def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
@@ -149,21 +141,21 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     if not text:
         return
     font = QFont(base)
-    font.setPointSize(number_pt(box.height()))
+    font.setPixelSize(NUMBER_PX)
     font.setBold(True)
     metrics = QFontMetricsF(font)
     width = metrics.horizontalAdvance(text)
     # SNUG INTO THE CORNER. It used to float three pixels off both edges,
     # which on a small tile is a number apparently hovering in the middle
     # of the art rather than sitting in its corner.
-    edge = BADGE_INSET + stroke_width(font.pointSize()) / 2
+    edge = BADGE_INSET + stroke_width() / 2
     path = QPainterPath()
     path.addText(QPointF(box.right() - edge - width,
                          box.bottom() - edge - metrics.descent()),
                  font, text)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(STROKE, stroke_width(font.pointSize()),
+    painter.setPen(QPen(STROKE, stroke_width(),
                         Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
                         Qt.PenJoinStyle.RoundJoin))
     painter.drawPath(path)

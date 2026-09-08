@@ -577,12 +577,16 @@ credentials, and put the account at risk. Do not go there.
   the fill on top leaves the digit its full weight with the black only
   outside. (`CHROME` still exists and is still opaque — the NAME band uses
   it, and that is only ever drawn when there is no art to see through.)
-  **AND IT SCALES WITH THE TILE** (`number_pt`, `NUMBER_OF_HEIGHT`). It
-  was a flat 14pt while the tiles run from 36 to 74 pixels tall, so on a
-  narrow window — or with twenty suggestions wrapped onto two rows — the
-  number covered the portrait it was annotating. A number you cannot read
-  the hero under is a number about nothing. `NUMBER_MIN_PT` is where the
-  digits stop being legible at all; below that, small beats gone.
+  **IT IS ONE FIXED SIZE, tied to the headings** (`NUMBER_PX`,
+  `NUMBER_OF_HEADING`, `theme.HEADING_PX`). It was briefly scaled to the
+  tile, to stop a badge covering the portrait on a narrow window — and
+  that made the digits unreadable at exactly the size where the window is
+  smallest and the number matters most. With the plate gone the size no
+  longer has to buy back space from the art, so it is simply 60% of the
+  "Radiant" / "Suggested picks" heading and it stays there: shrink the
+  window and the tiles get smaller under a number that goes on being
+  legible. `theme.HEADING_PX` exists so the heading and the number are
+  sized off ONE value and cannot drift apart.
   **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
   _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
   leftover width at a fixed height meant full-screening the window
@@ -1080,6 +1084,16 @@ credentials, and put the account at risk. Do not go there.
   hand-entered slots, the side corrections, the dragged order, which hero
   is theirs — and then asks for a fresh reading, because otherwise the
   screen's own last answer survives the wipe.
+  **A BLANKED BOARD STILL TAKES HAND ENTRY, and that took two goes.**
+  While the board is blanked the game's ten are not on it, so `_sides`
+  returns the MANUAL slots alone and `_taken_heroes` stops reserving the
+  heroes the blanking is hiding. The first version returned `([], [])` and
+  kept reserving them, which made hand entry impossible after Clear all:
+  `merge` puts the game's five first and cuts to five, so a typed hero was
+  dropped on the way in, the board key never changed, the blanking never
+  lifted, and clicking a slot appeared to do nothing whatever. The expiry
+  lives in `refresh`, once a tick, rather than as a side effect of
+  whichever caller asks `_is_cleared` first.
   **THE GAME'S READING SURVIVES IT TOO, so the board is BLANKED**
   (`_cleared`, `_is_cleared`, `_board_key`). Precedence is game > hand
   entry, so on a live match wiping the hand-entered slots changed nothing
@@ -1143,6 +1157,17 @@ credentials, and put the account at risk. Do not go there.
   menu-like and worse, since this is a value tuned by eye against a
   running game a few percent at a time. The menu stays open while the
   handle is dragged, which is the whole point.
+  **A widget that paints its own text must ASK for its colour.**
+  `TickBox` drew its label in `theme.TEXT` outright, so the `color:` rule
+  that dims every other label on the row never reached it and "Auto" sat
+  brighter than the tabs and buttons beside it — the same class of bug as
+  the label backgrounds, from the other direction. It reads
+  `palette().color(foregroundRole())` now, which is where a stylesheet's
+  `color` lands, and does the tabs' hover lift itself because a
+  pseudo-state colour does not reach a widget that paints its own text.
+  **The status line is a FOOTNOTE**, 70% of the body size at the user's
+  request: it is read when something is wrong and ignored the rest of the
+  time, so at the body size it competed with the draft above it.
   The record control is a round red dot
   (`chrome.RecordButton`) — circle to record, square to stop, no label,
   because the symbol needs no words and this row has to stay readable at

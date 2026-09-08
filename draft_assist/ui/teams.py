@@ -34,7 +34,7 @@ from .textfit import fit, split_two  # noqa: F401  (re-exported)
 # the point sizes are shared with the item strip and the suggested picks,
 # so the three strips cannot drift apart again.
 from .tilekit import (BADGE_PAD_X, BADGE_PAD_Y, CHROME,  # noqa: F401
-                      NAME_MAX_PT, NAME_MIN_PT, NUMBER_PT)
+                      NAME_MAX_PT, NAME_MIN_PT, NUMBER_PX)
 
 # "with" and "vs" are different questions and the eye should not have to
 # read a legend to tell which it is looking at. Words rather than glyphs:
