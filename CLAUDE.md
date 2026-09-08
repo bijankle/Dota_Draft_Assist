@@ -1011,11 +1011,27 @@ credentials, and put the account at risk. Do not go there.
   too: the app icon is letterboxed into a square, so a QLabel taking the
   base rule drew a box of content colour behind it, and the menu bar's
   own overflow button drew another.
-  **A pill is for something being WRONG.** The data age wore a green
-  outline when it was healthy — a badge for the absence of a problem, and
-  its border was part of what made the toolbar taller than the tab bar.
-  Fresh data is plain dim text (`pill="quiet"`); stale or missing data
-  keeps the amber pill. The record control is a round red dot
+  **A pill is for something being WRONG**, and the one that wore one has
+  gone. The data age had a green outline when it was healthy — a badge for
+  the absence of a problem, and its border was part of what made the
+  toolbar taller than the tab bar — then plain dim text, and now nothing
+  at all: the age is one startup dialog and no longer appears on the row.
+  The pill styles stay for whatever needs one next.
+  **The count box draws its own arrows** (`chrome.CountBox`), which is the
+  tick box's lesson again: styling `QSpinBox::up-button` puts Qt on the
+  stylesheet path for that sub-control, and a stylesheet can colour one
+  but cannot put a MARK in it without an image file — so giving the box a
+  background rule took its arrows off entirely and left a field that could
+  not be stepped. `ButtonSymbols.NoButtons`, two painted triangles that
+  dim at each end of the range, and `mousePressEvent` handles the clicks
+  on them because we drew them. It is also FIXED to the width of its
+  widest value plus the arrows plus a little fat: a Minimum policy let the
+  layout hand it whatever was going, and a two-digit box came out the
+  width of a heading.
+  **The last control keeps `BandedTabs.EDGE_GAP` clear of the frame.** The
+  transparency slider ran its handle into the window's edge, which reads
+  as the row having been cut off rather than as it ending.
+  The record control is a round red dot
   (`chrome.RecordButton`) — circle to record, square to stop, no label,
   because the symbol needs no words and this row has to stay readable at
   the window's minimum width — and Auto is a `chrome.TickBox`, which
