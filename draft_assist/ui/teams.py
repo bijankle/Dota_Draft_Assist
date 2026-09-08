@@ -56,6 +56,11 @@ TILE_MAX = 132
 # Below this there is no room for a portrait and the tile stops being a
 # picture of a hero, which is the only reason it exists.
 TILE_MIN = 64
+# The two sizes this file draws itself, +20% with the rest and bold like
+# everything else: the slot's role in its corner, and the "+" on an empty
+# one. Everything else on a tile comes from `tilekit`.
+ROLE_PT = 10
+PLUS_PT = 19
 PANEL_MARGIN = 12
 TILE_GAP = 6
 
@@ -251,7 +256,7 @@ class HeroTile(QAbstractButton):
                                             self._band_height(box)))
         self._paint_number(painter, box)
         if self.role:
-            painter.setFont(self._font(8))
+            painter.setFont(self._font(ROLE_PT, bold=True))
             painter.setPen(QColor(theme.TEXT_DIM))
             painter.drawText(box.adjusted(5, 0, 0, -4),
                              Qt.AlignmentFlag.AlignLeft
@@ -304,11 +309,11 @@ class HeroTile(QAbstractButton):
 
     def _paint_empty(self, painter: QPainter, box: QRect) -> None:
         """An empty slot is an invitation, not a pick."""
-        painter.setFont(self._font(16))
+        painter.setFont(self._font(PLUS_PT, bold=True))
         painter.setPen(QColor(theme.TEXT_DIM))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, EMPTY_TEXT)
         if self.role:
-            painter.setFont(self._font(8))
+            painter.setFont(self._font(ROLE_PT, bold=True))
             painter.drawText(box.adjusted(5, 0, 0, -4),
                              Qt.AlignmentFlag.AlignLeft
                              | Qt.AlignmentFlag.AlignBottom, self.role)

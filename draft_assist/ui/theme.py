@@ -55,7 +55,12 @@ QWidget {{
     background: {BG};
     color: {TEXT};
     font-family: {FONT_STACK};
-    font-size: 13px;
+    /* +20% on everything, and BOLD everywhere, at the user's request. The
+       app is read in the corner of the eye over a game, so weight is
+       legibility rather than decoration — and Alegreya's bold is one of
+       the files bundled, so it resolves rather than being synthesised. */
+    font-size: 16px;
+    font-weight: bold;
 }}
 QMainWindow::separator {{ background: {BORDER}; width: 1px; height: 1px; }}
 
@@ -247,17 +252,9 @@ QLabel#titleText {{
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
 QMenuBar#titleMenus::item:selected {{ background: {BG_HOVER}; }}
-QPushButton#win_hide, QPushButton#win_min,
-QPushButton#win_max, QPushButton#win_close {{
-    background: transparent; border: none; border-radius: 0;
-    color: {TEXT_DIM}; font-size: 13px; padding: 0;
-}}
-QPushButton#win_hide:hover, QPushButton#win_min:hover,
-QPushButton#win_max:hover {{
-    background: {BG_HOVER}; color: {TEXT_STRONG};
-}}
-/* Close is the one button whose hover has to be unmistakable. */
-QPushButton#win_close:hover {{ background: {BAD}; color: #ffffff; }}
+/* The window buttons are painted, not styled: see chrome.WindowButton.
+   A hollow square glyph reads smaller than a dash and a cross at the same
+   point size, and every font sized the three differently. */
 
 /* The floating toggle: the only part of the app on screen when the window
    is hidden, so it reads as pressed-in or popped-out at a glance. */
@@ -282,10 +279,10 @@ QFrame[banner="true"] {{
     border: 1px solid {WARN};
     border-radius: 8px;
 }}
-QLabel[heading="true"] {{ font-size: 15px; font-weight: 600; color: {TEXT_STRONG}; }}
+QLabel[heading="true"] {{ font-size: 18px; font-weight: bold; color: {TEXT_STRONG}; }}
 /* Discord's section labels: small, upper, wide-tracked, muted. */
 QLabel[eyebrow="true"] {{
-    font-size: 11px; font-weight: 700; color: {TEXT_DIM};
+    font-size: 13px; font-weight: bold; color: {TEXT_DIM};
     letter-spacing: 1px;
 }}
 QLabel[dim="true"] {{ color: {TEXT_DIM}; }}

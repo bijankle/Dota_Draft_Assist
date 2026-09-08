@@ -36,6 +36,60 @@ EDGE = 6            # how close to the border counts as a resize grab
 TAB_UNDERLINE = 2
 
 
+class WindowButton(QAbstractButton):
+    """Minimise, maximise and close, PAINTED rather than typed.
+
+    They were the characters "─", "□" and "✕" in whatever face the app is
+    using, and a hollow square has no ink in the middle of it — at the
+    same point size as a dash and a cross it reads noticeably smaller, and
+    changing the app's font changed all three by different amounts. Three
+    lines and a rectangle are the same size in every font there has ever
+    been. Same reason `TickBox` and `RecordButton` paint themselves.
+    """
+
+    GLYPH = 11          # the box the mark is drawn inside
+
+    def __init__(self, kind: str, parent=None):
+        super().__init__(parent)
+        self.kind = kind
+        self.setObjectName(f"win_{kind}")
+        self.setFixedSize(46, BAR_HEIGHT)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        hot = self.underMouse()
+        if hot:
+            painter.fillRect(self.rect(),
+                             QColor(theme.BAD if self.kind == "close"
+                                    else theme.BG_HOVER))
+        ink = QColor("#ffffff" if hot else theme.TEXT_DIM)
+        painter.setPen(QPen(ink, 1.6))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        box = QRectF(0, 0, self.GLYPH, self.GLYPH)
+        box.moveCenter(QRectF(self.rect()).center())
+        if self.kind == "min":
+            middle = box.center().y()
+            painter.drawLine(QPointF(box.left(), middle),
+                             QPointF(box.right(), middle))
+        elif self.kind == "max":
+            painter.drawRect(box.adjusted(0.5, 0.5, -0.5, -0.5))
+        else:
+            painter.drawLine(box.topLeft(), box.bottomRight())
+            painter.drawLine(box.topRight(), box.bottomLeft())
+        painter.end()
+
+    def enterEvent(self, event) -> None:            # noqa: N802
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:            # noqa: N802
+        self.update()
+        super().leaveEvent(event)
+
+
 class TitleBar(QWidget):
     """Icon, title, and the three buttons Windows would have drawn."""
 
@@ -89,14 +143,10 @@ class TitleBar(QWidget):
         self.extras.setAlignment(middle)
         lay.addLayout(self.extras)
 
-        for name, glyph, signal in (
-                ("min", "─", self.minimise),
-                ("max", "□", self.maximise),
-                ("close", "✕", self.close_clicked)):
-            button = QPushButton(glyph)
-            button.setObjectName(f"win_{name}")
-            button.setFixedSize(46, BAR_HEIGHT)
-            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for name, signal in (("min", self.minimise),
+                             ("max", self.maximise),
+                             ("close", self.close_clicked)):
+            button = WindowButton(name, self)
             button.clicked.connect(signal.emit)
             lay.addWidget(button)
 

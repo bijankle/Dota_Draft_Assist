@@ -657,6 +657,14 @@ credentials, and put the account at risk. Do not go there.
   The title is the FRAME'S OWN GOLD (`theme.FRAME_GOLD`, the same value
   `ornate.LIGHT` paints the border with), so the name and the border round
   it read as one piece.
+  **Everything is bold, and 20% larger than it was**, at the user's
+  request: the app is read in the corner of the eye over a running game,
+  so weight is legibility rather than decoration, and Alegreya's bold is
+  one of the bundled files so it resolves rather than being synthesised.
+  Raising the body size RAISES THE WINDOW'S MINIMUM WIDTH — the floor is
+  derived from what it takes to print "+12.34" without eliding
+  (`tables.minimum_grid_width`), so bigger text means a wider narrowest
+  window. That is the derivation working, not a regression.
   Colour is reserved for meaning — green/red for signed deltas, the accent
   for the one action a screen wants, amber for warnings — and everything
   else is grey, so a number in colour is always worth reading.
@@ -960,6 +968,14 @@ credentials, and put the account at risk. Do not go there.
   pyqtSignal named `close` shadows `QWidget.close()`, so the bar could
   never be closed programmatically and the failure read "native Qt signal
   is not callable" — which names nothing.
+  **The window buttons are PAINTED too** (`chrome.WindowButton`). They
+  were the characters "─", "□" and "✕", and a hollow square has no ink in
+  the middle of it: at one point size it reads visibly smaller than a dash
+  and a cross, and every change of the app's font resized the three by
+  different amounts. Three lines and a rectangle are the same size in
+  every font there has ever been. `test_the_window_buttons_are_the_same_
+  size_as_each_other` measures the INK's bounding box rather than the
+  widget, because that is what the eye compares.
   **The floating toggle paints its own plate and icon.** It used to hand
   the icon to QPushButton, and a translucent frameless top-level button
   under a stylesheet drew the plate and nothing else, so the one thing on

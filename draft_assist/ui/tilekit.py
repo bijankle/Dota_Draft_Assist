@@ -38,9 +38,12 @@ from .textfit import fit
 
 # The name never grows past this and never shrinks below it; between them
 # it gives way before the text does.
-NAME_MAX_PT = 10
-NAME_MIN_PT = 7
-NUMBER_PT = 10
+# +20% on each, and every one is drawn BOLD (see `paint_band` and
+# `paint_badge`): these sit over artwork, where weight is what keeps them
+# readable rather than what makes them shout.
+NAME_MAX_PT = 12
+NAME_MIN_PT = 8
+NUMBER_PT = 12
 
 # The name strip and the number badge share one tint.
 CHROME = QColor(0, 0, 0, 165)

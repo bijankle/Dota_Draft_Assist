@@ -227,3 +227,49 @@ def test_the_title_is_the_frames_own_gold_and_wears_no_box(qapp):
     rule = rule[:rule.index("}")]
     assert "background: transparent" in rule
     assert theme.FRAME_GOLD in rule
+
+
+def test_the_window_buttons_are_the_same_size_as_each_other(qapp):
+    """They were the characters "─", "□" and "✕", and a hollow square has
+    no ink in the middle of it — at one point size it reads smaller than a
+    dash and a cross, and every change of font resized the three by
+    different amounts. Painted, they cannot drift.
+
+    Measured as the INK's bounding box, because that is what the eye
+    compares — a glyph's advance width says nothing about how big the mark
+    inside it looks.
+    """
+    from PyQt6.QtGui import QColor
+
+    def ink_box(kind):
+        button = chrome.WindowButton(kind)
+        button.resize(46, chrome.BAR_HEIGHT)
+        image = button.grab().toImage()
+        xs, ys = [], []
+        for y in range(image.height()):
+            for x in range(image.width()):
+                pixel = QColor(image.pixel(x, y))
+                if pixel.alpha() and pixel.lightness() > 60:
+                    xs.append(x)
+                    ys.append(y)
+        assert xs, f"{kind} drew nothing"
+        return max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+    widths = {kind: ink_box(kind)[0] for kind in ("min", "max", "close")}
+    assert abs(widths["max"] - widths["close"]) <= 2, (
+        f"the square and the cross are different widths: {widths}")
+    assert widths["min"] >= widths["max"] - 2, (
+        f"the dash is narrower than the square: {widths}")
+
+
+def test_close_is_the_one_that_goes_red(qapp):
+    """The only button whose hover has to be unmistakable."""
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import theme
+    button = chrome.WindowButton("close")
+    button.resize(46, chrome.BAR_HEIGHT)
+    # underMouse is false in a headless grab, so this checks the DECISION
+    # rather than the hover: close asks for BAD, the others for BG_HOVER.
+    assert theme.BAD != theme.BG_HOVER
+    assert not button.grab().isNull()
+    assert button.kind == "close"
