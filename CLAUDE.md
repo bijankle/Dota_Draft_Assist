@@ -416,6 +416,17 @@ credentials, and put the account at risk. Do not go there.
   recording, and — only when there are none at all — that there are no
   statistics. Separated by a bare `|`, with no "WARNING:" or "mode:"
   labels: the segments say what they are.
+  **A MESSAGE THE USER ASKED FOR HOLDS THE LINE** (`_say`,
+  `_quiet_until`). `_update_status` rewrites the whole line four times a
+  second with no timeout, and a QStatusBar replaces a timed message with
+  the next one it is handed — so every "Board cleared", "Loaded 62 item
+  rules" and "Copied to the clipboard" in this app appeared for under a
+  quarter of a second and was gone. Pressing a button and seeing nothing
+  happen was partly that: the button HAD said something. Every timed
+  message goes through `_say`, which claims the line for its own duration,
+  and `_update_status` returns early while that claim holds. The state
+  line itself must NOT go through `_say` — it would re-claim the line on
+  every tick and the guard would then silence it forever.
   **THE STATISTICS' AGE IS ONE DIALOG AT STARTUP AND NOTHING ELSE**
   (`_prompt_if_data_is_old`, `ui_settings.data_reminder_days`, default 14
   days, settable in Settings, 0 turns it off). It used to be a banner at
@@ -593,6 +604,15 @@ credentials, and put the account at risk. Do not go there.
   not the size. `_row_capacity` divides by the strip's LIVE tile width,
   since a fixed 78 answers "how many fit on one row" for a size the strip
   stopped being.
+  **EVERY EMPTY PLATE IS THE SAME RECTANGLE** (`tilekit.PLATE_RADIUS`,
+  `ItemRow._blank_size`). A freshly opened app is three rows of identical
+  holes, and they were not identical: the pick slots rounded their corners
+  while the strips squared theirs, and the item plates were narrower than
+  the rest. The radius is now one number both use, and an empty item plate
+  takes the whole pick box — a FILLED item tile keeps its 88x64 shape,
+  because a 16:9 box round an icon is dead space either side of it, but an
+  empty plate has no icon whose shape to respect. The "+" on a pick slot
+  is the only thing that distinguishes the three.
   **A placeholder paints into its OWN rect.** Both blank plates drew a
   plate `BAND_H` taller than the widget, so the dashed bottom edge fell
   off the tile and an empty strip read as a different size from a full
@@ -1047,8 +1067,19 @@ credentials, and put the account at risk. Do not go there.
   wipes everything the user told the app about THIS match — the
   hand-entered slots, the side corrections, the dragged order, which hero
   is theirs — and then asks for a fresh reading, because otherwise the
-  screen's own last answer survives the wipe and the board fills straight
-  back in, which reads as the button not working. **Detect all**
+  screen's own last answer survives the wipe.
+  **THE GAME'S READING SURVIVES IT TOO, so the board is BLANKED**
+  (`_cleared`, `_is_cleared`, `_board_key`). Precedence is game > hand
+  entry, so on a live match wiping the hand-entered slots changed nothing
+  whatever on screen and the next payload put all ten back — "hitting
+  clear all didn't work" is exactly right about that. So the line-up being
+  cleared is REMEMBERED and drawn as empty, and it stops being blanked the
+  moment there is something different to show: a pick changes, the match
+  changes, or Detect all is pressed. Blanked, never SUPPRESSED — a board
+  stuck empty for the rest of the evening would be worse than the thing
+  being fixed — and Detect all cancels the blanking BEFORE it looks for a
+  capture session, so a cleared board in game-data-only mode still has a
+  way back. **Detect all**
   (`CaptureSession.detect_now`) is a ONE-SHOT, deliberately not the Force
   recognition switch: "re-read the board" is something you press once, and
   a mode you have to remember to turn off is a mode left on. It forgets
@@ -1072,10 +1103,16 @@ credentials, and put the account at risk. Do not go there.
   background rule took its arrows off entirely and left a field that could
   not be stepped. `ButtonSymbols.NoButtons`, two painted triangles that
   dim at each end of the range, and `mousePressEvent` handles the clicks
-  on them because we drew them. It is also FIXED to the width of its
-  widest value plus the arrows plus a little fat: a Minimum policy let the
-  layout hand it whatever was going, and a two-digit box came out the
-  width of a heading.
+  on them because we drew them. It is also FIXED rather than Minimum,
+  because a Minimum policy let the layout hand it whatever was going and a
+  two-digit box came out the width of a heading. The width is **Qt's own
+  `minimumSizeHint` plus our arrow strip**, never arithmetic: adding up the
+  digits and a guess at the padding produced a box NARROWER than the
+  widget's own minimum, so the number was clipped to its left half. The
+  stylesheet's padding and border are part of the box too, and Qt already
+  measures all of it against the real font for the widest value the range
+  can hold. The only thing it cannot know about is the strip we took for
+  the arrows, because we draw those ourselves.
   **The last control keeps `BandedTabs.EDGE_GAP` clear of the frame.** The
   transparency slider ran its handle into the window's edge, which reads
   as the row having been cut off rather than as it ending.
