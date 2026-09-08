@@ -548,13 +548,20 @@ credentials, and put the account at risk. Do not go there.
   halves.
   The left-hand portrait column is GONE — every cell is backed by its own
   ROW hero's portrait with the figure over it, so the pair names itself and
-  the width that column took goes back to the numbers. The portrait FILLS
-  the cell (`portraits.filling`, expand-and-crop) rather than fitting
-  inside it: `scaled` leaves bars, which is right for a header where the
-  whole picture is the point and wrong for a backdrop, where a letterboxed
-  portrait reads as a mistake. It is veiled (`PAIR_VEIL`) so the number
-  stays the subject, and the number is outlined rather than plated, the
-  same way a tile's is.
+  the width that column took goes back to the numbers. The portrait is
+  FITTED, the same way the header above fits its own, so one portrait has
+  one shape everywhere in the grid; filling the cell instead (expand and
+  crop) read as STRETCHED, because a cell is wider than it is tall and
+  covering it threw away the top and bottom of a 16:9 head shot. It is
+  veiled (`PAIR_VEIL`) so the number stays the subject, and the number is
+  `tilekit.paint_badge` — the SAME font, size and corner as the figure on a
+  pick at the top of the window, so the two are read one way rather than as
+  two conventions.
+  **Both grids are TOP-aligned in their cards** (`AlignTop` on the table).
+  `_fit_height` gives each table a fixed height, so a QVBoxLayout put the
+  slack above it as well as below — and the moment the synergy grid grew
+  its bottom header row the shorter counters grid floated down the middle
+  of its own card and the two stopped lining up.
   **The enemy half is NOT sign-flipped**, and this is the one place in the
   app where a green number is not good for you. It is deliberate and it is
   the user's call: each triangle is read as "how well does THIS team's pair
@@ -647,6 +654,11 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
+  **A STRIP TILE IS 70% OF A PICK** (`app.STRIP_OF_PICK`). The ten picks
+  are the SUBJECT of the screen and the two strips are advice about them;
+  at the same size the three rows read as equals, and twenty suggestions at
+  full size is most of the window. The strips still track the pick tile
+  rather than having a size of their own — see below.
   **EVERY TILE IN THE APP IS ONE BOX, and the draft panel decides it**
   (`TeamPanel.tile_resized` → `MainWindow._resize_strips` →
   `SuggestRow.set_tile_size` / `ItemRow.set_tile_size`). The strips were
@@ -683,6 +695,25 @@ credentials, and put the account at risk. Do not go there.
   the way a person writes it; a missing icon draws the name and is normal,
   not an error. Role and own-hero filtering still apply once known — they
   just no longer gate the panel.
+- **DEMO fills the board in one press, and the two "Simulate a draft" menu
+  items are gone** (`_demo_draft`). They each started a SUBPROCESS posting
+  invented payloads at the real GSI listener and left it running — a whole
+  second moving part to answer "show me what a full board looks like", and
+  one that then had to be noticed and stopped. Demo writes ten random
+  heroes into the MANUAL slots instead: nothing outlives the press, and
+  Clear all empties it like any other hand entry.
+- **The ad slot is a PLACEHOLDER and it is off by default**
+  (`ui/adslot.py`, `ui_settings.ads_enabled`). No network is touched and no
+  ad network is wired in; what exists is the SPACE an ad would take on the
+  schedule it would appear on, five seconds in every fifteen, above the two
+  team panels — so "what does the window look like with this in it" can be
+  answered now and living with it for an evening is something the owner can
+  try before committing. It **reserves its height whether or not it is
+  showing**: a banner that appears and disappears while pushing the ten
+  picks up and down the window is a board that moves under the cursor
+  mid-draft, which is how a pick gets misclicked, so only the CONTENT comes
+  and goes. Whatever eventually fills it must fetch on its own timer, off
+  the draft path — the live loop still never makes network calls.
 - **There is no hero-entry bar.** Typing a pick, the ally/enemy toggle and
   Undo are gone at the user's request; a pick is entered by clicking a slot
   and using the picker. `_taken_heroes()` still refuses duplicates.

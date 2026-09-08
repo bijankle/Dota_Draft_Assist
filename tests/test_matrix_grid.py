@@ -210,24 +210,22 @@ def test_a_pair_cell_actually_draws_its_portrait_and_number(qapp, tmp_path,
         colours = {picture.pixelColor(x, y).name()
                    for y in range(picture.height())
                    for x in range(picture.width())}
-        # The portrait FILLS the cell — no letterbox bars of background —
-        # and it is knocked back rather than drawn at full strength.
+        # Drawn, and knocked back rather than at full strength.
         assert "#3050a0" not in colours, "the veil never went on"
         assert any(c.startswith("#1") or c.startswith("#2") for c in colours)
         assert theme.GOOD in colours, "the number is not on top of it"
         assert "#000000" in colours, "no outline round the digits"
-        corner = picture.pixelColor(2, 2)
-        assert corner.alpha() == 255, "a corner of the cell is unpainted"
+        assert picture.pixelColor(2, 2).alpha() == 255, "unpainted cell"
     finally:
         portraits.forget()
 
 
-def test_the_portrait_fills_the_cell_rather_than_fitting_inside_it(qapp,
-                                                                   tmp_path,
-                                                                   monkeypatch):
-    """`scaled` fits and leaves bars, which is right for a header and wrong
-    for a backdrop: a letterboxed portrait behind a number reads as a
-    mistake."""
+def test_the_cell_portrait_is_the_same_shape_as_the_header_above_it(qapp,
+                                                                    tmp_path,
+                                                                    monkeypatch):
+    """Fitted, never filled. Covering the cell instead threw away the top
+    and bottom of a 16:9 head shot — a cell is wider than it is tall — and
+    left a wide slice of the middle that read as stretched."""
     from PyQt6.QtGui import QColor, QPixmap
     from draft_assist.ui import portraits
 
@@ -237,10 +235,10 @@ def test_the_portrait_fills_the_cell_rather_than_fitting_inside_it(qapp,
     monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
     portraits.forget()
     try:
-        art = portraits.filling(1, 90, 40)
-        assert (art.width(), art.height()) == (90, 40)
-        fitted = portraits.scaled(1, 90, 40)
-        assert (fitted.width(), fitted.height()) != (90, 40), \
-            "the fitting one is the contrast this test is about"
+        art = portraits.scaled(1, 120, 40)
+        assert art is not None
+        # The portrait's own 16:9, not the cell's shape.
+        assert abs(art.width() / art.height() - 256 / 144) < 0.05
+        assert art.height() <= 40 and art.width() <= 120
     finally:
         portraits.forget()

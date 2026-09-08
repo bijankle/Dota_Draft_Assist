@@ -179,35 +179,6 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     painter.drawPath(path)
 
 
-def paint_centred_number(painter: QPainter, box: QRect, text: str,
-                         colour: str, base: QFont | None = None) -> None:
-    """A figure in the middle of a box, outlined so art can sit behind it.
-
-    Same stroke-then-fill as `paint_badge` — the black traces the digits
-    rather than sitting behind them as a plate — but centred rather than
-    cornered, because this one labels the whole cell it is in.
-    """
-    if not text:
-        return
-    font = QFont(base) if base is not None else QFont()
-    font.setPixelSize(NUMBER_PX)
-    font.setBold(True)
-    metrics = QFontMetricsF(font)
-    path = QPainterPath()
-    path.addText(
-        QPointF(box.center().x() - metrics.horizontalAdvance(text) / 2,
-                box.center().y() + (metrics.ascent() - metrics.descent()) / 2),
-        font, text)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(STROKE, stroke_width(), Qt.PenStyle.SolidLine,
-                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-    painter.drawPath(path)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(colour))
-    painter.drawPath(path)
-
-
 def paint_art(painter: QPainter, box: QRect, art) -> bool:
     """Centre `art` in `box`. Returns False when there is nothing to draw.
 

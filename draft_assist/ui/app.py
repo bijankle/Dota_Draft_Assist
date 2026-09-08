@@ -27,6 +27,7 @@ Run modes (everything but live capture works with no game and no Windows):
 
 import argparse
 import os
+import random
 import subprocess
 import sys
 import time
@@ -64,6 +65,7 @@ from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
+from . import adslot
 from . import chrome
 from . import ornate
 from . import reasons
@@ -158,6 +160,11 @@ def _scrolling(page: QWidget) -> QScrollArea:
     area.setWidget(page)
     return area
 
+
+# How big a tile in the two advice strips is, against a pick. The ten
+# picks are the subject of the screen; the suggestions and the items are
+# advice about them, and at the same size the three rows read as equals.
+STRIP_OF_PICK = 0.7
 
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
@@ -342,13 +349,11 @@ class MainWindow(QMainWindow):
                   None, "What the game is actually reporting right now")
         self._act(game_menu, "&Clear manual draft", self._clear_manual,
                   "Ctrl+Shift+C", "Empty every hand-entered slot")
-        game_menu.addSeparator()
-        self._act(game_menu, "Si&mulate a draft — full teams…",
-                  lambda: self.run_task("simulate_gsi"), None,
-                  "Both line-ups fill in — the best way to see the app work")
-        self._act(game_menu, "Simulate a draft — only your hero…",
-                  lambda: self.run_task("simulate_gsi_real"), None,
-                  "Shows the real GSI limitation: enemy slots stay empty")
+        # THE TWO "Simulate a draft" ITEMS ARE GONE. They each spawned a
+        # subprocess posting fake payloads at the real GSI listener and
+        # left it running, which is a whole second moving part to see one
+        # board full of heroes. **Demo** on the tab row fills the board in
+        # one press and touches nothing else.
 
         view_menu = bar.addMenu("&View")
         # Transparency is inserted at the TOP of this menu later (see
@@ -455,6 +460,14 @@ class MainWindow(QMainWindow):
         self.detect_all_button.clicked.connect(self._detect_all)
         toolbar.addWidget(self.detect_all_button)
 
+        toolbar.addWidget(chrome.Divider())
+        self.demo_button = QPushButton("Demo")
+        self.demo_button.setToolTip(
+            "Fill the board with a random 5v5, to see what the app does "
+            "with one. Hand entry, so Clear all empties it again.")
+        self.demo_button.clicked.connect(self._demo_draft)
+        toolbar.addWidget(self.demo_button)
+
         self.recording_label = QLabel("")
         self.recording_label.setProperty("dim", True)
         self.recording_label.setVisible(False)
@@ -558,6 +571,14 @@ class MainWindow(QMainWindow):
         # re-labelled when the player turns out to be Dire (see
         # `_order_panels`). The dict keys stay ally/enemy — everything else
         # in the app reasons in those terms — and only the seating changes.
+        # The ad slot sits ABOVE the two team panels, at the top of the
+        # content: on, it pushes nothing sideways; off, it is a strip of
+        # nothing rather than a gap that opens and closes under the cursor
+        # (see `ui/adslot.py`).
+        self.ad_slot = adslot.AdSlot()
+        self.ad_slot.set_enabled(bool(self.settings.get("ads_enabled", False)))
+        outer.addWidget(self.ad_slot)
+
         self.teams_row = teams_row = QHBoxLayout()
         teams_row.setSpacing(10)
         self._panel_order = ["ally", "enemy"]
@@ -1617,6 +1638,31 @@ class MainWindow(QMainWindow):
             "press Detect all", 8000)
         self.refresh()
 
+    def _demo_draft(self) -> None:
+        """Ten random heroes on the board, in one press.
+
+        It goes in through HAND ENTRY rather than through a fake game feed:
+        the two "Simulate a draft" menu items each started a subprocess
+        posting invented payloads at the real GSI listener and left it
+        running, which is a second moving part to answer "show me what a
+        full board looks like". This writes the manual slots, so Clear all
+        empties it again and nothing outlives the press.
+        """
+        pool = [h for h in self.ds.hero_ids if h not in self._taken_heroes()]
+        if len(pool) < 10:
+            self._say("Not enough heroes for a demo draft — is the data "
+                      "downloaded?", 8000)
+            return
+        picked = random.sample(pool, 10)
+        for index, hero in enumerate(picked[:5]):
+            self.manual.set_slot("ally", index, hero)
+        for index, hero in enumerate(picked[5:]):
+            self.manual.set_slot("enemy", index, hero)
+        self.my_hero_id = picked[0]
+        self.last_draft_key = None
+        self.refresh()
+        self._say("Demo draft — Clear all empties it", 6000)
+
     def _detect_all(self) -> None:
         """Read all ten portraits off the Dota window, now.
 
@@ -2419,6 +2465,7 @@ class MainWindow(QMainWindow):
 
         self.auto_record_check.setChecked(
             bool(self.settings.get("auto_record", True)))
+        self.ad_slot.set_enabled(bool(self.settings.get("ads_enabled", False)))
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
@@ -3041,6 +3088,12 @@ class MainWindow(QMainWindow):
         items = getattr(self, "item_row", None)
         if picks is None or items is None:
             return
+        # 70% of a pick, at the user's request. The ten picks are the
+        # SUBJECT of the screen and the two strips are advice about them,
+        # so a suggestion the same size as a pick gave the two equal weight
+        # — and twenty of them at full size is most of the window.
+        width = max(1, round(width * STRIP_OF_PICK))
+        height = max(1, round(height * STRIP_OF_PICK))
         picks.set_tile_size(width, height)
         items.set_tile_size(width, height)
         # Bigger tiles means fewer fit on a row, and the default count is

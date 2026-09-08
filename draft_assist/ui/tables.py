@@ -13,7 +13,7 @@ Two things live here that Qt does not give for free:
   the rows are then laid side by side.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
                              QStyledItemDelegate, QTableWidget,
@@ -90,7 +90,12 @@ class BreakdownPanel(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().sectionClicked.connect(self._sort_bank)
-        layout.addWidget(self.table, 1)
+        # TOP, not centred. `_fit_height` gives the table a fixed height, so
+        # a QVBoxLayout puts the slack ABOVE it as well as below — and the
+        # moment the two grids stopped being the same height (the synergy
+        # one grew a bottom header row) the shorter one floated down the
+        # middle of its card and the two stopped lining up.
+        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop)
 
         self.footnote = QLabel("")
         self.footnote.setWordWrap(True)
@@ -317,22 +322,34 @@ class PairCellDelegate(QStyledItemDelegate):
     """
 
     def paint(self, painter, option, index):        # noqa: N802 - Qt naming
-        from .portraits import filling
+        from .portraits import scaled
         from . import tilekit
         rect = option.rect
         painter.save()
         painter.fillRect(rect, QColor(theme.BG))
         hero = index.data(PAIR_HERO)
-        art = filling(hero, rect.width(), rect.height()) if hero else None
+        # FITTED, exactly as the header above fits its own — one portrait
+        # at one shape everywhere in the grid. Filling the cell instead
+        # (expand and crop) made these read as stretched: a cell is wider
+        # than it is tall, so covering it threw away the top and bottom of
+        # a 16:9 head shot and left a wide slice of the middle.
+        art = scaled(hero, rect.width(), rect.height()) if hero else None
+        box = rect
         if art is not None:
-            painter.drawPixmap(rect.topLeft(), art)
+            box = QRect(rect.left() + (rect.width() - art.width()) // 2,
+                        rect.top() + (rect.height() - art.height()) // 2,
+                        art.width(), art.height())
+            painter.drawPixmap(box.topLeft(), art)
             # Knocked back, so the figure over it stays the subject.
-            painter.fillRect(rect, QColor(0, 0, 0, PAIR_VEIL))
+            painter.fillRect(box, QColor(0, 0, 0, PAIR_VEIL))
         value = index.data(PAIR_VALUE)
         if value is not None and not index.data(PAIR_HEADER):
-            tilekit.paint_centred_number(
-                painter, rect, f"{float(value) * 100:+.2f}",
-                theme.GOOD if float(value) > 0 else theme.BAD)
+            # THE TILE'S OWN BADGE: same font, same size, same corner as
+            # the figure on a pick up at the top of the window, so the two
+            # are read the same way rather than as two conventions.
+            tilekit.paint_badge(painter, box, f"{float(value) * 100:+.2f}",
+                                theme.GOOD if float(value) > 0 else theme.BAD,
+                                option.font)
         painter.restore()
 
 
@@ -369,7 +386,12 @@ class MatrixTable(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        layout.addWidget(self.table, 1)
+        # TOP, not centred. `_fit_height` gives the table a fixed height, so
+        # a QVBoxLayout puts the slack ABOVE it as well as below — and the
+        # moment the two grids stopped being the same height (the synergy
+        # one grew a bottom header row) the shorter one floated down the
+        # middle of its card and the two stopped lining up.
+        layout.addWidget(self.table, 1, Qt.AlignmentFlag.AlignTop)
         self.empty_note = QLabel("")
         self.empty_note.setWordWrap(True)
         self.empty_note.setProperty("dim", True)

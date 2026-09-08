@@ -2529,28 +2529,33 @@ def test_an_empty_side_claims_no_total(window, qapp):
         assert panel.rule.isHidden()
 
 
-def test_every_tile_in_the_app_is_the_same_size(window, qapp):
-    """A suggestion is the size of a pick, before AND after the game.
+def test_every_strip_tile_is_the_same_share_of_a_pick(window, qapp):
+    """A suggestion is 70% of a pick, before AND after the game.
 
     The strips were fixed at 78x44 while the pick tiles grew with the
-    window, so the two never matched — and the blank plates were painted
-    into a rectangle taller than the widget, which put their dashed bottom
-    edge off the tile.
+    window, so the two never matched at all — and the blank plates were
+    painted into a rectangle taller than the widget, which put their
+    dashed bottom edge off the tile. They track the pick now; the ten
+    picks are the subject of the screen and the strips are advice about
+    them, so they are deliberately smaller rather than equal.
     """
     from draft_assist.ui import item_row as item_mod
+    from draft_assist.ui.app import STRIP_OF_PICK
     window.show()
     window.resize(1500, 950)
     window.refresh()
     _settle(qapp)
     pick = window.team_panels["ally"].slots[0]
-    assert window.suggest_row.tile_width() == pick.width()
+    want_w = round(pick.width() * STRIP_OF_PICK)
+    want_h = round(pick.height() * STRIP_OF_PICK)
+    assert window.suggest_row.tile_width() == want_w
     for tile in _tiles_of(window.suggest_row):
-        assert tile.size() == pick.size()
+        assert (tile.width(), tile.height()) == (want_w, want_h)
     # Items share the HEIGHT and keep the icon's own 88x64 shape: a 16:9
     # box round an item icon is dead space either side of every one.
     for tile in _tiles_of(window.item_row):
-        assert tile.height() == pick.height()
-        assert tile.width() == item_mod.width_for(pick.height())
+        assert tile.height() == want_h
+        assert tile.width() == item_mod.width_for(want_h)
 
 
 def test_the_blank_plates_are_the_size_of_the_real_tiles(window, qapp):
@@ -3039,13 +3044,16 @@ def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
         win.resize(1500, 950)
         win.refresh()
         _settle(qapp)
+        from draft_assist.ui.app import STRIP_OF_PICK
         pick = win.team_panels["ally"].slots[0]
         assert not pick.filled
+        want = (round(pick.width() * STRIP_OF_PICK),
+                round(pick.height() * STRIP_OF_PICK))
         for strip in (win.suggest_row, win.item_row):
             blanks = strip._blanks
             assert blanks, "an empty strip should show its shape"
             for blank in blanks:
-                assert blank.size() == pick.size(), \
+                assert (blank.width(), blank.height()) == want, \
                     "an empty plate is an empty plate, whatever strip"
         # One radius for all of them, so the corners agree too.
         assert tilekit.PLATE_RADIUS > 0
@@ -3191,3 +3199,96 @@ def test_the_side_total_keeps_its_colour_when_the_name_loses_it(window, qapp):
     assert theme.GOOD in panel.total.styleSheet()
     panel.set_total(-0.05)
     assert theme.BAD in panel.total.styleSheet()
+
+
+def test_demo_fills_the_board_in_one_press(window):
+    """Ten random heroes, through HAND ENTRY rather than a fake game feed.
+
+    The two "Simulate a draft" menu items each started a subprocess posting
+    invented payloads at the real GSI listener and left it running, which
+    is a second moving part to answer "show me a full board".
+    """
+    window.refresh()
+    window._clear_all()
+    window.refresh()
+    window._demo_draft()
+    window.refresh()
+    for side in ("ally", "enemy"):
+        on_board = [b.property("hero_id") for b in window.team_buttons[side]
+                    if b.property("hero_id") is not None]
+        assert len(on_board) == 5, f"{side} did not fill"
+    assert len(window.manual.entered("ally")) == 5
+    assert window.my_hero_id is not None
+    # Nothing outlives the press: it is hand entry, so Clear all empties it.
+    window._clear_all()
+    window.refresh()
+    assert window.manual.entered("ally") == []
+
+
+def test_the_simulate_draft_menu_items_are_gone(window):
+    """A subprocess posting fake payloads at the live listener, left
+    running, is not the way to see a full board."""
+    labels = []
+    for action in window.menu_bar.actions():
+        menu = action.menu()
+        if menu is not None:
+            labels += [a.text() for a in menu.actions()]
+    assert not any("imulate" in text for text in labels), labels
+
+
+def test_both_grids_start_at_the_same_height(window, qapp):
+    """`_fit_height` fixes each table's height, so a QVBoxLayout put the
+    slack ABOVE it as well as below — and the moment the synergy grid grew
+    its bottom header row, the shorter counters grid floated down the
+    middle of its card and the two stopped lining up."""
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    tops = [m.table.mapTo(window, m.table.rect().topLeft()).y()
+            for m in (window.synergy_matrix, window.matchup_matrix)]
+    assert tops[0] == tops[1], f"{tops[0]} vs {tops[1]}"
+
+
+def test_the_ad_slot_is_off_unless_it_is_asked_for(qapp):
+    """It is the user's own app on their own machine, and something that
+    covers part of the board every few seconds has to be asked for."""
+    from draft_assist.ui import settings as ui_settings
+    from draft_assist.ui.adslot import AdSlot
+    assert ui_settings.DEFAULTS["ads_enabled"] is False
+    slot = AdSlot()
+    assert not slot.showing
+    slot.set_enabled(True)
+    assert not slot.showing, "it waits its turn rather than opening on one"
+    slot._turn()
+    assert slot.showing
+    slot._turn()
+    assert not slot.showing
+    slot.set_enabled(False)
+    assert not slot.showing
+    slot.close()
+
+
+def test_the_ad_slot_keeps_its_height_whether_or_not_it_is_showing(qapp):
+    """A banner that appears and disappears while pushing the ten picks up
+    and down the window is a board that moves under the cursor mid-draft,
+    which is how a pick gets misclicked."""
+    from draft_assist.ui.adslot import AdSlot
+    slot = AdSlot()
+    tall = slot.height()
+    slot.set_enabled(True)
+    slot._turn()
+    assert slot.showing and slot.height() == tall
+    slot._turn()
+    assert not slot.showing and slot.height() == tall
+    slot.close()
+
+
+def test_the_ad_setting_reaches_the_slot(window):
+    """A tick box that does not move the thing it names is not a setting."""
+    window.settings["ads_enabled"] = True
+    window.ad_slot.set_enabled(True)
+    assert window.ad_slot._enabled
+    window.settings["ads_enabled"] = False
+    window.ad_slot.set_enabled(False)
+    assert not window.ad_slot._enabled

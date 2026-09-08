@@ -46,6 +46,10 @@ SWITCHES = (
     ("auto_record", "Record every draft automatically",
      "Starts a recording when hero selection begins and stops a minute "
      "after the draft ends. Nothing to press."),
+    ("ads_enabled", "Show ads above the draft",
+     "A banner over the two team panels, five seconds in every fifteen. "
+     "Off by default: it covers part of the screen the app exists to "
+     "show, and mid-draft that is the screen you are reading."),
 )
 
 
@@ -63,7 +67,11 @@ class SettingsDialog(QDialog):
 
         for key, label, explanation in SWITCHES:
             box = QCheckBox(label)
-            box.setChecked(bool(settings.get(key, True)))
+            # `ui_settings.DEFAULTS` decides, not a `True` written here: a
+            # switch that defaults on because the loop said so is a switch
+            # nobody chose.
+            box.setChecked(bool(settings.get(
+                key, ui_settings.DEFAULTS.get(key, True))))
             layout.addWidget(box)
             note = QLabel(explanation)
             note.setWordWrap(True)

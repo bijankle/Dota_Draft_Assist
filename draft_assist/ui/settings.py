@@ -58,6 +58,10 @@ DEFAULTS = {
     # copies of a number worth acting on about twice a month. Zero turns
     # the prompt off.
     "data_reminder_days": DATA_REMINDER_DAYS,
+    # Off by default. It is the user's own app on the user's own machine,
+    # and something that covers part of the draft every ten seconds has to
+    # be asked for rather than assumed.
+    "ads_enabled": False,
 }
 
 
