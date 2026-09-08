@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
         # NOT self.menuBar(): QMainWindow puts that above the central
         # widget, which would leave a menu strip sitting on top of our own
         # title bar. It goes inside the bar instead, the way Steam does it.
-        bar = QMenuBar()
+        bar = chrome.RuledMenuBar()
         self.menu_bar = bar
 
         setup_menu = bar.addMenu("&Setup")
@@ -420,6 +420,27 @@ class MainWindow(QMainWindow):
         self.auto_record_check.toggled.connect(self._set_auto_record)
         toolbar.addWidget(self.auto_record_check)
 
+        # Wipe the board, then fill it again in one press. Correcting a
+        # bad reading pick by pick is five right-clicks and a picker each;
+        # when the whole board is wrong, starting over is one gesture and
+        # re-reading is another.
+        toolbar.addWidget(chrome.Divider())
+        self.clear_all_button = QPushButton("Clear all")
+        self.clear_all_button.setToolTip(
+            "Empty every hand-entered slot on both teams, and forget any "
+            "side or order corrections made this match")
+        self.clear_all_button.clicked.connect(self._clear_all)
+        toolbar.addWidget(self.clear_all_button)
+
+        toolbar.addWidget(chrome.Divider())
+        self.detect_all_button = QPushButton("Detect all")
+        self.detect_all_button.setToolTip(
+            "Read the ten portraits off the Dota window now, whatever the "
+            "gate thinks — and forget what was read before, so a stale "
+            "answer cannot win the vote against the new frame")
+        self.detect_all_button.clicked.connect(self._detect_all)
+        toolbar.addWidget(self.detect_all_button)
+
         self.recording_label = QLabel("")
         self.recording_label.setProperty("dim", True)
         self.recording_label.setVisible(False)
@@ -443,7 +464,10 @@ class MainWindow(QMainWindow):
         # No expanding spacer: on the tab strip the toolbar is sized to
         # its contents, and a spacer there would push the controls off the
         # right edge of the window.
-        toolbar.addSeparator()
+        # OUR rule, not `addSeparator`: a QToolBar separator under a
+        # stylesheet draws whatever the style feels like, which here was
+        # nothing at all.
+        toolbar.addWidget(chrome.Divider())
         toolbar.addWidget(QLabel("Transparency"))
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setFixedWidth(90)
@@ -485,6 +509,9 @@ class MainWindow(QMainWindow):
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
         shell_lay.addWidget(self.title_bar)
+        # A rule between the tab labels and the controls too, so the
+        # whole row is one series of things with one kind of gap.
+        tabs.add_rule()
         tabs.add_tools(toolbar)
         shell_lay.addWidget(tabs.strip)
         shell_lay.addWidget(tabs, 1)
@@ -1498,6 +1525,58 @@ class MainWindow(QMainWindow):
         self.manual.clear()
         self.last_draft_key = None
         self.status.showMessage("Cleared hand-entered draft slots", 5000)
+
+    def _capture_session(self):
+        """The live capture session, whichever provider is wrapping it."""
+        vision = getattr(self.provider, "vision", self.provider)
+        return getattr(vision, "session", None)
+
+    def _clear_all(self) -> None:
+        """Back to an empty board in one press.
+
+        Everything the user has told the app about THIS match goes: the
+        hand-entered slots, the side corrections, the dragged order, which
+        hero is theirs. Correcting a bad reading one pick at a time is five
+        right-clicks and a picker each, and when the whole board is wrong
+        that is the long way round to a clean slate.
+        """
+        self.manual.clear()
+        self.side_overrides.clear()
+        self.slot_order = {"ally": [], "enemy": []}
+        self.my_hero_id = None
+        self.my_hero_locked = False
+        self.focus = None
+        session = self._capture_session()
+        if session is not None:
+            # Otherwise the screen's own last reading survives the wipe and
+            # the board fills straight back in, which reads as the button
+            # not having worked.
+            session.detect_now()
+        self.last_draft_key = None
+        self.status.showMessage("Board cleared", 5000)
+        self.refresh()
+
+    def _detect_all(self) -> None:
+        """Read all ten portraits off the Dota window, now.
+
+        A ONE-SHOT rather than the Force recognition switch: "re-read the
+        board" is something you press once. It forgets the previous
+        reading first, because the reason for pressing it is that the
+        board on screen and the board in the app disagree — and the
+        stabiliser would otherwise let the old answer outvote the new
+        frame for another few ticks.
+        """
+        session = self._capture_session()
+        if session is None:
+            self.status.showMessage(
+                "Nothing to read from — screen capture is off (Settings ▸ "
+                "Read the draft from the Dota window)", 8000)
+            return
+        session.detect_now()
+        self.last_draft_key = None
+        self.status.showMessage(
+            f"Re-reading the draft from {self._capture_target()}", 5000)
+        self.refresh()
 
     def _gsi_server(self):
         """The live listener, whichever provider is wrapping it."""
@@ -2710,8 +2789,8 @@ class MainWindow(QMainWindow):
                     continue
                 rel = relations.get(other)
                 if rel is None:
-                    # Clicking an enemy says nothing about the other
-                    # enemies — that pairing is their synergy, not ours.
+                    # Nothing to say about this one — the focused hero
+                    # itself, or a hero the dataset does not carry.
                     continue
                 tile.show_delta(rel.delta, rel.kind)
                 values[other] = rel.delta
@@ -3032,8 +3111,7 @@ class MainWindow(QMainWindow):
         app bound to something other than Dota, and the log printed the
         size without ever saying what it was a picture of.
         """
-        vision = getattr(self.provider, "vision", self.provider)
-        session = getattr(vision, "session", None)
+        session = self._capture_session()
         return getattr(session, "capture_title", None) or "(nothing bound)"
 
     def _draw_still(self) -> bool:

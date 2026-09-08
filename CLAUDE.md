@@ -668,16 +668,24 @@ credentials, and put the account at risk. Do not go there.
   the number was chosen over completeness. Columns STRETCH rather than fit
   their contents: nothing should be pushed off the right edge.
 - **Clicking a pick is the matrix read one row at a time**
-  (`scoring.relations_to`, `MainWindow.focus` / `_update_relations`). It is
-  context-aware, because an ally and an enemy are different questions: an
-  ally shows synergy above your other four AND matchup above all five
-  enemies; an enemy shows matchup above your five and says nothing about
-  the other enemies — their pair-ups are their synergy, not ours. Clicking
-  the focused hero again clears it, so the way out is the way in.
+  (`scoring.relations_to`, `MainWindow.focus` / `_update_relations`).
+  **BOTH sides answer the same two questions**: an ally shows synergy above
+  your other four AND matchup above all five enemies; an enemy shows
+  matchup above your five AND its synergy with its own four. This file used
+  to say the second half was not our business — "their pair-ups are their
+  synergy, not ours" — and that was wrong in the way that matters
+  mid-draft: an enemy that combos with two of its team-mates is a bigger
+  problem than its own matchups say, and the click view was the one place
+  that could show it and did not. Clicking the focused hero again clears
+  it, so the way out is the way in.
   **Every number reads from YOUR team's point of view**: positive is good
   for you whichever portrait it sits under. Without that rule a green
   number under an enemy would mean the opposite of a green number under an
   ally, which is the misreading the view exists to prevent.
+  An ENEMY PAIR'S SYNERGY IS SIGN-FLIPPED, for exactly that rule: a combo
+  that works for them is a problem for us, so it prints red — the same
+  convention `net_contributions` already applies to the enemy half of the
+  board, and the one that keeps a green number meaning one thing.
   With nothing clicked the tiles rest on `scoring.net_contributions` — what
   each pick is worth overall — rather than going blank, since the tile
   reserves the line either way. An ALLY's figure is its synergy with your
@@ -1032,6 +1040,31 @@ credentials, and put the account at risk. Do not go there.
   toolbar taller than the tab bar — then plain dim text, and now nothing
   at all: the age is one startup dialog and no longer appears on the row.
   The pill styles stay for whatever needs one next.
+  **Clear all and Detect all sit on the tab row** beside Record and Auto.
+  Correcting a bad reading one pick at a time is five right-clicks and a
+  picker each, so when the whole board is wrong there has to be a way to
+  start over in one gesture and fill it again in another. **Clear all**
+  wipes everything the user told the app about THIS match — the
+  hand-entered slots, the side corrections, the dragged order, which hero
+  is theirs — and then asks for a fresh reading, because otherwise the
+  screen's own last answer survives the wipe and the board fills straight
+  back in, which reads as the button not working. **Detect all**
+  (`CaptureSession.detect_now`) is a ONE-SHOT, deliberately not the Force
+  recognition switch: "re-read the board" is something you press once, and
+  a mode you have to remember to turn off is a mode left on. It forgets
+  `last_read` and resets the stabiliser first — the reason for pressing it
+  is that the screen and the app disagree, and the stabiliser would
+  otherwise let the old answer outvote the new frame for several ticks.
+  With no capture bound it says so rather than appearing to do nothing.
+  **There is a RULE between every control** (`chrome.Divider`,
+  `paint_rules`, `RuledMenuBar`, `RuledTabBar`, `theme.RULE` = `#808080`,
+  the grey exactly halfway between black and white at the user's request).
+  Menus, tabs and toolbar controls all get one, and all three are PAINTED:
+  neither QMenuBar nor QTabBar has a between-items sub-control a stylesheet
+  can reach, `QToolBar.addSeparator` under a stylesheet drew nothing at
+  all, and a "|" typed into a label is a glyph that resizes with the font
+  and cannot be coloured apart from the label holding it. Same lesson as
+  the tick box, the window buttons and the count box's arrows.
   **The count box draws its own arrows** (`chrome.CountBox`), which is the
   tick box's lesson again: styling `QSpinBox::up-button` puts Qt on the
   stylesheet path for that sub-control, and a stylesheet can colour one

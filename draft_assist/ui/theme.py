@@ -36,6 +36,12 @@ ROW_ALT = "#2e3035"
 # The window frame's lit edge (see `ui/ornate.py`), so the app's name and
 # the border round it read as one piece rather than two decisions.
 FRAME_GOLD = "#c9a45a"
+# The hairline between one control and the next, at the user's request:
+# "right in the middle" of white and black, which is exactly #808080. It
+# is deliberately NOT one of the greys above — those are surfaces and
+# text, and a rule is neither; it has to read on the dark band and on the
+# card alike.
+RULE = "#808080"
 # The app's own name. The same family as the body at its heaviest weight
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
 # app's own voice raised rather than a second typeface arguing with it.

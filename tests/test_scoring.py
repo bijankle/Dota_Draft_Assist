@@ -108,14 +108,40 @@ def test_relations_to_an_ally_covers_both_teams():
         float(ds.delta_vs[ds.index[1], ds.index[9]]))
 
 
-def test_relations_to_an_enemy_stay_on_our_side_of_the_board():
-    """Their pair-ups with each other are their synergy, not ours — the
-    view says nothing about them."""
+def test_clicking_an_enemy_answers_both_questions():
+    """Their matchups against your five AND their synergy with each other.
+
+    The second half used to be left out on the theory that their pair-ups
+    were their business — which is wrong in the way that matters
+    mid-draft: an enemy that combos with two team-mates is a bigger
+    problem than its own matchups say, and this view was the one place
+    that could show it.
+    """
     ds = fake_dataset()
     draft = scoring.DraftState(allies=[1, 5], enemies=[9, 12])
     rels = scoring.relations_to(ds, 9, draft)
-    assert {r.hero_id for r in rels} == {1, 5}
-    assert all(r.kind == "vs" for r in rels)
+    assert {r.hero_id for r in rels} == {1, 5, 12}
+    assert {r.kind for r in rels if r.hero_id in (1, 5)} == {"vs"}
+    pair = next(r for r in rels if r.hero_id == 12)
+    assert pair.kind == "with"
+
+
+def test_an_enemy_pairs_synergy_is_flipped_to_our_side():
+    """Every figure in this view is read from our side, so a combo that
+    works for them prints NEGATIVE — the same convention
+    `net_contributions` already applies to the enemy half of the board."""
+    ds = fake_dataset()
+    draft = scoring.DraftState(allies=[1], enemies=[9, 12])
+    pair = next(r for r in scoring.relations_to(ds, 9, draft)
+                if r.hero_id == 12)
+    theirs = float(ds.delta_with[ds.index[9], ds.index[12]])
+    assert pair.delta == pytest.approx(-theirs)
+    # And an ALLY pair is not flipped: ours helping ours is good for us.
+    draft2 = scoring.DraftState(allies=[1, 5], enemies=[9])
+    mine = next(r for r in scoring.relations_to(ds, 1, draft2)
+                if r.hero_id == 5)
+    assert mine.delta == pytest.approx(
+        float(ds.delta_with[ds.index[1], ds.index[5]]))
 
 
 def test_every_relation_reads_positive_as_good_for_you():

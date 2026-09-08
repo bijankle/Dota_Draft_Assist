@@ -16,8 +16,8 @@ from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
                           Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QHBoxLayout,
-                             QLabel, QPushButton, QSizeGrip, QSizePolicy,
-                             QSpinBox, QStyle, QStyleOptionSpinBox, QTabBar,
+                             QLabel, QMenuBar, QPushButton, QSizeGrip,
+                             QSizePolicy, QSpinBox, QTabBar,
                              QTabWidget, QWidget)
 
 from . import appicon, theme
@@ -437,6 +437,86 @@ class FramedShell(QWidget):
         painter.end()
 
 
+def paint_rules(painter: QPainter, gaps: list[tuple[int, int, int]],
+                height: int) -> None:
+    """Draw one hairline down the middle of each gap.
+
+    `gaps` is (left edge, right edge, centre y) per gap. Painted rather
+    than styled for the usual reason: QMenuBar and QTabBar have no
+    between-items sub-control for a stylesheet to reach, and a "|" put in
+    the label text is a glyph that moves with the font and cannot be
+    coloured apart from the label it sits in.
+    """
+    painter.setPen(QPen(QColor(theme.RULE), 1))
+    for left, right, middle in gaps:
+        x = (left + right) // 2
+        painter.drawLine(x, middle - height // 2, x, middle + height // 2)
+
+
+class Divider(QWidget):
+    """A vertical rule between two controls on a row.
+
+    The toolbar's own `addSeparator` draws whatever the style feels like
+    (usually nothing under a stylesheet), so this is one widget with one
+    line in it.
+    """
+
+    WIDTH = 13
+    HEIGHT = 15
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(self.WIDTH)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed,
+                           QSizePolicy.Policy.Preferred)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                          True)
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setPen(QPen(QColor(theme.RULE), 1))
+        middle = self.height() // 2
+        painter.drawLine(self.WIDTH // 2, middle - self.HEIGHT // 2,
+                         self.WIDTH // 2, middle + self.HEIGHT // 2)
+        painter.end()
+
+    def sizeHint(self) -> QSize:                    # noqa: N802
+        return QSize(self.WIDTH, self.HEIGHT)
+
+
+class RuledMenuBar(QMenuBar):
+    """Setup | Game | View | Help — with the rules drawn in."""
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().paintEvent(event)
+        visible = [self.actionGeometry(a) for a in self.actions()
+                   if a.isVisible() and not a.isSeparator()]
+        if len(visible) < 2:
+            return
+        painter = QPainter(self)
+        paint_rules(painter,
+                    [(a.right(), b.left(), (a.top() + a.bottom()) // 2)
+                     for a, b in zip(visible, visible[1:])],
+                    Divider.HEIGHT)
+        painter.end()
+
+
+class RuledTabBar(QTabBar):
+    """Draft | Analysis | Debug — same idea, same rule."""
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().paintEvent(event)
+        boxes = [self.tabRect(i) for i in range(self.count())]
+        if len(boxes) < 2:
+            return
+        painter = QPainter(self)
+        paint_rules(painter,
+                    [(a.right(), b.left(), (a.top() + a.bottom()) // 2)
+                     for a, b in zip(boxes, boxes[1:])],
+                    Divider.HEIGHT)
+        painter.end()
+
+
 class BandedTabs(QTabWidget):
     """Tabs and toolbar in ONE row that we lay out ourselves.
 
@@ -473,7 +553,7 @@ class BandedTabs(QTabWidget):
         # reads as the row having been cut off rather than as it ending.
         row.setContentsMargins(0, 0, self.EDGE_GAP, 0)
         row.setSpacing(0)
-        self.bar = QTabBar()
+        self.bar = RuledTabBar()
         self.bar.setObjectName("tabStripBar")
         self.bar.setDrawBase(False)
         self.bar.setExpanding(False)
@@ -487,6 +567,10 @@ class BandedTabs(QTabWidget):
     def add_tools(self, widget: QWidget) -> None:
         """Put a widget at the right-hand end of the tab row."""
         self._row.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def add_rule(self) -> None:
+        """A rule between the tab labels and the controls beside them."""
+        self._row.addWidget(Divider(), 0, Qt.AlignmentFlag.AlignVCenter)
 
     def addTab(self, page, label):                  # noqa: N802 - Qt naming
         index = super().addTab(page, label)

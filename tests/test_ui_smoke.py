@@ -1605,9 +1605,14 @@ def test_clicking_an_ally_answers_both_questions(window):
         assert "vs" in _delta_text(window, "enemy", i)
 
 
-def test_clicking_an_enemy_answers_only_the_matchup(window):
-    """Their pair-ups with each other are their business: clicking an enemy
-    says how YOUR five fare against it and nothing else."""
+def test_clicking_an_enemy_answers_both_questions(window):
+    """How your five fare against it, AND how it works with its own four.
+
+    The second half used to be left blank on the theory that their
+    pair-ups were their business. An enemy that combos with two of its
+    team-mates is a bigger problem than its own matchups say, and this was
+    the one view that could show it.
+    """
     window.refresh()
     window.team_buttons["enemy"][2].click()
 
@@ -1616,7 +1621,7 @@ def test_clicking_an_enemy_answers_only_the_matchup(window):
         assert "vs" in _delta_text(window, "ally", i)
     for i in range(len(window._current_draft().enemies)):
         if i != 2:
-            assert _delta_text(window, "enemy", i) == ""
+            assert "with" in _delta_text(window, "enemy", i)
 
 
 def test_clicking_the_same_hero_again_clears_the_view(window):
@@ -1645,8 +1650,15 @@ def test_the_numbers_read_from_your_side_whichever_portrait_they_sit_under(
     enemy = draft.enemies[0]
     relations = scoring.relations_to(window.ds, enemy, draft)
     for rel in relations:
-        expected = float(window.ds.delta_vs[window.ds.index[rel.hero_id],
-                                            window.ds.index[enemy]])
+        if rel.kind == "vs":
+            expected = float(window.ds.delta_vs[window.ds.index[rel.hero_id],
+                                                window.ds.index[enemy]])
+        else:
+            # Their pair working is our problem, so it is flipped onto our
+            # side of the ledger like everything else in this view.
+            expected = -float(
+                window.ds.delta_with[window.ds.index[enemy],
+                                     window.ds.index[rel.hero_id]])
         assert rel.delta == pytest.approx(expected)
 
 
@@ -2707,3 +2719,87 @@ def test_the_manual_slot_helpers_answer_by_hero(qapp):
     assert not manual.replace("ally", 42, 44), "42 is no longer there"
     assert manual.replace("ally", 43, None)
     assert manual.entered("ally") == []
+
+
+# --------------------------------------------------------------------------
+# Clear all / Detect all, and the rules between the controls.
+# --------------------------------------------------------------------------
+
+def test_clear_all_wipes_everything_the_user_told_this_match(qapp):
+    """One press back to an empty board — the slots, the side and order
+    corrections, and which hero is yours."""
+    window, manual = _manual_window(qapp)
+    try:
+        first, second = window.ds.hero_ids[:2]
+        manual.set_slot("ally", 0, first)
+        manual.set_slot("enemy", 2, second)
+        window.side_overrides[first] = "enemy"
+        window.slot_order["ally"] = [first]
+        window.my_hero_id = first
+        window.my_hero_locked = True
+        window.refresh()
+        window._clear_all()
+        assert manual.entered("ally") == [] and manual.entered("enemy") == []
+        assert window.side_overrides == {}
+        assert window.slot_order == {"ally": [], "enemy": []}
+        assert window.my_hero_id is None and not window.my_hero_locked
+        assert window.focus is None
+        window.refresh()
+        for side in ("ally", "enemy"):
+            assert all(b.property("hero_id") is None
+                       for b in window.team_buttons[side])
+    finally:
+        window.close()
+
+
+def test_detect_all_asks_for_one_reading_and_forgets_the_old_one(qapp):
+    """A one-shot, not the Force recognition switch — and it drops what
+    was read, or the stabiliser lets the stale answer outvote the new
+    frame for another few ticks."""
+    from draft_assist.capture.session import CaptureSession
+    session = CaptureSession.__new__(CaptureSession)
+    session.state = type("S", (), {"last_read": "old", "last_read_raw": "old",
+                                   "forced": False})()
+    session._stabilizer = type("St", (), {"reset": lambda self: None})()
+    session._detect_now = False
+    session.detect_now()
+    assert session.state.last_read is None
+    assert session.state.last_read_raw is None
+    assert session.state.forced is False, "it must not latch Force on"
+    assert session._consume_detect_now() is True
+    assert session._consume_detect_now() is False, "one shot, not a mode"
+
+
+def test_detect_all_says_so_when_there_is_nothing_to_read(qapp):
+    """Doing nothing silently is indistinguishable from being broken."""
+    window, _ = _manual_window(qapp)
+    try:
+        window.refresh()
+        assert window._capture_session() is None
+        window._detect_all()
+        assert "screen capture is off" in window.status.currentMessage()
+    finally:
+        window.close()
+
+
+def test_a_rule_is_drawn_between_the_things_on_the_row(window, qapp):
+    """Setup | Game | View | Help, Draft | Analysis | Debug, and between
+    every control. Painted, because neither QMenuBar nor QTabBar has a
+    between-items sub-control a stylesheet can reach."""
+    from draft_assist.ui import chrome, theme
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    for widget in (window.menu_bar, window.tabs.bar):
+        colours = _colours_in(widget)
+        assert theme.RULE in colours, \
+            f"{widget.objectName() or type(widget).__name__} has no rules"
+    # And the toolbar carries real Divider widgets between its controls.
+    rules = window.findChildren(chrome.Divider)
+    assert len(rules) >= 4
+
+
+def test_the_rule_is_the_grey_halfway_between_black_and_white():
+    from draft_assist.ui import theme
+    assert theme.RULE == "#808080"

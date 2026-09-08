@@ -215,15 +215,23 @@ class Relation:
 def relations_to(ds: Dataset, focus: int, draft: DraftState) -> list[Relation]:
     """Every drafted hero's interaction with `focus`, context-aware.
 
-    Clicking an ALLY asks two different questions at once — how it fits with
-    the rest of your team, and how it fares against theirs — so both are
-    answered: synergy for the other allies, matchup for all five enemies.
-    Clicking an ENEMY asks only one, so each ally gets its matchup against it.
+    BOTH sides answer the same two questions. Clicking an ALLY shows its
+    synergy with your other four and its matchup against all five enemies;
+    clicking an ENEMY shows how each of your five fares against it AND its
+    synergy with its own four. This file used to say the second half of
+    that was not our business — "their pair-ups are their synergy, not
+    ours" — and that was wrong in the way that matters mid-draft: an enemy
+    that combos with two of its team-mates is a bigger problem than its
+    own matchups say, and the click view was the one place that could show
+    it and did not.
 
     Every number is read from YOUR team's point of view: positive is good for
     you whichever hero it sits under. Without that rule a green number under
     an enemy would mean the opposite of a green number under an ally, which
-    is exactly the misreading this view exists to prevent.
+    is exactly the misreading this view exists to prevent. So an enemy
+    pair's synergy is SIGN-FLIPPED — a combo that works for them is a
+    problem for us, and it prints red — which is the same convention
+    `net_contributions` already applies to the enemy half of the board.
     """
     if focus not in ds.index:
         return []
@@ -248,6 +256,14 @@ def relations_to(ds: Dataset, focus: int, draft: DraftState) -> list[Relation]:
                     hid, ds.name(hid),
                     float(ds.delta_vs[ds.index[hid], ds.index[focus]]),
                     "vs"))
+        for hid in draft.enemies:
+            if hid != focus and hid in ds.index:
+                # Sign flipped: their working pair is our problem, and
+                # every figure in this view is read from our side.
+                out.append(Relation(
+                    hid, ds.name(hid),
+                    -float(ds.delta_with[ds.index[focus], ds.index[hid]]),
+                    "with"))
     return out
 
 

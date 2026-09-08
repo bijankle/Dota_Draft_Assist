@@ -129,6 +129,8 @@ class CaptureSession:
         self._misses = 0
         self._next_tick = 0.0
         self._next_probe = 0.0
+        # One-shot "read the board now" (see `detect_now`).
+        self._detect_now = False
         self._idle_since = 0.0
         # gate.GATE_DIR is read at call time (not bound as a default) so
         # tests can repoint it.
@@ -218,6 +220,25 @@ class CaptureSession:
 
     def set_forced(self, forced: bool) -> None:
         self.state.forced = forced
+
+    def detect_now(self) -> None:
+        """Read the screen on the NEXT tick, whatever the gate thinks.
+
+        A ONE-SHOT, not a mode: `set_forced` is a switch the user leaves
+        on, and "re-read the board now" is a thing you press once. It also
+        throws away what is remembered first, because the point of asking
+        is that the board on screen and the board in the app disagree —
+        keeping the stabiliser's memory would let the old answer win the
+        vote against the new frame for another few ticks.
+        """
+        self.state.last_read = None
+        self.state.last_read_raw = None
+        self._stabilizer.reset()
+        self._detect_now = True
+
+    def _consume_detect_now(self) -> bool:
+        asked, self._detect_now = self._detect_now, False
+        return asked
 
     def _should_probe(self, now: float) -> bool:
         """Run recognition against the gate's advice, occasionally.
@@ -309,8 +330,9 @@ class CaptureSession:
         probing = self._should_probe(now)
         if probing:
             self._next_probe = now + PROBE_PERIOD
+        asked = self._consume_detect_now()
         if (self.state.mode == "active" or self.state.forced
-                or self.state.required or probing):
+                or self.state.required or probing or asked):
             with LOOP.stage("  recognise (10 crops vs the library)"):
                 raw = read_draft(frame, self.layout, self.lib, self.params)
             self.state.last_read_raw = raw
