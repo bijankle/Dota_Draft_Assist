@@ -404,6 +404,29 @@ credentials, and put the account at risk. Do not go there.
   player's own team, which would settle the split. Unverified; measure it
   before building on it.
 
+  **THE STATUS LINE IS STATE, and nothing else** (`_update_status`). It
+  ran to seven pipe-separated segments — the mode, the line-up source, the
+  game state, how old the statistics were, the ranked bracket, a count of
+  item rules unverified this patch — most of which are settings the user
+  chose and none of which change while a draft runs. Between them they
+  buried the one segment that does. What is left is: the warning if there
+  is one, whether the app has found a window titled `Dota 2` (or the wrong
+  window it bound instead, which is the tell that made a whole draft get
+  captured off File Explorer), the mode, the game state, whether it is
+  recording, and — only when there are none at all — that there are no
+  statistics. Separated by a bare `|`, with no "WARNING:" or "mode:"
+  labels: the segments say what they are.
+  **THE STATISTICS' AGE IS ONE DIALOG AT STARTUP AND NOTHING ELSE**
+  (`_prompt_if_data_is_old`, `ui_settings.data_reminder_days`, default 14
+  days, settable in Settings, 0 turns it off). It used to be a banner at
+  the top, a pill on the tab row and a segment of the status line — three
+  copies of a number worth acting on about twice a month, on screen for
+  the other fortnight. A thing that wants an answer is a dialog; a thing
+  that wants no answer should not be on screen at all. `is_empty` still
+  raises the first-run banner, because with no statistics nothing below is
+  advice, and Debug ▸ Copy everything still prints the age, because that
+  is a diagnostic rather than chrome.
+
   **A dead game feed is a BANNER, not a status segment.** It was one
   pipe-separated segment at the bottom of the window, between the capture
   mode and how old the statistics are, and it went unread through a whole
@@ -513,9 +536,15 @@ credentials, and put the account at risk. Do not go there.
   **The name does not sit on the art**: it gets its own strip above it,
   because a label over a portrait hides the half of the portrait you
   recognise the hero by, and the art is only worth drawing because it is
-  quicker to read than the name. The number sits in a small tinted badge in
-  the bottom-right, the same tint as the strip and cut to the size of the
+  quicker to read than the name. The number sits in a small badge in
+  the bottom-right, the same plate as the strip and cut to the size of the
   digits — a full-width bar there would hide as much as the name used to.
+  **That plate is SOLID BLACK** (`tilekit.CHROME`). At 65% opacity the
+  portrait came through behind the digits, so over a bright piece of art a
+  "+12.34" had to be read against whatever colour happened to be under it
+  — and the number is the one thing on a tile that has to survive being
+  read at a glance. It is cut to the digits, so opaque costs almost none
+  of the picture.
   **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
   _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
   leftover width at a fixed height meant full-screening the window
@@ -540,10 +569,26 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
+  **EVERY TILE IN THE APP IS ONE BOX, and the draft panel decides it**
+  (`TeamPanel.tile_resized` → `MainWindow._resize_strips` →
+  `SuggestRow.set_tile_size` / `ItemRow.set_tile_size`). The strips were
+  fixed at 78x44 while the ten picks grew with the window between 64 and
+  132, so a suggestion was never the size of a pick — and the constants in
+  `tilekit` are now the FALLBACK for before the panel has been laid out,
+  not the size. `_row_capacity` divides by the strip's LIVE tile width,
+  since a fixed 78 answers "how many fit on one row" for a size the strip
+  stopped being.
+  **A placeholder paints into its OWN rect.** Both blank plates drew a
+  plate `BAND_H` taller than the widget, so the dashed bottom edge fell
+  off the tile and an empty strip read as a different size from a full
+  one — which is what "the squares are a different size before the game
+  starts" actually was: the same box with three sides of an outline.
   **Each strip's tile takes its own art's aspect** — a hero portrait is
   16:9, an item icon is Valve's 88x64 — sharing only the HEIGHT, so the
   strips line up with each other without any icon sitting in a box wider
-  than itself. A tile wider than its picture is dead space either side of
+  than itself. That still holds under one shared box: the suggested picks
+  take the pick tile's whole size, the items take its height and derive
+  their width from 88:64 (`item_row.width_for`). A tile wider than its picture is dead space either side of
   every icon, which reads as the items being spaced further apart than the
   heroes above them. Icons are
   downloaded with the portraits into `assets/items/`, named by a slug of
@@ -657,14 +702,31 @@ credentials, and put the account at risk. Do not go there.
   The title is the FRAME'S OWN GOLD (`theme.FRAME_GOLD`, the same value
   `ornate.LIGHT` paints the border with), so the name and the border round
   it read as one piece.
-  **Everything is bold, and 20% larger than it was**, at the user's
-  request: the app is read in the corner of the eye over a running game,
+  **Everything is bold, and 38% larger than it was** (+20%, then another
+  +15%), at the user's request: the app is read in the corner of the eye over a running game,
   so weight is legibility rather than decoration, and Alegreya's bold is
   one of the bundled files so it resolves rather than being synthesised.
   Raising the body size RAISES THE WINDOW'S MINIMUM WIDTH — the floor is
   derived from what it takes to print "+12.34" without eliding
   (`tables.minimum_grid_width`), so bigger text means a wider narrowest
-  window. That is the derivation working, not a regression.
+  window. It has gone ~1234 → ~1324 → ~1464 across the two rises. That is
+  the derivation working, not a regression, but it is the budget any
+  further increase spends.
+  **A QLabel is TRANSPARENT by default** — one rule under the base one. A
+  label inherits `QWidget {{ background: BG }}`, so every label in the app
+  painted a rectangle of CONTENT colour wherever it sat: on a card
+  (`BG_ELEVATED`, darker) that is a lighter box round the heading and
+  round the count box, and where an empty label was still in the layout it
+  is a 3mm stub of the same thing — which is what "a weird little square
+  at the end of Your team" was. This had already been patched twice, once
+  for the title bar and once for the tab strip, and each patch covered
+  only the widget somebody happened to be looking at; the default is the
+  fix, and the pills still set their own background and win on
+  specificity. An empty label is also HIDDEN rather than left in the
+  layout (`TeamPanel.set_note`): a widget saying nothing should not occupy
+  anything. The count boxes get the same treatment — a transparent
+  `QSpinBox` with a border, so they read as controls rather than as
+  lighter rectangles.
   Colour is reserved for meaning — green/red for signed deltas, the accent
   for the one action a screen wants, amber for warnings — and everything
   else is grey, so a number in colour is always worth reading.
@@ -676,6 +738,27 @@ credentials, and put the account at risk. Do not go there.
   **The team headings are Dota's own colours** — Radiant green, Dire red —
   and they say only the side name. "Your team — Bijson · Radiant" said
   three things where one does, and the side is what the eye is looking for.
+  **They ALWAYS say Radiant and Dire, and LEFT IS ALWAYS RADIANT**
+  (`_order_panels`). "Your team" / "Enemy team" was the fallback whenever
+  the game had not reported a side, and it named the one thing the user
+  can already see — the panel with their own hero in it. So the headings
+  are the side names unconditionally, and when the player turns out to be
+  Dire the PANELS SWAP rather than the labels: Radiant is the left bank of
+  Dota's own pick bar, and a panel on the left labelled Dire is the one
+  arrangement that disagrees with the screen it is read beside. The dict
+  keys stay ally/enemy, because everything else in the app reasons in
+  those terms; only the seating changes, and each grid moves with the team
+  whose heroes head it. With no side reported the left panel is Radiant.
+  **Each heading carries that side's total** — "Radiant | +11.2" — the sum
+  of what `net_contributions` says its five heroes are worth, which is the
+  five tiles' own numbers added up. It is ALWAYS that sum, even while a
+  hero is clicked and the tiles have switched to that hero's relations,
+  because a heading that moved every time a portrait was clicked is one
+  you have to stop and re-read. The two totals are NOT a scoreline: every
+  number in the app is read from your side, so yours is what your draft is
+  worth and theirs is how well their five are handled. A side with nothing
+  resolved shows no total at all rather than "+0.0", which would claim a
+  measurement nobody made.
 - **Recording needs no interaction at all** (`record.py`,
   `recordings/<timestamp>/`). With `auto_record` on (the default),
   `_consider_auto_record` starts a session the moment `game_state` reaches a
@@ -1147,8 +1230,12 @@ credentials, and put the account at risk. Do not go there.
   the eye loses which column it is in halfway across, and an empty grid
   was a blank rectangle rather than a grid. One app-wide rule now, so
   there is no per-state stylesheet to keep in step. A reason still worth
-  saying ("Fill in both teams", "this source publishes no ally-pair data")
-  sits beside the outline, never in place of it. **"Nothing urgent
+  saying ("this source publishes no ally-pair data") sits beside the
+  outline, never in place of it — but **"Fill in both teams" and "Fill in
+  your own team" were not among them and are gone**: the empty 5x5 already
+  says the grid is waiting for picks, and a sentence saying so underneath
+  it is read once and skipped forever. `MatrixTable.show_matrix` still
+  takes an `empty_text`; the caller just has nothing to put in it. **"Nothing urgent
   flagged" is not one of those reasons**: silence IS the answer there, the
   plates already say the strip is working, and a sentence explaining that
   nothing is wrong is read once and skipped forever.

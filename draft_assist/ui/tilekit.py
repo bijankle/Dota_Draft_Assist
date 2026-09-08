@@ -41,18 +41,28 @@ from .textfit import fit
 # +20% on each, and every one is drawn BOLD (see `paint_band` and
 # `paint_badge`): these sit over artwork, where weight is what keeps them
 # readable rather than what makes them shout.
-NAME_MAX_PT = 12
-NAME_MIN_PT = 8
-NUMBER_PT = 12
+NAME_MAX_PT = 14
+NAME_MIN_PT = 9
+NUMBER_PT = 14
 
-# The name strip and the number badge share one tint.
-CHROME = QColor(0, 0, 0, 165)
+# The name strip and the number badge share one plate, and it is SOLID
+# BLACK. It was 65% black, which let the portrait through behind the
+# digits — over a bright piece of art a "+12.34" had to be read against
+# whatever colour happened to be under it, and the number is the one thing
+# on the tile that has to be legible at a glance. Opaque, at the user's
+# request: the plate is small and cut to the digits, so it costs almost
+# none of the picture.
+CHROME = QColor(0, 0, 0)
 BADGE_PAD_X = 5
 BADGE_PAD_Y = 2
 
-# A tile in one of the two STRIPS (items, suggested picks). The ten picks
-# size themselves from the panel instead; these are fixed, and the strip
-# WRAPS to another row rather than running off the window.
+# A tile in one of the two STRIPS (items, suggested picks). These are the
+# FALLBACK size only — before the draft panel has been laid out there is
+# no pick tile to match, and the strips take their real size from it (see
+# `SuggestRow.set_tile_size`): every tile in the app is one box, so a
+# suggestion is the same size as a pick and the placeholders before the
+# game are the same size as the tiles after it. The strip WRAPS to another
+# row rather than running off the window.
 STRIP_W = 78
 # 16:9, because that is the shape of a top-bar portrait — the art is the
 # whole tile now that the name band has gone, so the tile is the picture's

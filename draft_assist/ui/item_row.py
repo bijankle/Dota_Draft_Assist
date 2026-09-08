@@ -16,7 +16,7 @@ enemy, how urgent, and why — is the tooltip and the click, because a strip
 that explained itself in place would be the paragraph again.
 """
 
-from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
@@ -34,8 +34,21 @@ from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 # the items being spaced further apart than the heroes above them. Each
 # strip takes its own art's aspect; the HEIGHT is shared, so the two
 # strips still line up with each other.
+# The FALLBACK box. The real HEIGHT comes from the draft panel above
+# (`ItemRow.set_tile_size`), so an item tile is exactly as tall as a pick
+# and a suggested hero — and it keeps its own WIDTH from that height,
+# because Valve publishes item art at 88x64 and a 16:9 box round it is
+# dead space either side of every icon, which reads as the items being
+# spaced further apart than the heroes above them.
 ICON_H = tilekit.STRIP_ART_H
 ICON_W = round(ICON_H * 88 / 64)
+# The shape the width is derived from, in one place.
+ICON_ASPECT = 88 / 64
+
+
+def width_for(height: int) -> int:
+    """An item tile's width at a given height — the icon's own shape."""
+    return max(1, round(int(height) * ICON_ASPECT))
 NAME_H = tilekit.STRIP_BAND_H
 # HOW MANY IS THE CALLER'S DECISION — it is a setting, edited on the strip
 # itself. A cap in here would silently overrule it, and a number you set
@@ -87,10 +100,11 @@ class ItemTile(QWidget):
 
     asked_why = pyqtSignal(str)
 
-    def __init__(self, advice, parent=None):
+    def __init__(self, advice, parent=None,
+                 size: tuple[int, int] | None = None):
         super().__init__(parent)
         self.advice = advice
-        self.setFixedSize(ICON_W, ICON_H)
+        self.setFixedSize(*(size or (ICON_W, ICON_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setToolTip(self._tooltip())
 
@@ -113,7 +127,7 @@ class ItemTile(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        box = QRect(0, 0, ICON_W, ICON_H)
+        box = self.rect()
         art = _fitted(self.advice.item, box.width(), box.height())
         if not tilekit.paint_art(painter, box, art):
             # No icon on disk: the plate plus the name, because a blank
@@ -144,15 +158,17 @@ class PlaceholderTile(QWidget):
     there is nothing here to click.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, size: tuple[int, int] | None = None):
         super().__init__(parent)
-        self.setFixedSize(ICON_W, ICON_H)
+        self.setFixedSize(*(size or (ICON_W, ICON_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
         painter = QPainter(self)
-        tilekit.paint_plate(painter, QRect(0, 0, ICON_W, NAME_H + ICON_H),
-                            dashed=True)
+        # ITS OWN RECT: the plate used to be drawn `NAME_H` taller than the
+        # widget, so the dashed bottom edge fell off the tile and an empty
+        # strip read as a different size from a full one.
+        tilekit.paint_plate(painter, self.rect(), dashed=True)
         painter.end()
 
     def sizeHint(self) -> QSize:                # noqa: N802
@@ -179,6 +195,22 @@ class ItemRow(QWidget):
         self.row.addWidget(self.note)
         self._tiles: list[ItemTile] = []
         self._blanks: list[PlaceholderTile] = []
+        self._tile_size = (ICON_W, ICON_H)
+
+    def set_tile_size(self, height: int) -> None:
+        """Take the picks' HEIGHT and keep the icon's own width."""
+        height = max(1, int(height))
+        size = (width_for(height), height)
+        if size == self._tile_size:
+            return
+        self._tile_size = size
+        for tile in self._tiles + self._blanks:
+            tile.setFixedSize(*size)
+        self.row.invalidate()
+        self.updateGeometry()
+
+    def tile_width(self) -> int:
+        return self._tile_size[0]
 
     def set_note(self, text: str) -> None:
         """A word about the strip itself, beside it rather than in place of
@@ -198,12 +230,12 @@ class ItemRow(QWidget):
         self.message.setVisible(bool(empty) and not advice)
         if not advice:
             for _ in range(PLACEHOLDERS):
-                blank = PlaceholderTile(self)
+                blank = PlaceholderTile(self, self._tile_size)
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)
             return
         for entry in advice:
-            tile = ItemTile(entry, self)
+            tile = ItemTile(entry, self, self._tile_size)
             tile.asked_why.connect(self.asked_why)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)

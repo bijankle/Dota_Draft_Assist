@@ -20,6 +20,11 @@ MAX_SHOWN = 20
 # a hand-edited file asking for two hundred tiles must not be honoured.
 COUNTS = ("suggested_picks", "suggested_items")
 
+# The default fortnight, and the ceiling the settings box offers. A year
+# is "stop asking" without being 0, which is off outright.
+DATA_REMINDER_DAYS = 14
+MAX_REMINDER_DAYS = 365
+
 DEFAULTS = {
     "overlay_x": 40,
     "overlay_y": 40,
@@ -46,6 +51,13 @@ DEFAULTS = {
     # ones that were already worth showing.
     "suggested_picks": 8,
     "suggested_items": 5,
+    # How old the statistics have to get before the app says anything at
+    # all about it: ONE dialog when the app opens, and nothing on screen
+    # for the fortnight before that. The age used to be a banner at the
+    # top, a pill on the tab row and a segment of the status line — three
+    # copies of a number worth acting on about twice a month. Zero turns
+    # the prompt off.
+    "data_reminder_days": DATA_REMINDER_DAYS,
 }
 
 
@@ -56,6 +68,15 @@ def clamp_count(value, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return max(1, min(MAX_SHOWN, number))
+
+
+def clamp_days(value, fallback: int) -> int:
+    """Whole days between 0 (never ask) and MAX_REMINDER_DAYS."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(0, min(MAX_REMINDER_DAYS, number))
 
 
 def load(path: Path | None = None) -> dict:
@@ -73,6 +94,8 @@ def load(path: Path | None = None) -> dict:
             settings.update({k: v for k, v in stored.items() if k in DEFAULTS})
     for key in COUNTS:
         settings[key] = clamp_count(settings.get(key), DEFAULTS[key])
+    settings["data_reminder_days"] = clamp_days(
+        settings.get("data_reminder_days"), DATA_REMINDER_DAYS)
     return settings
 
 
@@ -81,6 +104,8 @@ def save(settings: dict, path: Path | None = None) -> None:
     settings = dict(settings)
     for key in COUNTS:
         settings[key] = clamp_count(settings.get(key), DEFAULTS[key])
+    settings["data_reminder_days"] = clamp_days(
+        settings.get("data_reminder_days"), DATA_REMINDER_DAYS)
     try:
         path.write_text(
             json.dumps({k: settings.get(k, v) for k, v in DEFAULTS.items()},

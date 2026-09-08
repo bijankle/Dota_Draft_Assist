@@ -61,6 +61,7 @@ from ..vision import harvest
 from ..model import items as items_mod
 from ..model import scoring
 from . import settings as ui_settings
+from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
 from . import chrome
@@ -458,9 +459,11 @@ class MainWindow(QMainWindow):
         # There is no capture pill: it said the same sentence as the status
         # bar in less room, one line higher up. Keeping it around invisible
         # is how it became a window of its own.
-        self.data_pill = QLabel("data: —")
-        self.data_pill.setProperty("pill", "quiet")
-        toolbar.addWidget(self.data_pill)
+        # THERE IS NO DATA-AGE PILL, and no data-age banner or status
+        # segment either. "data 20h" was three copies of a number that is
+        # only ever worth acting on once a fortnight, sitting on screen for
+        # the other fourteen days; the prompt is now a dialog at startup
+        # (`_prompt_if_data_is_old`) and nothing at all in between.
 
         # BandedTabs, not QTabWidget: the tab row has to be one dark band
         # edge to edge, and the gap between the tabs and the toolbar is
@@ -520,8 +523,14 @@ class MainWindow(QMainWindow):
         blay.addWidget(self.banner_button)
         outer.addWidget(self.banner)
 
-        teams_row = QHBoxLayout()
+        # LEFT IS ALWAYS RADIANT, which is how the pick bar the user is
+        # looking at is arranged, so the panels are re-ordered rather than
+        # re-labelled when the player turns out to be Dire (see
+        # `_order_panels`). The dict keys stay ally/enemy — everything else
+        # in the app reasons in those terms — and only the seating changes.
+        self.teams_row = teams_row = QHBoxLayout()
         teams_row.setSpacing(10)
+        self._panel_order = ["ally", "enemy"]
         self.team_panels = {}
         self.team_buttons = {}
         self.team_captions = {}
@@ -543,6 +552,9 @@ class MainWindow(QMainWindow):
                         self._slot_menu(side, i, pos))
                 b.dropped_on.connect(self._on_slot_dropped)
             teams_row.addWidget(panel, 1)
+        # ONE tile size for the whole app: the panel computes it from the
+        # width it was given, and the strips below follow it.
+        self.team_panels["ally"].tile_resized.connect(self._resize_strips)
         outer.addLayout(teams_row)
 
         # The board is the top of the screen and everything under it is
@@ -569,7 +581,7 @@ class MainWindow(QMainWindow):
         # under theirs on the RIGHT. A column then reads straight down from
         # the tile it is about, which is why the headers are those same
         # portraits rather than the names a second time.
-        grids = QHBoxLayout()
+        self.grids_row = grids = QHBoxLayout()
         grids.setSpacing(10)
         with_card, withlay = card("Synergy")
         self.synergy_matrix = MatrixTable()
@@ -589,6 +601,9 @@ class MainWindow(QMainWindow):
         self.matchup_matrix.set_margins(False)
         vslay.addWidget(self.matchup_matrix)
         grids.addWidget(vs_card, 1)
+        # Each grid is under the team whose heroes head it, so when the
+        # panels swap sides these swap with them.
+        self.grid_cards = {"ally": with_card, "enemy": vs_card}
         outer.addLayout(grids)
         # The stretch goes at the BOTTOM, not into the grids. Giving it to
         # them left half the window blank and, worse, meant the window had
@@ -1154,6 +1169,40 @@ class MainWindow(QMainWindow):
         self._banner_action = action
         self.banner.setVisible(True)
 
+    def _prompt_if_data_is_old(self) -> None:
+        """Ask ONCE, at startup, whether to refresh statistics this old.
+
+        This is the only thing the app says about the age of its data. It
+        was a banner at the top, a pill on the tab row and a segment of the
+        status line, permanently — three copies of a number that is worth
+        acting on about twice a month, taking up room every other day. A
+        dialog is the right shape for something that wants an answer, and
+        a fortnight (Settings ▸ When to remind you) is roughly a patch.
+
+        Nothing at all when there are no statistics: the first-run banner
+        already says that, and it says it better.
+        """
+        days = ui_settings.clamp_days(
+            self.settings.get("data_reminder_days"),
+            ui_settings.DATA_REMINDER_DAYS)
+        if not days or self.ds.is_empty:
+            return
+        try:
+            age = self.ds.age_hours() / 24.0
+        except Exception:
+            return
+        if age < days:
+            return
+        answer = QMessageBox.question(
+            self, "Statistics are getting old",
+            f"The match statistics are {age:.0f} days old.\n\n"
+            "Recommendations still work — the numbers just stop tracking "
+            "the current patch. Update them now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.run_task("update_data")
+
     def _update_first_run_banner(self, snap=None) -> None:
         """The one strip at the top that says what is wrong RIGHT NOW.
 
@@ -1191,13 +1240,13 @@ class MainWindow(QMainWindow):
                 "statistics for Ancient+Divine and the hero portraits used "
                 "to read the draft off the screen.",
                 "Download now", lambda: self.run_task("update_data"))
-        elif self.ds.is_stale():
-            self._show_banner(
-                f"<b>Statistics are {self.ds.age_hours():.0f} hours old.</b> "
-                "Recommendations still work, but a refresh keeps them "
-                "current with the patch.",
-                "Update now", lambda: self.run_task("update_data"))
         else:
+            # NOT how old the data is. That was a banner up all evening for
+            # something worth acting on once a fortnight, and a banner
+            # nobody reads is a banner that does not work on the night it
+            # matters. The age is a dialog at startup instead — see
+            # `_prompt_if_data_is_old` — and the empty case above stays,
+            # because with no statistics at all the app has nothing to say.
             self.banner.setVisible(False)
 
     def _edit_rules(self) -> None:
@@ -2295,23 +2344,41 @@ class MainWindow(QMainWindow):
         self.side_label.setVisible(not known)
         self.side_combo.setVisible(not known)
 
-        # Just the side name. "Your team — Bijson · Radiant" said three
-        # things where one does: which bank this is. The player's own name
-        # is in the status bar and the side is what the eye is looking for.
+        # ALWAYS Radiant and Dire. "Your team" / "Enemy team" was the
+        # fallback whenever the game had not said which side was ours, and
+        # it named a thing the user can already see — the panel with their
+        # own hero in it. The side is what the eye is looking for, and when
+        # it is not known yet the sensible assumption is the common one.
         team = (getattr(snap, "my_team", "") or "").lower()
-        if team in ("radiant", "dire"):
-            mine = team.title()
-            theirs = "Dire" if team == "radiant" else "Radiant"
-        else:
-            mine, theirs = "Your team", "Enemy team"
+        mine = "Dire" if team == "dire" else "Radiant"
+        theirs = "Radiant" if mine == "Dire" else "Dire"
         for side, caption in (("ally", mine), ("enemy", theirs)):
             label = self.team_captions[side]
             set_label(label, caption)
             # Dota's own colours, so the heading agrees with the game the
             # user is looking at rather than with our ally/enemy idea.
-            colour = (theme.GOOD if caption == "Radiant" else
-                      theme.BAD if caption == "Dire" else theme.TEXT)
+            colour = theme.GOOD if caption == "Radiant" else theme.BAD
             label.setStyleSheet(f"color: {colour};")
+        # The player's five go to the side they actually belong to, rather
+        # than always sitting on the left: Radiant is the left bank of
+        # Dota's own pick bar, so a panel on the left labelled Dire would
+        # be the one arrangement that disagrees with the screen it is being
+        # read beside.
+        self._order_panels("enemy" if mine == "Dire" else "ally")
+
+    def _order_panels(self, radiant: str) -> None:
+        """Seat the Radiant panel on the left, and its grid under it."""
+        want = [radiant, "enemy" if radiant == "ally" else "ally"]
+        if want == self._panel_order:
+            return
+        self._panel_order = want
+        for row, widgets in ((self.teams_row, self.team_panels),
+                             (self.grids_row, self.grid_cards)):
+            for side in want:
+                row.removeWidget(widgets[side])
+            for side in want:
+                row.addWidget(widgets[side], 1)
+                widgets[side].show()
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -2491,9 +2558,12 @@ class MainWindow(QMainWindow):
         self._update_relations()
 
     def _update_matrices(self, draft: scoring.DraftState) -> None:
+        # NO SENTENCE UNDER AN EMPTY GRID. "Fill in both teams" is read
+        # once and skipped forever, and the 5x5 outline already says the
+        # grid is waiting for picks. A reason still worth saying — the
+        # OpenDota one below — stays.
         self.matchup_matrix.show_matrix(
-            scoring.matchup_matrix(self.ds, draft),
-            "Fill in both teams.")
+            scoring.matchup_matrix(self.ds, draft))
         # A dataset built from OpenDota carries no ally-pair counts at all,
         # so the grid would be a wall of +0.00 that looks like "no synergy
         # anywhere" rather than "this source does not publish it".
@@ -2505,8 +2575,7 @@ class MainWindow(QMainWindow):
                 "in Settings and re-pull.")
         else:
             self.synergy_matrix.show_matrix(
-                scoring.synergy_matrix(self.ds, draft),
-                "Fill in your own team.")
+                scoring.synergy_matrix(self.ds, draft))
 
     def _apply_filter(self) -> None:
         needle = self.search_box.text().strip().lower()
@@ -2575,6 +2644,11 @@ class MainWindow(QMainWindow):
             panel.clear_deltas()
         values: dict[int, float] = {}
         draft = self._current_draft()
+        # The heading totals are ALWAYS the net contributions, whether or
+        # not a hero is clicked: a number beside "Radiant" that changed
+        # every time a portrait was clicked would be a number you had to
+        # stop and re-read before it meant anything.
+        self._update_team_totals(draft)
         if self.focus is None:
             # Nothing clicked, so every tile says what that pick is worth
             # overall rather than nothing at all — the tile has a line for
@@ -2604,6 +2678,27 @@ class MainWindow(QMainWindow):
                     continue
                 tile.show_delta(rel.delta, rel.kind)
                 values[other] = rel.delta
+
+    def _update_team_totals(self, draft: scoring.DraftState) -> None:
+        """The signed figure beside each side's name.
+
+        The sum of what `net_contributions` says that side's five heroes
+        are worth — the same numbers the five tiles carry when nothing is
+        clicked, added up. Read from YOUR side either way: on your own
+        panel it is what your draft is worth, on theirs it is how well
+        their five are handled, so the two are not a scoreline and are not
+        offered as one.
+
+        Nothing at all when no hero on that side has resolved. A heading
+        reading "+0.0" over five empty slots claims a measurement nobody
+        made.
+        """
+        net = scoring.net_contributions(self.ds, draft)
+        for side, panel in self.team_panels.items():
+            figures = [net[hid] for hid in
+                       (tile.property("hero_id") for tile in panel.slots)
+                       if hid is not None and hid in net]
+            panel.set_total(sum(figures) if figures else None)
 
     def _on_drafted_clicked(self) -> None:
         """Kept for callers that click a slot expecting the counters view."""
@@ -2680,6 +2775,31 @@ class MainWindow(QMainWindow):
         ui_settings.save(self.settings)
         self._refresh_views()
 
+    def _resize_strips(self, width: int, height: int) -> None:
+        """The picks decided how big a tile is; the strips follow.
+
+        One box for every tile in the app, so a suggestion is the size of a
+        pick and the blank plates before the game are the size of the tiles
+        after it. The item strip takes the HEIGHT and keeps its own width,
+        because an 88x64 icon in a 16:9 box is dead space either side of
+        every item.
+        """
+        # The connection is made as soon as the panels exist, which is
+        # before the strips do; a widget that is not built yet has no size
+        # to be told about.
+        picks = getattr(self, "suggest_row", None)
+        items = getattr(self, "item_row", None)
+        if picks is None or items is None:
+            return
+        picks.set_tile_size(width, height)
+        items.set_tile_size(height)
+        # Bigger tiles means fewer fit on a row, and the default count is
+        # "however many fit on one row" — so the strips have to be redrawn
+        # or the number stays at whatever the old size allowed.
+        if (not self.settings.get("suggested_picks")
+                or not self.settings.get("suggested_items")):
+            self._refresh_views()
+
     def _row_capacity(self, key: str) -> int:
         """How many tiles fit across the strip as it is RIGHT NOW."""
         # getattr: the count box is built BEFORE the strip it measures —
@@ -2691,7 +2811,11 @@ class MainWindow(QMainWindow):
         width = strip.width() if strip is not None else 0
         if width <= 1:                      # before the first layout pass
             width = max(0, self.width() - 60)
-        return fits_in_one_row(width, tilekit.STRIP_W)
+        # The strip's OWN tile width, not the module constant: the tiles
+        # grow with the window now, so a fixed 78 would answer this
+        # question for a size the strip stopped being.
+        tile = strip.tile_width() if strip is not None else tilekit.STRIP_W
+        return fits_in_one_row(width, tile)
 
     def _how_many(self, key: str) -> int:
         """A strip's cap. A CAP, not a quota, and auto until you set it.
@@ -2771,57 +2895,46 @@ class MainWindow(QMainWindow):
 
     # ---- status / debug ------------------------------------------------
     def _update_status(self, snap) -> None:
-        # The warning LEADS. It used to sit fourth, after the mode, the
-        # source and the game state, in a pipe-separated line at the bottom
-        # of the window — which is how "no data from Dota" went unread for
-        # a whole ranked game.
+        """One short line: what is wrong, what is bound, what is happening.
+
+        It used to run to seven segments — the mode, the line-up source,
+        the game state, the statistics age, the ranked bracket, a count of
+        item rules unverified this patch — most of which are settings the
+        user chose and none of which change while a draft runs. The one
+        thing a status line is for is the state, so what is left is: what
+        is wrong, whether the app has found Dota's window, and what it is
+        doing with it. Pipes between, nothing else.
+        """
         parts = []
         if snap.warning:
-            parts.append(f"WARNING: {snap.warning}")
-        parts.append(f"mode: {snap.mode}")
-        if snap.source:
-            parts.append(snap.source)
+            # The warning LEADS. It used to sit fourth, which is how "no
+            # data from Dota" went unread through a whole ranked game.
+            parts.append(snap.warning)
+        if snap.stalled:
+            parts.append("CAPTURE STALLED — the window may have stopped "
+                         "presenting")
+        # WHICH WINDOW. A frame the wrong size for the monitor is the tell
+        # that capture bound to something other than Dota, and a session
+        # once spent a whole draft capturing a File Explorer window called
+        # "Dota_Draft_Assist" without anything on screen saying so.
+        target = self._capture_target()
+        if target == DOTA_TITLE:
+            parts.append("Dota window: found")
+        elif target and target != "(nothing bound)":
+            parts.append(f"bound to: {target}")
+        else:
+            parts.append("Dota window: not found")
+        parts.append(snap.mode)
         if snap.game_state:
             parts.append(snap.game_state.replace("DOTA_GAMERULES_STATE_", ""))
-        if snap.stalled:
-            parts.append("CAPTURE STALLED — occluded window may have "
-                         "stopped presenting")
         server = getattr(self.provider, "server", None)
         if server is not None and getattr(server, "recording", False):
-            parts.append(f"RECORDING ({server._archived} payloads)")
+            parts.append(f"REC {server._archived}")
         if self.ds.is_empty:
-            parts.append("data: none — use Data ▸ Update statistics")
-        else:
-            age = self.ds.age_hours()
-            stale = " (STALE)" if self.ds.is_stale() else ""
-            parts.append(f"data: {age:.0f}h old{stale}")
-        brackets = "+".join(self.ds.meta.get("target_brackets", []))
-        if brackets:
-            parts.append(f"bracket: {brackets}")
-        n_stale_rules = sum(
-            1 for r in self.rules
-            if items_mod.is_stale(r.verified_patch,
-                                  self.rules_meta.get("current_patch", "0.0")))
-        if n_stale_rules:
-            parts.append(f"{n_stale_rules} item rules unverified this patch")
-        self.status.showMessage("   |   ".join(parts))
-
-        # A BOX ONLY WHEN SOMETHING IS WRONG. Healthy data in a green
-        # outline is a badge for the absence of a problem — it drew the eye
-        # every tick, and its border made the toolbar taller than the tab
-        # bar beside it. Fresh data is plain dim text; stale or missing
-        # data keeps the amber pill, because that one is worth looking at.
-        if self.ds.is_empty:
-            self.data_pill.setText("no data")
-            self.data_pill.setProperty("pill", "warn")
-        elif self.ds.is_stale():
-            self.data_pill.setText(f"data {self.ds.age_hours():.0f}h")
-            self.data_pill.setProperty("pill", "warn")
-        else:
-            self.data_pill.setText(f"data {self.ds.age_hours():.0f}h")
-            self.data_pill.setProperty("pill", "quiet")
-        self.data_pill.style().unpolish(self.data_pill)
-        self.data_pill.style().polish(self.data_pill)
+            # The one thing about the statistics still worth a segment: with
+            # none at all, nothing below is advice.
+            parts.append("no statistics — Data ▸ Update statistics")
+        self.status.showMessage(" | ".join(parts))
 
     def _update_debug(self, snap) -> None:
         # NOTHING here is worth doing while the tab is hidden. It draws an
@@ -3185,6 +3298,9 @@ def _main() -> None:
     started = provider.start()
     win.status.showMessage(f"started: {started}")
     win._refresh_sources()
+    # After show(), because it is a modal dialog and one raised over a
+    # window that has not appeared yet is a dialog with nothing behind it.
+    win._prompt_if_data_is_old()
     if getattr(provider, "error", ""):
         win.snapshot_label.setText(provider.error.splitlines()[0])
     code = app.exec()

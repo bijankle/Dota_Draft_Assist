@@ -55,13 +55,24 @@ QWidget {{
     background: {BG};
     color: {TEXT};
     font-family: {FONT_STACK};
-    /* +20% on everything, and BOLD everywhere, at the user's request. The
-       app is read in the corner of the eye over a game, so weight is
-       legibility rather than decoration — and Alegreya's bold is one of
-       the files bundled, so it resolves rather than being synthesised. */
-    font-size: 16px;
+    /* +20% and then another 15% on everything, and BOLD everywhere, at
+       the user's request. The app is read in the corner of the eye over a
+       game, so weight is legibility rather than decoration — and
+       Alegreya's bold is one of the files bundled, so it resolves rather
+       than being synthesised. */
+    font-size: 18px;
     font-weight: bold;
 }}
+/* A QLabel INHERITS the rule above, so every label in the app painted a
+   rectangle of CONTENT colour ({BG}) wherever it sat — which on a card
+   ({BG_ELEVATED}) is a lighter box round the heading, and on an empty
+   label still in the layout is the 3mm stub at the end of a team's
+   heading row. It had already been patched twice, once for the title bar
+   and once for the tab strip, and each patch only covered the widget
+   somebody happened to be looking at. Transparent by DEFAULT instead; a
+   label that wants a background says so, and the pills below win on
+   specificity. */
+QLabel {{ background: transparent; }}
 QMainWindow::separator {{ background: {BORDER}; width: 1px; height: 1px; }}
 
 QMenuBar {{ background: {BG_DEEP}; border-bottom: 1px solid {BG_DEEP}; }}
@@ -171,6 +182,19 @@ QSlider::handle:horizontal {{
 }}
 QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
 
+/* The little count box beside a strip's heading. Without a rule of its
+   own it took the base QWidget background — the same lighter-than-the-card
+   rectangle the labels had. A border says "control" without a fill that
+   fights the card it sits on. */
+QSpinBox {{
+    background: transparent; border: 1px solid {BORDER};
+    border-radius: 4px; padding: 1px 3px; color: {TEXT};
+}}
+QSpinBox:hover {{ border-color: {ACCENT}; }}
+QSpinBox::up-button, QSpinBox::down-button {{
+    background: transparent; border: none; width: 14px;
+}}
+
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{
     width: 15px; height: 15px; border-radius: 3px;
@@ -247,7 +271,7 @@ QWidget#titleBar QToolButton {{
 QLabel#titleText {{
     background: transparent; color: {FRAME_GOLD};
     font-family: "{TITLE_FAMILY}", {FONT_STACK};
-    font-weight: 600; font-size: 22px;
+    font-weight: 600; font-size: 25px;
 }}
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
@@ -279,10 +303,10 @@ QFrame[banner="true"] {{
     border: 1px solid {WARN};
     border-radius: 8px;
 }}
-QLabel[heading="true"] {{ font-size: 18px; font-weight: bold; color: {TEXT_STRONG}; }}
+QLabel[heading="true"] {{ font-size: 21px; font-weight: bold; color: {TEXT_STRONG}; }}
 /* Discord's section labels: small, upper, wide-tracked, muted. */
 QLabel[eyebrow="true"] {{
-    font-size: 13px; font-weight: bold; color: {TEXT_DIM};
+    font-size: 15px; font-weight: bold; color: {TEXT_DIM};
     letter-spacing: 1px;
 }}
 QLabel[dim="true"] {{ color: {TEXT_DIM}; }}

@@ -17,7 +17,7 @@ strip that also entered picks would be a second way to do it that behaves
 differently.
 """
 
-from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
@@ -25,6 +25,11 @@ from . import theme, tilekit
 from .flowlayout import FlowLayout
 from .portraits import scaled
 
+# The FALLBACK box only. The real one comes from the draft panel above
+# (`SuggestRow.set_tile_size`), because every tile in the app is the same
+# tile and a suggestion the size of a pick can be compared with one
+# without the eye doing any conversion. These stand in until the panel has
+# been laid out and had something to say.
 WIDTH = tilekit.STRIP_W
 ART_H = tilekit.STRIP_ART_H
 BAND_H = tilekit.STRIP_BAND_H
@@ -47,12 +52,13 @@ class SuggestTile(QWidget):
     asked_why = pyqtSignal(int)
 
     def __init__(self, hero_id: int, name: str, fit_value: float,
-                 tooltip: str = "", parent=None):
+                 tooltip: str = "", parent=None,
+                 size: tuple[int, int] | None = None):
         super().__init__(parent)
         self.hero_id = hero_id
         self.hero_name = name
         self.fit = float(fit_value)
-        self.setFixedSize(WIDTH, ART_H)
+        self.setFixedSize(*(size or (WIDTH, ART_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setToolTip(tooltip or name)
 
@@ -67,7 +73,7 @@ class SuggestTile(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(
             QPainter.RenderHint.SmoothPixmapTransform, True)
-        box = QRect(0, 0, WIDTH, ART_H)
+        box = self.rect()
         if not tilekit.paint_art(painter, box,
                                  scaled(self.hero_id, box.width(),
                                         box.height())):
@@ -84,7 +90,7 @@ class SuggestTile(QWidget):
                                self.hero_name, self.font())
         # Same figure, same corner, same colours as a drafted tile: a
         # suggestion and a pick have to be comparable at a glance.
-        tilekit.paint_badge(painter, QRect(0, 0, WIDTH, ART_H),
+        tilekit.paint_badge(painter, box,
                             f"{self.fit * 100:+.1f}",
                             theme.GOOD if self.fit >= 0 else theme.BAD,
                             self.font())
@@ -97,15 +103,19 @@ class SuggestTile(QWidget):
 class PlaceholderTile(QWidget):
     """The shape a suggestion will be. Same reason as the item strip's."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, size: tuple[int, int] | None = None):
         super().__init__(parent)
-        self.setFixedSize(WIDTH, ART_H)
+        self.setFixedSize(*(size or (WIDTH, ART_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event) -> None:        # noqa: N802
         painter = QPainter(self)
-        tilekit.paint_plate(painter, QRect(0, 0, WIDTH, BAND_H + ART_H),
-                            dashed=True)
+        # ITS OWN RECT. It used to draw a plate `BAND_H + ART_H` tall into
+        # a widget only `ART_H` tall, so the dashed bottom edge fell off
+        # the bottom of the tile — which is exactly what "the squares are a
+        # different size before the game starts" looked like: same box,
+        # three sides of an outline.
+        tilekit.paint_plate(painter, self.rect(), dashed=True)
         painter.end()
 
     def sizeHint(self) -> QSize:                # noqa: N802
@@ -129,6 +139,25 @@ class SuggestRow(QWidget):
         self.row.addWidget(self.message)
         self._tiles: list[SuggestTile] = []
         self._blanks: list[PlaceholderTile] = []
+        self._tile_size = (WIDTH, ART_H)
+
+    def set_tile_size(self, width: int, height: int) -> None:
+        """Match the ten picks above. The draft panel is the one place
+        that decides how big a tile is; this is how the decision arrives."""
+        size = (max(1, int(width)), max(1, int(height)))
+        if size == self._tile_size:
+            return
+        self._tile_size = size
+        for tile in self._tiles + self._blanks:
+            tile.setFixedSize(*size)
+        # A FlowLayout answers heightForWidth, so a taller tile is a taller
+        # strip and the window above has to be told to ask again.
+        self.row.invalidate()
+        self.updateGeometry()
+
+    def tile_width(self) -> int:
+        """What "how many fit on one row" has to divide by."""
+        return self._tile_size[0]
 
     def show_heroes(self, rows: list[tuple[int, str, float, str]],
                     empty: str = "") -> None:
@@ -141,12 +170,13 @@ class SuggestRow(QWidget):
         self.message.setVisible(bool(empty) and not rows)
         if not rows:
             for _ in range(PLACEHOLDERS):
-                blank = PlaceholderTile(self)
+                blank = PlaceholderTile(self, self._tile_size)
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)
             return
         for hero_id, name, fit_value, tip in rows:
-            tile = SuggestTile(hero_id, name, fit_value, tip, self)
+            tile = SuggestTile(hero_id, name, fit_value, tip, self,
+                               self._tile_size)
             tile.asked_why.connect(self.asked_why)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)

@@ -56,11 +56,11 @@ TILE_MAX = 132
 # Below this there is no room for a portrait and the tile stops being a
 # picture of a hero, which is the only reason it exists.
 TILE_MIN = 64
-# The two sizes this file draws itself, +20% with the rest and bold like
-# everything else: the slot's role in its corner, and the "+" on an empty
-# one. Everything else on a tile comes from `tilekit`.
-ROLE_PT = 10
-PLUS_PT = 19
+# The two sizes this file draws itself, up with the rest of the app and
+# bold like everything else: the slot's role in its corner, and the "+" on
+# an empty one. Everything else on a tile comes from `tilekit`.
+ROLE_PT = 12
+PLUS_PT = 22
 PANEL_MARGIN = 12
 TILE_GAP = 6
 
@@ -328,10 +328,13 @@ class HeroTile(QAbstractButton):
 class TeamPanel(QFrame):
     """Five tiles under one heading — one half of the draft."""
 
+    tile_resized = pyqtSignal(int, int)
+
     def __init__(self, side: str, caption: str, parent=None):
         super().__init__(parent)
         self.side = side
         self.setProperty("card", True)
+        self._told: tuple[int, int] | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(PANEL_MARGIN, 8, PANEL_MARGIN, 10)
@@ -341,9 +344,30 @@ class TeamPanel(QFrame):
         self.caption = QLabel(caption)
         self.caption.setProperty("heading", True)
         head.addWidget(self.caption)
+        # The side's own total, beside its name: "Radiant | +11.2". It is
+        # the sum of the five numbers `net_contributions` gives that side,
+        # so it answers the question the five tiles answer one at a time —
+        # and it is ALWAYS that sum, even while a hero is clicked and the
+        # tiles are showing that hero's relations instead, because a
+        # heading that moved every time you clicked a portrait would be
+        # something you had to stop and re-read.
+        self.rule = QLabel("|")
+        self.rule.setProperty("dim", True)
+        self.rule.setContentsMargins(8, 0, 8, 0)
+        self.rule.setVisible(False)
+        head.addWidget(self.rule)
+        self.total = QLabel("")
+        self.total.setProperty("heading", True)
+        self.total.setVisible(False)
+        head.addWidget(self.total)
         head.addStretch(1)
         self.note = QLabel("")
         self.note.setProperty("dim", True)
+        # Hidden while it says nothing. It used to stay in the layout with
+        # an empty string, and a QLabel took its background from the base
+        # QWidget rule — so an empty note was a 3mm block of content colour
+        # sitting on the darker card at the end of every team's heading.
+        self.note.setVisible(False)
         head.addWidget(self.note)
         lay.addLayout(head)
 
@@ -370,6 +394,37 @@ class TeamPanel(QFrame):
         inner = width - margins.left() - margins.right() - 4 * self.spacing
         for tile in self.slots:
             tile.set_edge(inner // 5)
+        # EVERY tile in the app is this tile. The two strips below have no
+        # width of their own to reason from — theirs was fixed at 78x44
+        # while these grew with the window, so a suggestion was a different
+        # size from a pick and, worse, from itself before and after the
+        # game. The panel is the one place that decides, and it says so.
+        size = self.slots[0].size() if self.slots else None
+        if size is not None and (size.width(), size.height()) != self._told:
+            self._told = (size.width(), size.height())
+            self.tile_resized.emit(size.width(), size.height())
+
+    def set_total(self, value: float | None) -> None:
+        """The signed figure beside the side's name, or nothing at all.
+
+        Nothing when no hero on this side has resolved: a heading reading
+        "Radiant | +0.0" over five empty slots claims a measurement that
+        was never made.
+        """
+        if value is None:
+            self.rule.setVisible(False)
+            self.total.setVisible(False)
+            self.total.setText("")
+            return
+        self.total.setText(f"{value * 100:+.1f}")
+        colour = theme.GOOD if value >= 0 else theme.BAD
+        self.total.setStyleSheet(f"color: {colour};")
+        self.rule.setVisible(True)
+        self.total.setVisible(True)
+
+    def set_note(self, text: str) -> None:
+        self.note.setText(text)
+        self.note.setVisible(bool(text))
 
     @property
     def buttons(self) -> list[HeroTile]:

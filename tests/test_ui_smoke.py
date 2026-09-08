@@ -238,11 +238,23 @@ def test_side_swap_flips_teams(window):
     assert before == after
 
 
-def test_status_bar_reports_data_and_mode(window):
+def test_the_status_line_says_the_state_and_nothing_else(window):
+    """Pipes, the mode, and whether Dota's window was found.
+
+    The bracket, the statistics age, the line-up source and a count of
+    unverified item rules used to be segments of this line. They are
+    settings and diagnostics, not state — none of them changes while a
+    draft runs, and between them they buried the one segment that does.
+    """
     window.refresh()
     msg = window.status.currentMessage()
-    assert "mode: demo" in msg
-    assert "bracket: ANCIENT+DIVINE" in msg
+    assert "demo" in msg
+    assert "Dota window" in msg
+    assert "bracket" not in msg
+    assert "data:" not in msg
+    # Every separator is a bare pipe, and there is no leftover prose.
+    assert "   |   " not in msg
+    assert "mode: " not in msg
 
 
 def test_snapshot_falls_back_to_grabbing_dota(window, monkeypatch):
@@ -321,8 +333,7 @@ def test_app_opens_before_any_data_is_downloaded(qapp):
         assert win.banner.isVisible() or not win.isVisible()
         assert "No statistics downloaded yet" in win.banner_label.text()
         assert "Download" in win.banner_button.text()
-        assert "data: none" in win.status.currentMessage()
-        assert win.data_pill.text() == "no data"
+        assert "no statistics" in win.status.currentMessage()
     finally:
         win.close()
 
@@ -599,7 +610,12 @@ def test_side_selector_still_shown_for_pixel_sources(window):
     question is real and the control must stay."""
     window.refresh()
     assert not window.side_combo.isHidden()
-    assert "Your team" in window.team_captions["ally"].text()
+    # The heading names the SIDE, always — "Your team" named the panel with
+    # the user's own hero in it, which is the one thing they can already
+    # see. With no side reported yet the left panel is Radiant, because
+    # that is the left bank of Dota's own pick bar.
+    assert window.team_captions["ally"].text() == "Radiant"
+    assert window.team_captions["enemy"].text() == "Dire"
 
 
 def test_draft_card_never_clips_the_hero_names(window):
@@ -1283,9 +1299,13 @@ def test_matrices_say_what_is_missing_when_a_team_is_empty(qapp):
         assert not window.matchup_matrix.table.isHidden()
         assert window.matchup_matrix.table.rowCount() == 5
         assert window.matchup_matrix.table.item(0, 0).text() == ""
-        assert "Fill in both teams" in window.matchup_matrix.empty_note.text()
-        assert "Fill in your own team" in \
-            window.synergy_matrix.empty_note.text()
+        # NO SENTENCE under the outline. "Fill in both teams" is read once
+        # and skipped forever, and the empty 5x5 already says the grid is
+        # waiting for picks. A reason worth saying — the OpenDota one —
+        # still appears; this is not one.
+        assert window.matchup_matrix.empty_note.text() == ""
+        assert not window.matchup_matrix.empty_note.isVisible()
+        assert window.synergy_matrix.empty_note.text() == ""
     finally:
         window.close()
 
@@ -2039,8 +2059,14 @@ def test_dota_being_closed_is_not_a_fault_worth_a_banner(window, qapp):
 
 
 def test_the_warning_leads_the_status_line(window, qapp):
-    window._update_status(_silent_gsi_snapshot(True))
-    assert window.status.currentMessage().startswith("WARNING:")
+    """First segment, no label. It used to sit fourth, which is how "no
+    data from Dota" went unread through a whole ranked game; the "WARNING:"
+    prefix went with the rest of the line's prose."""
+    snap = _silent_gsi_snapshot(True)
+    window._update_status(snap)
+    message = window.status.currentMessage()
+    assert message.startswith(snap.warning)
+    assert message.split(" | ")[0] == snap.warning
 
 
 def _settle(qapp, times=4):
@@ -2093,7 +2119,10 @@ def test_a_narrow_strip_wraps_rather_than_scrolling(window, qapp):
     one_row = layout.heightForWidth(tilekit.STRIP_W * 20)
     narrow = layout.heightForWidth(tilekit.STRIP_W * 3)
     assert narrow > one_row, "the tiles are not wrapping"
-    assert window.suggest_row.minimumSizeHint().width() <= tilekit.STRIP_W + 8
+    # One TILE at its narrowest — and the tile is whatever size the draft
+    # panel above currently makes it, not the module's fallback.
+    assert (window.suggest_row.minimumSizeHint().width()
+            <= window.suggest_row.tile_width() + 8)
 
 
 def test_the_default_is_however_many_fit_on_one_row(window, qapp):
@@ -2106,7 +2135,8 @@ def test_the_default_is_however_many_fit_on_one_row(window, qapp):
     window.resize(1400, 900)
     window.refresh()
     _settle(qapp)
-    expected = fits_in_one_row(window.suggest_row.width(), tilekit.STRIP_W)
+    expected = fits_in_one_row(window.suggest_row.width(),
+                               window.suggest_row.tile_width())
     assert window._how_many("suggested_picks") == expected
     assert expected >= 1
 
@@ -2306,3 +2336,196 @@ def test_no_content_colour_anywhere_from_the_title_bar_to_the_tabs(window,
              if QColor(image.pixel(x, y)).name() == theme.BG]
     assert not stray, (f"{len(stray)} content-coloured pixels above the "
                        f"content, first at {stray[0]}")
+
+
+# --------------------------------------------------------------------------
+# One tile, one size, and no lighter boxes behind the labels.
+# --------------------------------------------------------------------------
+
+def _colours_in(widget):
+    """Every distinct colour the widget renders, as #rrggbb."""
+    from PyQt6.QtGui import QImage
+    picture = QImage(max(1, widget.width()), max(1, widget.height()),
+                     QImage.Format.Format_ARGB32)
+    picture.fill(0)
+    widget.render(picture)
+    return {picture.pixelColor(x, y).name()
+            for y in range(picture.height())
+            for x in range(picture.width())}
+
+
+def test_no_label_paints_a_lighter_box_on_a_card(window, qapp):
+    """The heading rows are the CARD's colour, not the content colour.
+
+    A QLabel takes its background from the base `QWidget` rule, so every
+    label in the app painted a rectangle of content grey (#313338) on the
+    card's darker ground (#2b2d31): a lighter box round "Suggested picks",
+    round the count box, and — where an empty label was still in the
+    layout — a 3mm stub at the end of each team's heading. It had already
+    been patched twice, for the title bar and for the tab strip, each time
+    only where somebody happened to be looking.
+    """
+    from draft_assist.ui import theme
+    window.show()
+    window.resize(1400, 900)
+    window.refresh()
+    _settle(qapp)
+    for panel in window.team_panels.values():
+        assert theme.BG not in _colours_in(panel.caption)
+        assert theme.BG not in _colours_in(panel.note)
+    for box in window.count_boxes.values():
+        assert theme.BG not in _colours_in(box)
+
+
+def test_an_empty_note_is_not_a_widget_at_all(window):
+    """The little square at the end of the team headings."""
+    window.refresh()
+    for panel in window.team_panels.values():
+        panel.set_note("")
+        assert panel.note.isHidden()
+        panel.set_note("something")
+        assert not panel.note.isHidden()
+        panel.set_note("")
+
+
+def test_radiant_is_always_the_left_panel(window, qapp):
+    """Dota's own pick bar has Radiant on the left, so ours does too — the
+    player's five move to the side they belong to rather than the headings
+    being relabelled under them."""
+    class Snap:
+        my_team = "dire"
+        sides_known = True
+    window.refresh()
+    window._update_team_captions(Snap())
+    assert window.team_captions["ally"].text() == "Dire"
+    assert window.team_captions["enemy"].text() == "Radiant"
+    # The ENEMY panel (Radiant) is now the left-hand one, and its grid
+    # went with it.
+    order = [window.teams_row.itemAt(i).widget()
+             for i in range(window.teams_row.count())]
+    assert order[0] is window.team_panels["enemy"]
+    grids = [window.grids_row.itemAt(i).widget()
+             for i in range(window.grids_row.count())]
+    assert grids[0] is window.grid_cards["enemy"]
+
+    Snap.my_team = "radiant"
+    window._update_team_captions(Snap())
+    assert window.team_captions["ally"].text() == "Radiant"
+    order = [window.teams_row.itemAt(i).widget()
+             for i in range(window.teams_row.count())]
+    assert order[0] is window.team_panels["ally"]
+
+
+def test_the_heading_carries_that_sides_total(window, qapp):
+    """"Radiant | +11.2" — the sum of what that side's five are worth."""
+    from draft_assist.model import scoring
+    window.refresh()
+    _settle(qapp)
+    net = scoring.net_contributions(window.ds, window._current_draft())
+    for panel in window.team_panels.values():
+        ids = [t.property("hero_id") for t in panel.slots]
+        want = sum(net[h] for h in ids if h is not None and h in net)
+        assert panel.total.text() == f"{want * 100:+.1f}"
+        assert not panel.total.isHidden()
+
+
+def test_an_empty_side_claims_no_total(window, qapp):
+    """"+0.0" over five empty slots is a measurement nobody made."""
+    window.refresh()
+    for panel in window.team_panels.values():
+        panel.set_total(None)
+        assert panel.total.isHidden()
+        assert panel.rule.isHidden()
+
+
+def test_every_tile_in_the_app_is_the_same_size(window, qapp):
+    """A suggestion is the size of a pick, before AND after the game.
+
+    The strips were fixed at 78x44 while the pick tiles grew with the
+    window, so the two never matched — and the blank plates were painted
+    into a rectangle taller than the widget, which put their dashed bottom
+    edge off the tile.
+    """
+    from draft_assist.ui import item_row as item_mod
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    pick = window.team_panels["ally"].slots[0]
+    assert window.suggest_row.tile_width() == pick.width()
+    for tile in _tiles_of(window.suggest_row):
+        assert tile.size() == pick.size()
+    # Items share the HEIGHT and keep the icon's own 88x64 shape: a 16:9
+    # box round an item icon is dead space either side of every one.
+    for tile in _tiles_of(window.item_row):
+        assert tile.height() == pick.height()
+        assert tile.width() == item_mod.width_for(pick.height())
+
+
+def test_the_blank_plates_are_the_size_of_the_real_tiles(window, qapp):
+    """Before the game and after it, the same box."""
+    from draft_assist.ui.suggest_row import PlaceholderTile, SuggestTile
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    size = window.suggest_row._tile_size
+    window.suggest_row.show_heroes([])
+    _settle(qapp)
+    blanks = window.suggest_row._blanks
+    assert blanks and all(isinstance(b, PlaceholderTile) for b in blanks)
+    assert all((b.width(), b.height()) == size for b in blanks)
+    # And the plate is painted INSIDE the tile, so the dashed border
+    # reaches the bottom edge instead of falling off it.
+    from draft_assist.ui import theme
+    bottom = blanks[0]
+    colours = _colours_in(bottom)
+    assert theme.BORDER in colours
+
+
+def test_the_statistics_age_is_only_ever_a_dialog(window, qapp):
+    """No banner, no pill, no status segment — one prompt at startup."""
+    from draft_assist.ui import settings as ui_settings
+    assert not hasattr(window, "data_pill")
+    window.refresh()
+    assert "data" not in window.status.currentMessage().lower()
+    # Fresh data asks nothing, and neither does a reminder set to 0.
+    asked = []
+    window._prompt_if_data_is_old()          # demo data is fresh
+    window.settings["data_reminder_days"] = 0
+    window._prompt_if_data_is_old()
+    assert not asked
+    assert ui_settings.DEFAULTS["data_reminder_days"] == 14
+
+
+def test_the_reminder_interval_survives_a_round_trip(tmp_path):
+    from draft_assist.ui import settings as ui_settings
+    path = tmp_path / "ui_settings.json"
+    stored = dict(ui_settings.DEFAULTS)
+    stored["data_reminder_days"] = 30
+    ui_settings.save(stored, path)
+    assert ui_settings.load(path)["data_reminder_days"] == 30
+    # A hand-edited file cannot ask for a negative or absurd interval.
+    path.write_text('{"data_reminder_days": -3}', encoding="utf-8")
+    assert ui_settings.load(path)["data_reminder_days"] == 0
+    path.write_text('{"data_reminder_days": 99999}', encoding="utf-8")
+    assert ui_settings.load(path)["data_reminder_days"] == \
+        ui_settings.MAX_REMINDER_DAYS
+
+
+def test_the_number_plate_on_a_tile_is_solid_black(window):
+    """It was 65% black, so a "+12.34" had to be read against whatever
+    colour of the portrait happened to be behind it. The plate is small
+    and cut to the digits, so opaque costs almost none of the picture."""
+    from draft_assist.ui import tilekit
+    assert tilekit.CHROME.alpha() == 255
+    assert (tilekit.CHROME.red(), tilekit.CHROME.green(),
+            tilekit.CHROME.blue()) == (0, 0, 0)
+
+
+def test_the_body_size_is_the_one_the_user_asked_for():
+    """+20% and then another 15%, bold throughout."""
+    from draft_assist.ui import theme
+    assert "font-size: 18px;" in theme.STYLESHEET
+    assert "font-weight: bold;" in theme.STYLESHEET
+    assert 'QLabel[heading="true"] { font-size: 21px;' in theme.STYLESHEET
