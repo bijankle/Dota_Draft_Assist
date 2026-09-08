@@ -462,6 +462,21 @@ credentials, and put the account at risk. Do not go there.
   in a player's own feed, which this file had listed as spectator-only.
   All of the above is re-derived from a recording, per phase and per match,
   as one section of the session report.
+- **A TILE IS ADDRESSED BY ITS HERO, NEVER BY ITS POSITION** (`_clear_slot`,
+  `_edit_slot`, `ManualDraft.slot_of` / `first_free` / `replace`). The tiles
+  are drawn from a PACKED list — `manual.entered` drops the empty slots and
+  `merge` puts the game's picks in front — so the third tile on screen has
+  no relationship to `manual.allies[2]`. Both menu actions indexed the
+  manual list by display position, and the two lists diverge the moment a
+  hero is typed into anything but the first free box: "Clear slot" then
+  emptied a slot that was already empty and the hero stayed on the board,
+  and "Change hero" wrote the answer into that empty slot, which put the
+  new hero on the board BESIDE the one being changed. Both actions now read
+  the hero id off the tile and act on whichever slot actually holds it.
+  A hero the GAME reported is not clearable by hand — precedence is game >
+  hand entry, so the next payload brings it straight back — and the status
+  bar says so, because doing nothing silently is indistinguishable from
+  being broken.
 - **The draft panel refuses duplicates, and everything about a pick is on
   the pick.** A hero already in the draft cannot be entered again on either
   side — `_taken_heroes()` is the single source for that. Right-clicking a

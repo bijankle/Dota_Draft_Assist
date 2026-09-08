@@ -1768,7 +1768,24 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _clear_slot(self, side: str, index: int) -> None:
-        self.manual.set_slot(side, index, None)
+        """Remove the hero THIS TILE is showing.
+
+        By the hero, never by the position: `manual.entered` drops the
+        empties and `merge` puts the game's picks in front, so the third
+        tile on screen is not `manual.allies[2]`. Clearing by index cleared
+        a slot that was already empty and the hero stayed on screen.
+        """
+        hero_id = self.team_buttons[side][index].property("hero_id")
+        if hero_id is None:
+            return
+        if not self.manual.replace(side, hero_id, None):
+            # The GAME put it there, so removing it here would not stick —
+            # the next payload brings it straight back. Say so rather than
+            # doing nothing, which is indistinguishable from being broken.
+            self.status.showMessage(
+                f"{self.ds.name(hero_id)} came from the game, not from hand "
+                "entry — it cannot be cleared here", 6000)
+            return
         self.last_draft_key = None
         self.refresh()
 
@@ -1820,17 +1837,37 @@ class MainWindow(QMainWindow):
                 "Download the hero data first: Data ▸ Update statistics.")
             return
         taken = self._taken_heroes()
-        slots = (self.manual.allies if side == "ally" else self.manual.enemies)
-        current = slots[index] if index < len(slots) else None
+        # WHAT THE TILE IS SHOWING, not `manual.allies[index]`: the two are
+        # different lists (see `_clear_slot`), so editing by index opened
+        # the picker on the wrong hero and then wrote the answer into an
+        # empty slot — which put the new hero on the board BESIDE the one
+        # being changed instead of in place of it.
+        current = self.team_buttons[side][index].property("hero_id")
         caption = ("Your team" if side == "ally" else "Enemy team")
         dialog = HeroPickerDialog(self.ds, taken=taken, current=current,
                                   title=f"{caption} — slot {index + 1}",
                                   parent=self)
         if dialog.exec() != HeroPickerDialog.DialogCode.Accepted:
             return
-        self.manual.set_slot(side, index,
-                             None if dialog.cleared else dialog.selected)
+        chosen = None if dialog.cleared else dialog.selected
+        if not self.manual.replace(side, current, chosen):
+            if current is not None:
+                self.status.showMessage(
+                    f"{self.ds.name(current)} came from the game, not from "
+                    "hand entry — it cannot be changed here", 6000)
+                return
+            free = self.manual.first_free(side)
+            if free is None:
+                self.status.showMessage(
+                    "All five hand-entered slots on that side are full — "
+                    "clear one first", 6000)
+                return
+            self.manual.set_slot(side, free, chosen)
         self.last_draft_key = None
+        # The strips and the tiles are redrawn on a PICK change, and a
+        # change made by hand is one: without this the new hero waited for
+        # the next tick, which reads as the picker not having worked.
+        self.refresh()
 
     # ---- capture source ------------------------------------------------
     def _set_forced(self, on: bool) -> None:

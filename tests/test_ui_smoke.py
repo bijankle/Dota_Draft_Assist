@@ -456,7 +456,10 @@ def test_manual_slot_click_opens_picker(window, monkeypatch):
     monkeypatch.setattr(app_mod, "HeroPickerDialog", FakePicker)
     window.refresh()
     window._edit_slot("enemy", 4)
-    assert window.manual.enemies[4] == 42
+    # It lands in the first FREE hand-entry slot, not in `enemies[4]`: the
+    # tiles are drawn from a packed list, so the fifth tile on screen is
+    # not the fifth entry in the list behind it (see `_clear_slot`).
+    assert 42 in window.manual.entered("enemy")
     assert "Enemy team" in chosen["title"]
 
 
@@ -2600,3 +2603,107 @@ def test_the_last_control_keeps_clear_of_the_window_edge(window, qapp):
     slider = window.opacity_slider
     right = slider.mapTo(strip, slider.rect().topRight()).x()
     assert strip.width() - right >= chrome.BandedTabs.EDGE_GAP
+
+
+# --------------------------------------------------------------------------
+# A tile is addressed by its HERO, never by its position on screen.
+# --------------------------------------------------------------------------
+
+def _manual_window(qapp):
+    """A window with nothing but hand-entered picks on the board."""
+    from draft_assist.ui.manual import ManualDraft
+    from draft_assist.ui.providers import ManualProvider
+    ds = demo_dataset()
+    manual = ManualDraft()
+    win = MainWindow(ds, ManualProvider(manual), [], {}, manual)
+    win.timer.stop()
+    return win, manual
+
+
+def test_a_hero_typed_into_a_later_slot_can_still_be_cleared(qapp):
+    """`entered` drops the empties, so the tile at position 0 is not
+    `allies[0]`. Clearing by index cleared an already-empty slot and the
+    hero stayed on the board — "I can't remove Slardar"."""
+    window, manual = _manual_window(qapp)
+    try:
+        ids = window.ds.hero_ids[:3]
+        # Typed into boxes 2, 4 and 5 — the packed display starts at 0.
+        for slot, hero in zip((1, 3, 4), ids):
+            manual.set_slot("ally", slot, hero)
+        window.refresh()
+        assert [b.property("hero_id") for b in window.team_buttons["ally"]][:3] \
+            == list(ids)
+        window._clear_slot("ally", 0)
+        window.refresh()
+        on_board = [b.property("hero_id") for b in window.team_buttons["ally"]]
+        assert ids[0] not in on_board
+        assert on_board[:2] == list(ids[1:])
+    finally:
+        window.close()
+
+
+def test_changing_a_hero_replaces_it_rather_than_adding_one(qapp):
+    """Writing by index put the new hero in an empty slot, so it arrived
+    BESIDE the one being changed instead of in place of it."""
+    window, manual = _manual_window(qapp)
+    try:
+        first, second, third, incoming = window.ds.hero_ids[:4]
+        for slot, hero in zip((1, 3, 4), (first, second, third)):
+            manual.set_slot("ally", slot, hero)
+        window.refresh()
+        # Stand in for the picker: accept, choosing `incoming`.
+        import draft_assist.ui.app as app_mod
+        real = app_mod.HeroPickerDialog
+
+        class Picked:
+            DialogCode = real.DialogCode
+
+            def __init__(self, *a, **k):
+                self.cleared = False
+                self.selected = incoming
+
+            def exec(self):
+                return real.DialogCode.Accepted
+        app_mod.HeroPickerDialog = Picked
+        try:
+            window._edit_slot("ally", 0)
+        finally:
+            app_mod.HeroPickerDialog = real
+        window.refresh()
+        on_board = [b.property("hero_id") for b in window.team_buttons["ally"]
+                    if b.property("hero_id") is not None]
+        assert first not in on_board, "the old hero survived the change"
+        assert incoming in on_board
+        assert len(on_board) == 3, "a change must not add a fourth hero"
+    finally:
+        window.close()
+
+
+def test_a_game_reported_pick_says_it_cannot_be_cleared_by_hand(window):
+    """Precedence is game > hand entry, so removing one here would not
+    stick — the next payload brings it back. Doing nothing silently is
+    indistinguishable from being broken."""
+    window.refresh()
+    held = [b.property("hero_id") for b in window.team_buttons["ally"]
+            if b.property("hero_id") is not None]
+    assert held, "the demo provider should report picks"
+    window._clear_slot("ally", 0)
+    assert "came from the game" in window.status.currentMessage()
+    window.refresh()
+    assert held[0] in [b.property("hero_id")
+                       for b in window.team_buttons["ally"]]
+
+
+def test_the_manual_slot_helpers_answer_by_hero(qapp):
+    from draft_assist.ui.manual import ManualDraft
+    manual = ManualDraft()
+    manual.set_slot("ally", 3, 42)
+    assert manual.slot_of("ally", 42) == 3
+    assert manual.slot_of("ally", 7) is None
+    assert manual.slot_of("ally", None) is None
+    assert manual.first_free("ally") == 0
+    assert manual.replace("ally", 42, 43)
+    assert manual.allies == [None, None, None, 43, None]
+    assert not manual.replace("ally", 42, 44), "42 is no longer there"
+    assert manual.replace("ally", 43, None)
+    assert manual.entered("ally") == []
