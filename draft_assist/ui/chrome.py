@@ -337,6 +337,15 @@ class CountBox(QSpinBox):
     arrow-steppable.
     """
 
+    # The strip we keep for the arrows, and how big the arrowheads in it
+    # are. Both are drawn, never styled — see the class docstring.
+    ARROWS_W = 14
+    ARROW_W = 7
+    ARROW_H = 4
+    # A little fat either side of the digits, and no more: the box is
+    # beside a heading, so its width is chrome and the number is content.
+    PAD = 7
+
     def __init__(self, value: int, low: int, high: int, parent=None):
         super().__init__(parent)
         self.setRange(low, high)
@@ -344,22 +353,64 @@ class CountBox(QSpinBox):
         self.setAccelerated(True)
         self.setAlignment(Qt.AlignmentFlag.AlignRight
                           | Qt.AlignmentFlag.AlignVCenter)
-        # SIZED TO ITS CONTENTS, not to a number somebody guessed. A fixed
-        # 58px cut the digits off the moment the theme's padding grew, and
-        # a control that cannot show its own value is worse than no
-        # control. The widest value it can ever hold, plus what the frame
-        # and the arrows actually measure.
+        # WE DRAW THE ARROWS. Styling the sub-controls (`QSpinBox::up-
+        # button`) puts Qt on the stylesheet path for them, and a
+        # stylesheet can colour a sub-control but cannot put a MARK in one
+        # without an image file — so the box lost its arrows entirely and
+        # became a plain field you could not step. Same trap as the tick
+        # box and the three window buttons, and the same answer.
+        self.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        # SIZED TO ITS CONTENTS, not to a number somebody guessed, and
+        # FIXED: a minimum let the layout hand it whatever was going, which
+        # is how a two-digit box ended up the width of a heading.
         widest = max(len(str(low)), len(str(high)))
         digits = self.fontMetrics().horizontalAdvance("8" * widest)
-        style = self.style()
-        option = QStyleOptionSpinBox()
-        self.initStyleOption(option)
-        arrows = style.subControlRect(
-            QStyle.ComplexControl.CC_SpinBox, option,
-            QStyle.SubControl.SC_SpinBoxUp, self).width()
-        self.setMinimumWidth(digits + max(arrows, 12) + 18)
-        self.setSizePolicy(QSizePolicy.Policy.Minimum,
+        # The text keeps clear of the arrows rather than running under them.
+        self.setStyleSheet(f"padding-right: {self.ARROWS_W}px;")
+        self.setFixedWidth(digits + self.ARROWS_W + 2 * self.PAD)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Fixed)
+
+    def _arrow_boxes(self) -> tuple[QRect, QRect]:
+        """Up and down, stacked in the strip at the right-hand end."""
+        strip = QRect(self.width() - self.ARROWS_W - 2, 1,
+                      self.ARROWS_W, self.height() - 2)
+        half = strip.height() // 2
+        return (QRect(strip.x(), strip.y(), strip.width(), half),
+                QRect(strip.x(), strip.y() + half, strip.width(),
+                      strip.height() - half))
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        up, down = self._arrow_boxes()
+        for box, rising in ((up, True), (down, False)):
+            live = (self.value() < self.maximum() if rising
+                    else self.value() > self.minimum())
+            painter.setBrush(QColor(theme.TEXT if live else theme.BORDER))
+            mid = box.center().x() + 1
+            top = box.center().y() - self.ARROW_H // 2
+            tip = top + (0 if rising else self.ARROW_H)
+            base = top + (self.ARROW_H if rising else 0)
+            painter.drawPolygon(QPolygonF([
+                QPointF(mid, tip),
+                QPointF(mid - self.ARROW_W / 2, base),
+                QPointF(mid + self.ARROW_W / 2, base)]))
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:       # noqa: N802 - Qt naming
+        """The arrows are painted, so the clicks on them are ours too."""
+        point = event.position().toPoint()
+        up, down = self._arrow_boxes()
+        if up.contains(point):
+            self.stepUp()
+            return
+        if down.contains(point):
+            self.stepDown()
+            return
+        super().mousePressEvent(event)
 
 
 class FramedShell(QWidget):
@@ -406,6 +457,9 @@ class BandedTabs(QTabWidget):
     else on QTabWidget still work — the pages are still its pages.
     """
 
+    # Room between the last control and the window's frame.
+    EDGE_GAP = 12
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tabBar().hide()
@@ -413,7 +467,11 @@ class BandedTabs(QTabWidget):
         self.strip.setObjectName("tabStrip")
         self.strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         row = QHBoxLayout(self.strip)
-        row.setContentsMargins(0, 0, 0, 0)
+        # A margin on the RIGHT only. The tab labels carry their own left
+        # padding, but the last control on the toolbar — the transparency
+        # slider — ran its handle right into the window's frame, which
+        # reads as the row having been cut off rather than as it ending.
+        row.setContentsMargins(0, 0, self.EDGE_GAP, 0)
         row.setSpacing(0)
         self.bar = QTabBar()
         self.bar.setObjectName("tabStripBar")

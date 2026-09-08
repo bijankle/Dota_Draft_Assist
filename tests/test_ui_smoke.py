@@ -2529,3 +2529,74 @@ def test_the_body_size_is_the_one_the_user_asked_for():
     assert "font-size: 18px;" in theme.STYLESHEET
     assert "font-weight: bold;" in theme.STYLESHEET
     assert 'QLabel[heading="true"] { font-size: 21px;' in theme.STYLESHEET
+
+
+def test_the_count_box_draws_its_own_arrows(qapp):
+    """A stylesheet can colour a spin box's buttons but cannot put a MARK
+    in one without an image file, so styling them left the box with no
+    arrows at all — same trap as the tick box and the window buttons."""
+    from PyQt6.QtGui import QImage
+    from draft_assist.ui import chrome, theme
+    box = chrome.CountBox(8, 1, 20)
+    box.show()
+    _settle(qapp)
+    picture = QImage(box.width(), box.height(), QImage.Format.Format_ARGB32)
+    picture.fill(0)
+    box.render(picture)
+    for arrows in box._arrow_boxes():
+        ink = sum(1
+                  for y in range(arrows.y(), arrows.bottom() + 1)
+                  for x in range(arrows.x(), arrows.right() + 1)
+                  if picture.pixelColor(x, y).name() == theme.TEXT)
+        assert ink > 4, "an arrowhead with no ink in it"
+    box.close()
+
+
+def test_clicking_a_painted_arrow_steps_the_count(qapp):
+    """We draw them, so we handle the clicks on them."""
+    from PyQt6.QtCore import QPoint, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+    from draft_assist.ui import chrome
+    box = chrome.CountBox(8, 1, 20)
+    box.show()
+    _settle(qapp)
+    up, down = box._arrow_boxes()
+    for centre, want in ((up.center(), 9), (down.center(), 8)):
+        box.mousePressEvent(QMouseEvent(
+            QMouseEvent.Type.MouseButtonPress, QPointF(centre),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier))
+        assert box.value() == want
+    box.close()
+
+
+def test_the_count_box_is_only_as_wide_as_its_digits(qapp):
+    """It sits beside a heading: its width is chrome, the number is the
+    content. A Minimum policy let the layout hand it whatever was going."""
+    from draft_assist.ui import chrome
+    box = chrome.CountBox(8, 1, 20)
+    box.show()
+    _settle(qapp)
+    digits = box.fontMetrics().horizontalAdvance("88")
+    room = chrome.CountBox.ARROWS_W + 2 * chrome.CountBox.PAD
+    # Snug: the digits, the arrows, and a little fat. The tolerance is for
+    # the font metrics moving between construction and here — what is
+    # being asserted is that nothing STRETCHES it.
+    assert digits + chrome.CountBox.ARROWS_W <= box.width() <= digits + room + 8
+    assert box.sizePolicy().horizontalPolicy() == \
+        box.sizePolicy().horizontalPolicy().Fixed
+    box.close()
+
+
+def test_the_last_control_keeps_clear_of_the_window_edge(window, qapp):
+    """The transparency slider ran its handle into the frame, which reads
+    as the row being cut off rather than as it ending."""
+    from draft_assist.ui import chrome
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    strip = window.tabs.strip
+    slider = window.opacity_slider
+    right = slider.mapTo(strip, slider.rect().topRight()).x()
+    assert strip.width() - right >= chrome.BandedTabs.EDGE_GAP

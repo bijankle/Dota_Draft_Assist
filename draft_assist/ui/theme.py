@@ -185,15 +185,18 @@ QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
 /* The little count box beside a strip's heading. Without a rule of its
    own it took the base QWidget background — the same lighter-than-the-card
    rectangle the labels had. A border says "control" without a fill that
-   fights the card it sits on. */
+   fights the card it sits on.
+   THERE ARE NO ::up-button / ::down-button RULES. Styling a sub-control
+   puts Qt on the stylesheet path for it, and a stylesheet can colour a
+   sub-control but cannot put a MARK in one without an image file — so the
+   box lost its arrows altogether. `chrome.CountBox` draws them, the same
+   answer as the tick box and the three window buttons. */
 QSpinBox {{
     background: transparent; border: 1px solid {BORDER};
     border-radius: 4px; padding: 1px 3px; color: {TEXT};
+    selection-background-color: {ACCENT}; selection-color: #ffffff;
 }}
 QSpinBox:hover {{ border-color: {ACCENT}; }}
-QSpinBox::up-button, QSpinBox::down-button {{
-    background: transparent; border: none; width: 14px;
-}}
 
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{
