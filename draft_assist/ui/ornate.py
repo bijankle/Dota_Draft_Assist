@@ -21,6 +21,10 @@ Two constraints it has to respect and one thing it must not do:
   layout is inset by `WIDTH` and this fills the inset.
 * it has to survive being three pixels wide, which is the whole reason
   there is nothing in it but a gradient and two bevel lines.
+* **SQUARE CORNERS.** A frameless window has square ones, so a rounded
+  frame left the window's own corner poking out through the curve — four
+  little grey triangles where the border should have been. The frame
+  follows the window; it does not invent a shape for it.
 * it must NOT reproduce Blizzard's frame.
 """
 
@@ -34,7 +38,7 @@ from . import theme
 # a matte.
 WIDTH = 3
 # Bronze, lit from the top-left the way every bevel in every game UI is.
-LIGHT = QColor("#c9a45a")
+LIGHT = QColor(theme.FRAME_GOLD)   # the title text uses this too
 MID = QColor("#8a6a30")
 DARK = QColor("#4a3616")
 # The lip between the frame and the app, so the content reads as inset.
@@ -62,17 +66,17 @@ def paint_frame(painter: QPainter, rect: QRectF, width: int = WIDTH) -> None:
     # a black hairline round the app is exactly what a frame must not add.
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(metal)
-    painter.drawRoundedRect(outer, 4, 4)
+    painter.drawRect(outer)
     painter.setBrush(QColor(theme.BG))
-    painter.drawRoundedRect(inner, 2, 2)
+    painter.drawRect(inner)
 
     # Two lines and that is the whole illusion of a raised band: light on
     # the outside edge, dark on the inside one. At three pixels there is
     # no room for a third.
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(QPen(LIGHT.lighter(115), 1))
-    painter.drawRoundedRect(outer, 4, 4)
+    painter.drawRect(outer)
     painter.setPen(QPen(INNER, 1))
-    painter.drawRoundedRect(inner.adjusted(-0.5, -0.5, 0.5, 0.5), 2, 2)
+    painter.drawRect(inner.adjusted(-0.5, -0.5, 0.5, 0.5))
 
     painter.restore()

@@ -1916,12 +1916,13 @@ def test_the_toolbar_keeps_only_what_belongs_there(window):
     """Recordings and the report have a whole tab of their own, force
     recognition is a debugging switch, and the capture pill said the same
     sentence as the status bar one line higher up."""
-    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QToolBar
     toolbar = window.findChild(QToolBar)
     # It rides on the tab strip rather than in a band of its own: three
-    # controls do not need a whole row of window height.
-    assert window.tabs.cornerWidget(Qt.Corner.TopRightCorner) is toolbar
+    # controls do not need a whole row of window height. NOT as a corner
+    # widget any more — the strip is laid out by hand, because leaving it
+    # to QTabWidget produced four versions of the same misalignment.
+    assert toolbar.parentWidget() is window.tabs.strip
     from PyQt6.QtWidgets import QPushButton
     labels = {w.text() for w in toolbar.findChildren(QPushButton)}
     # Update went to Help: it is pressed once a patch and it was taking
@@ -2223,26 +2224,85 @@ def test_the_tab_row_is_one_unbroken_band(window, qapp):
     window.refresh()
     _settle(qapp)
     image = window.grab().toImage()
-    top_left = window.tabs.mapTo(window, window.tabs.rect().topLeft())
-    band = window.tabs.tabBar().height()
+    strip = window.tabs.strip
+    top_left = strip.mapTo(window, strip.rect().topLeft())
+    band = strip.height()
     assert band > 0
     stray = [(x, y)
              for y in range(top_left.y(), top_left.y() + band)
              for x in range(top_left.x() + 2,
-                            top_left.x() + window.tabs.width() - 4)
+                            top_left.x() + strip.width() - 4)
              if QColor(image.pixel(x, y)).name() == theme.BG]
     assert not stray, (
         f"{len(stray)} pixels of content colour inside the tab band, "
         f"first at {stray[0]}")
 
 
-def test_the_controls_are_the_same_height_as_the_tabs(window, qapp):
-    """Left to itself the corner widget is as tall as its own contents and
-    QTabWidget grows the whole row to fit it — so the tabs sat high in a
-    taller band and the controls sat low in it."""
-    from PyQt6.QtCore import Qt
+def test_the_controls_sit_on_the_tab_labels_line(window, qapp):
+    """A line drawn across the row has to pass through both.
+
+    This was four bugs in a row while the toolbar was QTabWidget's corner
+    widget: a gap between it and the tabs in the content colour, a lighter
+    strip above it, three pixels of it hanging below the band, and its
+    middle sitting below the tab labels' middle. Every fix was a correction
+    applied against geometry QTabWidget had already decided. The row is
+    laid out here now — one widget, two children, both AlignVCenter — so
+    "on the same line" is not a calculation any more.
+    """
+    from draft_assist.ui import theme
+    qapp.setStyleSheet(theme.STYLESHEET)
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    strip = window.tabs.strip
+    bar = window.tabs.bar
+    probe = window.record_button
+
+    def middle(widget):
+        return (widget.mapTo(strip, widget.rect().topLeft()).y()
+                + widget.height() / 2.0)
+
+    assert bar.height() > 0 and probe.height() > 0
+    assert abs(middle(probe) - middle(bar)) <= 1.0, (
+        f"the record control's middle is {middle(probe)}, the tab bar's "
+        f"is {middle(bar)}")
+    # And Qt's own tab bar is never shown: two of them is two rows.
+    assert window.tabs.tabBar().isHidden()
+
+
+def test_the_two_tab_bars_stay_in_step(window, qapp):
+    """The pages belong to the QTabWidget and the tabs the user clicks are
+    ours, so they have to agree in BOTH directions."""
     window.show()
     _settle(qapp)
-    corner = window.tabs.cornerWidget(Qt.Corner.TopRightCorner)
-    assert corner is not None
-    assert corner.height() == window.tabs.tabBar().height()
+    tabs = window.tabs
+    assert tabs.bar.count() == tabs.count()
+    assert [tabs.bar.tabText(i) for i in range(tabs.bar.count())] == \
+        [tabs.tabText(i) for i in range(tabs.count())]
+    tabs.bar.setCurrentIndex(2)
+    assert tabs.currentIndex() == 2
+    tabs.setCurrentIndex(0)
+    assert tabs.bar.currentIndex() == 0
+
+
+def test_no_content_colour_anywhere_from_the_title_bar_to_the_tabs(window,
+                                                                   qapp):
+    """One dark region from the top of the window down to the content: the
+    title bar, its icon and title labels, the tabs and the toolbar. Every
+    one of those has been the odd one out at some point."""
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import theme
+    qapp.setStyleSheet(theme.STYLESHEET)
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    image = window.grab().toImage()
+    strip = window.tabs.strip
+    bottom = (strip.mapTo(window, strip.rect().topLeft()).y()
+              + strip.height())
+    stray = [(x, y)
+             for y in range(4, bottom)
+             for x in range(4, window.width() - 4)
+             if QColor(image.pixel(x, y)).name() == theme.BG]
+    assert not stray, (f"{len(stray)} content-coloured pixels above the "
+                       f"content, first at {stray[0]}")

@@ -215,10 +215,15 @@ def test_the_title_bar_actually_paints_its_background(qapp):
         "stylesheet background is being ignored again")
 
 
-def test_the_app_asks_for_warcrafts_face_and_survives_not_having_it():
-    """It is a licensed typeface and this repository ships no font file, so
-    the stack has to degrade to something that exists."""
-    from draft_assist.ui import theme
-    assert theme.FONT_STACK.startswith('"Friz Quadrata TT"')
-    assert "sans-serif" in theme.FONT_STACK
-    assert f"font-family: {theme.FONT_STACK}" in theme.STYLESHEET
+# The font stack has a file of its own now: tests/test_fonts.py.
+def test_the_title_is_the_frames_own_gold_and_wears_no_box(qapp):
+    """A QLabel takes its background from the base QWidget rule, so the
+    title drew a rectangle of CONTENT colour behind itself — a box round
+    the app's name that nobody asked for."""
+    from draft_assist.ui import ornate, theme
+    assert theme.FRAME_GOLD in theme.STYLESHEET
+    assert ornate.LIGHT.name() == theme.FRAME_GOLD
+    rule = theme.STYLESHEET[theme.STYLESHEET.index("QLabel#titleText"):]
+    rule = rule[:rule.index("}")]
+    assert "background: transparent" in rule
+    assert theme.FRAME_GOLD in rule

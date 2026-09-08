@@ -627,12 +627,21 @@ credentials, and put the account at risk. Do not go there.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
-  **The FACE is Warcraft's, asked for by name, and is NOT SHIPPED.** Friz
-  Quadrata is a licensed typeface and this repository carries no font
-  file; `FONT_STACK` names it first and Qt takes the first family actually
-  installed, so a machine without it gets the previous stack and nothing
-  breaks. A missing font is normal, not an error — the same rule the
-  portraits and the app icon follow.
+  **The FACES are supplied, not installed, and not committed**
+  (`ui/fonts.load_bundled`, `assets/fonts/`, gitignored). The user handed
+  over two files: LifeCraft for the app's own name in the title bar, ITC
+  Novarese for everything else. Qt will only use a family it knows about,
+  so they are registered with `QFontDatabase` BEFORE the stylesheet is
+  applied — a family registered afterwards is not picked up by rules
+  already resolved, and the app opens in the fallback face. `FONT_STACK`
+  names Novarese first and the old stack behind it, and the title rule
+  names LifeCraft with `FONT_STACK` behind that, so a machine without the
+  files still opens a readable app. Whether somebody else's font may be
+  redistributed is not ours to assume, which is why the folder is ignored
+  — the same rule the portraits, the item icons and a supplied app icon
+  follow. The title is the FRAME'S OWN GOLD (`theme.FRAME_GOLD`, the same
+  value `ornate.LIGHT` paints the border with), so the name and the border
+  round it read as one piece.
   Colour is reserved for meaning — green/red for signed deltas, the accent
   for the one action a screen wants, amber for warnings — and everything
   else is grey, so a number in colour is always worth reading.
@@ -861,26 +870,30 @@ credentials, and put the account at risk. Do not go there.
   — a corner widget is sized to its contents and a spacer pushes the
   controls off the right edge. View ▸ Reset window position exists
   because a frameless window has no system menu to rescue itself from.
-  **The tab strip is one BAND** (`chrome.BandedTabs`). The tabs paint
-  their own strip and the corner widget paints its own, and between them —
-  and past the corner widget to the window's edge — the tab widget's own
-  background showed through in the CONTENT colour: three tones across one
-  row, so the controls read as floating above the tabs rather than sitting
-  beside them. No stylesheet reaches that gap (`QTabWidget { background }`
-  does not paint the tab-bar area and `::pane` is only the part below it),
-  so the band is filled in `paintEvent` before anything else draws. The
-  TAB BAR sets its height and the corner widget is held to it, because
-  left to itself the corner widget is as tall as its own contents and
-  QTabWidget then grows the whole row to fit it — so the tabs sat high in
-  a taller band and the controls sat low in it, which is the step in the
-  padding the user drew a circle round. The fill uses the LARGER of the
-  two so a gap is impossible even if the corner ever wins, and every child
-  of the toolbar gets the band's colour explicitly: a QSlider left to the
-  base `QWidget` rule painted a rectangle of CONTENT colour inside the
-  dark band, the same discontinuity from the other direction. A test
-  SCANS the band for content-coloured pixels rather than asserting about
-  the widgets, because each of those gaps was somewhere nobody thought to
-  look.
+  **The tab strip is one ROW THAT WE LAY OUT** (`chrome.BandedTabs`).
+  It began as a QTabWidget with the toolbar in its top-right corner
+  widget, and that arrangement produced FOUR versions of the same bug: the
+  gap between the tabs and the toolbar showing the content colour, a
+  lighter strip above the controls, three pixels of toolbar hanging below
+  the band onto the pane, and the controls' middle sitting below the tab
+  labels' middle. Every fix was a correction applied against geometry
+  QTabWidget had already decided — one was a pixel out, one fought the
+  height adjustment and flipped between two placements forever, and one
+  scheduled a zero-delay timer that never stopped firing.
+
+  So the corner widget is gone. Qt's own tab bar is HIDDEN and never
+  shown, and `strip` is a plain widget holding OUR `QTabBar` and the
+  toolbar, both added with `AlignVCenter` — the one arrangement where "on
+  the same line" is not a calculation. The pages are still the
+  QTabWidget's, so `addTab`, `currentIndex` and `tabText` all still work;
+  the two bars are kept in step in both directions. Do not put anything
+  back in the corner widget.
+  Every child of the strip is given the band's colour explicitly: a
+  QSlider left to the base `QWidget` rule painted a rectangle of CONTENT
+  colour inside the dark row, which is the same discontinuity from the
+  other direction. A test SCANS the strip for content-coloured pixels
+  rather than asserting about the widgets, because each of these gaps was
+  somewhere nobody thought to look.
   **A stylesheet background on a plain QWidget subclass needs
   `WA_StyledBackground`.** `QWidget#titleBar { background: ... }` was
   parsed and then IGNORED, so the title bar drew in the body's grey while
@@ -888,8 +901,10 @@ credentials, and put the account at risk. Do not go there.
   everything above the tabs was that same grey, and became the step in the
   padding the moment the band went dark — three separate attempts at the
   tab strip missed it because the fault was in the strip ABOVE the one
-  being looked at. Any new frameless-chrome widget that expects a colour
-  from the stylesheet needs the same attribute.
+  being looked at. Every label on the bar needs `background: transparent`
+  too: the app icon is letterboxed into a square, so a QLabel taking the
+  base rule drew a box of content colour behind it, and the menu bar's
+  own overflow button drew another.
   **A pill is for something being WRONG.** The data age wore a green
   outline when it was healthy — a badge for the absence of a problem, and
   its border was part of what made the toolbar taller than the tab bar.

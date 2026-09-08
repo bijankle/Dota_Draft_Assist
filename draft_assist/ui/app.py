@@ -482,7 +482,8 @@ class MainWindow(QMainWindow):
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
         shell_lay.addWidget(self.title_bar)
-        tabs.setCornerWidget(toolbar, Qt.Corner.TopRightCorner)
+        tabs.add_tools(toolbar)
+        shell_lay.addWidget(tabs.strip)
         shell_lay.addWidget(tabs, 1)
         # A frameless window has no resize border, so the corner is put
         # back explicitly. Bottom-right only: one grip is enough to size a
@@ -3168,6 +3169,11 @@ def _main() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Dota Draft Assist")
+    # BEFORE the stylesheet: a family registered afterwards is not picked
+    # up by rules Qt has already resolved, so the app would open in the
+    # fallback face and only look right after a restyle.
+    from . import fonts as ui_fonts
+    ui_fonts.load_bundled()
     app.setStyleSheet(theme.STYLESHEET)
     app.setWindowIcon(appicon.icon())
     manual = ManualDraft()

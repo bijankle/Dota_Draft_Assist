@@ -12,12 +12,12 @@ window has neither. Both are deliberately dumb: eight-pixel margins, a
 press, a move, a release.
 """
 
-from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize,
+from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
                           Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QHBoxLayout,
                              QLabel, QPushButton, QSizeGrip, QSizePolicy,
-                             QSpinBox, QStyle, QStyleOptionSpinBox,
+                             QSpinBox, QStyle, QStyleOptionSpinBox, QTabBar,
                              QTabWidget, QWidget)
 
 from . import appicon, theme
@@ -30,6 +30,10 @@ BAR_HEIGHT = 48
 # being sliced top and bottom.
 ICON = BAR_HEIGHT - 8
 EDGE = 6            # how close to the border counts as a resize grab
+# The selected tab's underline, in pixels. MUST match the `border-bottom`
+# on `QTabBar::tab` in the stylesheet: the tab's text centres in what is
+# left above it, and the toolbar beside it has to use the same middle.
+TAB_UNDERLINE = 2
 
 
 class TitleBar(QWidget):
@@ -107,6 +111,12 @@ class TitleBar(QWidget):
         # Its own natural height, then centred: given the bar's full height
         # it fills it and draws the menu titles along the top edge.
         menu_bar.setFixedHeight(menu_bar.sizeHint().height())
+        # And its own natural WIDTH as a floor. Given less, a QMenuBar
+        # hides menus behind a ">>" extension button — Setup, Game, View
+        # and Help disappearing into a chevron in our own title bar, with
+        # a light square where the button sits. Four menus always fit; the
+        # window has a minimum width far larger than they need.
+        menu_bar.setMinimumWidth(menu_bar.sizeHint().width())
         self.menus.addWidget(menu_bar, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def add_widget(self, widget: QWidget) -> None:
@@ -327,61 +337,66 @@ class FramedShell(QWidget):
 
 
 class BandedTabs(QTabWidget):
-    """A tab widget whose tab row is ONE dark band, edge to edge.
+    """Tabs and toolbar in ONE row that we lay out ourselves.
 
-    The tabs paint their own strip and the corner widget paints its own,
-    and between the two — and past the corner widget to the window's edge —
-    the tab widget's background showed through in the content colour. Three
-    tones across one row, so the record and transparency controls read as
-    floating above the tabs rather than sitting beside them.
+    This started as a QTabWidget with the toolbar in its top-right corner
+    widget, and that arrangement produced four different versions of the
+    same bug: the gap between the tabs and the toolbar in the content
+    colour, a lighter strip above the controls, the toolbar hanging three
+    pixels below the band, and the controls' middle sitting below the tab
+    labels' middle. Every fix was a correction applied against geometry
+    QTabWidget had already decided, and every one of them was either a
+    pixel out or fighting the next layout pass.
 
-    A stylesheet cannot reach that gap: `QTabWidget { background: ... }`
-    does not paint the tab-bar area, and `::pane` is only the part below
-    it. So the band is filled here, before anything else draws.
-
-    **The TAB BAR sets the height**, and the corner widget is held to it.
-    Left to itself the corner widget is as tall as its own contents, which
-    is not the same number — so one side of the same row was taller than
-    the other, which is exactly the seam the band exists to remove.
+    So the corner widget is gone. Qt's own tab bar is HIDDEN and never
+    shown; the row is a plain widget holding our own `QTabBar` and the
+    toolbar, both added with `AlignVCenter`, which is the one arrangement
+    where "on the same line" is not a calculation. The two bars are kept in
+    step in both directions, so `currentIndex`, `addTab` and everything
+    else on QTabWidget still work — the pages are still its pages.
     """
 
-    def _band_height(self) -> int:
-        """The band covers WHATEVER the tab row actually occupies.
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tabBar().hide()
+        self.strip = QWidget()
+        self.strip.setObjectName("tabStrip")
+        self.strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row = QHBoxLayout(self.strip)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        self.bar = QTabBar()
+        self.bar.setObjectName("tabStripBar")
+        self.bar.setDrawBase(False)
+        self.bar.setExpanding(False)
+        row.addWidget(self.bar, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch(1)
+        self._row = row
+        self.bar.currentChanged.connect(self._bar_chose)
+        self.currentChanged.connect(self._page_changed)
 
-        Filling only the tab bar's height left a lighter strip above the
-        corner widget on any machine where the toolbar came out taller —
-        which is the discontinuity this class exists to remove. Painting
-        the larger of the two can never leave a gap; holding the corner to
-        the tab bar (below) is what stops there being one to cover.
-        """
-        corner = self.cornerWidget(Qt.Corner.TopRightCorner)
-        return max(self.tabBar().sizeHint().height(), self.tabBar().height(),
-                   corner.height() if corner is not None else 0)
+    # -- the row ---------------------------------------------------------
+    def add_tools(self, widget: QWidget) -> None:
+        """Put a widget at the right-hand end of the tab row."""
+        self._row.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
-    def _hold_corner_to_the_band(self) -> None:
-        """The TAB BAR sets the height and the toolbar is held to it.
+    def addTab(self, page, label):                  # noqa: N802 - Qt naming
+        index = super().addTab(page, label)
+        while self.bar.count() <= index:
+            self.bar.addTab("")
+        self.bar.setTabText(index, label)
+        self.bar.setCurrentIndex(self.currentIndex())
+        return index
 
-        Left to itself the corner widget is as tall as its own contents,
-        and QTabWidget then grows the whole tab row to fit it — so the
-        tabs sat high in a taller band and the controls sat low in it,
-        which is the step in the padding the user drew a circle round.
-        """
-        corner = self.cornerWidget(Qt.Corner.TopRightCorner)
-        bar = max(self.tabBar().sizeHint().height(), self.tabBar().height())
-        if corner is not None and bar > 0 and corner.height() != bar:
-            corner.setFixedHeight(bar)
+    def setTabText(self, index, label):             # noqa: N802
+        super().setTabText(index, label)
+        if index < self.bar.count():
+            self.bar.setTabText(index, label)
 
-    def showEvent(self, event) -> None:             # noqa: N802 - Qt naming
-        super().showEvent(event)
-        self._hold_corner_to_the_band()
+    def _bar_chose(self, index: int) -> None:
+        if index != self.currentIndex():
+            self.setCurrentIndex(index)
 
-    def resizeEvent(self, event) -> None:           # noqa: N802
-        super().resizeEvent(event)
-        self._hold_corner_to_the_band()
-
-    def paintEvent(self, event) -> None:            # noqa: N802
-        painter = QPainter(self)
-        painter.fillRect(0, 0, self.width(), self._band_height(),
-                         QColor(theme.BG_DEEP))
-        painter.end()
-        super().paintEvent(event)
+    def _page_changed(self, index: int) -> None:
+        if index != self.bar.currentIndex():
+            self.bar.setCurrentIndex(index)

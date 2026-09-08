@@ -33,16 +33,24 @@ GOOD = "#23a55a"
 BAD = "#f23f43"
 WARN = "#f0b232"
 ROW_ALT = "#2e3035"
+# The window frame's lit edge (see `ui/ornate.py`), so the app's name and
+# the border round it read as one piece rather than two decisions.
+FRAME_GOLD = "#c9a45a"
+# The app's own name, in a face supplied by the user rather than installed
+# — `ui/fonts.load_bundled` registers whatever is in `assets/fonts/` at
+# startup, and this is the family it makes resolvable. Missing file, and
+# the stylesheet falls through to FONT_STACK.
+TITLE_FAMILY = "LifeCraft"
 HIGHLIGHT_ROW = "#28352c"
-# WARCRAFT'S FACE FIRST, at the user's request, and NOT SHIPPED: Friz
-# Quadrata is a licensed typeface and this repository carries no font
-# file. Qt takes the first family that is actually installed, so the rest
-# of the stack is what the app looks like on a machine without it —
-# Discord's "gg sans" and then the usual system faces, which is what it
-# looked like before. A missing font is normal, not an error.
-FONT_STACK = ('"Friz Quadrata TT", "Friz Quadrata", FrizQuadrataTT, '
-              '"gg sans", "Noto Sans", "Inter", "Segoe UI", system-ui, '
-              'sans-serif')
+# The body face the user supplied: ITC Novarese, registered from
+# `assets/fonts/` at startup by `ui/fonts.load_bundled` rather than
+# installed. Everything after it is the fallback if the file is not there
+# — the app must still open with a readable UI, which is the same rule a
+# missing portrait or a missing app icon follows.
+BODY_FAMILY = "ITC Novarese Std"
+FONT_STACK = (f'"{BODY_FAMILY}", "Century Gothic", "URW Gothic", '
+              '"Questrial", "gg sans", "Noto Sans", "Segoe UI", '
+              'system-ui, sans-serif')
 
 STYLESHEET = f"""
 QWidget {{
@@ -80,12 +88,16 @@ QToolBar#tabStripTools QSlider {{ background: {BG_DEEP}; }}
 QToolBar#tabStripTools QPushButton {{ padding: 4px 12px; }}
 QToolBar#tabStripTools QLabel {{ color: {TEXT_DIM}; }}
 
-/* One BAND, not a strip with controls floating above it: the tab widget's
-   own background is the dark row, so the tabs on the left and the record,
-   auto and transparency controls on the right sit on the same surface. */
-QTabWidget {{ background: {BG_DEEP}; }}
+/* One BAND, laid out as one row (see chrome.BandedTabs): the strip is a
+   plain widget holding the tab bar and the toolbar, so there is no gap
+   between them for another colour to show through. */
+QWidget#tabStrip {{ background: {BG_DEEP}; }}
+QWidget#tabStrip QLabel,
+QWidget#tabStrip QCheckBox,
+QWidget#tabStrip QSlider,
+QWidget#tabStrip QToolBar {{ background: {BG_DEEP}; }}
 QTabWidget::pane {{ border: none; background: {BG}; }}
-QTabBar {{ background: {BG_DEEP}; }}
+QTabBar {{ background: transparent; }}
 QTabBar::tab {{
     background: transparent;
     color: {TEXT_DIM};
@@ -213,10 +225,26 @@ QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 
 /* Our own title bar: the system one is a white strip above a dark app. */
 QWidget#titleBar {{ background: {BG_DEEP}; }}
+/* EVERY label on the bar, not just the title: a QLabel takes its
+   background from the base QWidget rule, so the app icon — which is
+   letterboxed into a square and therefore transparent top and bottom —
+   sat on a rectangle of content colour. */
+QWidget#titleBar QLabel {{ background: transparent; }}
+/* Backstop for anything Qt puts on the bar that we did not: a menu bar's
+   own overflow button, for one, which drew a light square. */
+QWidget#titleBar QToolButton {{
+    background: transparent; border: none; color: {TEXT_DIM};
+}}
 /* Half again the body size: it is the app's name in its own frame, and
-   at 13px it read as another label rather than as the title. */
+   at 13px it read as another label rather than as the title. TRANSPARENT,
+   because a QLabel takes its background from the base QWidget rule and
+   drew a rectangle of content colour behind the text — a box round the
+   title that nobody asked for. The colour is the frame's own gold, so the
+   name and the border it sits inside are the same thing. */
 QLabel#titleText {{
-    color: {TEXT_DIM}; font-weight: 600; font-size: 20px;
+    background: transparent; color: {FRAME_GOLD};
+    font-family: "{TITLE_FAMILY}", {FONT_STACK};
+    font-weight: 600; font-size: 22px;
 }}
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}
