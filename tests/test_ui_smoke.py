@@ -2580,10 +2580,12 @@ def test_the_number_is_one_fixed_size_tied_to_the_headings(qapp):
     from PyQt6.QtCore import QRect
     from PyQt6.QtGui import QFont, QImage, QPainter
     from draft_assist.ui import theme, tilekit
-    assert tilekit.NUMBER_PX == round(theme.HEADING_PX
-                                      * tilekit.NUMBER_OF_HEADING)
+    assert tilekit.NUMBER_PX == theme.HEADING_PX
     assert f"font-size: {theme.HEADING_PX}px" in theme.STYLESHEET, \
         "the heading and the number have to be sized off one number"
+    # The grids were NOT part of this: they have no font rule of their own
+    # and take the body size, which has not moved.
+    assert "font-size: 18px;" in theme.STYLESHEET
 
     def ink(width, height):
         picture = QImage(width, height, QImage.Format.Format_ARGB32)
@@ -2595,9 +2597,13 @@ def test_the_number_is_one_fixed_size_tied_to_the_headings(qapp):
         return sum(1 for y in range(height) for x in range(width)
                    if picture.pixelColor(x, y).alpha() > 0)
 
-    # The same digits at every tile size: a smaller tile does not get a
-    # smaller number, it just has less room around it.
-    assert ink(64, 36) == ink(132, 74)
+    # The same digits at every size the figure FITS: a smaller tile does
+    # not get a smaller number, it just has less room around it.
+    assert ink(132, 74) == ink(110, 62) == ink(96, 54)
+    # At the window's very narrowest the figure is wider than the tile,
+    # and a number clipped to "+21." is not a smaller number but a wrong
+    # one — so there, and only there, it steps down far enough to fit.
+    assert ink(64, 36) < ink(132, 74)
 
 
 def test_the_body_size_is_the_one_the_user_asked_for():
@@ -2905,26 +2911,35 @@ def test_clear_all_empties_a_board_the_game_is_reporting(window, qapp):
                for b in window.team_buttons["ally"])
 
 
-def test_a_cleared_board_comes_back_the_moment_the_draft_changes(window):
+def test_a_cleared_board_comes_back_on_a_new_match_or_a_new_draft(window):
     """Blanked, never suppressed: a board stuck empty for the rest of the
-    evening is worse than the thing being fixed."""
+    evening is worse than the thing being fixed.
+
+    Pinned to the MATCH rather than to the ten heroes. Keyed on the
+    line-up it was fragile in both directions: Clear all drops the capture
+    session's reading, so recognition comes back a hero at a time, and any
+    of those partial readings is a different line-up — which lifted the
+    blanking and put a half-read board on screen.
+    """
+    from draft_assist.gsi.state import STATE_HERO_SELECTION
     window.refresh()
     window._clear_all()
     window.refresh()
     assert all(b.property("hero_id") is None
                for b in window.team_buttons["ally"])
-    # One different pick is enough. Asked of the mechanism directly: the
-    # provider would hand back its own snapshot on the next refresh and
-    # overwrite anything poked into this one.
-    moved = copy.copy(window.snapshot)
-    moved.left = list(moved.left)[:-1] + [window.ds.hero_ids[-1]]
-    assert not window._is_cleared(moved), "a changed draft must show again"
-    # The expiry itself is `refresh`'s job, once a tick, rather than a side
-    # effect of whoever happens to ask about it first.
-    window.snapshot = moved
-    if window._cleared != window._board_key(moved):
-        window._cleared = None
-    assert window._cleared is None, "and the blanking is over for good"
+
+    # A partial re-read is NOT a different board.
+    partial = copy.copy(window.snapshot)
+    partial.left = list(partial.left)[:2]
+    assert window._is_cleared(partial), "a half-read board must stay blanked"
+    # A different match is.
+    other = copy.copy(window.snapshot)
+    other.match_id = "a different match"
+    assert not window._is_cleared(other)
+    # So is a draft starting.
+    drafting = copy.copy(window.snapshot)
+    drafting.game_state = STATE_HERO_SELECTION
+    assert not window._is_cleared(drafting)
 
 
 def test_detect_all_cancels_the_blanking(qapp):

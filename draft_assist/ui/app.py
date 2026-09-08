@@ -2661,9 +2661,23 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _board_key(snap):
+        """What the blanking is pinned to: the MATCH, not the line-up.
+
+        It was keyed on the ten heroes, and that made it fragile in both
+        directions. `Detect all` and `Clear all` both drop the capture
+        session's reading, so recognition comes back a hero at a time over
+        the next few ticks — and any of those partial readings is a
+        different line-up, which lifted the blanking and put a half-read
+        board on screen. A hand-entered hero perturbed it too.
+
+        The match and whether a draft is on are the two things that mean
+        "this is a different board now", and neither wobbles: a new match
+        gets a new id, and a new draft is exactly when you want the board
+        back. Everything else is lifted deliberately, by pressing Detect
+        all.
+        """
         return (getattr(snap, "match_id", "") or "",
-                tuple(getattr(snap, "left", []) or []),
-                tuple(getattr(snap, "right", []) or []))
+                getattr(snap, "game_state", "") in DRAFTING_STATES)
 
     def _apply_order(self, side: str, ids: list[int]) -> list[int]:
         """Put the bank into the order the user dragged it into.

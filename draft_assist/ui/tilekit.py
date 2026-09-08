@@ -44,16 +44,19 @@ from .textfit import fit
 # readable rather than what makes them shout.
 NAME_MAX_PT = 14
 NAME_MIN_PT = 9
-# THE NUMBER IS ONE FIXED SIZE, tied to the headings above it. It was
-# briefly scaled to the tile — which fixed a badge covering the portrait
-# on a narrow window, and then made the digits unreadable at exactly the
-# size where the window is smallest and the number matters most. With the
-# plate gone (see `paint_badge`) the size no longer has to buy back space
-# from the art, so it is simply 60% of the "Radiant" / "Suggested picks"
-# heading and it stays there: shrink the window and the tiles get smaller
-# under a number that goes on being legible.
-NUMBER_OF_HEADING = 0.6
-NUMBER_PX = round(theme.HEADING_PX * NUMBER_OF_HEADING)
+# THE NUMBER IS ONE FIXED SIZE. It was briefly scaled to the tile — which
+# fixed a badge covering the portrait on a narrow window, and then made
+# the digits unreadable at exactly the size where the window is smallest
+# and the number matters most. With the plate gone (see `paint_badge`) the
+# size no longer has to buy back space from the art, so it is fixed and it
+# stays fixed: shrink the window and the tiles get smaller under a number
+# that goes on being legible. It is the CARD HEADING's size — 1.6x what a
+# first pass at "fixed" tried, which was too small to read once the halo
+# went round it, and the same height as "Radiant" is a size with a reason
+# rather than a number somebody picked.
+NUMBER_PX = theme.HEADING_PX
+# Only ever used when the tile is too narrow to print the figure at all.
+NUMBER_MIN_PX = 9
 
 # The name strip and the number badge share one plate, and it is SOLID
 # BLACK. It was 65% black, which let the portrait through behind the
@@ -145,6 +148,18 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     font.setBold(True)
     metrics = QFontMetricsF(font)
     width = metrics.horizontalAdvance(text)
+    # FIXED, except when it genuinely will not fit. The size does not
+    # track the tile — that made it unreadable exactly where it matters —
+    # but at the window's narrowest a "+21.7" is wider than the tile, and
+    # a number clipped to "+21." is not a smaller number, it is a WRONG
+    # one. So it steps down only far enough to fit, and only there.
+    room = box.width() - 2 * (BADGE_INSET + stroke_width() / 2)
+    size = NUMBER_PX
+    while width > room and size > NUMBER_MIN_PX:
+        size -= 1
+        font.setPixelSize(size)
+        metrics = QFontMetricsF(font)
+        width = metrics.horizontalAdvance(text)
     # SNUG INTO THE CORNER. It used to float three pixels off both edges,
     # which on a small tile is a number apparently hovering in the middle
     # of the art rather than sitting in its corner.

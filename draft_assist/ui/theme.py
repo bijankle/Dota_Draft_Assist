@@ -42,10 +42,9 @@ FRAME_GOLD = "#c9a45a"
 # text, and a rule is neither; it has to read on the dark band and on the
 # card alike.
 RULE = "#808080"
-# The card and team headings — "Radiant", "Suggested picks". Named rather
-# than written into the stylesheet, because `tilekit` sizes the number on
-# a tile as a fraction of it and the two must not drift apart.
+# The card and team headings — "Radiant", "Suggested picks".
 HEADING_PX = 21
+
 # The app's own name. The same family as the body at its heaviest weight
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
 # app's own voice raised rather than a second typeface arguing with it.

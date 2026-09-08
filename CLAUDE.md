@@ -577,16 +577,22 @@ credentials, and put the account at risk. Do not go there.
   the fill on top leaves the digit its full weight with the black only
   outside. (`CHROME` still exists and is still opaque — the NAME band uses
   it, and that is only ever drawn when there is no art to see through.)
-  **IT IS ONE FIXED SIZE, tied to the headings** (`NUMBER_PX`,
-  `NUMBER_OF_HEADING`, `theme.HEADING_PX`). It was briefly scaled to the
-  tile, to stop a badge covering the portrait on a narrow window — and
-  that made the digits unreadable at exactly the size where the window is
-  smallest and the number matters most. With the plate gone the size no
-  longer has to buy back space from the art, so it is simply 60% of the
-  "Radiant" / "Suggested picks" heading and it stays there: shrink the
-  window and the tiles get smaller under a number that goes on being
-  legible. `theme.HEADING_PX` exists so the heading and the number are
-  sized off ONE value and cannot drift apart.
+  **IT IS ONE FIXED SIZE** (`NUMBER_PX` = `theme.HEADING_PX`). It was
+  briefly scaled to the tile, to stop a badge covering the portrait on a
+  narrow window — and that made the digits unreadable at exactly the size
+  where the window is smallest and the number matters most. With the plate
+  gone the size no longer has to buy back space from the art, so it is
+  fixed and it stays fixed: shrink the window and the tiles get smaller
+  under a number that goes on being legible. It is the CARD HEADING's
+  size, which makes the figure on a portrait exactly the size of the
+  "-3.0" in "Radiant | -3.0" beside it — one value, `theme.HEADING_PX`, so
+  the two cannot drift apart. The SYNERGY AND COUNTER GRIDS are not part
+  of this and were never changed: they have no font rule of their own and
+  take the body size.
+  **Except when it will not fit** (`NUMBER_MIN_PX`). At the window's
+  narrowest a "+21.7" is wider than the tile, and a number clipped to
+  "+21." is not a smaller number, it is a WRONG one — so there, and only
+  there, it steps down far enough to fit.
   **A tile is SQUARE and capped, and the panel sizes it** (`TeamPanel.
   _resize_tiles`, `TILE_MIN`/`TILE_MAX`). Letting Qt hand each tile the
   leftover width at a fixed height meant full-screening the window
