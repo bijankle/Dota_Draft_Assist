@@ -1104,10 +1104,19 @@ credentials, and put the account at risk. Do not go there.
   (`_cleared`, `_is_cleared`, `_board_key`). Precedence is game > hand
   entry, so on a live match wiping the hand-entered slots changed nothing
   whatever on screen and the next payload put all ten back — "hitting
-  clear all didn't work" is exactly right about that. So the line-up being
-  cleared is REMEMBERED and drawn as empty, and it stops being blanked the
-  moment there is something different to show: a pick changes, the match
-  changes, or Detect all is pressed. Blanked, never SUPPRESSED — a board
+  clear all didn't work" is exactly right about that. So the board being
+  cleared is REMEMBERED and drawn as empty, and it stops being blanked
+  when there is a different BOARD to show: a new match, a draft starting,
+  or Detect all.
+  **The key is the MATCH, not the line-up** (`_board_key`). Keyed on the
+  ten heroes it was fragile in both directions: Clear all and Detect all
+  both drop the capture session's reading, so recognition comes back a
+  hero at a time and any of those partial readings is a different
+  line-up — which lifted the blanking and put a half-read board on screen,
+  one hero showing where none should be. A hand-entered hero perturbed it
+  too. The match id and whether a draft is on are the two things that mean
+  "a different board now" and neither wobbles; everything else is lifted
+  deliberately, by pressing Detect all. Blanked, never SUPPRESSED — a board
   stuck empty for the rest of the evening would be worse than the thing
   being fixed — and Detect all cancels the blanking BEFORE it looks for a
   capture session, so a cleared board in game-data-only mode still has a
