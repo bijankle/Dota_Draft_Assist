@@ -3269,19 +3269,61 @@ def test_the_ad_slot_is_off_unless_it_is_asked_for(qapp):
     slot.close()
 
 
-def test_the_ad_slot_keeps_its_height_whether_or_not_it_is_showing(qapp):
+def test_the_ad_slot_holds_its_height_across_the_cycle(qapp):
     """A banner that appears and disappears while pushing the ten picks up
     and down the window is a board that moves under the cursor mid-draft,
-    which is how a pick gets misclicked."""
-    from draft_assist.ui.adslot import AdSlot
-    slot = AdSlot()
-    tall = slot.height()
+    which is how a pick gets misclicked. So between the showing and hidden
+    halves only the CONTENT changes."""
+    from draft_assist.ui import adslot
+    slot = adslot.AdSlot()
     slot.set_enabled(True)
+    tall = slot.height()
+    assert tall == adslot.HEIGHT
     slot._turn()
     assert slot.showing and slot.height() == tall
     slot._turn()
     assert not slot.showing and slot.height() == tall
     slot.close()
+
+
+def test_ads_switched_off_cost_no_window_at_all(qapp):
+    """With no cycle running there is nothing to hold still for, and a
+    permanent strip of dead window above the draft for a switched-off
+    feature is worse than either."""
+    from draft_assist.ui import adslot
+    slot = adslot.AdSlot()
+    assert slot.height() == 0, "off by default, so it must take no room"
+    slot.set_enabled(True)
+    assert slot.height() == adslot.HEIGHT
+    slot.set_enabled(False)
+    assert slot.height() == 0
+    slot.close()
+
+
+def test_the_creative_is_a_real_ad_unit(qapp):
+    """728x90, the IAB leaderboard — the size a banner slot is actually
+    sold as, so the layout is tested against the real thing. Centred in a
+    full-width slot rather than stretched: a leaderboard is a fixed-size
+    creative wherever it is served."""
+    from draft_assist.ui import adslot
+    slot = adslot.AdSlot()
+    slot.set_enabled(True)
+    assert (slot.creative.width(), slot.creative.height()) == \
+        (adslot.AD_WIDTH, adslot.AD_HEIGHT)
+    slot.resize(3440, adslot.HEIGHT)
+    _settle(qapp)
+    assert slot.creative.width() == adslot.AD_WIDTH, "it stretched"
+    slot.close()
+
+
+def test_the_leaderboard_fits_at_the_narrowest_the_window_goes(window, qapp):
+    """A creative wider than the window's own floor would be one the app
+    can never actually show."""
+    from draft_assist.ui import adslot
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    assert adslot.AD_WIDTH < window.minimumSizeHint().width()
 
 
 def test_the_ad_setting_reaches_the_slot(window):

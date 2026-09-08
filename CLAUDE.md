@@ -708,12 +708,29 @@ credentials, and put the account at risk. Do not go there.
   schedule it would appear on, five seconds in every fifteen, above the two
   team panels — so "what does the window look like with this in it" can be
   answered now and living with it for an evening is something the owner can
-  try before committing. It **reserves its height whether or not it is
-  showing**: a banner that appears and disappears while pushing the ten
-  picks up and down the window is a board that moves under the cursor
-  mid-draft, which is how a pick gets misclicked, so only the CONTENT comes
-  and goes. Whatever eventually fills it must fetch on its own timer, off
-  the draft path — the live loop still never makes network calls.
+  try before committing.
+  **The creative is a REAL ad unit**: 728x90, the IAB leaderboard, which is
+  the size a banner slot is actually sold as — the layout is worth testing
+  against the real thing rather than a placeholder that turns out to be the
+  wrong shape. It is CENTRED in a full-width slot rather than stretched,
+  because a leaderboard is a fixed-size creative wherever it is served, and
+  it fits inside the window's own ~1464px floor.
+  **It reserves its height while ads are ON and NONE while they are off.**
+  A banner that appears and disappears while pushing the ten picks up and
+  down is a board that moves under the cursor mid-draft, which is how a
+  pick gets misclicked — so between the showing and hidden halves of the
+  cycle only the CONTENT changes. But with the feature switched off there
+  is no cycle to hold still for, and reserving the space anyway was a strip
+  of dead window above the draft for something nobody turned on.
+  Whatever eventually fills it must fetch on its own timer, off the draft
+  path — the live loop still never makes network calls.
+  **THE REVENUE PLAN DEPENDS ON THE WEB VERSION, which is parked.** The ad
+  networks worth using (AdSense and the rest) serve into WEB PAGES and
+  their terms are written that way; there is no supported path for a
+  PyQt desktop window, and embedding a browser view to get around that is
+  the kind of thing that gets an account closed rather than paid. So this
+  slot is the layout and the switch, and nothing beyond that can be honest
+  until there is a page to serve into.
 - **There is no hero-entry bar.** Typing a pick, the ally/enemy toggle and
   Undo are gone at the user's request; a pick is entered by clicking a slot
   and using the picker. `_taken_heroes()` still refuses duplicates.
