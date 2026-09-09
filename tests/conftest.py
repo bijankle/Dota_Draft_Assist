@@ -33,3 +33,20 @@ def _sizes_start_at_one():
     yield
     teams.set_scale(1.0)
     tilekit.set_scale(1.0)
+
+
+@pytest.fixture(autouse=True)
+def _portrait_caches_start_empty():
+    """The portrait index is MODULE state too, and it caches ABSENCE.
+
+    `_index` is built once and remembers what it found — including
+    finding nothing. So a test that asked anything about portraits before
+    another test wrote one left that second test drawing blank tiles
+    against a cache nothing would invalidate, and the failure landed in a
+    file nobody had touched. Same rule as the size multipliers above:
+    reset either side, so the leak cannot happen at all.
+    """
+    from draft_assist.ui import portraits
+    portraits.forget()
+    yield
+    portraits.forget()

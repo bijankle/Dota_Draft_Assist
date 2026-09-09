@@ -107,6 +107,27 @@ TASKS = {
                "running window? Unpin it and pin this instead: a pin keeps "
                "whatever identity it was made with."),
     ),
+    "fetch_assets": Task(
+        key="fetch_assets",
+        title="Download hero portraits and item icons",
+        steps=[[PY, "tools/fetch_assets.py"]],
+        blurb=("Fetches every hero portrait, every item icon and the "
+               "community's alternative (persona, arcana, custom set) "
+               "portraits, to THIS machine's disk.\n\nNeeds no API key "
+               "and no account — the pictures come from OpenDota's public "
+               "constants and Valve's CDN. The statistics are a separate "
+               "job, because those do need a free Stratz key.\n\nThe app "
+               "does not carry any of this artwork: it is Valve's, and a "
+               "repository anybody can clone is not a place to hand out "
+               "somebody else's pictures from. Downloading it to your own "
+               "disk is a different thing, and it is what every install "
+               "has always done. Update runs this too, so a new version "
+               "never leaves you short of a picture.\n\nAlready have "
+               "them? It skips what is on disk, so this only ever costs "
+               "the files that are actually missing."),
+        needs_network=True,
+        reload_after=True,
+    ),
     "fetch_custom_portraits": Task(
         key="fetch_custom_portraits",
         title="Fetch alternative hero portraits",
@@ -142,15 +163,22 @@ TASKS = {
         title="Update application",
         steps=[[PY, "tools/update_app.py"],
                [PY, "-m", "pip", "install", "-q", "-r", "requirements.txt",
-                "-r", "requirements-windows.txt"]],
-        blurb=("Pulls the latest code from GitHub for THIS app and nothing "
-               "else, keeping any local edits (such as your item rules) and "
-               "re-applying them on top, then refreshes dependencies and "
-               "reopens.\n\nA bare `git pull` was the whole step and it "
-               "failed on a branch with no upstream — 'there is no tracking "
-               "information for the current branch'. It works out what to "
-               "pull instead, and sets the tracking so the next one is an "
-               "ordinary pull."),
+                "-r", "requirements-windows.txt"],
+               [PY, "tools/fetch_assets.py"]],
+        blurb=("Gets the latest version of THIS app and nothing else, "
+               "refreshes its dependencies, fetches any artwork it is "
+               "missing, and reopens.\n\nIt works on both kinds of "
+               "install. A git clone is updated with git, which keeps any "
+               "edits you have made and re-applies them on top. A copy "
+               "downloaded from GitHub — no git installed, no .git folder "
+               "— downloads the release and writes the files out.\n\n"
+               "YOUR OWN FILES ARE NEVER TOUCHED: the Stratz key in .env, "
+               "your settings, your calibration, your remembered accounts, "
+               "the statistics and every portrait you have downloaded are "
+               "not part of what the app ships, so an update cannot land "
+               "on top of them. You will never have to put your key back "
+               "in.\n\nAlready on the newest version? It says so and "
+               "stops. That is not an error."),
         needs_network=True,
     ),
     "list_windows": Task(

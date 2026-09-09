@@ -1785,19 +1785,52 @@ credentials, and put the account at risk. Do not go there.
   the app's own name before anything is fetched. The match history
   analyser was folded in from another repository and nothing may reach
   back to it; an origin that is not this app is named and refused.
-  **THREE FAILURES THAT ARE NOT BUGS, each with its own sentence.** Git
-  not installed (the app runs, drafts and analyses without it — Update is
-  the one thing that needs it, and it says so with the download link);
-  no `.git` directory, which is what GitHub's Download ZIP button leaves
-  behind, answered with the clone command rather than with "not a git
-  repository"; and no `origin` remote at all. A missing `git` cannot be
-  caught by `tasks.py`'s own `FileNotFoundError` branch any more, because
-  the step invokes PYTHON now and the script invokes git — so the script
-  catches it itself.
-  Git is a REQUIREMENT of the update button and deliberately not worked
-  around: it is the only thing that can bring new code down while keeping
-  the user's own edits, and copying a fresh download over the top would
-  take `rules/items.yaml` with it.
+  **THERE ARE TWO KINDS OF INSTALL AND THE BUTTON WORKS ON BOTH**, which
+  reverses this file's earlier position that git is a REQUIREMENT of
+  updating. That held while the only copy of this app was the one it was
+  written on. It stops holding the moment a stranger has one: installing
+  git is where most people give up, GitHub's Download ZIP button is what
+  they will actually press, and "install git and clone it properly" is a
+  fine answer for the author and a useless one for somebody who just
+  wants the new version.
+  A CLONE (`.git` present) is still updated by git, unchanged, because
+  git is the only thing that brings new code down while keeping the
+  user's own edits and re-applying them on top.
+  A DOWNLOADED COPY (no `.git`) downloads the release branch's archive and
+  writes the files out (`zip_update`, `download`, `unpack`, `apply_tree`).
+  **THE ARCHIVE IS THE MANIFEST, and that is the whole safety argument.**
+  A GitHub archive carries exactly the files the repository TRACKS, so
+  everything gitignored — the Stratz key in `.env`, `ui_settings.json`,
+  `preferences.json`, `calibration_local.json`, `history_accounts.json`,
+  `data_cache/`, every downloaded portrait and item icon, `recordings/` —
+  is not in it and therefore cannot be written over. The user's key
+  survives every update BY CONSTRUCTION rather than by a list somebody
+  has to remember to maintain, which is what the earlier objection
+  ("copying a fresh download over the top would take `rules/items.yaml`
+  with it") was actually about. `NEVER_WRITE` is belt and braces for the
+  day somebody commits a `.env` by accident. Deletions are handled by
+  remembering what was written last time (`installed_version.json`,
+  gitignored, path resolved at CALL time by `install_file()` for the same
+  reason `load_layout` is): a stale module left on disk is not inert, it
+  is importable. An archive path containing `..` is refused before
+  anything is extracted.
+  **ALREADY UP TO DATE IS A SUCCESS, NOT AN ERROR.** The head commit is
+  read off GitHub's API and compared with what was installed; equal means
+  say so and stop. And a version check that FAILS (rate limit, outage)
+  does not stop the update — unknown means download, because the check
+  breaking the thing it exists to help is the worse way to be wrong.
+  **THE RELEASE BRANCH IS `main`** (`RELEASE_BRANCH`), and it is what
+  makes this safe to hand out: development happens on branches and `main`
+  is what a stranger's copy follows, so half-finished work never reaches
+  anybody. `choose_target` prefers it over `origin/HEAD` — a clone still
+  follows whatever it is actually tracking, so the author's own checkout
+  is unaffected.
+  **THREE FAILURES THAT ARE NOT BUGS, each with its own sentence.** No
+  `origin` remote at all; an `origin` that is not this app; and a folder
+  that is a clone (`.git` present) on a machine with no git, which is the
+  one case git is still needed for — answered with the install link AND
+  with the fact that deleting `.git` makes the same button download the
+  new version instead.
   **BOTH task paths must end in `_task_finished`.** It was connected only
   to the modeless one, so a modal task's restart request was recorded and
   then never acted on — Update pulled the new version and left the old
@@ -1812,6 +1845,27 @@ credentials, and put the account at risk. Do not go there.
   user asked not to close and reopen by hand. It relaunches ONLY after the
   update task, and only when that task succeeded — a relaunch after a
   failure would close the dialog showing the error.
+  **THE UPDATE FETCHES THE ARTWORK TOO** (`tools/fetch_assets.py`, the
+  LAST step). The pictures are Valve's and are not in this repository and
+  never will be — but the user asked that everybody who is handed this
+  app get them, and downloading to your own disk at runtime is a
+  different thing from a public repository redistributing them. So the
+  mechanism that already existed is simply made automatic: portraits,
+  item icons and the community's alternative portraits, needing no API
+  key and no account, which is what makes it safe to run for somebody
+  who has not signed up for anything. It is LAST and it NEVER FAILS THE
+  TASK: the code is already in place by then, and a slow CDN must not
+  turn a successful code update into a failed one. Each half says what
+  happened; Setup ▸ Download ▸ All artwork re-runs it, and both halves
+  skip what is on disk, so a retry costs only what is missing.
+  **A FRESH INSTALL IS TWO BANNERS IN ORDER, ARTWORK THEN STATISTICS**
+  (`portraits.any_downloaded`, `_update_first_run_banner`). Both are
+  missing on a new machine and only one of them always works: the
+  pictures need no account, while the statistics need a free Stratz key
+  the user has to go and get. Leading with the key left somebody staring
+  at a grid of empty plates while they signed up for something, so the
+  artwork banner comes first and the statistics banner now names
+  stratz.com and `.env.example` rather than just naming a file.
   Both the data update and the code update relaunch: a `git pull` that
   leaves the old process running has done half the job. It was a toolbar
   button and is now Help ▸ Update application… — pressed once a patch, and

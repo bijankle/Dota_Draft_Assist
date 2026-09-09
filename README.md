@@ -130,15 +130,45 @@ own archive — per phase, per match — so none of it has to be taken on trust.
 
 ## Install and run (Windows)
 
-Double-click **`Dota Draft Assist.bat`**. That is the only file you launch,
-ever.
+1. Install **Python 3.11+** from python.org, with *Add python.exe to PATH*
+   ticked.
+2. Get the app: **Code ▸ Download ZIP** on GitHub, and unzip it wherever you
+   like. (You can `git clone` instead if you have git — both work, and both
+   update from inside the app.)
+3. Double-click **`Dota Draft Assist.bat`**. That is the only file you
+   launch, ever.
 
-The first run installs a private Python environment beside the app and opens
-`.env` for your Stratz API key (free from https://stratz.com/api). Every run
-after that just starts the application — no console window, no other scripts.
+The first run installs a private Python environment beside the app. Every
+run after that just starts the application — no console window, no other
+scripts.
 
-Requires Python 3.11+ from python.org, installed with "Add python.exe to
-PATH" ticked.
+Then two downloads, both from inside the app, both offered by the banner
+across the top on first run:
+
+- **The artwork** — every hero portrait and item icon. Needs no account.
+  Until you have it every tile is blank, because these are Valve's pictures
+  and this repository does not carry them; they come to your own machine.
+- **The statistics** — every number the app shows. Needs a **free Stratz API
+  key** from https://stratz.com/api, pasted into a file called `.env` beside
+  the app (copy `.env.example` and fill it in). Your key stays on your
+  machine.
+
+### Updating
+
+**Help ▸ Update application…** It works whichever way you installed:
+
+- Downloaded the ZIP, no git? It fetches the latest release and writes the
+  files out. Nothing else to install.
+- Cloned with git? It pulls, keeping any edits you have made to your own
+  files and re-applying them on top.
+
+Either way **nothing of yours is touched**: your Stratz key, your settings,
+your calibration, your remembered accounts, the statistics and every
+portrait you have downloaded are not part of what the app ships, so an
+update cannot land on top of them. You never have to put your key back in.
+Already on the newest version? It says so — that is not an error.
+
+Updates come from the `main` branch of this repository and nowhere else.
 
 ## Using the application
 

@@ -305,6 +305,11 @@ class MainWindow(QMainWindow):
         # and numbers — and a menu you have to read twice is a menu that
         # has stopped helping.
         downloads = setup_menu.addMenu("&Download")
+        # FIRST, because it is the one a fresh install needs and the only
+        # one that needs no account anywhere.
+        self._act(downloads, "All &artwork…",
+                  lambda: self.run_task("fetch_assets"), None,
+                  "Every hero portrait and item icon — no API key needed")
         self._act(downloads, "&Statistics and portraits…",
                   lambda: self.run_task("update_data"), "Ctrl+U",
                   "The hero numbers and Valve's base portrait for each")
@@ -1205,12 +1210,27 @@ class MainWindow(QMainWindow):
                 "until the data is rebuilt.",
                 "Rebuild now", lambda: self.run_task("update_data"))
             return
+        # ARTWORK BEFORE STATISTICS, because it is the half that always
+        # works. A fresh install has neither, and the statistics need a
+        # free Stratz key the user has to go and get — so leading with
+        # that leaves somebody staring at a grid of empty plates while
+        # they sign up for something. The pictures need no account at all.
+        if not portraits.any_downloaded():
+            self._show_banner(
+                "<b>No hero pictures yet.</b> They are Valve's artwork, so "
+                "this app does not carry them — they download to your own "
+                "machine, and until they do every tile here is blank. It "
+                "needs no account and takes about a minute.",
+                "Get the artwork", lambda: self.run_task("fetch_assets"))
+            return
         if self.ds.is_empty:
             self._show_banner(
-                "<b>No statistics downloaded yet.</b> The hero list stays "
-                "empty until the first download, which fetches match "
-                "statistics for Ancient+Divine and the hero portraits used "
-                "to read the draft off the screen.",
+                "<b>No statistics downloaded yet.</b> Every number in the "
+                "app comes from these, so the tiles stay blank until they "
+                "are pulled. It needs a free API key from stratz.com "
+                "pasted into the .env file beside this app — see "
+                ".env.example, and your key is never sent anywhere but "
+                "Stratz.",
                 "Download now", lambda: self.run_task("update_data"))
         else:
             # NOT how old the data is. That was a banner up all evening for

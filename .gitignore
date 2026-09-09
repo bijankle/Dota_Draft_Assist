@@ -43,3 +43,7 @@ history_reports/
 
 # Recording sessions: payloads, frames and state logs from real games.
 recordings/
+
+# Which release this install is on, written by tools/update_app.py when a
+# downloaded copy updates itself. It describes THIS machine, not the app.
+installed_version.json

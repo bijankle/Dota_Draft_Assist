@@ -27,6 +27,9 @@ _cache: dict[int, QPixmap | None] = {}
 # mistake: ten tiles and twenty matrix headers repainting on every tick is
 # thirty rescales a frame, for pictures that never change.
 _scaled: dict[tuple[int, int, int], QPixmap] = {}
+# Whether the artwork is on disk at all. Only True is remembered — see
+# `any_downloaded`.
+_have: bool = False
 
 
 def _index() -> dict[int, Path]:
@@ -80,9 +83,36 @@ def scaled(hero_id: int | None, width: int, height: int) -> QPixmap | None:
     return hit
 
 
+def any_downloaded() -> bool:
+    """Has this machine got the artwork at all?
+
+    A FRESH INSTALL HAS NONE, and that is the state the first-run banner
+    exists for: the pictures are not in the repository (they are Valve's)
+    and are fetched to the user's own disk, so somebody handed a copy of
+    this app opens it to a grid of empty plates until they run the
+    download.
+
+    IT DELIBERATELY DOES NOT BUILD `_index`. That index caches ABSENCE —
+    it remembers finding nothing just as firmly as it remembers finding
+    something — and this question is asked from the banner, which the
+    live loop refreshes. Answering it through the index would therefore
+    cache "there are no portraits" on the first tick after startup, which
+    is before any download can have run, and nothing but `forget` would
+    ever revisit it. A single cheap look at the directory instead, with
+    only the TRUE answer remembered: once the artwork is on disk it does
+    not leave, whereas "not yet" has to stay askable or the banner would
+    never clear.
+    """
+    global _have
+    if not _have:
+        _have = BASE_DIR.is_dir() and any(BASE_DIR.iterdir())
+    return _have
+
+
 def forget() -> None:
     """Drop the caches — after a portrait download, or in tests."""
-    global _paths
+    global _paths, _have
     _paths = None
+    _have = False
     _cache.clear()
     _scaled.clear()

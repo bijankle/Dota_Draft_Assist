@@ -192,15 +192,32 @@ def make_window(qapp, ds):
     return win
 
 
-def test_app_opens_before_any_data_is_downloaded(qapp):
-    """First run must explain itself, not crash on a missing cache."""
+def test_app_opens_before_any_data_is_downloaded(qapp, monkeypatch):
+    """First run must explain itself, not crash on a missing cache.
+
+    ARTWORK FIRST, THEN STATISTICS. A fresh install has neither, and only
+    one of the two always works: the pictures need no account anywhere,
+    while the statistics need a free Stratz key the user has to go and
+    get. Leading with the key leaves somebody staring at a grid of empty
+    plates while they sign up for something.
+    """
     from draft_assist.data import store
+    from draft_assist.ui import portraits
 
     win = make_window(qapp, store.empty_dataset())
     try:
+        monkeypatch.setattr(portraits, "any_downloaded", lambda: False)
         win.refresh()
         assert win.banner.isVisible() or not win.isVisible()
+        assert "No hero pictures yet" in win.banner_label.text()
+        assert "artwork" in win.banner_button.text()
+
+        # With the pictures on disk it moves on to the half that needs a
+        # key, and says where to get one rather than just naming the file.
+        monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+        win.refresh()
         assert "No statistics downloaded yet" in win.banner_label.text()
+        assert "stratz.com" in win.banner_label.text()
         assert "Download" in win.banner_button.text()
         assert "no statistics" in win.status.currentMessage()
     finally:

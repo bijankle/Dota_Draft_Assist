@@ -12,6 +12,7 @@ have caught a wrong git invocation, which is the half that actually
 failed.
 """
 
+import json
 import shutil
 import subprocess
 
@@ -83,10 +84,20 @@ def test_a_branch_of_the_same_name_is_next():
     assert target == "origin/claude/work"
 
 
-def test_then_the_remotes_default_branch():
+def test_then_the_release_branch_whatever_the_default_says():
+    """`main` is what a stranger's copy follows, so once the remote has one
+    a checkout with nothing better to go on lands there — even if the
+    repository's default branch has been pointed somewhere else."""
     target, why = update_app.choose_target("master", "", ["main", "dev"],
-                                           "main")
+                                           "dev")
     assert target == "origin/main"
+    assert "release branch" in why
+
+
+def test_then_the_remotes_default_branch():
+    target, why = update_app.choose_target("master", "", ["stable", "dev"],
+                                           "stable")
+    assert target == "origin/stable"
     assert "default" in why
 
 
@@ -248,24 +259,149 @@ def test_a_machine_without_git_is_told_in_one_sentence(tmp_path, monkeypatch):
     with pytest.raises(update_app.Refused) as refused:
         update_app.main()
     message = str(refused.value)
-    assert "Git is not installed" in message
+    assert "git is not installed" in message
     assert "git-scm.com" in message
-    # And it says what still works, so this reads as one missing tool
-    # rather than a broken app.
-    assert "Nothing else here needs git" in message
+    # And it names the way out that needs nothing installed: without .git
+    # this same button downloads the new version instead.
+    assert "delete the .git folder" in message
 
 
-def test_a_downloaded_zip_is_named_as_one(tmp_path, monkeypatch):
-    """No .git directory is what GitHub's "Download ZIP" leaves behind, and
-    "not a git repository" is a true answer to the wrong question."""
+# ------------------------------------------------ a downloaded copy ----
+#
+# No .git at all is what GitHub's "Download ZIP" leaves behind, and it is
+# what almost anybody handed this app will have — installing git is where
+# most people stop. It used to be refused with instructions to clone.
+
+
+def an_archive(tmp_path, files, name="release.zip", root="Dota-main"):
+    """A GitHub-shaped archive: everything under one top-level folder."""
+    import zipfile
+    path = tmp_path / name
+    with zipfile.ZipFile(path, "w") as zf:
+        for relative, text in files.items():
+            zf.writestr(f"{root}/{relative}", text)
+    return path
+
+
+def a_copy(tmp_path, monkeypatch, files=(), sha=""):
+    """An install with no .git, holding the user's own untracked files."""
     work = tmp_path / "copied"
     work.mkdir()
+    for relative, text in dict(files).items():
+        target = work / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
     monkeypatch.setattr(update_app, "REPO_ROOT", work)
+    monkeypatch.setattr(update_app, "head_sha", lambda *a, **k: sha)
+    return work
+
+
+def serve(monkeypatch, archive):
+    monkeypatch.setattr(update_app, "download",
+                        lambda branch, into: archive)
+
+
+def test_a_downloaded_copy_updates_without_git(tmp_path, monkeypatch, capsys):
+    """The whole point: a stranger who never installed git presses Update
+    and gets the new version."""
+    work = a_copy(tmp_path, monkeypatch,
+                  {"app.py": "old\n"}, sha="a" * 40)
+    serve(monkeypatch, an_archive(tmp_path, {"app.py": "new\n",
+                                             "rules/items.yaml": "rules\n"}))
+    update_app.main()
+    assert (work / "app.py").read_text(encoding="utf-8") == "new\n"
+    assert (work / "rules" / "items.yaml").exists()
+    assert "Updated to main" in capsys.readouterr().out
+
+    recorded = json.loads(
+        (work / "installed_version.json").read_text(encoding="utf-8"))
+    assert recorded["sha"] == "a" * 40
+    assert sorted(recorded["files"]) == ["app.py", "rules/items.yaml"]
+
+
+def test_the_users_key_and_settings_are_never_written_over(tmp_path,
+                                                           monkeypatch):
+    """The archive carries only tracked files, so a gitignored one cannot
+    be in it — and if one ever is, it still must not land on the key."""
+    work = a_copy(tmp_path, monkeypatch, {
+        ".env": "STRATZ_API_KEY=mine\n",
+        "ui_settings.json": '{"window_locked": true}\n',
+        "history_accounts.json": "[]\n",
+        "data_cache/heroes.json": "{}\n",
+        "assets/portraits/base/1.png": "art",
+    }, sha="b" * 40)
+    serve(monkeypatch, an_archive(tmp_path, {
+        "app.py": "new\n",
+        ".env": "STRATZ_API_KEY=THEIRS\n",     # must never be applied
+    }))
+    update_app.main()
+    assert (work / ".env").read_text(encoding="utf-8") == "STRATZ_API_KEY=mine\n"
+    assert (work / "ui_settings.json").exists()
+    assert (work / "history_accounts.json").exists()
+    assert (work / "data_cache" / "heroes.json").exists()
+    assert (work / "assets" / "portraits" / "base" / "1.png").exists()
+
+
+def test_already_up_to_date_is_not_an_error(tmp_path, monkeypatch, capsys):
+    """Pressing Update when there is nothing to get is a successful
+    outcome, and it must not download or look like a failure."""
+    work = a_copy(tmp_path, monkeypatch, sha="c" * 40)
+    (work / "installed_version.json").write_text(
+        json.dumps({"branch": "main", "sha": "c" * 40, "files": []}),
+        encoding="utf-8")
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("it downloaded when it had nothing to get")
+    monkeypatch.setattr(update_app, "download", refuse)
+
+    update_app.main()                      # no exception is the assertion
+    assert "Already up to date" in capsys.readouterr().out
+
+
+def test_a_file_dropped_from_a_release_is_removed(tmp_path, monkeypatch):
+    """A stale module left on disk is not inert — it is importable."""
+    work = a_copy(tmp_path, monkeypatch,
+                  {"app.py": "old\n", "gone.py": "removed upstream\n",
+                   "mine.txt": "the user's own file\n"}, sha="d" * 40)
+    (work / "installed_version.json").write_text(
+        json.dumps({"branch": "main", "sha": "old",
+                    "files": ["app.py", "gone.py"]}), encoding="utf-8")
+    serve(monkeypatch, an_archive(tmp_path, {"app.py": "new\n"}))
+    update_app.main()
+    assert not (work / "gone.py").exists()
+    # Only what THIS tool wrote. A file the user put here is theirs.
+    assert (work / "mine.txt").exists()
+
+
+def test_an_archive_that_climbs_out_of_its_folder_is_refused(tmp_path,
+                                                             monkeypatch):
+    """A path that escapes the extraction folder is how an archive writes
+    files it was never meant to reach."""
+    work = a_copy(tmp_path, monkeypatch, sha="e" * 40)
+    serve(monkeypatch, an_archive(tmp_path,
+                                  {"app.py": "fine\n", "../../evil.py": "no"}))
     with pytest.raises(update_app.Refused) as refused:
         update_app.main()
-    message = str(refused.value)
-    assert "copy of the app rather than a clone" in message
-    assert "git clone https://github.com/bijankle/Dota_Draft_Assist" in message
+    assert "unsafe path" in str(refused.value)
+    assert not (work / "app.py").exists(), "nothing may be written"
+
+
+def test_the_install_file_is_resolved_at_call_time(tmp_path, monkeypatch):
+    """A module constant is evaluated once at import, so a test that
+    repoints REPO_ROOT would still write into the real repository — which
+    has already happened once here, with the calibration file."""
+    monkeypatch.setattr(update_app, "REPO_ROOT", tmp_path)
+    assert update_app.install_file() == tmp_path / "installed_version.json"
+
+
+def test_the_update_also_fetches_whatever_artwork_is_missing():
+    """The pictures are not in the repository — they are Valve's — so a
+    user who updates must not be left short of one. The step is LAST, so
+    a slow CDN cannot fail an update whose code already landed."""
+    from draft_assist.ui.tasks import TASKS
+    steps = TASKS["update_app"].steps
+    assert steps[-1][1] == "tools/fetch_assets.py"
+    assert "fetch_assets" in TASKS
 
 
 def test_the_update_task_runs_the_tool_rather_than_bare_git():
