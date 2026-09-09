@@ -567,6 +567,25 @@ credentials, and put the account at risk. Do not go there.
   with more suspicion than the rest anyway — items are the FINAL
   inventory, so an expensive one is partly a consequence of the game going
   well rather than a cause of it.
+  **RANKED ONLY IS TICKED, AND LANE ROLE IS GONE** — both at the user's
+  request. The question this tab asks is what goes with winning RANKED
+  games, and turbo and unranked answer a different one, so
+  `Options.ranked_only` defaults True and the tick starts checked (a
+  remembered run and a fresh tab must not disagree about it). Lane role
+  was removed OUTRIGHT rather than left unticked: OpenDota parses a
+  minority of matches, so the bucket was mostly "Unparsed" — an analysis
+  that mostly reports it could not tell.
+  **THE SUMMARY IS A HEADLINE, NOT EVERYTHING THAT CLEARED A FLOOR**
+  (`split_findings`, `SUMMARY_EACH_END` = 3). Item findings are OUT of
+  "What goes with winning": there are three heroes' worth, they separate
+  easily because an expensive item is partly a CONSEQUENCE of the game
+  going well, and the tab already says to read that block with more
+  suspicion. "What you do on each hero" is cut to three at EACH END
+  rather than to its head — where you are worst on a hero is as much the
+  point as where you are best, and a list cut to its top only flatters.
+  Both blocks are still drawn IN FULL further down the tab; what is
+  trimmed is the summary above them.
+
   **NOTHING IS INFERRED TO FILL A GAP.** OpenDota populates the parsed
   fields — `lane_role` above all — on a minority of matches and frequently
   returns a null `party_size`; those go into an explicit unknown bucket
@@ -659,6 +678,14 @@ credentials, and put the account at risk. Do not go there.
   a Dota setting the user can change in ten seconds must not read as the
   app having failed at something. One paragraph covering all three was
   what made the commonest case look like a bug.
+  **Export is the same button as Run**, at the user's request: accent
+  red once there is a report behind it, plainly disabled until then. It
+  was an ordinary push button beside an accented one, which read as a
+  different KIND of control rather than as the second thing you do here.
+  `QPushButton[accent="true"]:disabled` had to be declared AFTER the
+  accent rule — the plain `:disabled` above it loses on specificity, so a
+  disabled accented button stayed fully red and looked pressable. Same
+  ordering lesson as the amber warning label.
   **The export is TWO SHEETS**, at the user's request: every match in one
   under an autofilter, the whole report in the other. The browser version
   wrote one sheet per analysis plus a summary, and thirteen tabs is a

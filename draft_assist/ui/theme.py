@@ -178,6 +178,15 @@ QPushButton[accent="true"] {{
     font-weight: 600;
 }}
 QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
+/* AFTER the accent rule, or it never applies. The plain
+   `QPushButton:disabled` above is declared earlier, so on a button
+   carrying [accent="true"] the accent wins on specificity and a disabled
+   one stayed fully red — a control that looks pressable and is not. Same
+   ordering lesson as the amber warning label. */
+QPushButton[accent="true"]:disabled {{
+    background: {BG_ELEVATED}; border-color: {BG_INPUT}; color: {TEXT_DIM};
+    font-weight: 500;
+}}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
     background: #c2453f; border-color: #c2453f; color: #ffffff;

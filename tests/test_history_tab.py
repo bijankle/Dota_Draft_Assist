@@ -121,10 +121,15 @@ def test_the_options_are_read_off_the_controls(qapp):
     tab = HistoryTab()
     tab.window_box.setCurrentIndex(1)          # last 3 months
     tab.ranked_tick.setChecked(True)
-    tab.analysis_ticks["lane"].setChecked(True)
+    # Whichever analysis happens to be first — the point is that the tick
+    # reaches the options, not which one it is. Naming one meant this
+    # broke when Lane role was removed, which is a fact about the list
+    # rather than about reading the controls.
+    key = next(iter(tab.analysis_ticks))
+    tab.analysis_ticks[key].setChecked(True)
     options = tab.options()
     assert options.window == "3m" and options.days == 91
-    assert options.ranked_only and options.picked["lane"]
+    assert options.ranked_only and options.picked[key]
     assert options.window_label == "Last 3 months"
     tab.deleteLater()
 
@@ -266,3 +271,101 @@ def test_closing_the_window_does_not_leave_a_thread_running(window):
     window.history_tab.shutdown()
     window.close()
     assert window.history_tab.worker is None
+
+
+def test_lane_role_is_gone_entirely(qapp):
+    """Removed at the user's request — "dont even want it there as an
+    unticked item". It was off by default because OpenDota parses a
+    minority of matches, so the bucket was mostly "Unparsed": an analysis
+    that mostly reports it could not tell."""
+    from draft_assist.history import analyse
+
+    assert "lane" not in dict((k, t) for k, t, _d, _b in analyse.ANALYSES)
+    assert "lane" not in analyse.SPLITS
+    tab = HistoryTab()
+    assert "lane" not in tab.analysis_ticks
+    assert not any("lane" in t.text().lower()
+                   for t in tab.analysis_ticks.values())
+    tab.deleteLater()
+
+
+def test_ranked_only_starts_ticked(qapp):
+    """At the user's request. The question the tab asks is what goes with
+    winning RANKED games; turbo and unranked answer a different one."""
+    from draft_assist.history.report import Options
+
+    assert Options(account_id=1).ranked_only is True
+    assert Options.from_dict({}, 1).ranked_only is True
+    tab = HistoryTab()
+    assert tab.ranked_tick.isChecked()
+    tab.deleteLater()
+
+
+def _report(blocks):
+    """A Report carrying just these blocks. `findings` is a PROPERTY read
+    off them, so the blocks are what a test has to build."""
+    from draft_assist.history.report import Options, Report
+    return Report(options=Options(account_id=1), how="", name="",
+                  matches=[], blocks=blocks, dropped={}, sessions=0,
+                  returned=0)
+
+
+def _block(kind, sigmas, ident="b"):
+    from draft_assist.history.analyse import Block, Finding
+    return Block(id=ident, name=ident, desc="", kind=kind,
+                 findings=[Finding(sigma=s, key=f"{ident}{i}", text="")
+                           for i, s in enumerate(sigmas)])
+
+
+def test_item_findings_stay_out_of_the_summary(qapp):
+    """At the user's request — "do not show item recommendations /
+    findings in the what goes with winning summary ... its just too much
+    spam". The block itself is untouched further down the tab; what comes
+    out is the HEADLINE, and items crowded it: three heroes' worth, and
+    they separate easily because an expensive item is partly a consequence
+    of the game going well rather than a cause of it."""
+    report = _report([_block("cat", [3.0, 2.0], "split"),
+                      _block("items", [9.0, 8.0], "items")])
+    rates, _ = report.split_findings()
+    assert [pair[0].kind for pair in rates] == ["cat", "cat"]
+    assert not any(pair[0].kind == "items" for pair in rates)
+    # And the block is still THERE to be drawn in full further down.
+    assert any(b.kind == "items" for b in report.blocks)
+
+
+def test_the_per_hero_summary_keeps_three_at_each_end(qapp):
+    """"cut it down dramatically... only the top 3 findings and bottom 3".
+    BOTH ends, because where you are worst on a hero is as much the point
+    as where you are best, and a list cut to its head only flatters."""
+    from draft_assist.history.report import Report
+
+    sigmas = [9.0, -8.0, 7.0, -6.0, 5.0, -4.0, 3.0, -2.0, 1.5, -1.0]
+    report = _report([_block("metric", sigmas, "m")])
+    _, contributions = report.split_findings()
+    assert len(contributions) == 2 * Report.SUMMARY_EACH_END
+    kept = sorted(pair[1].sigma for pair in contributions)
+    assert kept[:3] == [-8.0, -6.0, -4.0], "the three most negative"
+    assert kept[-3:] == [5.0, 7.0, 9.0], "and the three most positive"
+
+    # Too few to split: everything is kept rather than silently halved.
+    _, few = _report([_block("metric", [1.0, -1.0], "m")]).split_findings()
+    assert len(few) == 2
+
+
+def test_the_export_button_is_the_same_button_as_run(qapp):
+    """"export workbook needs to look like the other buttons e.g. run...
+    greyed out when the analysis hasnt been run yet, but once it runs it
+    should turn into the typical red button"."""
+    from draft_assist.ui import theme
+
+    tab = HistoryTab()
+    assert tab.export_button.property("accent") is True
+    assert tab.run_button.property("accent") is True
+    assert not tab.export_button.isEnabled(), "nothing to export yet"
+    # And the DISABLED rule has to come after the accent one, or a button
+    # carrying [accent="true"] stays fully red while unclickable.
+    css = theme.STYLESHEET
+    assert 'QPushButton[accent="true"]:disabled' in css
+    assert (css.index('QPushButton[accent="true"] {')
+            < css.index('QPushButton[accent="true"]:disabled'))
+    tab.deleteLater()

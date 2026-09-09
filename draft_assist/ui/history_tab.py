@@ -310,9 +310,21 @@ class HistoryTab(QWidget):
         self.turbo_tick.setChecked(True)
         row.addWidget(self.turbo_tick)
         self.ranked_tick = TickBox("Ranked only")
+        # TICKED, like Exclude Turbo beside it and for the same reason: the
+        # question this tab asks is what goes with winning RANKED games,
+        # and unranked answers a different one. `Options.ranked_only`
+        # defaults to True to match, so a remembered run and a fresh tab
+        # cannot disagree about it.
+        self.ranked_tick.setChecked(True)
         row.addWidget(self.ranked_tick)
         row.addStretch(1)
         self.export_button = QPushButton("Export workbook…")
+        # THE SAME BUTTON AS RUN, at the user's request — accent red once
+        # there is a report behind it, and plainly disabled until then.
+        # It was an ordinary push button beside an accented one, which
+        # read as a different KIND of control rather than as the second
+        # thing you do on this tab.
+        self.export_button.setProperty("accent", True)
         self.export_button.clicked.connect(self.export)
         self.export_button.setEnabled(False)
         row.addWidget(self.export_button)

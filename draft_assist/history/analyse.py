@@ -22,7 +22,7 @@ to test against the next hundred games, not a conclusion.
 from dataclasses import dataclass, field
 import math
 
-from .shape import LANE_ROLE, WEEKDAY
+from .shape import WEEKDAY
 
 MIN_BUCKET = 8          # games before a bucket may produce a finding
 MIN_DISPLAY = 2         # games before a bucket appears in the table at all
@@ -39,7 +39,6 @@ TILT_ORDER = ["First of session", "After a win", "After a loss",
               "After 2+ losses"]
 PARTY_ORDER = ["Solo", "Party of 2", "Party of 3", "Party of 4", "Party of 5",
                "Unknown"]
-LANE_ORDER = ["Safe lane", "Mid lane", "Off lane", "Jungle", "Unparsed"]
 
 
 @dataclass
@@ -118,10 +117,6 @@ ANALYSES = [
     ("party", "Solo against stack", True,
      "Party size as reported. OpenDota leaves this null on many matches, so "
      "those sit in an explicit unknown bucket and never produce a finding."),
-    ("lane", "Lane role", False,
-     "Only present on parsed matches, usually a small minority, so this is "
-     "off by default. Everything else counts as unparsed rather than being "
-     "guessed at."),
     ("herodmg", "Hero damage per minute by hero", True,
      "Mean hero damage per minute on each hero, against your own overall "
      "rate."),
@@ -152,7 +147,6 @@ PHRASE = {
     "side": lambda k: f"playing {k}",
     "party": lambda k: ("playing solo" if k == "Solo"
                         else f"playing in a {k.lower()}"),
-    "lane": lambda k: f"in the {k.lower()}",
     "month": lambda k: f"in {k}",
 }
 
@@ -348,8 +342,6 @@ SPLITS = {
     "side": (lambda m: "Radiant" if m.radiant else "Dire",
              ["Radiant", "Dire"], ()),
     "party": (_party, PARTY_ORDER, ("Unknown",)),
-    "lane": (lambda m: LANE_ROLE.get(m.lane_role, "Unparsed"), LANE_ORDER,
-             ("Unparsed",)),
     "month": (lambda m: f"{m.when.year}-{m.when.month:02d}",
               lambda b: b.key, ()),
 }
@@ -394,7 +386,7 @@ def build_blocks(matches, baseline: float, picked: dict,
             findings=cat_findings(rows, block_id, no_finding)))
 
     for block_id in ("hero", "length", "tod", "dow", "session", "tilt",
-                     "side", "party", "lane"):
+                     "side", "party"):
         if picked.get(block_id):
             add_cat(block_id)
 
