@@ -82,6 +82,26 @@ _icon: QIcon | None = None
 identity_note = "not attempted"
 
 
+def gui_ready() -> bool:
+    """Is there a QGuiApplication yet?
+
+    **TOUCHING A QPixmap BEFORE ONE EXISTS KILLS THE PROCESS**, and not
+    with an exception: Qt prints "QPixmap: Must construct a
+    QGuiApplication before a QPixmap" and aborts, so no `except` anywhere
+    can save it and there is no traceback to read. From outside it is
+    simply "the app does not open at all".
+
+    That is not hypothetical — `ensure_start_menu_shortcut` was called
+    from `main()` before the QApplication was built, and it reaches a
+    QPixmap through `shell_ico` -> `write_ico` -> `pixmap`. Every entry
+    point in this module that can end up painting therefore asks this
+    first and refuses politely, so the worst a caller can do is get no
+    icon rather than no application.
+    """
+    from PyQt6.QtGui import QGuiApplication
+    return QGuiApplication.instance() is not None
+
+
 def _drawn(size: int = 256) -> QPixmap:
     """The icon this repository SHIPS, painted rather than committed.
 
@@ -152,6 +172,10 @@ def icon() -> QIcon:
     """The app icon, built once."""
     global _icon
     if _icon is None:
+        if not gui_ready():
+            raise RuntimeError(
+                "no QGuiApplication yet — building the icon here would "
+                "abort the process rather than raise")
         _icon = _build()
     return _icon
 
@@ -476,6 +500,8 @@ def shell_ico() -> Path | None:
     # drawing two different pictures. Anything else is rendered into a
     # proper .ico below, which is what makes a PNG work in the taskbar
     # instead of silently not.
+    if not gui_ready():
+        return None
     candidate = chosen_path()
     if candidate is not None and covers_the_shell(candidate):
         return candidate
@@ -694,6 +720,12 @@ def ensure_start_menu_shortcut() -> bool:
     if sys.platform != "win32":
         shortcut_note = "not Windows"
         return False
+    if not gui_ready():
+        # Not merely a bad idea: it reaches a QPixmap, which ABORTS the
+        # process when there is no QGuiApplication. Called too early once
+        # already, and the app simply stopped opening.
+        shortcut_note = "called before the QApplication existed"
+        return False
     try:
         written = write_shortcut()
     except ImportError:
@@ -855,6 +887,10 @@ def write_ico(path) -> Path:
     format documents as PNG — and everything the taskbar actually asks
     for is written the way an icon has been written since 1985.
     """
+    if not gui_ready():
+        raise RuntimeError(
+            "no QGuiApplication yet — rendering an .ico here would abort "
+            "the process rather than raise")
     path = Path(path)
     frames = []
     for size in ICO_SIZES:

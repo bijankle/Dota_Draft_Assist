@@ -694,14 +694,13 @@ def test_the_start_menu_shortcut_is_written_automatically(qapp):
     from draft_assist.ui import app as app_mod
     from draft_assist.ui import appicon
 
-    source = inspect.getsource(app_mod.main)
-    assert "claim_taskbar_identity" in source
-    assert "ensure_start_menu_shortcut" in source, (
+    # It happens on startup without being asked for. WHERE is settled by
+    # `test_only_the_ctypes_half_runs_before_the_qapplication`: it renders
+    # an .ico, so it cannot sit beside `claim_taskbar_identity` in `main`.
+    assert "claim_taskbar_identity" in inspect.getsource(app_mod.main)
+    assert "ensure_start_menu_shortcut" in inspect.getsource(app_mod._main), (
         "claiming the identity without providing the shortcut it resolves "
         "to is what left the taskbar button with nothing to draw")
-    # The claim comes first: the shortcut only matters because of it.
-    assert (source.index("claim_taskbar_identity")
-            < source.index("ensure_start_menu_shortcut"))
     assert appicon.ensure_start_menu_shortcut() is False   # not Windows here
     assert appicon.shortcut_note == "not Windows"
 
@@ -751,3 +750,81 @@ def test_the_paste_reports_all_three_taskbar_mechanisms(qapp):
     source = inspect.getsource(MainWindow._copy_debug_log)
     for note in ("identity_note", "window_icon_note", "shortcut_note"):
         assert note in source, note
+
+
+def test_nothing_that_paints_runs_before_the_qapplication(qapp):
+    """**THIS ONE STOPPED THE APP OPENING AT ALL.**
+
+    `ensure_start_menu_shortcut` was called from `main()` before the
+    QApplication was built, and it reaches a QPixmap through `shell_ico`
+    -> `write_ico` -> `pixmap`. Qt does not raise for that: it prints
+    "QPixmap: Must construct a QGuiApplication before a QPixmap" and
+    ABORTS, so no `except` can catch it and there is no traceback. From
+    outside it is simply an app that does not open.
+
+    Run every painting entry point in a subprocess with no QApplication.
+    The subprocess must SURVIVE — an abort would take it down before it
+    could print anything.
+    """
+    import subprocess
+    import sys
+
+    from draft_assist.config import REPO_ROOT
+
+    probe = """
+import sys
+sys.path.insert(0, %r)
+from draft_assist.ui import appicon
+assert appicon.gui_ready() is False
+assert appicon.shell_ico() is None
+for call in (appicon.icon, lambda: appicon.write_ico("ignored.ico")):
+    try:
+        call()
+    except RuntimeError:
+        pass
+    else:
+        raise SystemExit("it should refuse, not return")
+print("SURVIVED")
+""" % str(REPO_ROOT)
+    done = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True, timeout=300,
+                          env={"QT_QPA_PLATFORM": "offscreen", "PATH": "/usr/bin:/bin"})
+    assert "SURVIVED" in done.stdout, (
+        f"the process died instead of refusing.\n"
+        f"stdout: {done.stdout}\nstderr: {done.stderr}")
+
+
+def test_only_the_ctypes_half_runs_before_the_qapplication(qapp):
+    """`claim_taskbar_identity` is pure ctypes and MUST run before the
+    first window, so it stays in `main()`. Everything else about the icon
+    has to wait for the QApplication — which is the distinction that was
+    missed."""
+    import inspect
+    from draft_assist.ui import app as app_mod
+
+    early = inspect.getsource(app_mod.main)
+    assert "claim_taskbar_identity" in early
+    assert "ensure_start_menu_shortcut" not in early, \
+        "it renders an .ico; before the QApplication that aborts the process"
+    assert "appicon.icon()" not in early
+
+    late = inspect.getsource(app_mod._main)
+    assert "ensure_start_menu_shortcut" in late
+    # Still after the QApplication and before the window is built.
+    assert (late.index("QApplication(sys.argv)")
+            < late.index("ensure_start_menu_shortcut")
+            < late.index("MainWindow("))
+
+
+def test_the_shortcut_refuses_early_rather_than_aborting(qapp, monkeypatch):
+    """On Windows the platform check passes, so the guard has to be the
+    thing that stops it — and it has to say so, not fail silently."""
+    import sys as _sys
+
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "gui_ready", lambda: False)
+    monkeypatch.setattr(appicon, "_shortcut_done", False)
+    monkeypatch.setattr(_sys, "platform", "win32")
+    assert appicon.ensure_start_menu_shortcut() is False
+    assert "before the QApplication" in appicon.shortcut_note

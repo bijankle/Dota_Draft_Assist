@@ -1800,6 +1800,24 @@ credentials, and put the account at risk. Do not go there.
   the two fail independently, for different reasons, and a report naming
   one cannot say which is at fault.
 
+  **AND NOTHING IN THIS MODULE MAY RUN BEFORE THE QApplication**
+  (`gui_ready`). Touching a QPixmap without one does not raise: Qt
+  prints "QPixmap: Must construct a QGuiApplication before a QPixmap"
+  and **ABORTS THE PROCESS**, so no `except` anywhere catches it and
+  there is no traceback — from outside it is simply an app that does not
+  open, which is exactly what shipping the shortcut fix did. It was
+  called from `main()` beside `claim_taskbar_identity`, and it reaches a
+  QPixmap through `shell_ico` → `write_ico` → `pixmap`.
+  `claim_taskbar_identity` is pure ctypes and MUST run before the first
+  window, so it stays there; everything else about the icon waits, and
+  that is the distinction that was missed. `icon` and `write_ico` now
+  RAISE (catchable) rather than abort, `shell_ico` answers None, and
+  `ensure_start_menu_shortcut` says "called before the QApplication
+  existed" — the worst a caller can now do is get no icon rather than no
+  application. The test runs every painting entry point in a SUBPROCESS
+  with no QApplication and requires it to survive, because an abort
+  cannot be observed from inside the process it kills.
+
   **AND AN AppUserModelID OBLIGES THE APP TO PROVIDE THE SHORTCUT IT
   RESOLVES TO** (`ensure_start_menu_shortcut`, `write_shortcut`,
   `shortcut_note`). SIXTH cause, and the evidence that isolated it was

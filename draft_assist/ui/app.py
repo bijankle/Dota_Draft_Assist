@@ -3638,16 +3638,10 @@ def _report_crash(exc: BaseException) -> None:
 
 
 def main() -> None:
+    # Pure ctypes, and it MUST run before the first window — so it stays
+    # here, ahead of the QApplication. Nothing else about the icon may:
+    # see `appicon.gui_ready`.
     appicon.claim_taskbar_identity()
-    # AND THE SHORTCUT THAT IDENTITY RESOLVES TO. Declaring an
-    # AppUserModelID stops Windows treating this as pythonw.exe and makes
-    # it its own application — after which the shell looks up that
-    # application's icon and name through the Start-menu shortcut carrying
-    # the same string. Claiming the identity without providing the
-    # shortcut left the taskbar button with nothing to resolve to, which
-    # is why it drew as a blank page rather than as Python's logo. Silent,
-    # never fatal, one file in the user's own Start menu.
-    appicon.ensure_start_menu_shortcut()
     try:
         _main()
     except SystemExit:
@@ -3700,6 +3694,18 @@ def _main() -> None:
     ui_fonts.load_bundled()
     app.setStyleSheet(theme.STYLESHEET)
     app.setWindowIcon(appicon.icon())
+    # THE SHORTCUT THE AppUserModelID RESOLVES TO. Declaring an ID stops
+    # Windows treating this as pythonw.exe and makes it its own
+    # application — after which the shell looks up that application's icon
+    # and name through the Start-menu shortcut carrying the same string,
+    # so claiming the identity without providing the shortcut left the
+    # taskbar button with nothing to resolve to and drawing a blank page.
+    # HERE rather than beside `claim_taskbar_identity` in `main`: it
+    # renders an .ico, which touches a QPixmap, which ABORTS the process
+    # when there is no QGuiApplication yet. It was called there once and
+    # the app stopped opening at all, with no traceback. Still before the
+    # window is built, which is what the taskbar needs.
+    appicon.ensure_start_menu_shortcut()
     manual = ManualDraft()
     provider = make_provider(args, ds, manual)
     win = MainWindow(ds, provider, rules, meta, manual)
