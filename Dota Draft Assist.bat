@@ -13,9 +13,15 @@ echo First run - setting up. This takes a few minutes and happens once.
 echo.
 
 set "PYCMD="
-where py >/dev/null 2>&1 && set "PYCMD=py -3"
+rem Redirect the Windows way, to nul. The Unix null device is not a path
+rem cmd.exe knows, so it printed "The system cannot find the path
+rem specified." before the setup had done anything -- which made a first
+rem run look broken on exactly the machines this launcher exists for.
+rem Everything else in this file already redirected correctly; these two
+rem lines were the only exceptions.
+where py >nul 2>&1 && set "PYCMD=py -3"
 if not defined PYCMD (
-    where python >/dev/null 2>&1 && set "PYCMD=python"
+    where python >nul 2>&1 && set "PYCMD=python"
 )
 if not defined PYCMD (
     echo Python 3.11 or newer is required but was not found.

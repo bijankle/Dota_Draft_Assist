@@ -2017,6 +2017,19 @@ listener itself is testable by POSTing payloads to it, which the tests do.
 - The app is launched by exactly one file, `Dota Draft Assist.bat`. Every
   maintenance action is a menu item running in a progress dialog; do not add
   new .bat files.
+  **IT IS A cmd.exe SCRIPT AND NOTHING HERE CAN RUN IT**, which is the
+  whole reason `tests/test_launcher.py` READS it instead. Its failures
+  land on somebody else's machine on their first run, where there is no
+  traceback and nobody to ask for one. Two rules it broke and now cannot
+  break again: redirect to **`nul`**, never `/dev/null` — the Unix null
+  device is a PATH to cmd.exe, which cannot find it and prints "The
+  system cannot find the path specified." — and silence **both streams**
+  on a `where` probe, since `where` reports a miss on stderr and
+  `>nul` alone still prints "INFO: Could not find files…" at the user.
+  It shipped in the two `where` lines that pick the Python command, which
+  is the worst possible place: they run before anything else, so the
+  error was the first thing a new user ever saw. The file's line endings
+  are **CRLF** and must stay that way.
 
 ## Out of scope for the prototype
 
