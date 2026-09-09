@@ -95,6 +95,29 @@ def heroes() -> dict:
             for row in rows if isinstance(row, dict) and row.get("id")}
 
 
+def persona(account_id: int) -> str:
+    """The account's Steam display name, or "" if it cannot be had.
+
+    COSMETIC, and never fatal — the same rule `heroes` follows. It exists
+    for the remembered-accounts list: a friend ID is nine digits nobody
+    recognises a fortnight later, and the name beside it is the whole
+    difference between a usable list and a row of numbers.
+
+    A private profile, or one OpenDota has never seen, answers 200 with a
+    NULL profile rather than an error. That is not a fault and is not made
+    into one: an account with no name shows as its number, which is what
+    the list did before this existed.
+    """
+    try:
+        raw = _get(f"{API}/players/{account_id}", timeout=30)
+    except ApiError:
+        return ""
+    profile = raw.get("profile") if isinstance(raw, dict) else None
+    if not isinstance(profile, dict):
+        return ""
+    return str(profile.get("personaname") or "").strip()
+
+
 def item_names() -> dict:
     """Item id -> display name, out of a map keyed by internal name."""
     try:

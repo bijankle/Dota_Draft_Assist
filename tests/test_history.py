@@ -316,7 +316,65 @@ def test_the_remembered_accounts_are_local_only(tmp_path):
     assert [row["account_id"] for row in rows] == [42, 195286385]
     assert rows[1]["name"] == "Bijson"
     assert rows[1]["options"] == {"window": "6m"}
-    assert store.label(rows[1]) == "Bijson · 195286385"
+    assert store.label(rows[1]) == "195286385 (Bijson)"
+
+
+def test_an_account_with_no_resolved_name_is_just_its_number():
+    """Empty brackets after a number say a lookup failed, which is not
+    something the dropdown should be reporting."""
+    assert store.label({"account_id": 42, "name": ""}) == "42"
+    assert store.label({"account_id": 42}) == "42"
+
+
+# ------------------------------------------------------- the name -------
+
+def test_the_display_name_is_read_off_the_profile(monkeypatch):
+    """A friend ID is nine digits nobody recognises a fortnight later, so
+    the run resolves the name that goes in brackets beside it."""
+    from draft_assist.history import opendota
+    seen = []
+    monkeypatch.setattr(opendota, "_get", lambda url, **k: seen.append(url)
+                        or {"profile": {"personaname": " Bijson "}})
+    assert opendota.persona(195286385) == "Bijson"
+    assert seen == ["https://api.opendota.com/api/players/195286385"]
+
+
+def test_a_name_that_cannot_be_had_is_not_a_fault(monkeypatch):
+    """A private profile answers 200 with a null profile, and a rate limit
+    answers with an error — neither may stop a run that is about matches."""
+    from draft_assist.history import opendota
+
+    monkeypatch.setattr(opendota, "_get", lambda url, **k: {"profile": None})
+    assert opendota.persona(1) == ""
+
+    def refuse(url, **kwargs):
+        raise opendota.ApiError("rate", "slow down")
+    monkeypatch.setattr(opendota, "_get", refuse)
+    assert opendota.persona(1) == ""
+
+
+def test_a_run_carries_the_name_through_to_the_remembered_list(
+        tmp_path, monkeypatch):
+    """The run is the one moment the name can be resolved without the tab
+    making a network call of its own, so it is where it happens."""
+    from draft_assist.history import opendota, runner
+
+    def fake(url, **kwargs):
+        if "/matches?" in url:
+            return rows_for(40)
+        if "/players/" in url:
+            return {"profile": {"personaname": "Bijson"}}
+        return []                                   # the hero list
+
+    monkeypatch.setattr(opendota, "_get", fake)
+    report = runner.run(Options(account_id=195286385, window="all", cap=100))
+    assert report.name == "Bijson"
+
+    path = tmp_path / "accounts.json"
+    rows = store.remember(report.options.account_id, report.name,
+                          when="2026-09-09 10:00", matches=report.n,
+                          wins=report.wins, path=path)
+    assert store.label(rows[0]) == "195286385 (Bijson)"
 
 
 def test_running_an_account_again_keeps_what_it_knew(tmp_path):

@@ -232,8 +232,9 @@ class HistoryTab(QWidget):
         self.remembered = QComboBox()
         self.remembered.setMinimumWidth(190)
         self.remembered.setToolTip(
-            "Accounts this machine has looked at before. Kept locally and "
-            "never committed, so a copy of this app carries none of them.")
+            "Accounts this machine has looked at before, each with the "
+            "display name its run resolved. Kept locally and never "
+            "committed, so a copy of this app carries none of them.")
         self.remembered.activated.connect(self._pick_remembered)
         row.addWidget(self.remembered)
 
@@ -361,10 +362,11 @@ class HistoryTab(QWidget):
             return
         matches, wins = row.get("matches", 0), row.get("wins", 0)
         rate = f", {wins / matches * 100:.1f}% win rate" if matches else ""
-        name = (row.get("name") or "").strip()
-        who = f"{name} · {row['account_id']}" if name else row["account_id"]
+        # One spelling of an account, so the line above the box and the
+        # entry in the dropdown cannot drift apart.
         self._note(self.last_run,
-                   f"Last run {when} for {who} — {matches} matches{rate}.")
+                   f"Last run {when} for {store.label(row)} — "
+                   f"{matches} matches{rate}.")
 
     # ---- running -------------------------------------------------------
     def options(self) -> Options:
@@ -431,7 +433,10 @@ class HistoryTab(QWidget):
     def _done(self, report) -> None:
         parsed = self._account
         report.how = parsed.how if parsed else ""
-        report.name = (parsed.name or "") if parsed else ""
+        # The RUN resolved the display name; `parsed.name` is only ever
+        # set by a Steam vanity URL, which cannot be turned into an id
+        # here at all. So the lookup wins and that is the fallback.
+        report.name = report.name or ((parsed.name or "") if parsed else "")
         self.report = report
         self.export_button.setEnabled(True)
         self._note(self.status, "")

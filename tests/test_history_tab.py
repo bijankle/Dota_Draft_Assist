@@ -166,6 +166,32 @@ def test_the_bar_column_is_scaled_to_the_block_it_is_in(qapp):
     table.deleteLater()
 
 
+def test_the_dropdown_names_the_account_it_cannot_be_recognised_by(
+        qapp, tmp_path, monkeypatch):
+    """Nobody recognises their own friend ID a fortnight later, so the
+    name the run resolved goes in brackets after the number — in the
+    dropdown and in the line above it, spelled the same way in both."""
+    from draft_assist.history import store
+    path = tmp_path / "accounts.json"
+    monkeypatch.setattr(store, "STORE_FILE", path)
+    store.remember(195286385, "Bijson", when="2026-09-09 10:00",
+                   matches=412, wins=211, path=path)
+    store.remember(42, "", when="2026-09-01 09:00", matches=88, wins=40,
+                   path=path)
+
+    tab = HistoryTab()
+    shown = [tab.remembered.itemText(i)
+             for i in range(1, tab.remembered.count())]
+    assert shown == ["42", "195286385 (Bijson)"]
+    # An account with no resolved name is its number alone: empty brackets
+    # would be the app reporting a failed lookup at the user.
+    assert "()" not in " ".join(shown)
+    assert "195286385 (Bijson)" not in tab.last_run.text()   # 42 is newest
+    tab._apply_remembered(store.load(path)[1])
+    assert "195286385 (Bijson)" in tab.last_run.text()
+    tab.deleteLater()
+
+
 def test_the_ranked_list_of_every_hero_is_gone(window):
     """It answered "what should I pick", which the Draft tab answers under
     the picks. The tab is the match history now."""

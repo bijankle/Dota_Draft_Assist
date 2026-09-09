@@ -598,6 +598,23 @@ credentials, and put the account at risk. Do not go there.
   a very large table and times out more often than it answers, so the tab
   says to use the friend ID rather than hanging on it. `opendota.search`
   exists and is not wired to a control.
+  **THE OTHER DIRECTION IS CHEAP AND IS DONE** (`opendota.persona`,
+  `store.label`). Name to id is a search across every account there has
+  ever been; id to name is one row on `/players/<id>`, and the two are not
+  the same request wearing different clothes — refusing the first says
+  nothing about the second. So a run's FIRST call resolves the display
+  name, and the remembered list reads `195286385 (Bijson)`: the number is
+  the identity and what the field takes, the name in brackets is what a
+  person recognises a fortnight later, which is the whole reason that
+  dropdown exists. It happens during a RUN because that is the one moment
+  the tab is already allowed on the network — resolving on paste, or on
+  the tab opening, would be this feature making a request nobody asked
+  for. Cosmetic and never fatal, the rule `heroes` follows: a private
+  profile answers 200 with a null profile, a rate limit answers with an
+  error, and both come back as "" and show as the bare number. Empty
+  brackets are never drawn — that would be the app reporting a failed
+  lookup at somebody who did not ask for one. An account remembered
+  before this existed gets its name the next time it is run.
   **The export is TWO SHEETS**, at the user's request: every match in one
   under an autofilter, the whole report in the other. The browser version
   wrote one sheet per analysis plus a summary, and thirteen tabs is a

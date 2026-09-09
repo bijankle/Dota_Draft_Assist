@@ -21,7 +21,19 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     say = say or (lambda text, done=0, total=0: None)
     cancelled = cancelled or (lambda: False)
 
-    say("Reading the hero list…")
+    # THE DISPLAY NAME FIRST, because everything after it can then say
+    # whose history it is reading — and because the remembered-accounts
+    # list is written from this report, so a run is the one moment the
+    # name can be resolved without the tab making a network call of its
+    # own. Cosmetic: "" is a perfectly good answer and the number stands
+    # on its own, exactly as it did before.
+    say("Looking up the account…")
+    name = opendota.persona(options.account_id)
+    if cancelled():
+        raise Refused("Stopped.")
+
+    say(f"Reading the hero list… ({name})" if name
+        else "Reading the hero list…")
     heroes = opendota.heroes()
     if cancelled():
         raise Refused("Stopped.")
@@ -56,7 +68,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
                                   options.picked, item_names)
-    return Report(options=options, how="", name="", matches=shaped.matches,
+    return Report(options=options, how="", name=name, matches=shaped.matches,
                   blocks=blocks, dropped=shaped.dropped,
                   sessions=shaped.sessions, returned=shaped.returned,
                   ran_at=datetime.now())

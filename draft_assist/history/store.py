@@ -84,6 +84,14 @@ def forget(account_id: int, path: Path | None = None) -> list:
 
 
 def label(row: dict) -> str:
-    """How a remembered account reads in the dropdown."""
+    """How a remembered account reads in the dropdown.
+
+    THE NUMBER LEADS AND THE NAME IS IN BRACKETS AFTER IT, at the user's
+    request: the friend ID is what the field takes and what this file is
+    keyed on, so it is the identity — but nobody remembers which nine
+    digit number was theirs a fortnight later, and everybody recognises
+    the name beside it. An account whose name could not be resolved reads
+    as its number alone rather than as an empty pair of brackets.
+    """
     name = (row.get("name") or "").strip()
-    return f"{name} · {row['account_id']}" if name else str(row["account_id"])
+    return f"{row['account_id']} ({name})" if name else str(row["account_id"])
