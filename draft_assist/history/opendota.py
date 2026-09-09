@@ -13,6 +13,7 @@ what makes an outage look like a bug in the app.
 """
 
 import time
+from dataclasses import dataclass
 
 API = "https://api.opendota.com/api"
 
@@ -95,27 +96,47 @@ def heroes() -> dict:
             for row in rows if isinstance(row, dict) and row.get("id")}
 
 
-def persona(account_id: int) -> str:
-    """The account's Steam display name, or "" if it cannot be had.
+@dataclass
+class Profile:
+    """What `/players/<id>` said about an account.
 
-    COSMETIC, and never fatal — the same rule `heroes` follows. It exists
-    for the remembered-accounts list: a friend ID is nine digits nobody
-    recognises a fortnight later, and the name beside it is the whole
-    difference between a usable list and a row of numbers.
+    `known` HAS THREE VALUES, and the third is why this is a class rather
+    than a string. True is "OpenDota has this account", False is "it does
+    not", and None is "the question could not be asked" — a rate limit, a
+    timeout, a dead connection. Collapsing None into False would have the
+    app telling somebody their ID is wrong because their wifi dropped.
+    """
+    name: str = ""
+    known: bool | None = None
 
-    A private profile, or one OpenDota has never seen, answers 200 with a
-    NULL profile rather than an error. That is not a fault and is not made
-    into one: an account with no name shows as its number, which is what
-    the list did before this existed.
+
+def profile(account_id: int) -> Profile:
+    """Who this account is, as far as OpenDota is concerned.
+
+    COSMETIC for the name, and never fatal — the same rule `heroes`
+    follows. The name exists for the remembered-accounts list: a friend ID
+    is nine digits nobody recognises a fortnight later, and the name
+    beside it is the whole difference between a usable list and a row of
+    numbers.
+
+    `known` does a second job, and it is the one that makes a private
+    account diagnosable. An account OpenDota has never seen and an account
+    whose owner has switched Expose Public Match Data off BOTH return an
+    empty match list, so the symptom is identical — but the first has no
+    profile here and the second does. That is the only thing that tells
+    them apart, and without it the app has to answer both with a guess.
     """
     try:
         raw = _get(f"{API}/players/{account_id}", timeout=30)
     except ApiError:
-        return ""
-    profile = raw.get("profile") if isinstance(raw, dict) else None
-    if not isinstance(profile, dict):
-        return ""
-    return str(profile.get("personaname") or "").strip()
+        return Profile()                    # asked and not answered
+    found = raw.get("profile") if isinstance(raw, dict) else None
+    if not isinstance(found, dict):
+        # A 200 with no profile is OpenDota saying it does not have this
+        # account, which is an ANSWER rather than a failure to answer.
+        return Profile(known=False)
+    return Profile(name=str(found.get("personaname") or "").strip(),
+                   known=True)
 
 
 def item_names() -> dict:

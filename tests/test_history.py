@@ -335,7 +335,8 @@ def test_the_display_name_is_read_off_the_profile(monkeypatch):
     seen = []
     monkeypatch.setattr(opendota, "_get", lambda url, **k: seen.append(url)
                         or {"profile": {"personaname": " Bijson "}})
-    assert opendota.persona(195286385) == "Bijson"
+    who = opendota.profile(195286385)
+    assert (who.name, who.known) == ("Bijson", True)
     assert seen == ["https://api.opendota.com/api/players/195286385"]
 
 
@@ -345,12 +346,50 @@ def test_a_name_that_cannot_be_had_is_not_a_fault(monkeypatch):
     from draft_assist.history import opendota
 
     monkeypatch.setattr(opendota, "_get", lambda url, **k: {"profile": None})
-    assert opendota.persona(1) == ""
+    assert opendota.profile(1) == opendota.Profile(name="", known=False)
 
     def refuse(url, **kwargs):
         raise opendota.ApiError("rate", "slow down")
     monkeypatch.setattr(opendota, "_get", refuse)
-    assert opendota.persona(1) == ""
+    # ASKED AND NOT ANSWERED is not the same as answered "no": known stays
+    # None, or a rate limit would tell somebody their ID was wrong.
+    assert opendota.profile(1) == opendota.Profile(name="", known=None)
+
+
+def test_an_empty_match_list_says_which_of_the_three_it_is(monkeypatch):
+    """A private history, a wrong ID and an unanswerable lookup all return
+    no matches, and the user can only fix the first two if told apart."""
+    from draft_assist.history import opendota, runner
+
+    def answering(profile):
+        def fake(url, **kwargs):
+            if "/matches?" in url:
+                return []                   # nothing, whatever the reason
+            if "/players/" in url:
+                if isinstance(profile, Exception):
+                    raise profile
+                return {"profile": profile}
+            return []
+        return fake
+
+    options = Options(account_id=1, window="all", cap=100)
+
+    monkeypatch.setattr(opendota, "_get", answering({"personaname": "Bij"}))
+    with pytest.raises(runner.Refused) as caught:
+        runner.run(options)
+    assert str(caught.value) == runner.PRIVATE
+    assert "Expose Public Match Data" in runner.PRIVATE
+
+    monkeypatch.setattr(opendota, "_get", answering(None))
+    with pytest.raises(runner.Refused) as caught:
+        runner.run(options)
+    assert str(caught.value) == runner.UNKNOWN_ACCOUNT
+
+    monkeypatch.setattr(opendota, "_get",
+                        answering(opendota.ApiError("rate", "slow down")))
+    with pytest.raises(runner.Refused) as caught:
+        runner.run(options)
+    assert str(caught.value) == runner.NO_MATCHES
 
 
 def test_a_run_carries_the_name_through_to_the_remembered_list(

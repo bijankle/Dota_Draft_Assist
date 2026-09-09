@@ -192,6 +192,23 @@ def test_the_dropdown_names_the_account_it_cannot_be_recognised_by(
     tab.deleteLater()
 
 
+def test_a_private_match_history_is_flagged_under_the_search(qapp):
+    """It is a Dota setting the user can change in ten seconds, so it must
+    read as something to act on rather than as the app having failed."""
+    from draft_assist.history import runner
+    tab = HistoryTab()
+    tab._fault(runner.PRIVATE)
+    # `isHidden`, not `isVisible`: the tab has never been shown, so
+    # isVisible answers "is this on screen" rather than "did we hide it".
+    assert not tab.status.isHidden()
+    assert tab.status.text() == runner.PRIVATE
+    assert tab.status.property("warn") is True
+    # And it goes back to an ordinary note when the next run starts.
+    tab._progress("Looking up the account…", 0, 0)
+    assert tab.status.property("warn") is False
+    tab.deleteLater()
+
+
 def test_the_ranked_list_of_every_hero_is_gone(window):
     """It answered "what should I pick", which the Draft tab answers under
     the picks. The tab is the match history now."""

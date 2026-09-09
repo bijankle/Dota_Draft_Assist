@@ -363,6 +363,10 @@ QLabel[eyebrow="true"] {{
     letter-spacing: 1px;
 }}
 QLabel[dim="true"] {{ color: {TEXT_DIM}; }}
+/* Amber, and declared AFTER dim so it wins the cascade on a label that
+   carries both: a note the user has to act on must not be the colour of
+   one they can ignore. */
+QLabel[warn="true"] {{ color: {WARN}; }}
 QLabel[pill="true"] {{
     background: {BG_INPUT}; border: 1px solid {BORDER};
     border-radius: 9px; padding: 2px 9px; color: {TEXT_DIM};

@@ -263,15 +263,26 @@ class HistoryTab(QWidget):
         return frame
 
     @staticmethod
-    def _note(label: QLabel, text: str) -> None:
+    def _note(label: QLabel, text: str, warn: bool = False) -> None:
         """Say it, or take up no room at all.
 
         An empty label is still a widget in a layout, and two of them under
         this card's one row is a card with a blank strip under it for no
         reason — the same rule the team panels' note follows.
+
+        `warn` turns it amber, for the notes that are asking to be acted
+        on: a private match history is a Dota setting the user can change
+        in ten seconds, and in the dim grey of an ordinary progress line
+        it read as the app having failed at something.
         """
         label.setText(text)
         label.setVisible(bool(text))
+        if label.property("warn") != warn:
+            label.setProperty("warn", warn)
+            # A property a stylesheet selects on is only re-read when the
+            # widget is re-polished; setting it alone changes nothing.
+            label.style().unpolish(label)
+            label.style().polish(label)
 
     def _build_options_card(self) -> QFrame:
         frame, lay = card("What to measure")
@@ -422,7 +433,7 @@ class HistoryTab(QWidget):
         self._note(self.status, f"{text} {done}/{total}" if total else text)
 
     def _fault(self, message: str) -> None:
-        self._note(self.status, message)
+        self._note(self.status, message, warn=True)
         self.say("Match history: " + message.split(".")[0], 6000)
         self._set_running(False)
 

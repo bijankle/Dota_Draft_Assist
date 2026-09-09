@@ -17,6 +17,27 @@ class Refused(Exception):
     """The run cannot honestly be done. The message says why."""
 
 
+# AN EMPTY MATCH LIST HAS THREE CAUSES AND ONE APPEARANCE, so the profile
+# lookup is what tells them apart — see `opendota.profile`. Answering all
+# three with the same paragraph made the commonest one (a Dota privacy
+# setting, which the user can fix in ten seconds) read as a fault in the
+# app. Each is two sentences: what is wrong, and what to do about it.
+PRIVATE = (
+    "This account's match history is private. Turn on Expose Public Match "
+    "Data in Dota 2 (Settings ▸ Options), play a game, and run this again.")
+
+UNKNOWN_ACCOUNT = (
+    "OpenDota has never seen this account, so the ID is probably not the "
+    "one you meant. Check the Friend ID on your Dota 2 profile — it is not "
+    "the 17 digit Steam ID.")
+
+NO_MATCHES = (
+    "OpenDota returned no matches for this account, and could not be asked "
+    "whether it knows the account at all. That is usually Expose Public "
+    "Match Data switched off in Dota 2 (Settings ▸ Options); it can also "
+    "mean the ID belongs to somebody who has not played.")
+
+
 def run(options: Options, say=None, cancelled=None) -> Report:
     say = say or (lambda text, done=0, total=0: None)
     cancelled = cancelled or (lambda: False)
@@ -28,7 +49,8 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     # own. Cosmetic: "" is a perfectly good answer and the number stands
     # on its own, exactly as it did before.
     say("Looking up the account…")
-    name = opendota.persona(options.account_id)
+    who = opendota.profile(options.account_id)
+    name = who.name
     if cancelled():
         raise Refused("Stopped.")
 
@@ -41,14 +63,11 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     say("Asking OpenDota for the match list…")
     rows = opendota.matches(options.account_id, options.cap, options.days)
     if not rows:
-        # The commonest cause by a distance, and the app must say it
-        # outright rather than drawing an empty report that looks broken.
-        raise Refused(
-            "OpenDota returned no matches for that account. That almost "
-            "always means Expose Public Match Data is switched off in the "
-            "Dota 2 settings — turn it on, play a game, and try again. It "
-            "can also mean the account ID belongs to somebody who has not "
-            "played.")
+        # Nothing came back, and WHY decides what to say. An account
+        # OpenDota holds a profile for is a real account whose matches are
+        # hidden; one it has never heard of is a wrong number.
+        raise Refused({True: PRIVATE, False: UNKNOWN_ACCOUNT}.get(
+            who.known, NO_MATCHES))
 
     say("Shaping the matches…")
     shaped = shape.shape(rows, heroes, days=options.days,

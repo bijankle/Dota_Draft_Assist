@@ -598,7 +598,7 @@ credentials, and put the account at risk. Do not go there.
   a very large table and times out more often than it answers, so the tab
   says to use the friend ID rather than hanging on it. `opendota.search`
   exists and is not wired to a control.
-  **THE OTHER DIRECTION IS CHEAP AND IS DONE** (`opendota.persona`,
+  **THE OTHER DIRECTION IS CHEAP AND IS DONE** (`opendota.profile`,
   `store.label`). Name to id is a search across every account there has
   ever been; id to name is one row on `/players/<id>`, and the two are not
   the same request wearing different clothes — refusing the first says
@@ -615,6 +615,21 @@ credentials, and put the account at risk. Do not go there.
   brackets are never drawn — that would be the app reporting a failed
   lookup at somebody who did not ask for one. An account remembered
   before this existed gets its name the next time it is run.
+  **THAT SAME LOOKUP IS WHAT MAKES A PRIVATE HISTORY DIAGNOSABLE**
+  (`opendota.Profile.known`, `runner.PRIVATE` / `UNKNOWN_ACCOUNT` /
+  `NO_MATCHES`). An empty match list has three causes and ONE appearance:
+  Expose Public Match Data is off in Dota 2, the ID is not the one they
+  meant, or the lookup itself could not be made. The profile row tells the
+  first two apart — a hidden account still HAS a profile, an account
+  OpenDota has never seen does not — so `known` is three-valued for the
+  same reason `required` is in the capture session: asked-and-not-answered
+  is not a no, and collapsing it would tell somebody their ID was wrong
+  because their connection dropped. Each answer is two sentences, what is
+  wrong and what to do, and the note is AMBER (`QLabel[warn="true"]`,
+  declared after the dim rule so it wins on a label carrying both) because
+  a Dota setting the user can change in ten seconds must not read as the
+  app having failed at something. One paragraph covering all three was
+  what made the commonest case look like a bug.
   **The export is TWO SHEETS**, at the user's request: every match in one
   under an autofilter, the whole report in the other. The browser version
   wrote one sheet per analysis plus a summary, and thirteen tabs is a
