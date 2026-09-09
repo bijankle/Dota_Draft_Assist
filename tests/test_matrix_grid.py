@@ -625,10 +625,16 @@ def test_an_empty_grid_has_no_opinion_about_portrait_size(art, qapp):
 
     A grid holding nothing has nothing to say about how big a portrait
     should be, and has to say so rather than guessing."""
+    from draft_assist.ui.tables import MatrixTable
+    # A BARE one: `built` already draws the empty 5x5 outline, which is a
+    # grid holding a shape rather than a grid holding nothing.
+    bare = MatrixTable()
+    assert bare.table.columnCount() == 0
+    assert bare.sections() == 0
+    assert bare.portrait_ceiling() == 0
+    bare.deleteLater()
+
     table = built(qapp, width=1400)
-    assert table.table.columnCount() == 0
-    assert table.sections() == 0
-    assert table.portrait_ceiling() == 0
     table.show_matrix(grid())
     QApplication.processEvents()
     assert table.sections() > 1
