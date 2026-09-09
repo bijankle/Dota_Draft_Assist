@@ -10,7 +10,8 @@ Four sources, in order:
    if one has been committed. A DIFFERENT NAME from the above on purpose:
    Setup ▸ Choose app icon… writes `app.ico`, so sharing the name would
    make every update stamp on the user's own pick. Whatever goes here has
-   to be the project's to distribute.
+   to be the project's to distribute. With BOTH names present the bigger
+   picture wins rather than the first extension — see `_best`.
 2. Bloodseeker's portrait, which the app has ALREADY downloaded into
    `assets/portraits/base/` for the recogniser. Valve's artwork, so it is
    not committed here — but it is already on their disk, fetched by a step
@@ -39,8 +40,8 @@ import struct
 from pathlib import Path
 
 from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
-from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
-                         QPen, QPixmap, QPolygonF)
+from PyQt6.QtGui import (QColor, QIcon, QImageReader, QLinearGradient,
+                         QPainter, QPen, QPixmap, QPolygonF)
 
 from ..config import ASSETS_DIR, REPO_ROOT
 from . import theme
@@ -55,6 +56,9 @@ CANDIDATES = ("app.ico", "app.png", "app.jpg", "app.jpeg", "app.bmp")
 # name too, every update would overwrite the user's pick with it. Two
 # names, two owners, and the user's wins.
 DEFAULT_CANDIDATES = ("app-default.ico", "app-default.png")
+# NEITHER LIST IS TRIED IN ORDER. The order breaks a TIE and nothing more
+# — see `_best`, which ranks whichever files are present by how big a
+# picture each one actually holds.
 # The sizes Windows actually asks a taskbar icon for.
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 # What goes into a .ico for a shortcut. Fewer than SIZES: the file is read
@@ -254,16 +258,61 @@ def _from_file(path: Path) -> QIcon | None:
 
 
 def _build() -> QIcon:
-    for path in (supplied_path(), default_path()):
-        if path is not None:
-            candidate = _from_file(path)
-            if candidate is not None:
-                return candidate
+    for path in _readable_candidates():
+        candidate = _from_file(path)
+        if candidate is not None:
+            return candidate
     art = _hero_pixmap() or _drawn(256)
     built = QIcon()
     for size in SIZES:
         built.addPixmap(_square(art, size))
     return built
+
+
+def biggest_image(path) -> int:
+    """The largest picture this file actually holds, or 0 if none.
+
+    An .ico is a DIRECTORY of images, so its answer is its biggest entry;
+    anything else is one image, and its header says how big it is without
+    decoding a megabyte of pixels to find out. Zero doubles as the
+    readability test: a file Qt cannot make sense of has nothing to offer
+    and must not be chosen over one that does.
+    """
+    if is_ico(path):
+        return max(ico_sizes(path), default=0)
+    size = QImageReader(str(path)).size()
+    if not size.isValid():
+        return 0
+    return max(size.width(), size.height())
+
+
+def _best(names) -> Path | None:
+    """Whichever of these files has the most to draw with.
+
+    **ORDERING BY EXTENSION IS WHAT BROKE THIS, and it broke it in the one
+    way that looks like nothing changed.** `app-default.ico` was checked
+    before `app-default.png`, so an .ico holding a single 32x32 sitting
+    beside a 1024x1024 PNG won on the strength of its filename and the PNG
+    was never opened — leaving the taskbar exactly as wrong as it had been
+    before the PNG was added, which is precisely what "I added the full
+    size png and it still is not working" was. Nothing on screen could say
+    so: the title bar draws fine from a 32, and the file that was being
+    ignored was sitting right there in the folder.
+
+    So the question is not which name comes first, it is which file has
+    the most to draw with — `biggest_image`. A real .ico wins a TIE,
+    because it can be handed to the shell untouched; the list order breaks
+    the tie after that. Two files no longer produce a worse icon than
+    either of them alone, which is the property that was missing.
+    """
+    ranked = []
+    for order, name in enumerate(names):
+        path = ASSETS_DIR / name
+        if path.exists():
+            ranked.append((biggest_image(path), is_ico(path), -order, path))
+    if not ranked:
+        return None
+    return max(ranked)[3]
 
 
 def default_path() -> Path | None:
@@ -275,20 +324,54 @@ def default_path() -> Path | None:
     project's to distribute — the same bar the bundled fonts had to clear,
     and the one Valve's and Blizzard's artwork does not.
     """
-    for name in DEFAULT_CANDIDATES:
-        path = ASSETS_DIR / name
-        if path.exists():
-            return path
-    return None
+    return _best(DEFAULT_CANDIDATES)
 
 
 def supplied_path() -> Path | None:
     """The user's own icon file, if there is one."""
-    for name in CANDIDATES:
-        path = ASSETS_DIR / name
-        if path.exists():
-            return path
-    return None
+    return _best(CANDIDATES)
+
+
+def _readable_candidates() -> list:
+    """The supplied file and the shipped one, best first, skipping any
+    that hold no picture at all."""
+    return [path for path in (supplied_path(), default_path())
+            if path is not None and biggest_image(path) > 0]
+
+
+def chosen_path() -> Path | None:
+    """The file the app's icon is actually built from, if any.
+
+    ONE answer, asked by `_build` and by `shell_ico` alike. They used to
+    decide separately — `shell_ico` had its own hard-coded pair of
+    filenames — and two lists that can disagree is how the window and the
+    pin end up drawing two different pictures, which is a worse fault than
+    either of them being wrong.
+    """
+    found = _readable_candidates()
+    return found[0] if found else None
+
+
+def describe() -> str:
+    """One line saying where the icon came from and what is in it.
+
+    "Title bar right, taskbar wrong" has now had THREE separate causes: a
+    PNG renamed to .ico, a genuine .ico holding one 32x32, and a big PNG
+    passed over because a small .ico sorted ahead of it. None of the three
+    is visible in the picture and all three are obvious in one line, so
+    the line goes in Debug ▸ Copy everything with the rest of what a
+    report needs.
+    """
+    path = chosen_path()
+    if path is None:
+        return f"{source()} — no icon file in {ASSETS_DIR}"
+    if is_ico(path):
+        holds = f"ico holding {sorted(ico_sizes(path))}"
+    else:
+        holds = f"{biggest_image(path)}px image"
+    passed = "handed to the shell as it is" if covers_the_shell(path) \
+        else "rebuilt at every size"
+    return f"{source()}: {path.name} — {holds}, {passed}"
 
 
 def install(path) -> Path:
@@ -386,12 +469,15 @@ def shell_ico() -> Path | None:
     it. Never fatal: no icon is worse than the right icon and better than
     not starting.
     """
-    # Only a file that really IS an ICO goes to the shell. One that is
-    # not gets rendered into a proper one below, which is what makes a
-    # renamed PNG work in the taskbar instead of silently not.
-    for candidate in (ASSETS_DIR / "app.ico", ASSETS_DIR / "app-default.ico"):
-        if candidate.exists() and covers_the_shell(candidate):
-            return candidate
+    # Only a file that really IS an ICO goes to the shell, and only the
+    # one the app's own icon was built from — asking `chosen_path` rather
+    # than a second list of filenames is what stops the window and the pin
+    # drawing two different pictures. Anything else is rendered into a
+    # proper .ico below, which is what makes a PNG work in the taskbar
+    # instead of silently not.
+    candidate = chosen_path()
+    if candidate is not None and covers_the_shell(candidate):
+        return candidate
     try:
         return write_ico(ASSETS_DIR / "app-generated.ico")
     except Exception:                   # noqa: BLE001 - see the docstring

@@ -1678,6 +1678,33 @@ credentials, and put the account at risk. Do not go there.
   not pretty, but a button drawn from something beats one drawn from
   nothing, and the real fix is to supply the PNG and let the app render
   the .ico itself.
+  **AND THE TWO NAMES ARE NOT TRIED IN ORDER** (`biggest_image`,
+  `_best`, `chosen_path`). `DEFAULT_CANDIDATES` named `app-default.ico`
+  ahead of `app-default.png` and `default_path` returned the first that
+  existed, so a 1024x1024 PNG dropped in beside an `.ico` holding a
+  single 32x32 was never opened — and the advice that produced that
+  state was "supply the PNG and let the app render the `.ico` itself".
+  Following it changed nothing whatever, with the ignored file sitting
+  in the folder: **title bar right and taskbar wrong for the THIRD
+  time**, from a third cause, and the only one of the three where the
+  fix was already on disk. So the question is not which name sorts
+  first, it is which file has the most to draw with — `biggest_image`
+  reads an `.ico`'s directory or a raster's header, never decoding a
+  megabyte to find out, and a zero doubles as "Qt cannot read this",
+  so a corrupt file can never beat a good one. A real `.ico` wins a
+  TIE, since it is handed over untouched; the list order breaks the tie
+  after that. Two files can no longer produce a worse icon than either
+  of them alone, which is the property that was missing. A 32x32 on its
+  own is still used and still rebuilt around — that was asked for
+  outright and ranking by size must not become refusing the small one.
+  `shell_ico` asks `chosen_path` rather than carrying its own pair of
+  filenames: two lists that can disagree is how the window and the pin
+  end up drawing two different pictures, which is worse than either
+  being wrong. `describe()` puts the file, what is inside it and
+  whether it is passed through or rebuilt into Debug ▸ Copy everything,
+  because none of the three causes is visible in the picture and all
+  three are one line.
+
   **A SUPPLIED FILE IS REBUILT AT EVERY SIZE UNLESS IT IS AN `.ico`**
   (`_from_file`). A real .ico already carries each size drawn or hinted
   for it, so it is used exactly as supplied. Everything else is ONE

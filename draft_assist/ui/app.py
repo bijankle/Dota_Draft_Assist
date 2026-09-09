@@ -3392,6 +3392,7 @@ class MainWindow(QMainWindow):
             f"data: {self.ds.meta.get('pair_source', '?')} · "
             f"{self.ds.age_hours():.1f}h old · "
             f"brackets {self.ds.meta.get('target_brackets', '?')}",
+            f"app icon: {appicon.describe()}",
             f"taskbar identity: {appicon.identity_note}",
             "",
             "--- what the app is reading ---",

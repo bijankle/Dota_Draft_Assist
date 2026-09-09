@@ -322,3 +322,147 @@ def test_ico_sizes_refuses_what_is_not_a_directory_of_images(tmp_path):
     # Claims two images and carries no directory for them.
     (tmp_path / "lying.ico").write_bytes(b"\x00\x00\x01\x00\x02\x00")
     assert appicon.ico_sizes(tmp_path / "lying.ico") == set()
+
+
+def test_the_bigger_picture_wins_rather_than_the_first_extension(
+        qapp, tmp_path, monkeypatch):
+    """THE THIRD CAUSE of "title bar right, taskbar wrong", and the one
+    that looked like nothing had changed at all.
+
+    `DEFAULT_CANDIDATES` named the .ico first, and `default_path` returned
+    the first name that existed — so a 1024x1024 PNG dropped in beside an
+    .ico holding a single 32x32 was never opened. The advice that produced
+    that state was "supply the PNG and let the app render the .ico
+    itself", and following it made no difference whatsoever, with the
+    ignored file sitting right there in the folder.
+    """
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    monkeypatch.setattr(appicon, "ICO_SIZES", (32,))
+    appicon.write_ico(tmp_path / "app-default.ico")
+    monkeypatch.setattr(appicon, "ICO_SIZES", (16, 32, 48, 64, 128, 256))
+    appicon.forget()
+    big = QPixmap(1024, 1024)
+    big.fill()
+    assert big.save(str(tmp_path / "app-default.png"), "PNG")
+
+    assert appicon.default_path().name == "app-default.png"
+    assert appicon.chosen_path().name == "app-default.png"
+    # And the .ico the shell is handed is rendered from the PNG, not from
+    # the 32 — which is the whole point of choosing the right file.
+    shell = appicon.shell_ico()
+    assert shell.name == "app-generated.ico"
+    assert appicon.ico_sizes(shell) == set(appicon.ICO_SIZES)
+    appicon.forget()
+
+
+def test_a_thirty_two_pixel_icon_on_its_own_is_still_used(
+        qapp, tmp_path, monkeypatch):
+    """Asked for outright: "please allow for 32 x 32 icons, and keep the
+    icon that i put in that assets folder". Ranking by size must not turn
+    into refusing the small one — with nothing better present it is what
+    the app has, and it is what the app draws."""
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    monkeypatch.setattr(appicon, "ICO_SIZES", (32,))
+    thin = appicon.write_ico(tmp_path / "app-default.ico")
+    monkeypatch.setattr(appicon, "ICO_SIZES", (16, 32, 48, 64, 128, 256))
+    appicon.forget()
+
+    assert appicon.chosen_path() == thin
+    assert appicon.source() == "default"
+    baked = {size.width() for size in appicon.icon().availableSizes()}
+    assert set(appicon.SIZES) <= baked
+    appicon.forget()
+
+
+def test_a_tie_goes_to_the_real_ico(qapp, tmp_path, monkeypatch):
+    """Same size in both, so nothing distinguishes them on content — and
+    the .ico can be handed to the shell untouched while the PNG has to be
+    re-encoded into one."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    full = appicon.write_ico(tmp_path / "app-default.ico")   # up to 256
+    art = QPixmap(256, 256)
+    art.fill()
+    assert art.save(str(tmp_path / "app-default.png"), "PNG")
+
+    assert appicon.default_path() == full
+    assert appicon.shell_ico() == full, "no need to render one"
+    appicon.forget()
+
+
+def test_a_file_that_holds_no_picture_is_passed_over(qapp, tmp_path,
+                                                     monkeypatch):
+    """`biggest_image` doubles as the readability test, so a truncated or
+    corrupt file can never win over one that actually has something in
+    it — nor leave the app on the drawn fallback while a good file sits
+    beside it."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    (tmp_path / "app-default.ico").write_bytes(b"not an icon at all")
+    assert appicon.biggest_image(tmp_path / "app-default.ico") == 0
+    art = QPixmap(512, 512)
+    art.fill()
+    assert art.save(str(tmp_path / "app-default.png"), "PNG")
+
+    assert appicon.chosen_path().name == "app-default.png"
+    assert appicon.biggest_image(tmp_path / "app-default.png") == 512
+    appicon.forget()
+
+
+def test_the_window_and_the_pin_are_built_from_the_same_file(
+        qapp, tmp_path, monkeypatch):
+    """`shell_ico` used to carry its own hard-coded pair of filenames, so
+    it could hand the shell a file the window's icon was not built from —
+    the pin and the title bar drawing two different pictures, which is
+    worse than either being wrong."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    # The user's own choice is a PNG; the shipped default is a full .ico.
+    # The user's must win BOTH questions, not one each.
+    appicon.write_ico(tmp_path / "app-default.ico")
+    art = QPixmap(512, 512)
+    art.fill()
+    assert art.save(str(tmp_path / "app.png"), "PNG")
+
+    assert appicon.chosen_path().name == "app.png"
+    assert appicon.source() == "assets"
+    assert appicon.shell_ico().name == "app-generated.ico", \
+        "the shipped .ico is not the picture the window is showing"
+    appicon.forget()
+
+
+def test_describe_names_the_file_and_what_is_in_it(qapp, tmp_path,
+                                                   monkeypatch):
+    """None of the three causes of a wrong taskbar icon is visible in the
+    picture, and all three are obvious in this one line — so it goes in
+    the paste, where a report can carry it."""
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    assert "no icon file" in appicon.describe()
+
+    monkeypatch.setattr(appicon, "ICO_SIZES", (32,))
+    appicon.write_ico(tmp_path / "app-default.ico")
+    monkeypatch.setattr(appicon, "ICO_SIZES", (16, 32, 48, 64, 128, 256))
+    appicon.forget()
+    said = appicon.describe()
+    assert "app-default.ico" in said and "[32]" in said
+    assert "rebuilt" in said, "it says the small one is not handed over"
+    appicon.forget()
