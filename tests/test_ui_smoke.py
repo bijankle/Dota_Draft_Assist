@@ -3413,3 +3413,95 @@ def test_the_sizes_are_two_sliders_in_the_view_menu(window):
     for slider in window.size_sliders.values():
         assert (slider.minimum(), slider.maximum()) == (50, 200)
     assert window.sizes_menu.menuAction() in window.view_menu.actions()
+
+
+def test_updating_the_app_downloads_no_statistics_and_no_artwork():
+    """AT THE USER'S REQUEST, and because of what it looked like: Update
+    ran `fetch_assets` as its last step, so pressing it sat there pulling
+    126 portraits, every item icon and the community's alternative
+    portraits — minutes of network with a progress box that reads as a
+    frozen app. Update is the CODE. Anything missing is flagged in the
+    strip at the top, with a button that fetches it."""
+    from draft_assist.ui.tasks import TASKS
+
+    steps = [" ".join(step) for step in TASKS["update_app"].steps]
+    joined = " | ".join(steps)
+    assert "tools/update_app.py" in joined
+    assert "pip" in joined, "dependencies still have to be refreshed"
+    assert "fetch_assets" not in joined, \
+        "Update must not download artwork; the banner offers it instead"
+    assert "pull_data" not in joined, \
+        "Update must not download statistics either"
+
+    # The recurring job still does both — that is the one that is MEANT
+    # to take a few minutes.
+    recurring = " | ".join(" ".join(s) for s in TASKS["update_data"].steps)
+    assert "pull_data" in recurring and "fetch_assets" in recurring
+
+
+def test_a_hero_with_no_portrait_is_flagged_even_when_others_have_one(
+        qapp, monkeypatch, tmp_path):
+    """`any_downloaded` answers "is there artwork AT ALL", which goes true
+    on the first download and stays true — so a hero added in a patch had
+    no picture and nothing anywhere said so. That was covered by Update
+    fetching artwork every time; now that Update is the code alone, this
+    strip is the only thing that notices."""
+    from draft_assist.ui import portraits
+
+    monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
+    portraits.forget()
+    # Two heroes on disk, three in the dataset.
+    for hero_id in (1, 2):
+        (tmp_path / f"{hero_id}_hero.png").write_bytes(b"not really a png")
+    assert portraits.any_downloaded(), "the folder is not empty"
+    assert portraits.missing_for([1, 2, 3]) == {3}
+    assert portraits.missing_for([1, 2]) == set()
+    portraits.forget()
+
+
+def test_the_missing_artwork_banner_is_the_last_rung(qapp, monkeypatch,
+                                                     tmp_path):
+    """A blank tile is the least of the five things this strip says. Wrong
+    rank bracket and stale statistics are the ADVICE being wrong, so they
+    come first; the picture comes last."""
+    from draft_assist.ui import portraits
+
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+    monkeypatch.setattr(portraits, "missing_for", lambda ids: {42, 43})
+    win = make_window(qapp, demo_dataset())
+    try:
+        monkeypatch.setattr(win, "_bracket_mismatch", lambda: None)
+        monkeypatch.setattr(win, "_stale_days", lambda: 0)
+        win._update_first_run_banner()
+        assert win.banner.isVisible() or not win.isVisible()
+        assert "2 hero pictures are missing" in win.banner_label.text()
+        assert "artwork" in win.banner_button.text()
+
+        # Stale statistics outrank it: the numbers matter more than the
+        # picture, and updating those tops the artwork up on the way past.
+        monkeypatch.setattr(win, "_stale_days", lambda: 30)
+        win._update_first_run_banner()
+        assert "updated 30 days ago" in win.banner_label.text()
+    finally:
+        win.close()
+
+
+def test_one_missing_portrait_is_not_described_in_the_plural(
+        qapp, monkeypatch):
+    """"1 hero pictures are missing" is the tell of a message nobody
+    read back."""
+    from draft_assist.ui import portraits
+
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+    monkeypatch.setattr(portraits, "missing_for", lambda ids: {7})
+    win = make_window(qapp, demo_dataset())
+    try:
+        monkeypatch.setattr(win, "_bracket_mismatch", lambda: None)
+        monkeypatch.setattr(win, "_stale_days", lambda: 0)
+        win._update_first_run_banner()
+        said = win.banner_label.text()
+        assert "1 hero picture is missing" in said, said
+        assert "pictures are" not in said
+        assert "That tile draws blank" in said, said
+    finally:
+        win.close()

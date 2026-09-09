@@ -394,14 +394,31 @@ def test_the_install_file_is_resolved_at_call_time(tmp_path, monkeypatch):
     assert update_app.install_file() == tmp_path / "installed_version.json"
 
 
-def test_the_update_also_fetches_whatever_artwork_is_missing():
-    """The pictures are not in the repository — they are Valve's — so a
-    user who updates must not be left short of one. The step is LAST, so
-    a slow CDN cannot fail an update whose code already landed."""
+def test_the_update_does_not_fetch_the_artwork():
+    """REVERSED AT THE USER'S REQUEST, and because of what it looked like.
+
+    The update used to end by fetching artwork, on the reasoning that
+    nobody handed this app should be left short of a picture. In practice
+    that made Update sit for minutes pulling 126 portraits, every item
+    icon and the community's alternative portraits — behind a progress
+    box that reads as a frozen application, on a press whose whole point
+    is "get the new code and reopen".
+
+    So Update is the CODE and its dependencies. Nothing about the
+    artwork is lost: `fetch_assets` is still its own task, the first-run
+    wizard still runs it, the recurring statistics job still tops it up,
+    and the banner at the top of the window flags anything missing with
+    a button that fetches it. What changed is that none of that happens
+    inside a press that was meant to take seconds.
+    """
     from draft_assist.ui.tasks import TASKS
-    steps = TASKS["update_app"].steps
-    assert steps[-1][1] == "tools/fetch_assets.py"
+    steps = [" ".join(step) for step in TASKS["update_app"].steps]
+    assert not any("fetch_assets" in step for step in steps)
+    assert not any("pull_data" in step for step in steps)
+    # Still reachable every other way it was before.
     assert "fetch_assets" in TASKS
+    assert any("fetch_assets" in " ".join(step)
+               for step in TASKS["update_data"].steps)
 
 
 def test_the_update_task_runs_the_tool_rather_than_bare_git():

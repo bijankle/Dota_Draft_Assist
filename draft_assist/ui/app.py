@@ -1275,6 +1275,32 @@ class MainWindow(QMainWindow):
                 "tracking the current patch.",
                 "Update now", self._update_everything)
             return
+
+        # SOME of the artwork, which is a different question from none of
+        # it. `any_downloaded` goes true on the first download and stays
+        # true, so a hero added in a patch has no picture and nothing
+        # anywhere says so. Updating the app used to fetch the artwork as
+        # its last step; at the user's request Update is now the code and
+        # nothing else — seconds rather than minutes — so this strip is
+        # what notices instead.
+        # It is the LAST rung on purpose. A wrong rank bracket and stale
+        # statistics are the ADVICE being wrong; a missing portrait is one
+        # tile drawing blank, which is the least of the five. And it must
+        # come after the "no statistics" rung either way: `missing_for`
+        # reads an index that caches absence, and an empty dataset has no
+        # hero list to compare against.
+        absent = portraits.missing_for(self.ds.hero_ids)
+        if absent:
+            many = len(absent) != 1
+            self._show_banner(
+                f"<b>{len(absent)} hero picture{'s are' if many else ' is'} "
+                "missing.</b> Usually a hero added in a patch. "
+                f"{'Those tiles' if many else 'That tile'} draw"
+                f"{'' if many else 's'} blank until the artwork is "
+                "fetched; it needs no account and only gets what is "
+                "missing.",
+                "Get the artwork", lambda: self.run_task("fetch_assets"))
+            return
         self.banner.setVisible(False)
 
     def _edit_rules(self) -> None:

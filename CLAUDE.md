@@ -1993,19 +1993,35 @@ credentials, and put the account at risk. Do not go there.
   user asked not to close and reopen by hand. It relaunches ONLY after the
   update task, and only when that task succeeded — a relaunch after a
   failure would close the dialog showing the error.
-  **THE UPDATE FETCHES THE ARTWORK TOO** (`tools/fetch_assets.py`, the
-  LAST step). The pictures are Valve's and are not in this repository and
-  never will be — but the user asked that everybody who is handed this
-  app get them, and downloading to your own disk at runtime is a
-  different thing from a public repository redistributing them. So the
-  mechanism that already existed is simply made automatic: portraits,
-  item icons and the community's alternative portraits, needing no API
-  key and no account, which is what makes it safe to run for somebody
-  who has not signed up for anything. It is LAST and it NEVER FAILS THE
-  TASK: the code is already in place by then, and a slow CDN must not
-  turn a successful code update into a failed one. Each half says what
-  happened; Setup ▸ Download ▸ All artwork re-runs it, and both halves
-  skip what is on disk, so a retry costs only what is missing.
+  **THE UPDATE IS THE CODE AND NOTHING ELSE**, which REVERSES this
+  file's earlier "the update fetches the artwork too". That step ran
+  `tools/fetch_assets.py` last, on the reasoning that nobody handed this
+  app should be left short of a picture — and in practice it made Update
+  sit for minutes pulling 126 portraits, every item icon and the
+  community's alternative portraits, behind a progress box that reads as
+  a FROZEN APPLICATION. On a press whose whole point is "get the new
+  code and reopen", minutes of network is the wrong trade, and the user
+  said so. So the task is `update_app.py` and a `pip install`, and it
+  takes seconds.
+  Nothing about the artwork is lost, because five other paths already
+  reach it: `fetch_assets` is its own task (Setup ▸ Download ▸ All
+  artwork), the first-run wizard runs it, the recurring statistics job
+  (`update_data`) still tops it up — that is the one that is MEANT to
+  take a few minutes — and the banner flags what is missing with a
+  button that fetches it. Both halves still skip what is on disk, so a
+  retry costs only what is absent.
+  **THE COST OF THAT IS A NEW BANNER RUNG** (`portraits.missing_for`).
+  `any_downloaded` answers "is there artwork AT ALL", which goes true on
+  the first download and stays true for ever — so a hero added in a
+  patch had no picture and nothing anywhere said so. That was invisibly
+  covered by the update fetching artwork every single time; with that
+  gone, this is the only thing that notices. It is the LAST rung on
+  purpose: a wrong rank bracket and stale statistics are the ADVICE
+  being wrong, while a missing portrait is one tile drawing blank. And
+  it must come after the "no statistics" rung either way — `missing_for`
+  reads `_index`, which caches ABSENCE, so asking it on a fresh install
+  from a strip the live loop refreshes would cache "there are no
+  portraits" on the first tick and never revisit it.
   **A FRESH INSTALL IS A WIZARD, NOT A BANNER NAMING A FILE**
   (`ui/setup_wizard.py`, `MainWindow.offer_setup` / `_run_setup`). The
   app opened to empty tiles over a strip telling the user to go and edit
@@ -2055,8 +2071,8 @@ credentials, and put the account at risk. Do not go there.
   no account while the statistics need a key the user has to go and get,
   and leading with the key leaves somebody staring at empty plates while
   they sign up for something.
-  **THE BANNER LADDER IS: game feed, artwork, no statistics, bracket
-  changed, statistics stale.** The last two are at the user's request and
+  **THE BANNER LADDER IS: game feed, no artwork at all, no statistics,
+  bracket changed, statistics stale, SOME artwork missing.** The last two are at the user's request and
   the fifth REPLACES `_prompt_if_data_is_old` rather than joining it —
   the age was once a banner, a pill AND a status segment, was cut to one
   startup dialog for that reason, and a dialog dismissed on the way to a

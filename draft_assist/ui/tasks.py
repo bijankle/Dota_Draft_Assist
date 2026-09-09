@@ -169,10 +169,13 @@ TASKS = {
         steps=[[PY, "tools/update_app.py"],
                [PY, "-m", "pip", "install", "-q", "-r", "requirements.txt",
                 "-r", "requirements-windows.txt"],
-               [PY, "tools/fetch_assets.py"]],
-        blurb=("Gets the latest version of THIS app and nothing else, "
-               "refreshes its dependencies, fetches any artwork it is "
-               "missing, and reopens.\n\nIt works on both kinds of "
+               ],
+        blurb=("Gets the latest version of THIS app, refreshes its "
+               "dependencies, and reopens. THE CODE AND NOTHING ELSE — "
+               "it downloads no statistics and no artwork, so it takes "
+               "seconds rather than minutes. Anything the app then finds "
+               "missing is flagged in the strip at the top of the window, "
+               "with a button that fetches it.\n\nIt works on both kinds of "
                "install. A git clone is updated with git, which keeps any "
                "edits you have made and re-applies them on top. A copy "
                "downloaded from GitHub — no git installed, no .git folder "

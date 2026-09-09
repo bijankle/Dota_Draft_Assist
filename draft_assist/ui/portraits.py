@@ -109,6 +109,27 @@ def any_downloaded() -> bool:
     return _have
 
 
+def missing_for(hero_ids) -> set:
+    """Which of these heroes have no picture on this machine.
+
+    ONLY ASK THIS ONCE `any_downloaded` IS TRUE. It reads `_index`, which
+    caches ABSENCE — see the warning on `any_downloaded` — so calling it
+    on a fresh install from a banner the live loop refreshes would cache
+    "there are no portraits" on the first tick and never revisit it. The
+    banner's rungs are ordered so that a machine with none at all is
+    answered before this is reached.
+
+    It exists because a patch adds heroes. `any_downloaded` asks whether
+    there is artwork AT ALL, which stays true forever once the first
+    download lands — so a hero added after that had no picture and
+    nothing anywhere said so. Updating the app no longer fetches artwork
+    (it is the code and nothing else, at the user's request), which makes
+    this the only thing that would notice.
+    """
+    have = _index()
+    return {int(hero_id) for hero_id in hero_ids if int(hero_id) not in have}
+
+
 def forget() -> None:
     """Drop the caches — after a portrait download, or in tests."""
     global _paths, _have
