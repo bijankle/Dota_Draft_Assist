@@ -2976,6 +2976,13 @@ class MainWindow(QMainWindow):
         # off it, and the item advice is filtered by the same roles.
         self.scored = scoring.score_all(self.ds, draft)
         self._update_matrices(draft)
+        # AFTER the grids are filled, not only on a window resize. Their
+        # section count is what they can fit a portrait into, and it is
+        # not known until they hold something — so a cap taken on a
+        # resize alone was taken from an empty grid and then never
+        # revisited, and the picks and the grids settled on two different
+        # sizes with nothing to reconcile them.
+        self._match_grid_portraits()
         self._update_suggestions(draft)
         self._update_items(draft)
         self._update_relations()
@@ -3160,9 +3167,9 @@ class MainWindow(QMainWindow):
         """
         grids = [g for g in (getattr(self, "synergy_matrix", None),
                              getattr(self, "matchup_matrix", None))
-                 if g is not None and g.width() > 0]
+                 if g is not None and g.width() > 0 and g.sections() > 0]
         if not grids:
-            return
+            return              # nothing drawn yet; an empty grid has no view
         cap = min(g.portrait_ceiling() for g in grids)
         if cap == getattr(self, "_grid_cap_applied", None):
             return

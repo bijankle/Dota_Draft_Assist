@@ -993,8 +993,20 @@ class MatrixTable(QWidget):
 
     def sections(self) -> int:
         """How many portraits wide this grid is — its columns, plus the
-        row header when it has one."""
-        cols = max(1, self.table.columnCount())
+        row header when it has one, or 0 before it holds anything.
+
+        ZERO IS THE IMPORTANT ANSWER. An empty grid used to report one
+        section, and one section divides the whole card into a single
+        enormous portrait — so the cap computed at startup, BEFORE the
+        first refresh fills the grids, was 304 and was then latched. The
+        two never re-agreed: the picks kept their own size and the grids
+        settled on theirs, which is the "weird shit happening to the top
+        portraits" in the screenshot. A grid with nothing in it has no
+        opinion about how big a portrait should be, and has to say so.
+        """
+        cols = self.table.columnCount()
+        if cols < 1:
+            return 0
         down = self.table.verticalHeader()
         return cols + (0 if down.isHidden() else 1)
 
@@ -1020,6 +1032,8 @@ class MatrixTable(QWidget):
         """
         room = self.width() or (self.window().width() // 2)
         n = self.sections()
+        if n < 1:
+            return 0            # nothing to measure; see `sections`
         return max(HEADER_ICON, (room - 2 * CARD_MARGIN) // n - 4)
 
     def portrait_ceiling(self) -> int:

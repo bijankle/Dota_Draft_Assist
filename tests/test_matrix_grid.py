@@ -614,3 +614,37 @@ def test_the_grid_divides_by_its_own_sections(art, qapp):
     down = table.table.verticalHeader()
     expected = table.table.columnCount() + (0 if down.isHidden() else 1)
     assert table.sections() == expected
+
+
+def test_an_empty_grid_has_no_opinion_about_portrait_size(art, qapp):
+    """**THIS SHIPPED AS A VISIBLE REGRESSION.** An empty grid reported ONE
+    section, and one section divides the whole card into a single enormous
+    portrait — so the cap taken at startup, before the first refresh fills
+    the grids, was 304, and it was then latched. The picks and the grids
+    settled on two different sizes with nothing left to reconcile them.
+
+    A grid holding nothing has nothing to say about how big a portrait
+    should be, and has to say so rather than guessing."""
+    table = built(qapp, width=1400)
+    assert table.table.columnCount() == 0
+    assert table.sections() == 0
+    assert table.portrait_ceiling() == 0
+    table.show_matrix(grid())
+    QApplication.processEvents()
+    assert table.sections() > 1
+    assert table.portrait_ceiling() > 0
+
+
+def test_the_cap_is_taken_again_once_the_grids_are_filled(qapp):
+    """It was only recomputed on a window RESIZE, and nothing resizes the
+    window between building it and the first refresh — so the one
+    measurement that mattered was the one taken from empty grids."""
+    import inspect
+    from draft_assist.ui import app as app_mod
+
+    source = inspect.getsource(app_mod.MainWindow._refresh_views)
+    assert "_match_grid_portraits" in source, (
+        "the cap has to be retaken after the grids are populated, not only "
+        "when the window is resized")
+    assert (source.index("_update_matrices")
+            < source.index("_match_grid_portraits"))
