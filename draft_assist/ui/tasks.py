@@ -57,8 +57,9 @@ TASKS = {
         key="update_data",
         title="Update statistics and portraits",
         steps=[[PY, "tools/pull_data.py"], [PY, "tools/fetch_assets.py"]],
-        blurb=("Downloads hero statistics for the ranks set in Setup ▸ "
-               "Statistics bracket, verifies bracket indexing across "
+        blurb=("Downloads hero statistics for the ranks set in Settings ▸ "
+               "Downloads ▸ Statistics bracket, verifies bracket "
+               "indexing across "
                "OpenDota and Stratz, rebuilds the interaction matrices, "
                "and then tops up any artwork this machine is missing "
                "— which is how a hero added in a patch gets its "

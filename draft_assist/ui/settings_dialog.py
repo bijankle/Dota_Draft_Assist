@@ -109,7 +109,7 @@ class SettingsDialog(QDialog):
             self.source_buttons[value] = button
 
         rebuild = QLabel(
-            "Changing this needs Data ▸ Update statistics to re-pull — the "
+            "Changing this needs Settings ▸ Downloads ▸ Statistics and portraits to re-pull — the "
             "matrices are built from whichever source was chosen, not "
             "switched between at read time.")
         rebuild.setWordWrap(True)

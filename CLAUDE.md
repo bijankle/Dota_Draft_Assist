@@ -118,7 +118,7 @@ credentials, and put the account at risk. Do not go there.
    calibration the user set is an ANSWER; an automatic measurement is a
    guess, and the guess does not get to overwrite the answer. It is adopted
    only when `CALIBRATION_FILE` does not exist — a fresh install — and
-   otherwise says it was kept. Setup ▸ Measure from this game is how you
+   otherwise says it was kept. Measuring from this game is how you
    ask for the new one deliberately.
 
    **`load_layout` and `save_calibration` resolve the path at CALL time**,
@@ -444,8 +444,8 @@ credentials, and put the account at risk. Do not go there.
   ranked game — "where is the warning line" is a fair question about that.
   `_update_first_run_banner(snap)` now puts it in the strip at the top,
   ahead of everything about the statistics, because it is the fault that
-  costs a draft; the button becomes **Check game data** and opens Game ▸
-  Diagnose game data. The banner's button is dispatched through
+  costs a draft; the button becomes **Check game data** and opens
+  Settings ▸ Game data ▸ Diagnose game data. The banner's button is dispatched through
   `_banner_action` rather than hard-wired to the data download, since the
   banner says several different things. The warning also leads the status
   line instead of coming fourth.
@@ -1096,8 +1096,8 @@ credentials, and put the account at risk. Do not go there.
   the way a person writes it; a missing icon draws the name and is normal,
   not an error.
   **A MISSING ICON HAS FOUR CAUSES AND ONE APPEARANCE**, so there is a tool
-  that tells them apart (`tools/check_item_icons.py`, Setup > Download >
-  Check item icons). The download 404'd, the rules name an item OpenDota
+  that tells them apart (`tools/check_item_icons.py`, which no longer has a menu
+  item — see the menu-bar note below). The download 404'd, the rules name an item OpenDota
   does not list, the rule name is a prefix of TWO icons and is refused
   rather than guessed at (`item_icons._resolve` — drawing the wrong item is
   worse than drawing the name), or the file on disk will not decode. All
@@ -1426,7 +1426,7 @@ credentials, and put the account at risk. Do not go there.
   `build_library` — so the app learned a portrait and then went on not
   recognising it.
   **Downloaded alternatives are a supplement, not the mechanism**
-  (`tools/fetch_custom_portraits.py`, Setup ▸ Download ▸ Alternative
+  (`tools/fetch_custom_portraits.py`, Settings ▸ Downloads ▸ Alternative
   portraits). The community's collection is published at 128x72, 256x144,
   268x151 and 384x216 — the same 16:9 top-bar portrait, NOT the square
   hero icon, which was the open question about whether it was usable at
@@ -1871,7 +1871,8 @@ credentials, and put the account at risk. Do not go there.
   portrait out of `assets/portraits/base/`**, else a drawn fallback.
   **THE SHIPPED DEFAULT HAS A DIFFERENT NAME FROM THE USER'S, and that
   is the whole point of it** (`DEFAULT_CANDIDATES`, `default_path`).
-  Setup ▸ Choose app icon… writes `app.ico`; if the committed default
+  Settings ▸ Appearance ▸ Choose app icon… writes `app.ico`; if the
+  committed default
   used that name too, the ZIP updater would stamp on a choice somebody
   made on their own machine every single update. Two names, two owners,
   and the user's wins. `assets/app.*` stays gitignored for exactly that
@@ -1982,7 +1983,8 @@ credentials, and put the account at risk. Do not go there.
   else clones this. `assets/app.ico` still overrides it, so the user keeps
   whatever they like locally without it reaching anybody else.
   **An icon attached to a chat message is not a file**, which is the whole
-  reason `appicon.install` and Setup ▸ Choose app icon… exist: a file
+  reason `appicon.install` and Settings ▸ Appearance ▸ Choose app icon…
+  exist: a file
   picker copies the user's own .ico or .png into `assets/`, where source 1
   finds it, and `_apply_app_icon` pushes it at all four places that draw
   one — the window, the application (taskbar), the title bar and the
@@ -2063,7 +2065,7 @@ credentials, and put the account at risk. Do not go there.
   page means it took and resolved to nothing.
   So the shortcut is written AUTOMATICALLY at startup, at the user's
   request ("it should be all auto anyway") — it was Setup ▸ Make a
-  pinnable shortcut…, which is a step nobody who has just unzipped this
+  pinnable shortcut…, a menu item that has since been DELETED outright, which is a step nobody who has just unzipped this
   app would know to take. One file, inside the user's own Start menu.
   **REWRITTEN ON EVERY START, not only when missing**, because the thing
   it points at moves: this app is normally run from an unzipped folder,
@@ -2132,7 +2134,7 @@ credentials, and put the account at risk. Do not go there.
   on the path itself. Both halves of the command are quoted — "Dota Draft
   Assist" has a space in it.
   The Start-menu shortcut is still made and is still the fallback:
-  `tools/make_shortcut.py` (Setup ▸ Make a pinnable shortcut…) writes
+  `tools/make_shortcut.py` (no menu item any more) writes
   `PKEY_AppUserModel_ID` into the .lnk, which means building it through
   IShellLink and IPropertyStore — WScript.Shell cannot write a
   property-store value — and it launches the same `__main__.py`. Either
@@ -2332,7 +2334,7 @@ credentials, and put the account at risk. Do not go there.
   said so. So the task is `update_app.py` and a `pip install`, and it
   takes seconds.
   Nothing about the artwork is lost, because five other paths already
-  reach it: `fetch_assets` is its own task (Setup ▸ Download ▸ All
+  reach it: `fetch_assets` is its own task (Settings ▸ Downloads ▸ All
   artwork), the first-run wizard runs it, the recurring statistics job
   (`update_data`) still tops it up — that is the one that is MEANT to
   take a few minutes — and the banner flags what is missing with a
@@ -2360,8 +2362,8 @@ credentials, and put the account at risk. Do not go there.
   brackets and starts the download; an install that ends by telling the
   user to find a menu item has not finished installing. `needed()` asks
   only about the KEY, so an existing install never sees it and a fresh
-  one sees it once; Setup ▸ Run first-time setup… reopens it, and the
-  banner's button is the same call, so there is one way to do this.
+  one sees it once. The menu item that reopened it is GONE at the user's
+  request, so the banner's button is the one way back.
   **THE KEY IS VERIFIED BEFORE IT IS TRUSTED** (`stratz.check_key`), or a
   typo surfaces three minutes later inside a progress dialog and reads as
   the app being broken. The query is `{__typename}` — part of the GraphQL

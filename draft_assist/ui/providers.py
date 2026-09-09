@@ -322,7 +322,7 @@ class GsiProvider:
                 self._silence_is_a_fault = False
         except Exception:               # noqa: BLE001 - never worth a crash
             self._silence_reason = (
-                "run Setup ▸ Set up game data (GSI), add "
+                "run Settings ▸ Game data ▸ Set up game data (GSI), add "
                 "-gamestateintegration to Dota's launch options, and "
                 "restart Dota")
             self._silence_is_a_fault = False

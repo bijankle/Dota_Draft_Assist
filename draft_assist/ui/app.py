@@ -1311,7 +1311,7 @@ class MainWindow(QMainWindow):
     def _run_setup(self) -> None:
         """The first-run wizard, on demand.
 
-        The banner's button and Setup ▸ Run first-time setup… both land
+        The banner's button is the only way back to it now: the menu
         here, so there is one way to do this rather than a wizard that can
         only ever be seen once.
         """
@@ -1661,7 +1661,8 @@ class MainWindow(QMainWindow):
             lines += [
                 "",
                 "Dota has not sent anything yet. Check that:",
-                "  1. the GSI config is installed (Game ▸ Set up game data)",
+                "  1. the GSI config is installed "
+                "(Settings ▸ Game data ▸ Set up game data)",
                 f"  2. Dota's launch options include {gsi_install.LAUNCH_OPTION}",
                 "  3. Dota has been restarted since adding it",
             ]
@@ -2322,7 +2323,7 @@ class MainWindow(QMainWindow):
         if self.ds.is_empty:
             QMessageBox.information(
                 self, "Choose hero",
-                "Download the hero data first: Data ▸ Update statistics.")
+                "Download the hero data first: Settings ▸ Downloads ▸ Statistics and portraits.")
             return
         taken = self._taken_heroes()
         # WHAT THE TILE IS SHOWING, not `manual.allies[index]`: the two are
@@ -2392,8 +2393,8 @@ class MainWindow(QMainWindow):
         portraits = autocal.base_portraits(heroes)
         if len(portraits) < 8:
             self.cal_label.setText(
-                "portraits are not downloaded — run Setup ▸ Update "
-                "statistics and portraits first")
+                "portraits are not downloaded — run "
+                "Settings ▸ Downloads ▸ Statistics and portraits first")
             return
 
         self.measure_button.setEnabled(False)
@@ -2474,7 +2475,7 @@ class MainWindow(QMainWindow):
         and watched them land had them silently replaced by whatever the
         next match measured. A calibration the user set is an ANSWER, and a
         measurement is a guess that happens to be automatic — the guess
-        does not get to overwrite the answer. Setup ▸ Measure from this
+        does not get to overwrite the answer. Measure from this
         game is still there for asking for one deliberately.
         """
         result = getattr(self.provider, "measured_layout", None)
@@ -2821,8 +2822,8 @@ class MainWindow(QMainWindow):
         if use_vision and session is None:
             QMessageBox.information(
                 self, "Settings",
-                "Reading the screen needs the portrait library — run "
-                "Setup ▸ Update statistics and portraits first.")
+                "Reading the screen needs the portrait library — "
+                "run Settings ▸ Downloads ▸ Statistics and portraits first.")
         vision = LiveProvider(session) if session is not None else None
 
         if not use_gsi:
@@ -3493,9 +3494,8 @@ class MainWindow(QMainWindow):
         # unconfigured.
         if advice and not item_icons.any_downloaded():
             self.item_row.set_note(
-                "No item icons on disk yet — press Update. If they are "
-                "still missing after that, Setup ▸ Fetch item icons says "
-                "why.")
+                "No item icons on disk yet — run Settings ▸ Downloads "
+                "▸ Item icons, which says why if any of them fail.")
         else:
             self.item_row.set_note("")
 
@@ -3556,7 +3556,7 @@ class MainWindow(QMainWindow):
         if self.ds.is_empty:
             # The one thing about the statistics still worth a segment: with
             # none at all, nothing below is advice.
-            parts.append("no statistics — Data ▸ Update statistics")
+            parts.append("no statistics — Settings ▸ Downloads ▸ Statistics and portraits")
         # NOT `_say`: this is the state, written every tick with no
         # timeout. Through `_say` it would claim the line for six seconds
         # on every tick and the guard above would then silence it forever.

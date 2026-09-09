@@ -3,12 +3,12 @@
 Four sources, in order:
 
 1. `assets/app.ico` (or .png/.jpg), if the user put one there — by hand or
-   through Setup ▸ Choose app icon…, which copies their file into place.
+   through Settings ▸ Appearance ▸ Choose app icon…, which copies their file into place.
    Their own artwork on their own machine, whatever they like. Gitignored,
    so an update never overwrites it.
 1b. `assets/app-default.png` (or .ico) — the icon this repository SHIPS,
    if one has been committed. A DIFFERENT NAME from the above on purpose:
-   Setup ▸ Choose app icon… writes `app.ico`, so sharing the name would
+   Settings ▸ Appearance ▸ Choose app icon… writes `app.ico`, so sharing the name would
    make every update stamp on the user's own pick. Whatever goes here has
    to be the project's to distribute. With BOTH names present the bigger
    picture wins rather than the first extension — see `_best`.
@@ -52,8 +52,8 @@ from . import theme
 # choice somebody made on their own machine.
 CANDIDATES = ("app.ico", "app.png", "app.jpg", "app.jpeg", "app.bmp")
 # The icon this repository SHIPS, if one has been committed. Deliberately
-# a different name from CANDIDATES rather than the same file: Setup ▸
-# Choose app icon… writes `app.ico`, and if the shipped default used that
+# a different name from CANDIDATES rather than the same file: Settings ▸
+# Appearance ▸ Choose app icon… writes `app.ico`, and if the shipped default used that
 # name too, every update would overwrite the user's pick with it. Two
 # names, two owners, and the user's wins.
 DEFAULT_CANDIDATES = ("app-default.ico", "app-default.png")

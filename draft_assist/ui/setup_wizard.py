@@ -203,7 +203,7 @@ class SetupWizard(QDialog):
             "Hero win rates and matchups differ by rank. Pulling from about "
             "one bracket above where you play tilts the advice toward the "
             "games you are trying to win. You can change this later in "
-            "Setup ▸ Statistics bracket.")
+            "Settings ▸ Downloads ▸ Statistics bracket.")
         why.setProperty("dim", True)
         lay.addWidget(why)
 

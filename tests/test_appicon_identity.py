@@ -130,7 +130,7 @@ def test_the_shipped_default_is_used_when_the_user_has_no_icon(
 
 def test_the_users_own_icon_still_beats_the_shipped_one(qapp, tmp_path,
                                                         monkeypatch):
-    """THE TWO NAMES ARE THE WHOLE POINT. Setup ▸ Choose app icon… writes
+    """THE TWO NAMES ARE THE WHOLE POINT. Settings ▸ Appearance ▸ Choose app icon… writes
     `app.ico`; if the shipped default used that name too, every update
     would overwrite a choice somebody made on their own machine."""
     from PyQt6.QtGui import QPixmap

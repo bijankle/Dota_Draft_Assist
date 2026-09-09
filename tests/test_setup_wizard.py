@@ -207,7 +207,7 @@ def test_a_paragraph_reserves_room_for_every_line_it_wraps_to(qapp):
     long_text = ("Hero win rates and matchups differ by rank. Pulling from "
                  "about one bracket above where you play tilts the advice "
                  "toward the games you are trying to win. You can change "
-                 "this later in Setup - Statistics bracket.")
+                 "this later in Settings - Downloads - Statistics bracket.")
     label = paragraph(long_text)
     one_line = label.fontMetrics().height()
     assert label.minimumHeight() >= 3 * one_line

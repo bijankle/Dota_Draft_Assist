@@ -45,7 +45,7 @@ class HeroPickerDialog(QDialog):
 
         if dataset.is_empty:
             layout.addWidget(QLabel(
-                "No heroes yet — run Data ▸ Update statistics first."))
+                "No heroes yet — run\nSettings ▸ Downloads ▸ Statistics and portraits first."))
 
         buttons = QHBoxLayout()
         clear = QPushButton("Clear slot")
