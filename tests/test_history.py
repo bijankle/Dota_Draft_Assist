@@ -6,6 +6,7 @@ exercised by having its callers use a stub, because a test that needs
 OpenDota to be up is a test that fails for reasons nobody can fix.
 """
 
+import json
 import math
 import time
 
@@ -434,3 +435,95 @@ def test_a_store_that_cannot_be_read_is_empty_not_a_crash(tmp_path):
     path = tmp_path / "accounts.json"
     path.write_text("{ not json", encoding="utf-8")
     assert store.load(path) == []
+
+
+# ------------------------------------------------------------- cache ----
+
+def test_the_last_run_comes_back_off_disk_without_a_fetch(tmp_path,
+                                                          monkeypatch):
+    """Seeing last week's answer used to mean measuring it again over a
+    free API, with the tab blank until it finished."""
+    from draft_assist.history import cache, opendota, runner
+
+    def fake(url, **kwargs):
+        if "/matches?" in url:
+            return rows_for(40)
+        if "/players/" in url:
+            return {"profile": {"personaname": "Bijson"}}
+        return []
+
+    monkeypatch.setattr(opendota, "_get", fake)
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    report = runner.run(Options(account_id=195286385, window="all", cap=100))
+    assert cache.save(report)
+
+    monkeypatch.setattr(opendota, "_get", lambda *a, **k: pytest.fail(
+        "reading the cache asked OpenDota for something"))
+    back = cache.load(195286385)
+    assert back is not None
+    assert back.n == report.n and back.wins == report.wins
+    assert back.name == "Bijson"
+    assert back.ran_at == report.ran_at
+    # The RAW MATCHES survive, which is what lets the workbook's first
+    # sheet be written with no network at all.
+    assert [m.match_id for m in back.matches] == \
+        [m.match_id for m in report.matches]
+
+
+def test_the_findings_are_recomputed_rather_than_stored(tmp_path,
+                                                        monkeypatch):
+    """Storing the blocks would let a cached run show numbers produced by
+    a version of the analysis that is no longer in the app."""
+    from draft_assist.history import cache
+
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    matches = shape.shape(rows_for(40), HEROES).matches
+    report = Report(options=Options(account_id=7, picked={"hero": True}),
+                    how="", name="", matches=matches, blocks=[],
+                    dropped={}, sessions=1, returned=40)
+    cache.save(report)
+
+    raw = json.loads((tmp_path / "cache" / "7.json").read_text("utf-8"))
+    assert "matches" in raw and "blocks" not in raw
+
+    # And which analyses are drawn follows what is ticked NOW, not what
+    # was ticked when the run happened.
+    assert len(cache.load(7, {"hero": True}).blocks) == 1
+    assert cache.load(7, {"hero": False}).blocks == []
+
+
+def test_a_cache_that_cannot_be_read_is_no_cache_rather_than_a_crash(
+        tmp_path, monkeypatch):
+    """The file is written by older versions of the app as often as by
+    this one, so an unreadable row degrades rather than taking the tab
+    down with it."""
+    from draft_assist.history import cache
+    folder = tmp_path / "cache"
+    folder.mkdir()
+    monkeypatch.setattr(cache, "CACHE_DIR", folder)
+
+    assert cache.load(1) is None                       # nothing there
+    (folder / "2.json").write_text("{ not json", encoding="utf-8")
+    assert cache.load(2) is None
+    (folder / "3.json").write_text('{"matches": [{"junk": 1}]}', "utf-8")
+    assert cache.load(3) is None
+
+
+def test_the_cached_runs_are_local_only(tmp_path):
+    """Gitignored beside history_accounts.json and the API key: sending
+    somebody a copy of this app sends them none of your matches."""
+    import pathlib
+    ignored = pathlib.Path("/home/user/Dota_Draft_Assist/.gitignore")
+    assert "history_cache/" in ignored.read_text(encoding="utf-8")
+
+
+def test_only_the_newest_runs_are_kept(tmp_path, monkeypatch):
+    from draft_assist.history import cache
+    folder = tmp_path / "cache"
+    monkeypatch.setattr(cache, "CACHE_DIR", folder)
+    matches = shape.shape(rows_for(12), HEROES).matches
+    for account in range(1, cache.KEEP + 4):
+        cache.save(Report(options=Options(account_id=account), how="",
+                          name="", matches=matches, blocks=[], dropped={},
+                          sessions=1, returned=12))
+    assert len(list(folder.glob("*.json"))) == cache.KEEP

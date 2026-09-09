@@ -47,3 +47,8 @@ recordings/
 # Which release this install is on, written by tools/update_app.py when a
 # downloaded copy updates itself. It describes THIS machine, not the app.
 installed_version.json
+
+# The last run for each account the analyser has measured. Local only,
+# beside history_accounts.json: a copy of this app carries nobody else's
+# match history.
+history_cache/

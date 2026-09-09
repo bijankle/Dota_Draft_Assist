@@ -209,6 +209,36 @@ def test_a_private_match_history_is_flagged_under_the_search(qapp):
     tab.deleteLater()
 
 
+def test_opening_the_tab_draws_the_last_run_with_no_network(qapp, tmp_path,
+                                                           monkeypatch):
+    """The tab used to cost a fetch every time it was looked at, and it
+    opened blank until that fetch finished."""
+    from draft_assist.history import cache, opendota, store
+
+    report = a_report()
+    report.options.account_id = 195286385
+    store.remember(195286385, "Bijson", when="2026-09-09 10:00",
+                   matches=report.n, wins=report.wins)
+    assert cache.save(report)
+
+    monkeypatch.setattr(opendota, "_get", lambda *a, **k: pytest.fail(
+        "opening the tab asked OpenDota for something"))
+    tab = HistoryTab()
+    assert tab.report is not None
+    assert tab.report.n == report.n
+    assert tab.export_button.isEnabled(), "export must work with no network"
+    # And the button says what pressing it would now do.
+    assert tab.run_button.text() == "Update"
+    tab.deleteLater()
+
+
+def test_with_nothing_cached_the_button_still_says_run(qapp):
+    tab = HistoryTab()
+    assert tab.report is None
+    assert tab.run_button.text() == "Run"
+    tab.deleteLater()
+
+
 def test_the_ranked_list_of_every_hero_is_gone(window):
     """It answered "what should I pick", which the Draft tab answers under
     the picks. The tab is the match history now."""

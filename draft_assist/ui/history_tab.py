@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
 
 from . import theme
 from .chrome import TickBox, card
-from ..history import analyse, opendota, store, workbook
+from ..history import analyse, cache, opendota, store, workbook
 from ..history.report import CAPS, WINDOWS, Options
 from ..history.runner import Refused, run as run_analysis
 
@@ -216,7 +216,13 @@ class HistoryTab(QWidget):
         lay.addStretch(1)
 
         self._load_accounts()
-        self._show_placeholder()
+        # ONLY IF NOTHING CAME BACK OFF DISK. `_load_accounts` selects the
+        # most recent account, which loads its cached run — and the
+        # placeholder would then paint over the very thing the cache
+        # exists to put there.
+        if self.report is None:
+            self._show_placeholder()
+        self._name_the_button()
 
     # ---- the controls --------------------------------------------------
     def _build_account_card(self) -> QFrame:
@@ -326,7 +332,15 @@ class HistoryTab(QWidget):
         return frame
 
     # ---- remembered accounts -------------------------------------------
-    def _load_accounts(self) -> None:
+    def _load_accounts(self, select_first: bool = True) -> None:
+        """Refill the dropdown, and on the way in adopt the newest account.
+
+        `select_first` is FALSE after a run has just finished. Refreshing
+        the list is bookkeeping; adopting a row means loading that
+        account's CACHED run, which would replace the live report that has
+        this instant been measured with a copy of itself read back off
+        disk.
+        """
         self.remembered.blockSignals(True)
         self.remembered.clear()
         self.remembered.addItem("Remembered accounts…", None)
@@ -334,7 +348,7 @@ class HistoryTab(QWidget):
             self.remembered.addItem(store.label(row), row["account_id"])
         self.remembered.blockSignals(False)
         rows = store.load()
-        if rows and not self.account_box.text().strip():
+        if select_first and rows and not self.account_box.text().strip():
             self._apply_remembered(rows[0])
 
     def _pick_remembered(self, index: int) -> None:
@@ -352,6 +366,38 @@ class HistoryTab(QWidget):
                                     row["account_id"])
         self._apply_options(options)
         self._show_last_run(row)
+        self._load_cached(row["account_id"])
+
+    def _load_cached(self, account_id: int) -> None:
+        """Draw the last run for this account straight off disk.
+
+        THE TAB USED TO COST A FETCH EVERY TIME IT WAS OPENED, so seeing
+        last week's answer again meant measuring it again over a free API.
+        The whole run is kept now and re-fetched only when asked — which
+        is what the button beside the box is for, and why it says Update
+        rather than Run once there is something cached.
+        """
+        report = cache.load(account_id, self.options().picked)
+        if report is None:
+            self._clear_results()
+            self.report = None
+            self.export_button.setEnabled(False)
+            self._show_placeholder()
+        else:
+            self.report = report
+            self.export_button.setEnabled(True)
+            self.render(report)
+        self._name_the_button()
+
+    def _name_the_button(self) -> None:
+        """Run, or Update when there is already a run on screen."""
+        fresh = self.report is None
+        self.run_button.setText("Run" if fresh else "Update")
+        self.run_button.setToolTip(
+            "Fetch this account's matches and measure them."
+            if fresh else
+            "Fetch again. What is shown was measured when the line above "
+            "says, and nothing is re-fetched until you press this.")
 
     def _apply_options(self, options: Options) -> None:
         index = self.window_box.findData(options.window)
@@ -456,9 +502,11 @@ class HistoryTab(QWidget):
             when=report.ran_at.strftime("%Y-%m-%d %H:%M"),
             matches=report.n, wins=report.wins,
             options=report.options.as_dict())
-        self._load_accounts()
+        cache.save(report)
+        self._load_accounts(select_first=False)
         self._show_last_run(rows[0])
         self.render(report)
+        self._name_the_button()
         self.say(f"Match history: {report.n} matches measured", 6000)
 
     # ---- drawing the report --------------------------------------------

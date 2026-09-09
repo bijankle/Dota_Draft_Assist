@@ -20,6 +20,18 @@ def _recordings_go_to_tmp(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _history_stays_out_of_the_repository(tmp_path, monkeypatch):
+    """The remembered accounts and their cached runs are per-machine files
+    that live in the repository root, so a test that opens the Analysis
+    tab would read the developer's own and write its fixtures over them.
+    Same reason recordings and the settings file are redirected above.
+    """
+    from draft_assist.history import cache, store
+    monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "history_cache")
+
+
+@pytest.fixture(autouse=True)
 def _sizes_start_at_one():
     """The two size multipliers are MODULE state (View ▸ Sizes).
 

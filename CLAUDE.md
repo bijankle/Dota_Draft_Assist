@@ -591,9 +591,38 @@ credentials, and put the account at risk. Do not go there.
   (`history/store.py`, `history_accounts.json`, gitignored beside
   `ui_settings.json`). The tab opens saying when that account was last
   measured and with what, so running it again is one press — and sending
-  someone a copy of this app sends them none of it. What is stored is a
-  BOOKMARK, not a copy of anybody's match history: the id, the name, the
-  date and the headline. The workbook is where a run is kept.
+  someone a copy of this app sends them none of it.
+  **THE WHOLE RUN IS KEPT NOW** (`history/cache.py`, `history_cache/`,
+  gitignored with the rest), which REVERSES this file's earlier "a
+  BOOKMARK, not a copy of anybody's match history". That rule cost a
+  fetch every time the tab was looked at: seeing last week's answer meant
+  measuring it again over a free API, with the tab blank until it
+  finished. At the user's request the run is cached per account and
+  re-fetched only when asked — a new account id, or Update on one already
+  there, which is why the button RENAMES itself to Update once something
+  is on screen. The privacy property that mattered survives unchanged:
+  the folder is gitignored exactly like `.env`, so a copy of this app
+  still carries nobody's history. What changed is only how much of your
+  own run your own machine keeps for you.
+  **THE RAW MATCHES ARE STORED AND THE FINDINGS ARE NOT** (`cache.
+  rebuild`). Recomputing the blocks on the way back in costs milliseconds
+  and buys two things: the workbook's raw sheet still has something to
+  draw from, so Export works with no network at all; and a cached run can
+  never show numbers produced by a version of `analyse.py` that is no
+  longer in the app — change a floor or a sigma and every cached run
+  reflects it at once. Which analyses are drawn follows what is TICKED
+  NOW rather than what was ticked when the run happened, so turning one
+  on costs nothing. A row the reader cannot parse is dropped rather than
+  raised: the file is written by older versions of the app as often as by
+  this one, so an unreadable cache must degrade to "no cache".
+  **`_load_accounts(select_first=False)` after a run.** Refreshing the
+  dropdown is bookkeeping, but ADOPTING a row loads that account's cached
+  run — which would replace the report just measured with a copy of
+  itself read back off disk. `tests/conftest.py` redirects both the store
+  and the cache to `tmp_path` for every test, for the same reason the
+  recordings and the settings file are redirected: they live in the
+  repository root, and a test that opens this tab would otherwise read
+  the developer's own and write its fixtures over them.
   **A DISPLAY NAME IS REFUSED, deliberately.** OpenDota's `/search` scans
   a very large table and times out more often than it answers, so the tab
   says to use the friend ID rather than hanging on it. `opendota.search`
@@ -1858,14 +1887,54 @@ credentials, and put the account at risk. Do not go there.
   turn a successful code update into a failed one. Each half says what
   happened; Setup ▸ Download ▸ All artwork re-runs it, and both halves
   skip what is on disk, so a retry costs only what is missing.
-  **A FRESH INSTALL IS TWO BANNERS IN ORDER, ARTWORK THEN STATISTICS**
-  (`portraits.any_downloaded`, `_update_first_run_banner`). Both are
-  missing on a new machine and only one of them always works: the
-  pictures need no account, while the statistics need a free Stratz key
-  the user has to go and get. Leading with the key left somebody staring
-  at a grid of empty plates while they signed up for something, so the
-  artwork banner comes first and the statistics banner now names
-  stratz.com and `.env.example` rather than just naming a file.
+  **A FRESH INSTALL IS A WIZARD, NOT A BANNER NAMING A FILE**
+  (`ui/setup_wizard.py`, `MainWindow.offer_setup` / `_run_setup`). The
+  app opened to empty tiles over a strip telling the user to go and edit
+  `.env`, which is fine for the person who wrote it and no use to
+  somebody who has just unzipped it. One dialog on first open instead:
+  what this needs, the key, tick boxes for the ranks, Finish. **TICKING
+  THE BOXES IS THE WHOLE INTERACTION** — Finish writes `.env`, saves the
+  brackets and starts the download; an install that ends by telling the
+  user to find a menu item has not finished installing. `needed()` asks
+  only about the KEY, so an existing install never sees it and a fresh
+  one sees it once; Setup ▸ Run first-time setup… reopens it, and the
+  banner's button is the same call, so there is one way to do this.
+  **THE KEY IS VERIFIED BEFORE IT IS TRUSTED** (`stratz.check_key`), or a
+  typo surfaces three minutes later inside a progress dialog and reads as
+  the app being broken. The query is `{__typename}` — part of the GraphQL
+  SPECIFICATION rather than Stratz's schema, so it cannot start reporting
+  "bad key" the day they rename a field, and what is actually being
+  tested is the HTTP status. `KeyCheck.ok` is three-valued for the usual
+  reason: 401/403 is a rejection, but a rate limit, a 500 or a dead
+  connection is asked-and-not-answered and must NEVER block Finish —
+  telling somebody with flaky wifi that their key is bad sends them off
+  to get another one they did not need. Editing the box clears the last
+  verdict, or a rejected key corrected by one character would inherit it.
+  It is SKIPPABLE at the user's request, and skipping writes nothing at
+  all; the banner is the way back.
+  `config.save_stratz_key` rewrites only the key's LINE — `.env` is
+  exactly the sort of file people add variables to — and sets
+  `os.environ` as well, because `load_dotenv` does not overwrite a
+  variable already in the environment and the key would otherwise be
+  ignored until a restart.
+  **A FRESH INSTALL STILL LEADS WITH THE ARTWORK** (`portraits.
+  any_downloaded`, `_update_first_run_banner`), because the pictures need
+  no account while the statistics need a key the user has to go and get,
+  and leading with the key leaves somebody staring at empty plates while
+  they sign up for something.
+  **THE BANNER LADDER IS: game feed, artwork, no statistics, bracket
+  changed, statistics stale.** The last two are at the user's request and
+  the fifth REPLACES `_prompt_if_data_is_old` rather than joining it —
+  the age was once a banner, a pill AND a status segment, was cut to one
+  startup dialog for that reason, and a dialog dismissed on the way to a
+  draft is dismissed forever while the thing it asked about stays true.
+  So it is one strip with the days on it and a button that fixes it,
+  showing nothing at all under the reminder interval. The bracket case is
+  checked FIRST because those numbers are the wrong RANK rather than
+  merely old, and the user reaches it by changing the setting and coming
+  straight back to this screen. Both buttons run `_update_everything` —
+  statistics and artwork in one task, which is what a button saying
+  "update" should mean.
   Both the data update and the code update relaunch: a `git pull` that
   leaves the old process running has done half the job. It was a toolbar
   button and is now Help ▸ Update application… — pressed once a patch, and
