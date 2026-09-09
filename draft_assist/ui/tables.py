@@ -94,6 +94,10 @@ COMPACT_COLUMN = 72
 # tiles above size themselves against the same number so a column reads
 # down from the tile it belongs to.
 HEADER_ICON = 34
+# `chrome.card`'s horizontal padding: the grid has to take it off the
+# width it is given, exactly as a team panel takes off its own margin,
+# or the two are not measuring the same room.
+CARD_MARGIN = 12
 # How big a header portrait grows on its own account. It is no longer the
 # ceiling: a column must print "+12.34" whatever the picture would have
 # liked to be, so where the number is wider the number wins.
@@ -114,7 +118,21 @@ PAIR_EDGE_W = 2
 # because the body size has been raised twice and a constant does not
 # follow it.
 CELL_MIN = 82
+# A TOTAL wears a capital sigma, at the user's request: it is the one
+# thing on these cards that sums the row or column it sits on rather than
+# reporting one pair, and nothing on screen said so.
+SIGMA = "\u03a3"
 WIDEST_CELL = "+12.34"
+# A column has to fit the widest thing it can be asked to draw, and a
+# total is that: the sigma sits ahead of the digits, so measuring the bare
+# number would put "..." where the totals are.
+WIDEST_TOTAL = SIGMA + WIDEST_CELL
+
+
+def sigma(value: float) -> str:
+    """A total, written like every other figure in the app with the sigma
+    in front of it."""
+    return f"{SIGMA}{float(value) * 100:+.2f}"
 
 
 def minimum_grid_width(columns: int = 5) -> int:
@@ -291,7 +309,10 @@ class PortraitHeader(QHeaderView):
         value = self.values.get(index)
         if value is not None:
             from . import tilekit
-            tilekit.paint_badge(painter, box, f"{float(value) * 100:+.2f}",
+            # Always a TOTAL here — a header names a hero and the figure
+            # on it sums that hero's whole row or column — so it wears
+            # the sigma.
+            tilekit.paint_badge(painter, box, sigma(value),
                                 theme.GOOD if float(value) > 0 else theme.BAD,
                                 self.font())
         painter.restore()
@@ -340,53 +361,108 @@ class PairGrid(QTableWidget):
     carries a side.
     """
 
-    # Where the border sits: one pixel outside the cell, which is the grid
-    # line between it and its neighbour.
+    # Where the border sits. INSIDE its own cell rather than out in the
+    # grid line, which is what lets two teams' borders both be seen: an
+    # edge drawn in the gutter is drawn at the same coordinates by the
+    # cell on each side of it, so one colour simply painted over the
+    # other and WHICH one won depended on iteration order. Inset into
+    # each cell instead and the two lines sit apart, with a hairline of
+    # background between them — visible, but only just, which is what
+    # was asked for.
     GAP = 1
+    INSET = 3
 
     def _side(self, row: int, col: int) -> str | None:
         item = self.item(row, col)
         return (item.data(PAIR_SIDE) or None) if item is not None else None
 
-    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
-        super().paintEvent(event)
+    def _edges(self) -> dict:
+        """Which cell edges are a boundary, keyed by (side, which).
+
+        An edge exists where the neighbour is a different team — the rule
+        that gives the stepped diagonal, the outer border, and no line at
+        all between a triangle and its own axis row.
+        """
         heads = getattr(self.horizontalHeader(), "sides", {})
-        colours = getattr(self.itemDelegate(), "colours", {})
-        lines: list[tuple[str, tuple]] = []
-        gap = self.GAP
+        found: dict = {}
         for row in range(self.rowCount()):
             for col in range(self.columnCount()):
                 side = self._side(row, col)
                 if not side:
                     continue
-                box = self.visualRect(self.model().index(row, col))
-                if box.isEmpty():
-                    continue
-                left, right = box.left() - gap, box.right() + gap
-                top, bottom = box.top() - gap, box.bottom() + gap
                 # The header above row 0 counts as a neighbour: where it
-                # is the same team, the strip and the triangle are ONE
-                # region and a line between them would rule through the
+                # is the same team the strip and the triangle are ONE
+                # region, and a line between them would rule through the
                 # middle of it.
-                above = heads.get(col) if row == 0 else self._side(row - 1, col)
-                below = self._side(row + 1, col)
-                for neighbour, line in (
-                        (above, ((left, top), (right, top))),
-                        (below, ((left, bottom), (right, bottom))),
-                        (self._side(row, col - 1) if col else None,
-                         ((left, top), (left, bottom))),
-                        (self._side(row, col + 1),
-                         ((right, top), (right, bottom)))):
+                above = (heads.get(col) if row == 0
+                         else self._side(row - 1, col))
+                for which, neighbour in (
+                        ("top", above),
+                        ("bottom", self._side(row + 1, col)),
+                        ("left", self._side(row, col - 1) if col else None),
+                        ("right", self._side(row, col + 1))):
                     if neighbour != side:
-                        lines.append((side, line))
-        if not lines:
+                        found.setdefault((side, which), set()).add((row, col))
+        return found
+
+    @staticmethod
+    def _runs(cells: set, across: bool) -> list:
+        """Merge neighbouring cells into CONTINUOUS runs.
+
+        **THIS IS WHAT STOPS THE BORDER COMING OUT AS DASHES.** Drawn one
+        cell at a time, every segment has two ends, and two ends that are
+        meant to meet are the width of a grid line and an inset apart —
+        so the line broke at every portrait it ran past. Merged first, a
+        team's border along five cells is ONE line with two ends, and
+        there is nothing left to fail to meet.
+        """
+        runs, seen = [], set()
+        for cell in sorted(cells):
+            if cell in seen:
+                continue
+            row, col = cell
+            run = [cell]
+            seen.add(cell)
+            step = (0, 1) if across else (1, 0)
+            nxt = (row + step[0], col + step[1])
+            while nxt in cells and nxt not in seen:
+                run.append(nxt)
+                seen.add(nxt)
+                nxt = (nxt[0] + step[0], nxt[1] + step[1])
+            runs.append((run[0], run[-1]))
+        return runs
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().paintEvent(event)
+        colours = getattr(self.itemDelegate(), "colours", {})
+        edges = self._edges()
+        if not edges:
             return
+        inset, half = self.INSET, PAIR_EDGE_W // 2
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        for side, ((x1, y1), (x2, y2)) in lines:
+        for (side, which), cells in edges.items():
             painter.setPen(QPen(QColor(colours.get(side, theme.GOOD)),
                                 PAIR_EDGE_W))
-            painter.drawLine(x1, y1, x2, y2)
+            across = which in ("top", "bottom")
+            for first, last in self._runs(cells, across):
+                head = self.visualRect(self.model().index(*first))
+                tail = self.visualRect(self.model().index(*last))
+                if head.isEmpty() or tail.isEmpty():
+                    continue
+                if across:
+                    y = (head.top() + inset if which == "top"
+                         else head.bottom() - inset)
+                    # Extended by half the pen at each end so a run meets
+                    # the perpendicular run at the corner instead of
+                    # stopping a pixel short of it.
+                    painter.drawLine(head.left() + inset - half, y,
+                                     tail.right() - inset + half, y)
+                else:
+                    x = (head.left() + inset if which == "left"
+                         else head.right() - inset)
+                    painter.drawLine(x, head.top() + inset - half,
+                                     x, tail.bottom() - inset + half)
         painter.end()
 
 
@@ -469,7 +545,11 @@ class PairCellDelegate(QStyledItemDelegate):
             # header rows carry one too — that hero's synergy with its own
             # four — in the same corner, so a total is read exactly where
             # the pairs that made it are.
-            tilekit.paint_badge(painter, box, f"{float(value) * 100:+.2f}",
+            # An AXIS row's figure is that hero's whole triangle, so it
+            # takes the sigma; a body cell is one pair and does not.
+            text = (sigma(value) if index.data(PAIR_HEADER)
+                    else f"{float(value) * 100:+.2f}")
+            tilekit.paint_badge(painter, box, text,
                                 theme.GOOD if float(value) > 0 else theme.BAD,
                                 option.font)
         painter.restore()
@@ -891,7 +971,7 @@ class MatrixTable(QWidget):
         """
         if not getattr(self, "_icon_headers", False):
             return None, BLANK_ROW
-        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
         size = max(min(self._portrait_want(), self._portrait_room()),
                    digits - 4)
         return size + 4, round(size * 9 / 16) + 4
@@ -911,15 +991,24 @@ class MatrixTable(QWidget):
     def _portrait_want(self) -> int:
         return getattr(self, "_tile_w", None) or HEADER_ICON_MAX
 
-    def _portrait_room(self) -> int:
-        """What this card fits, SIX sections across.
+    def sections(self) -> int:
+        """How many portraits wide this grid is — its columns, plus the
+        row header when it has one."""
+        cols = max(1, self.table.columnCount())
+        down = self.table.verticalHeader()
+        return cols + (0 if down.isHidden() else 1)
 
-        Six, not this grid's own column count: two grids sit side by side
-        and one of them (counters) carries a row header, so dividing by
-        each grid's own sections gave the two different portraits for the
-        same hero. Six is what the busier of them needs, and the other
-        simply has slack on its right — which is where its slack goes
-        anyway.
+    def _portrait_room(self) -> int:
+        """What this card fits, ITS OWN sections across.
+
+        It used to divide by a hard-coded SIX — what the busier of the two
+        grids needs — so that the pair of them agreed with each other. They
+        did, and both disagreed with the pick tiles above them, which is
+        what "the matrix portraits are smaller than the other portraits"
+        was. The two are made to agree a better way now: each asks for what
+        it can honestly fit, the SMALLEST answer becomes the app's one box
+        (`teams.set_grid_cap`), and the picks come down to meet it. So this
+        can go back to telling the truth about its own width.
 
         Measured on THIS WIDGET rather than on the inner table, and that
         distinction is the whole reason this is safe: the table is fixed
@@ -930,7 +1019,14 @@ class MatrixTable(QWidget):
         it falls back to half the window, which is what a card gets.
         """
         room = self.width() or (self.window().width() // 2)
-        return max(HEADER_ICON, room // 6 - 12)
+        n = self.sections()
+        return max(HEADER_ICON, (room - 2 * CARD_MARGIN) // n - 4)
+
+    def portrait_ceiling(self) -> int:
+        """The biggest portrait this card can draw. Read by the window,
+        which takes the smaller of the two grids' answers and makes it the
+        box every portrait in the app uses."""
+        return self._portrait_room()
 
     def _apply_icon_box(self) -> None:
         """Give both headers the SAME portrait, sized to the window.
@@ -983,7 +1079,7 @@ class MatrixTable(QWidget):
         # stopped being a grid. Measured rather than guessed at, because
         # the body size has been raised twice and a constant does not
         # follow it.
-        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
         size = max(floor, min(self._portrait_want(), self._portrait_room()),
                    digits - 4)
         if size != getattr(self, "_icon_box", None):
@@ -1054,8 +1150,17 @@ class MatrixTable(QWidget):
                 setter(index, item)
             if isinstance(header, PortraitHeader):
                 header.set_heroes(by_index)
-                # Counters carries no per-hero total in its headers — each
-                # tile above already has one. Cleared rather than left, or
-                # a synergy grid's numbers would survive onto it.
-                header.set_values({})
+                # EACH HERO'S TOTAL, ON ITS OWN FACE, at the user's
+                # request — a column header carries that enemy's whole
+                # column and a row header that ally's whole row, with a
+                # sigma to say it is a sum. This is the same rule the
+                # synergy axis rows follow, so the two cards agree, and it
+                # is why the Sigma row and column stay OFF: a total drawn
+                # on the portrait it belongs to costs no grid at all,
+                # where a margin row and column would have cost a section
+                # of width each and made every portrait smaller.
+                totals = (matrix.col_totals if header is
+                          self.table.horizontalHeader() else matrix.row_totals)
+                header.set_values({i: v for i, v in enumerate(totals)
+                                   if i < len(ids)})
         self._apply_icon_box()

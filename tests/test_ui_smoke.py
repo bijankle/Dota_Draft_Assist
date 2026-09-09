@@ -3101,10 +3101,14 @@ def test_the_side_total_keeps_its_colour_when_the_name_loses_it(window, qapp):
     window.refresh()
     panel = window.team_panels["ally"]
     assert theme.TEXT_STRONG in window.team_captions["ally"].styleSheet()
+    # Read off the LABEL, not a stylesheet: the total is haloed now, like
+    # every other signed number in the app, and a widget that paints its
+    # own text is not reachable by a `color:` rule — the same reason the
+    # tick box has to ask its palette for its colour.
     panel.set_total(0.05)
-    assert theme.GOOD in panel.total.styleSheet()
+    assert panel.total.colour == theme.GOOD
     panel.set_total(-0.05)
-    assert theme.BAD in panel.total.styleSheet()
+    assert panel.total.colour == theme.BAD
 
 
 def test_demo_fills_the_board_in_one_press(window):

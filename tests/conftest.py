@@ -42,9 +42,15 @@ def _sizes_start_at_one():
     from draft_assist.ui import teams, tilekit
     teams.set_scale(1.0)
     tilekit.set_scale(1.0)
+    # AND THE GRIDS' CAP, which is the same hazard from a new direction:
+    # the matrix cards now have a vote on the one portrait box every tile
+    # in the app uses (`teams.set_grid_cap`), so a test that opens a
+    # narrow window leaves every test after it measuring smaller tiles.
+    teams.set_grid_cap(None)
     yield
     teams.set_scale(1.0)
     tilekit.set_scale(1.0)
+    teams.set_grid_cap(None)
 
 
 @pytest.fixture(autouse=True)

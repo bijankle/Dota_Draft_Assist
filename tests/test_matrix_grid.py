@@ -120,11 +120,17 @@ def test_the_two_headers_agree_at_every_width(art, qapp):
         across, down = boxes(table)
         assert across == down, f"at {width}: {across} vs {down}"
     # THE NUMBER SETS THE FLOOR, not HEADER_ICON_MAX: a column has to print
-    # "+12.34" whatever the portrait would have liked to be, so the picture
-    # is whichever of the two is bigger. Above the width where the room
-    # runs out, that is the whole answer and more window does not move it.
+    # the widest figure it can be asked for whatever the portrait would
+    # have liked to be, so the picture is whichever of the two is bigger.
+    # Above the width where the room runs out, that is the whole answer and
+    # more window does not move it.
+    # The widest figure is a TOTAL — the sigma sits ahead of the digits —
+    # and this reads the module's own constant rather than repeating the
+    # string, so a change to what a cell can hold cannot leave the check
+    # measuring something the app stopped drawing.
+    from draft_assist.ui.tables import WIDEST_TOTAL
     roomy = [built(qapp, width=w) for w in (700, 1400)]
-    digits = roomy[0].table.fontMetrics().horizontalAdvance("+12.34") + 10
+    digits = roomy[0].table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
     want = max(HEADER_ICON_MAX, digits - 4)
     assert [boxes(t)[0] for t in roomy] == [want, want], \
         "with room to spare the size should stop chasing the window"
@@ -364,12 +370,31 @@ def test_the_outline_is_one_continuous_line(art, qapp):
              for x in range(picture.width())
              if picture.pixelColor(x, y).name() == theme.GOOD]
     assert green
-    # The bottom edge of your own region: the longest horizontal run of
-    # green there has to reach across the whole grid without a break.
-    bottom = max(y for _, y in green)
-    xs = sorted(x for x, y in green if y == bottom)
-    assert len(xs) > 100, "the bottom edge is not a line"
-    gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 1]
+    # The longest horizontal run of green anywhere, WHEREVER it sits.
+    # It used to look at the lowest green pixel and scan that row, which
+    # stopped being the bottom edge the moment the border was inset into
+    # the cells to let both teams' colours be seen: the lowest green is
+    # now the end cap of a vertical, and four pixels is not a line.
+    # Measuring the longest unbroken run says the thing the test is
+    # actually for, and says it wherever the border is drawn.
+    rows: dict = {}
+    for x, y in green:
+        rows.setdefault(y, []).append(x)
+    best, gaps = 0, None
+    for y, xs in rows.items():
+        xs = sorted(xs)
+        run = longest = 1
+        breaks = []
+        for a, b in zip(xs, xs[1:]):
+            if b - a <= 1:
+                run += 1
+                longest = max(longest, run)
+            else:
+                breaks.append(b - a)
+                run = 1
+        if longest > best:
+            best, gaps = longest, breaks
+    assert best > 100, f"no continuous edge: longest green run is {best}px"
     assert not gaps, f"the line breaks {len(gaps)} times: {gaps[:5]}"
 
 
@@ -554,14 +579,19 @@ def test_the_outline_colour_follows_the_side_the_player_is_on(qapp):
 
 def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
     """A grid portrait had a size of its own, so the same hero was one
-    size at the top of the window and another in the grid under it. The
-    draft panel decides the box for the whole app and hands it down; the
-    grid can only make it smaller, when six will not fit across a card."""
+    size at the top of the window and another in the grid under it. One
+    box for the whole app — and the grid gets a VOTE in it now rather than
+    only a veto: it reports what it can fit (`portrait_ceiling`) and the
+    window takes the smaller of the two cards' answers, because counters
+    fits its row header plus five columns where a panel fits five tiles
+    and no amount of margin-matching closes six against five."""
+    from draft_assist.ui.tables import WIDEST_TOTAL
     table = built(qapp, width=1400)
     table.set_tile_width(132)
     table.show_matrix(grid())
     QApplication.processEvents()
     assert table._icon_box == min(132, table._portrait_room())
+    assert table.portrait_ceiling() == table._portrait_room()
     # Squeezed, it gives way rather than pushing the columns off the card.
     narrow = built(qapp, width=520)
     narrow.set_tile_width(132)
@@ -570,4 +600,17 @@ def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
     assert narrow._icon_box < 132
     assert narrow._icon_box == max(narrow._portrait_room(),
                                    narrow.table.fontMetrics()
-                                   .horizontalAdvance("+12.34") + 6)
+                                   .horizontalAdvance(WIDEST_TOTAL) + 6)
+
+
+def test_the_grid_divides_by_its_own_sections(art, qapp):
+    """It used to divide by a hard-coded SIX — what the busier of the two
+    grids needs — so the pair of them agreed with each other and both
+    disagreed with the picks above. Each asks about its own width now, and
+    the window reconciles them."""
+    table = built(qapp, width=1400)
+    table.show_matrix(grid())
+    QApplication.processEvents()
+    down = table.table.verticalHeader()
+    expected = table.table.columnCount() + (0 if down.isHidden() else 1)
+    assert table.sections() == expected

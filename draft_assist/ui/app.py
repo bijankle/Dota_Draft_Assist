@@ -3141,6 +3141,40 @@ class MainWindow(QMainWindow):
         ui_settings.save(self.settings)
         self._refresh_views()
 
+    def _match_grid_portraits(self) -> None:
+        """Let the GRIDS have their say about the app's one portrait box.
+
+        The draft panel has always decided one size for every portrait —
+        but only ever from its own width, and the grids are the tighter
+        constraint: counters fits its row header plus five columns where a
+        panel fits five tiles, so the same hero was visibly smaller in the
+        grid than on the pick above it, at every window size. That is what
+        "I don't like that the matrix portraits are smaller" was, and no
+        amount of matching MARGINS could have closed it — the shortfall is
+        six sections against five.
+
+        So the smallest of what the two cards can honestly draw becomes
+        the cap, the picks come down to meet it, and one number sizes the
+        whole window. Safe against a feedback loop: a card's width comes
+        from the window, never from the tile size it is being asked about.
+        """
+        grids = [g for g in (getattr(self, "synergy_matrix", None),
+                             getattr(self, "matchup_matrix", None))
+                 if g is not None and g.width() > 0]
+        if not grids:
+            return
+        cap = min(g.portrait_ceiling() for g in grids)
+        if cap == getattr(self, "_grid_cap_applied", None):
+            return
+        self._grid_cap_applied = cap
+        teams.set_grid_cap(cap)
+        for panel in self.team_panels.values():
+            panel.rescale()
+
+    def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._match_grid_portraits()
+
     def _resize_strips(self, width: int, height: int) -> None:
         """The picks decided how big a tile is; the strips follow.
 

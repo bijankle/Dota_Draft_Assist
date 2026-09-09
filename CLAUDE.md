@@ -702,6 +702,27 @@ credentials, and put the account at risk. Do not go there.
   where the answer differs, which gives the stepped diagonal for free, in
   both colours, and cannot go stale when the columns resize the way a
   path computed from row and column numbers would.
+  **AND IT IS DRAWN AS MERGED RUNS, INSET INTO ITS OWN CELLS**
+  (`PairGrid._edges`, `_runs`, `INSET`). Two faults, both visible in a
+  screenshot the user circled. **The colours fought**: two cells of
+  different teams share one boundary, so each drew a line at effectively
+  the same pixel and one simply painted over the other — which one won
+  depended on iteration order, so it was inconsistent along the diagonal.
+  Each side's border is now inset INTO its own cell, so the two lines sit
+  apart with a hairline of background between them and BOTH colours are
+  always visible; that hairline is also the "very slight gap, only just
+  visible" that was asked for, and it costs no grid at all. **And the
+  line still broke at every portrait**: drawn one cell at a time, every
+  segment has two ends, and two ends meant to meet are a grid line and an
+  inset apart. Collinear edges are MERGED INTO RUNS first, so a team's
+  border along five cells is one line with two ends and there is nothing
+  left to fail to meet; each run is extended by half the pen at both ends
+  so it closes against the perpendicular run at a corner. The inset fixed
+  a third thing for free — the outer border used to be drawn a pixel
+  OUTSIDE the first column with a centred pen, so half of it fell beyond
+  the viewport and was clipped, which is what "a missing green line down
+  the entire left side" was.
+
   **It is DRAWN over the viewport, not by the delegate** (`PairGrid.
   paintEvent`), and that is what makes it a line rather than a row of
   dashes. A delegate paints inside its own cell rectangle, and between two
@@ -727,6 +748,20 @@ credentials, and put the account at risk. Do not go there.
   `enemy`, never `radiant` and `dire`: which team is which side is
   something only the UI knows (`MatrixTable.set_team_colours`, set from
   `_update_team_labels`), and on Dire your own triangle is the red one.
+  **A TOTAL WEARS A SIGMA, AND COUNTERS HAS THEM NOW** (`tables.SIGMA`,
+  `sigma`, `WIDEST_TOTAL`). At the user's request: these cards carry two
+  kinds of figure — one pair, and the sum of a row or column — and
+  nothing said which was which. Every total takes a capital sigma ahead
+  of the digits: the synergy grid's two axis rows, and counters' row and
+  column headers, which used to carry no figure at all. They go ON THE
+  PORTRAIT, in the same corner as every other number, rather than into a
+  margin row and column — the Sigma row and column stay OFF, because a
+  total drawn on the face it belongs to costs no grid, where a margin
+  would have cost a section of width and made every portrait smaller.
+  `WIDEST_TOTAL` is what the column is measured against now: the sigma
+  sits ahead of the digits, so measuring the bare number would have put
+  "..." where the totals are.
+
   **EACH HERO'S TOTAL IS ON ITS FACE**, in both axis rows: the sum of that
   hero's four pairs with its own team, in the same badge and the same
   bottom-right corner as every other number in the app. It is NOT a row or
@@ -903,6 +938,26 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
+  **AND THE GRIDS GET A VOTE IN THAT BOX, NOT JUST A VETO** (`MatrixTable.
+  sections` / `portrait_ceiling`, `teams.set_grid_cap`,
+  `MainWindow._match_grid_portraits`). The panel decided the size from ITS
+  OWN width, and the grids are the tighter constraint: counters fits its
+  row header plus five columns where a panel fits five tiles, so the same
+  hero was visibly smaller in the grid than on the pick above it at every
+  window size. `_portrait_room` divided by a hard-coded SIX to make the
+  two grids agree with each other, which equalised the wrong pair — both
+  then disagreed with the picks. Each grid now reports what it can
+  honestly fit, the window takes the SMALLER of the two, and the picks
+  come down to meet it: one number, and every portrait in the window is
+  that number. Measured: at 1464 all three land on 128 and at 1920 on 132.
+  Matching MARGINS could never have closed it on its own — the shortfall
+  is six sections against five — and the remaining cost is that a real
+  5v5 gives counters six sections, so at the narrowest window the box
+  falls to ~106. Dropping counters' row header the way synergy dropped
+  its own would end that; it has not been done.
+  `set_grid_cap` is MODULE state, so `tests/conftest.py` resets it either
+  side of every test for the same reason it resets the two scales.
+
   **EVERY PORTRAIT IN THE APP IS THE PICK TILE'S BOX** (`app.
   STRIP_OF_PICK` = 1.0, `MatrixTable.set_tile_width`). The strips were
   briefly 70% of a pick, so the ten picks read as the subject and the
@@ -1167,6 +1222,18 @@ credentials, and put the account at risk. Do not go there.
   you" on two words that judge nothing — with the side's own signed total
   sitting right beside them wearing the same two colours for the opposite
   reason. The TOTAL keeps its colour, because that one IS a judgement.
+  **AND IT IS HALOED** (`teams.HaloLabel`). It was the last signed number
+  in the window drawn as plain text, while every other one is stroked —
+  the badge on a pick, the figure in a grid cell, the sigma on an axis
+  portrait. The halo is not decoration: it separates a figure from
+  whatever is behind it and it is what makes two numbers read as the same
+  kind of object, so the one that skipped it read as a different kind of
+  thing from the five tiles it is the sum of. PAINTED, because a
+  stylesheet cannot put a stroke round a glyph — the tick box, the window
+  buttons and the count box's arrows are all painted for the same reason —
+  and the colour therefore comes in through `set_value` and is read back
+  off `HaloLabel.colour`, since a `color:` rule cannot reach text a widget
+  draws itself.
   **They ALWAYS say Radiant and Dire, and LEFT IS ALWAYS RADIANT**
   (`_order_panels`). "Your team" / "Enemy team" was the fallback whenever
   the game had not reported a side, and it named the one thing the user

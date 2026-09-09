@@ -22,7 +22,8 @@ of the number, so it reads over whatever is behind it without covering more
 than it needs.
 """
 
-from PyQt6.QtCore import QMimeData, QPoint, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import (QMimeData, QPoint, QPointF, QRect, QSize, Qt,
+                          pyqtSignal)
 from PyQt6.QtGui import QColor, QDrag, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
                              QSizePolicy, QVBoxLayout)
@@ -70,9 +71,31 @@ def set_scale(factor: float) -> None:
     SCALE = max(SCALE_MIN, min(SCALE_MAX, float(factor)))
 
 
+# What the GRIDS can afford, or None before they have been measured. The
+# draft panel has always decided one box for every portrait in the app —
+# but it decided it from ITS OWN width, and the grids are the tighter
+# constraint: counters fits its row header plus five columns where a panel
+# fits five tiles, so the same hero came out visibly smaller in the grid
+# than on the pick above it at every window size. One box means the
+# SMALLEST of what the two can honestly draw, not the panel's alone.
+_grid_cap: int | None = None
+
+
+def set_grid_cap(px: int | None) -> None:
+    """What the matrix cards can fit a portrait into. See `_grid_cap`."""
+    global _grid_cap
+    _grid_cap = None if px is None else max(TILE_MIN, int(px))
+
+
+def grid_cap() -> int | None:
+    return _grid_cap
+
+
 def tile_cap() -> int:
-    """The biggest a pick tile gets, the user's multiplier included."""
-    return max(TILE_MIN, round(TILE_MAX * SCALE))
+    """The biggest a pick tile gets: the user's multiplier, and whatever
+    the grids under it can match."""
+    mine = max(TILE_MIN, round(TILE_MAX * SCALE))
+    return mine if _grid_cap is None else max(TILE_MIN, min(mine, _grid_cap))
 
 
 # The two sizes this file draws itself, up with the rest of the app and
@@ -345,6 +368,71 @@ class HeroTile(QAbstractButton):
         return font
 
 
+class HaloLabel(QLabel):
+    """A label whose text carries the black halo every OTHER signed number
+    in this app has.
+
+    The side's total — the "+11.2" beside "Radiant" — was the last figure
+    in the window drawn as plain text. Every other one is stroked: the
+    badge on a pick, the number in a counters cell, the sigma on an axis
+    portrait. The halo is not decoration there, it is what separates a
+    figure from whatever is behind it and what makes two numbers read as
+    the same kind of object rather than as two conventions — so the one
+    that skipped it read as a different kind of thing from the five tiles
+    it is the sum of.
+
+    Painted rather than styled because a stylesheet cannot put a stroke
+    round a glyph: same reason the tick box, the window buttons and the
+    count box's arrows are all painted. The colour comes in through
+    `set_value` rather than off the palette, since it means something —
+    green good for you, red not.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._colour = theme.TEXT
+
+    @property
+    def colour(self) -> str:
+        """What the text is painted in. A stylesheet cannot reach text a
+        widget paints itself, so this is where the answer lives now —
+        and it means something, so it is worth being able to read."""
+        return self._colour
+
+    def set_value(self, text: str, colour: str) -> None:
+        self._colour = colour
+        self.setText(text)
+        self.updateGeometry()
+        self.update()
+
+    def _stroke(self) -> float:
+        """The halo's thickness at THIS label's size. A stylesheet sets
+        the heading's point size, so the figure has to be read off the
+        font rather than taken from the tiles' own constant."""
+        size = self.font().pixelSize()
+        if size <= 0:
+            size = max(1, self.fontMetrics().height())
+        return tilekit.stroke_width(size)
+
+    def sizeHint(self):                     # noqa: N802 - Qt naming
+        hint = super().sizeHint()
+        # Room for the stroke, which sits OUTSIDE the letterforms.
+        hint.setWidth(hint.width() + 2 * round(self._stroke()))
+        return hint
+
+    def paintEvent(self, event) -> None:    # noqa: N802 - Qt naming
+        text = self.text()
+        if not text:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        metrics = self.fontMetrics()
+        baseline = (self.height() + metrics.ascent() - metrics.descent()) / 2
+        tilekit.stroked(painter, QPointF(self._stroke(), baseline),
+                        text, self._colour, self.font())
+        painter.end()
+
+
 class TeamPanel(QFrame):
     """Five tiles under one heading — one half of the draft."""
 
@@ -376,7 +464,7 @@ class TeamPanel(QFrame):
         self.rule.setContentsMargins(8, 0, 8, 0)
         self.rule.setVisible(False)
         head.addWidget(self.rule)
-        self.total = QLabel("")
+        self.total = HaloLabel()
         self.total.setProperty("heading", True)
         self.total.setVisible(False)
         head.addWidget(self.total)
@@ -447,9 +535,8 @@ class TeamPanel(QFrame):
             self.total.setVisible(False)
             self.total.setText("")
             return
-        self.total.setText(f"{value * 100:+.1f}")
-        colour = theme.GOOD if value >= 0 else theme.BAD
-        self.total.setStyleSheet(f"color: {colour};")
+        self.total.set_value(f"{value * 100:+.1f}",
+                             theme.GOOD if value >= 0 else theme.BAD)
         self.rule.setVisible(True)
         self.total.setVisible(True)
 
