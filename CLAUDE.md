@@ -917,6 +917,16 @@ credentials, and put the account at risk. Do not go there.
   recognise the hero by, and the art is only worth drawing because it is
   quicker to read than the name. The number sits in the bottom-right
   corner, snug against it.
+  **AND THE DIGITS STAND ON THE BOTTOM EDGE** (`tilekit.paint_badge`).
+  The baseline was held a DESCENT off the bottom so that a badge which
+  had to shrink to fit still stood on the same line as its full-size
+  neighbours — and not one of these figures has a descender. "+0.52", a
+  total, a sigma: every glyph stands on the baseline, so the reserved
+  room was a band of empty portrait under the digits on every tile in the
+  app. Putting the baseline itself on the bottom edge keeps what the
+  descent was for and costs nothing, because the line then depends on the
+  font not at all; only the stroke reaches below it, and `BADGE_INSET`
+  plus half the stroke is what leaves it room.
   **IT IS OUTLINED, NOT PLATED** (`tilekit.paint_badge`, `STROKE`,
   `stroke_width`). It sat on a solid black rounded plate, and the plate is
   the part that hides the hero: even cut to the digits it is a rectangle
@@ -1000,25 +1010,45 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
-  **AND THE GRIDS GET A VOTE IN THAT BOX, NOT JUST A VETO** (`MatrixTable.
-  sections` / `portrait_ceiling`, `teams.set_grid_cap`,
-  `MainWindow._match_grid_portraits`). The panel decided the size from ITS
-  OWN width, and the grids are the tighter constraint: counters fits its
-  row header plus five columns where a panel fits five tiles, so the same
-  hero was visibly smaller in the grid than on the pick above it at every
-  window size. `_portrait_room` divided by a hard-coded SIX to make the
-  two grids agree with each other, which equalised the wrong pair — both
-  then disagreed with the picks. Each grid now reports what it can
-  honestly fit, the window takes the SMALLER of the two, and the picks
-  come down to meet it: one number, and every portrait in the window is
-  that number. Measured: at 1464 all three land on 128 and at 1920 on 132.
-  Matching MARGINS could never have closed it on its own — the shortfall
-  is six sections against five — and the remaining cost is that a real
-  5v5 gives counters six sections, so at the narrowest window the box
-  falls to ~106. Dropping counters' row header the way synergy dropped
-  its own would end that; it has not been done.
-  `set_grid_cap` is MODULE state, so `tests/conftest.py` resets it either
-  side of every test for the same reason it resets the two scales.
+  **EVERY REGION FILLS ITS OWN CARD, AND THE PICKS SET THE BOX**
+  (`teams.tile_cap`, `TeamPanel._resize_tiles`, `MatrixTable.
+  set_tile_width` / `_portrait_room`, `MainWindow._match_grid_portraits`).
+  This REVERSES the rule that stood here before, which took the SMALLEST
+  of what the two grid cards could draw and brought the picks down to
+  meet it — one number for every portrait in the window, at a price paid
+  in the wrong place. Counters is SIX sections across (five columns plus
+  the portrait column down its side) where everything else is five, so on
+  a real 5v5 it decided the size of the ten picks at the top of the
+  window: they came down to about five sixths of what their own card
+  could hold and sat small in the middle of it with a wide margin either
+  side. "They should be scaling to reach the end margins."
+  So the picks fill their card, which sets the app's box, and everything
+  else follows it: the strips take it outright, and a grid takes it as a
+  CEILING and goes smaller only when its own sections will not fit
+  (`_portrait_room`). Synergy is five across, like the picks, so it lands
+  on exactly the same number and its grid reaches the same left and right
+  edges as the tiles above it. **Counters is the one exception and can
+  only be**: six across, it fills its card at about five sixths of the
+  size. Dropping its portrait column — putting each row's face into its
+  own cells the way synergy does — is the single change that would make
+  all three equal again, and it has NOT been made.
+  `TILE_MAX` is a sanity ceiling rather than a working size for the same
+  reason. At 132 it was a size an ordinary window reaches and passes, so
+  past about 1500px the picks stopped growing and the complaint came
+  straight back on a bigger monitor; at 256 it only stops a full-screen
+  window on a very wide display turning the draft into five posters, and
+  the user's multiplier still moves it.
+  `_match_grid_portraits` must stay IDEMPOTENT. It runs from
+  `resizeEvent`, and telling the strips a size resizes them, which lays
+  the window out again, which calls it again — an unbounded loop, and Qt
+  ABORTS the process rather than raising, so there is no traceback and no
+  test failure, only an app that stops. The guard has to move with
+  whatever value the function applies.
+
+    `set_grid_cap` still exists and is still MODULE state, so
+  `tests/conftest.py` resets it either side of every test for the same
+  reason it resets the two scales — but nothing calls it to hold the
+  picks down any more.
 
   **EVERY PORTRAIT IN THE APP IS THE PICK TILE'S BOX** (`app.
   STRIP_OF_PICK` = 1.0, `MatrixTable.set_tile_width`). The strips were

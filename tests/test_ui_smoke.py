@@ -3509,3 +3509,39 @@ def test_one_missing_portrait_is_not_described_in_the_plural(
         assert "That tile draws blank" in said, said
     finally:
         win.close()
+
+
+def test_the_picks_fill_their_card_and_the_grids_line_up_with_them(window,
+                                                                   qapp):
+    """"They should be scaling to reach the end margins."
+
+    The box used to be the SMALLEST of what the two grid cards could
+    draw, with the picks brought down to meet it — so counters, which is
+    six sections across where everything else is five, decided the size
+    of the ten picks and left them sitting small in the middle of their
+    own card. Now each region fills its own card and the size follows
+    from how many are across it: the picks set the box, and synergy —
+    also five across — lands on the same number and the same left and
+    right edges.
+    """
+    window.show()
+    window.resize(1500, 950)
+    window.refresh()
+    _settle(qapp)
+    panel = list(window.team_panels.values())[0]
+    tiles = panel.slots
+    margins = panel.layout().contentsMargins()
+    room = (panel.width() - margins.left() - margins.right()
+            - 4 * panel.spacing)
+    used = sum(t.width() for t in tiles)
+    assert abs(used - room) <= 5, (
+        f"the five picks leave {room - used}px of their card unused")
+    # The suggestions are the same tile.
+    assert window.suggest_row.tile_width() == tiles[0].width()
+    # And both grids were handed that width as their ceiling. The BOX
+    # itself is only chosen once there are portraits to draw — with none
+    # on disk the headers fall back to names and stay at the floor, which
+    # is what this fixture has, so the size the grids agreed to is checked
+    # against portraits in `test_the_grid_portrait_is_the_pick_tiles_box`.
+    for grid in (window.synergy_matrix, window.matchup_matrix):
+        assert grid._portrait_want() == tiles[0].width()

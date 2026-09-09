@@ -3149,34 +3149,53 @@ class MainWindow(QMainWindow):
         self._refresh_views()
 
     def _match_grid_portraits(self) -> None:
-        """Let the GRIDS have their say about the app's one portrait box.
+        """Keep the grids' idea of the box in step with the picks'.
 
-        The draft panel has always decided one size for every portrait —
-        but only ever from its own width, and the grids are the tighter
-        constraint: counters fits its row header plus five columns where a
-        panel fits five tiles, so the same hero was visibly smaller in the
-        grid than on the pick above it, at every window size. That is what
-        "I don't like that the matrix portraits are smaller" was, and no
-        amount of matching MARGINS could have closed it — the shortfall is
-        six sections against five.
+        **THE PICKS SET IT NOW, AND THE GRIDS FOLLOW**, which reverses the
+        rule this used to enforce. It took the SMALLER of what the two
+        cards could draw and brought the picks down to meet it — one number
+        for every portrait in the window, at the price that counters, which
+        is six sections across where everything else is five, decided the
+        size of the ten picks at the top. On a real 5v5 that is what made
+        the pick tiles sit small and adrift in the middle of their card
+        with a wide margin either side: "they should be scaling to reach
+        the end margins".
 
-        So the smallest of what the two cards can honestly draw becomes
-        the cap, the picks come down to meet it, and one number sizes the
-        whole window. Safe against a feedback loop: a card's width comes
-        from the window, never from the tile size it is being asked about.
+        So each region fills ITS OWN card and the portrait size follows
+        from how many are across it. The picks are five across and fill
+        theirs, which sets the app's box; synergy is also five across, so
+        it lands on exactly the same number and its grid reaches the same
+        left and right edges as the picks above it. Counters is the one
+        exception and can only be: with a portrait column down the side it
+        is six across, so it fills its card at about five sixths of the
+        size. Dropping that column — putting each row's face into its own
+        cells the way synergy does — is the single change that would make
+        all three equal again, and it has not been made.
+
+        A grid may still only make its own portrait SMALLER than the pick
+        (`_portrait_want` against `_portrait_room`), so nothing in the
+        window is ever bigger than the tile it is advice about. What is
+        left here is keeping the strips and grids in step when the panel
+        has resized without a signal reaching them.
+
+        IDEMPOTENT, and that is not a nicety: this runs from
+        `resizeEvent`, and telling the strips a size resizes them, which
+        lays the window out again, which calls this again. Without the
+        guard that is an unbounded loop and Qt ABORTS the process — no
+        exception, no traceback. The old rule had the same guard on the
+        cap it computed; the guard has to move with the value.
         """
-        grids = [g for g in (getattr(self, "synergy_matrix", None),
-                             getattr(self, "matchup_matrix", None))
-                 if g is not None and g.width() > 0 and g.sections() > 0]
-        if not grids:
-            return              # nothing drawn yet; an empty grid has no view
-        cap = min(g.portrait_ceiling() for g in grids)
-        if cap == getattr(self, "_grid_cap_applied", None):
+        panels = list(getattr(self, "team_panels", {}).values())
+        if not panels:
             return
-        self._grid_cap_applied = cap
-        teams.set_grid_cap(cap)
-        for panel in self.team_panels.values():
-            panel.rescale()
+        tile = panels[0].slots[0] if panels[0].slots else None
+        if tile is None or tile.width() <= 0:
+            return
+        box = (tile.width(), tile.height())
+        if box == getattr(self, "_box_applied", None):
+            return
+        self._box_applied = box
+        self._resize_strips(*box)
 
     def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
         super().resizeEvent(event)

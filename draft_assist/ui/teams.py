@@ -47,13 +47,16 @@ KIND_MARK = {"with": "with", "vs": "vs"}
 # and the tiles ignore anything that is not one of their own.
 SLOT_MIME = "application/x-dota-draft-slot"
 
-# A tile is square. These bound how big the panel may make one; between them
-# it takes whatever five-across leaves, so the row breathes on a wide window
-# without any tile turning into a letterbox.
-# A tile is capped so a wide window does not turn the draft into five
-# posters, and floored at the matrix's own column width so that when the
-# window is at its narrowest the tiles still line up with the grid below.
-TILE_MAX = 132
+# These bound how big the panel may make a tile; between them it takes
+# whatever five-across leaves, so the row FILLS its card at any width.
+# The ceiling used to be 132, which is a size an ordinary window reaches
+# and passes — so past about 1500px the five picks stopped growing and sat
+# small in the middle of their own card with a wide margin either side,
+# which is what "they should be scaling to reach the end margins" was
+# about. It is a sanity ceiling now, not a working size: it stops a
+# full-screen window on a very wide monitor turning the draft into five
+# posters, and the user's multiplier still moves it.
+TILE_MAX = 256
 # Below this there is no room for a portrait and the tile stops being a
 # picture of a hero, which is the only reason it exists.
 TILE_MIN = 64
@@ -92,10 +95,20 @@ def grid_cap() -> int | None:
 
 
 def tile_cap() -> int:
-    """The biggest a pick tile gets: the user's multiplier, and whatever
-    the grids under it can match."""
-    mine = max(TILE_MIN, round(TILE_MAX * SCALE))
-    return mine if _grid_cap is None else max(TILE_MIN, min(mine, _grid_cap))
+    """The biggest a pick tile gets: the user's multiplier, and nothing
+    else.
+
+    It used to be held down by whatever the GRIDS could match as well
+    (`set_grid_cap`), so that every portrait in the window was one size.
+    The cost was paid at the top: counters is six sections across where
+    the picks are five, so on a real 5v5 the ten picks came down to about
+    five sixths of what their own card could hold and sat small in the
+    middle of it with a wide margin either side. The picks are the subject
+    of the screen and they fill their card; a grid takes this as its
+    CEILING and goes smaller when its own sections will not fit
+    (`MatrixTable._portrait_room`), which is counters and only counters.
+    """
+    return max(TILE_MIN, round(TILE_MAX * SCALE))
 
 
 # The two sizes this file draws itself, up with the rest of the app and
