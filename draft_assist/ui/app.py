@@ -84,6 +84,7 @@ from .manual import ManualDraft
 from .tables import (BreakdownPanel, MatrixTable, ValueItem,
                      minimum_grid_width)
 from .task_dialog import TaskDialog
+from . import teams
 from .teams import TeamPanel, minimum_panel_width
 from .tasks import TASKS
 
@@ -164,7 +165,13 @@ def _scrolling(page: QWidget) -> QScrollArea:
 # How big a tile in the two advice strips is, against a pick. The ten
 # picks are the subject of the screen; the suggestions and the items are
 # advice about them, and at the same size the three rows read as equals.
-STRIP_OF_PICK = 0.7
+# EVERY PORTRAIT IN THE APP IS ONE BOX, and the pick tile is that box.
+# The strips were briefly 70% of a pick, so that the ten picks read as the
+# subject and the advice under them as advice — and at the user's request
+# that is reversed: a portrait is a portrait wherever it is drawn, and the
+# eye should not have to re-scale between three rows of them. One number,
+# so going back to a smaller strip is one number.
+STRIP_OF_PICK = 1.0
 
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
@@ -298,6 +305,12 @@ class MainWindow(QMainWindow):
         # locked" in the status bar on every start — which then held the
         # line for five seconds against everything the app had to say
         # about the game.
+        # The saved sizes, applied BEFORE the first layout so the tiles
+        # are built at the size the user chose rather than jumping to it.
+        teams.set_scale(float(self.settings.get("portrait_scale", 1.0)))
+        tilekit.set_scale(float(self.settings.get("number_scale", 1.0)))
+        for panel in self.team_panels.values():
+            panel.rescale()
         self.lock_action.blockSignals(True)
         self.lock_action.setChecked(
             bool(self.settings.get("window_locked", True)))
@@ -524,6 +537,7 @@ class MainWindow(QMainWindow):
         # once and then left alone for the evening, and a row read at a
         # glance mid-draft should hold the things pressed mid-draft.
         self._add_transparency_menu()
+        self._add_sizes_menu()
 
         # There is no capture pill: it said the same sentence as the status
         # bar in less room, one line higher up. Keeping it around invisible
@@ -1678,6 +1692,85 @@ class MainWindow(QMainWindow):
             self.view_menu.removeAction(menu.menuAction())
             self.view_menu.insertMenu(first, menu)
             self.view_menu.insertSeparator(first)
+
+    def _add_sizes_menu(self) -> None:
+        """View ▸ Sizes: how big the pictures and the numbers are.
+
+        Two sliders in one submenu because they are one question asked
+        twice, and sliders rather than a list of percentages for the same
+        reason Transparency is one — this is tuned by eye against the
+        window, a few percent at a time, and the menu stays open while the
+        handle moves.
+
+        They set the BASE, not the behaviour: a portrait still grows and
+        shrinks with the window between its own floor and this cap, so
+        "size dynamically, but from a base I choose" is exactly what the
+        controls do.
+        """
+        from PyQt6.QtWidgets import QWidgetAction
+
+        menu = self.view_menu.addMenu("&Sizes")
+        self.size_sliders = {}
+        for key, label, apply in (
+                ("portrait_scale", "Portraits", self._set_portrait_scale),
+                ("number_scale", "Numbers", self._set_number_scale)):
+            row = QWidget(menu)
+            lay = QHBoxLayout(row)
+            lay.setContentsMargins(14, 6, 14, 6)
+            lay.setSpacing(10)
+            name = QLabel(label, row)
+            name.setMinimumWidth(78)
+            slider = QSlider(Qt.Orientation.Horizontal, row)
+            slider.setFixedWidth(140)
+            slider.setRange(50, 200)
+            slider.setValue(int(float(self.settings.get(key, 1.0)) * 100))
+            readout = QLabel("", row)
+            readout.setMinimumWidth(46)
+            slider.valueChanged.connect(
+                lambda value, k=key, r=readout, f=apply: (
+                    r.setText(f"{value}%"), f(value / 100.0)))
+            readout.setText(f"{slider.value()}%")
+            lay.addWidget(name)
+            lay.addWidget(slider)
+            lay.addWidget(readout)
+            holder = QWidgetAction(menu)
+            holder.setDefaultWidget(row)
+            menu.addAction(holder)
+            self.size_sliders[key] = slider
+        self.sizes_menu = menu
+
+    def _set_portrait_scale(self, factor: float) -> None:
+        """Every portrait in the app, from the pick tiles outwards.
+
+        Only the PANELS are told: they decide the box for the whole app,
+        and the strips and the grids follow the signal they raise — which
+        is the same path a window drag takes, so there is one way for a
+        tile to change size rather than two.
+        """
+        teams.set_scale(factor)
+        self.settings["portrait_scale"] = teams.SCALE
+        for panel in self.team_panels.values():
+            panel.rescale()
+        ui_settings.save(self.settings)
+
+    def _set_number_scale(self, factor: float) -> None:
+        """Every signed number in the app, in one multiplier.
+
+        A REPAINT, not a rebuild: nothing about the layout changes when a
+        number gets bigger — it is drawn over a tile that is already the
+        right size — and rebuilding the strips on every step of a slider
+        drag would be scoring the whole draft a hundred times to change a
+        font size.
+        """
+        tilekit.set_scale(factor)
+        self.settings["number_scale"] = tilekit.SCALE
+        self.update()
+        # The grids paint through a delegate into a viewport of their own,
+        # which the window's repaint does not reach.
+        for grid in (self.synergy_matrix, self.matchup_matrix):
+            grid.table.viewport().update()
+            grid.table.horizontalHeader().viewport().update()
+        ui_settings.save(self.settings)
 
     def _on_opacity_moved(self, value: int) -> None:
         self._show_opacity(value)
@@ -3187,14 +3280,15 @@ class MainWindow(QMainWindow):
         items = getattr(self, "item_row", None)
         if picks is None or items is None:
             return
-        # 70% of a pick, at the user's request. The ten picks are the
-        # SUBJECT of the screen and the two strips are advice about them,
-        # so a suggestion the same size as a pick gave the two equal weight
-        # — and twenty of them at full size is most of the window.
         width = max(1, round(width * STRIP_OF_PICK))
         height = max(1, round(height * STRIP_OF_PICK))
         picks.set_tile_size(width, height)
         items.set_tile_size(width, height)
+        # And the grids' portraits follow the same box. They had a size of
+        # their own (`HEADER_ICON_MAX`), so the same hero was one size at
+        # the top of the window and another in the grid under it.
+        for grid in (self.synergy_matrix, self.matchup_matrix):
+            grid.set_tile_width(width)
         # Bigger tiles means fewer fit on a row, and the default count is
         # "however many fit on one row" — so the strips have to be redrawn
         # or the number stays at whatever the old size allowed.

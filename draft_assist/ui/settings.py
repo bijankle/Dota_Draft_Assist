@@ -68,6 +68,14 @@ DEFAULTS = {
     # window that resizes when you meant to click a pick has cost the
     # pick. The size it is locked AT is remembered too, or unlocking,
     # resizing and locking again would be undone by the next restart.
+    # HOW BIG THE PICTURES AND THE NUMBERS ARE, as a multiplier on the
+    # sizes the app derives (View ▸ Sizes). It moves the BASE, not the
+    # behaviour: a portrait still grows and shrinks with the window, this
+    # only says how big it is allowed to get. One number for every
+    # portrait in the app and one for every signed number, because a
+    # setting the user has to apply in four places is four settings.
+    "portrait_scale": 1.0,
+    "number_scale": 1.0,
     "window_locked": True,
     "window_w": 1240,
     "window_h": 820,

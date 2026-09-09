@@ -561,14 +561,33 @@ credentials, and put the account at risk. Do not go there.
   moved right with its team, and the colours move with it.
   **EACH TRIANGLE IS OUTLINED IN ITS TEAM'S COLOUR** — Radiant green, Dire
   red, Dota's own two — because two triangles that touch need something
-  between them saying which is which. It is drawn PER CELL
-  (`PairCellDelegate._paint_edges`): every cell asks its four neighbours
-  which side they are on and strokes the edges where the answer differs,
-  which gives the stepped diagonal for free, in both colours, and cannot go
-  stale when the columns resize the way a path computed from row and column
-  numbers would. The axis row carries the same side as the triangle it sits
-  under, so the outline encloses a team and its own faces as one region
-  rather than drawing a line between them. The model says `ally` and
+  between them saying which is which. The rule is per cell: every cell
+  asks its four neighbours which side they are on and an edge is drawn
+  where the answer differs, which gives the stepped diagonal for free, in
+  both colours, and cannot go stale when the columns resize the way a
+  path computed from row and column numbers would.
+  **It is DRAWN over the viewport, not by the delegate** (`PairGrid.
+  paintEvent`), and that is what makes it a line rather than a row of
+  dashes. A delegate paints inside its own cell rectangle, and between two
+  rectangles there is the GRID LINE — so every edge stopped a pixel short
+  of the next one and the border broke at every portrait. Painting it over
+  the viewport puts the line IN that gap (`PairGrid.GAP`) and runs it the
+  full span plus the gap at each end, so the segment along one cell meets
+  the segment along the next and the corners close. A union of rectangles
+  was tried first and is NOT the answer: `QPainterPath.simplified` leaves
+  rectangles that merely touch as separate subpaths, so every cell came
+  out with a box round it — which says the boundary is between every
+  portrait rather than between the two teams.
+  The axis row carries the same side as the triangle it sits under, so the
+  outline encloses a team and its own faces as one region rather than
+  drawing a line between them — and the HEADER strip at the top is joined
+  the same way, by leaving out the edge facing the grid wherever the cells
+  below it are the same team (`PortraitHeader.set_outline(open_edges=...)`,
+  `_pair_open_edges`). Without that, one axis strip had a box round it
+  while the other was part of its triangle. A header's long edges also run
+  the section's WHOLE width with no inset: an inset one stops a pixel
+  short at each end, which across five sections is a border with a break
+  at every portrait. The model says `ally` and
   `enemy`, never `radiant` and `dire`: which team is which side is
   something only the UI knows (`MatrixTable.set_team_colours`, set from
   `_update_team_labels`), and on Dire your own triangle is the red one.
@@ -690,6 +709,26 @@ credentials, and put the account at risk. Do not go there.
   deltas at. EVERY signed number in the app is therefore one size —
   on a pick, on a suggestion, in a triangle, in a counters cell — and
   there is one value to change rather than two to keep in step.
+  **THE USER SETS THE BASE, AND ONLY THE BASE** (View ▸ Sizes,
+  `ui_settings.portrait_scale` / `number_scale`, `teams.set_scale`,
+  `tilekit.set_scale`). Two sliders, 50% to 200%, one for every portrait
+  in the app and one for every signed number — a setting that has to be
+  applied in four places is four settings. They move the CAP, not the
+  behaviour: a portrait still grows and shrinks with the window between
+  its own floor and this ceiling, which is what "size dynamically, but
+  from a base I choose" means. The floor is deliberately NOT scaled:
+  `minimum_panel_width` is derived from it and the window's minimum width
+  from that, so turning the portraits up would otherwise leave a window
+  that cannot be made narrow again. Only the PANELS are told about a new
+  portrait size — they decide the box and the strips and grids follow the
+  signal they raise, which is the same path a window drag takes, so there
+  is one way for a tile to change size rather than two. A new number size
+  is a REPAINT and not a rebuild: nothing about the layout changes, and
+  rebuilding the strips on every step of a slider drag would score the
+  whole draft a hundred times to change a font size. Both are module
+  state, so `tests/conftest.py` resets them either side of every test —
+  a test that turns them down and then fails would otherwise leave every
+  test after it measuring smaller tiles.
   **AND EVERY ONE OF THEM IS HALOED** (`tilekit.paint_number`,
   `tables.DeltaCellDelegate`). The two grids printed their deltas as
   ordinary table text, which made them the one place in the app where a
@@ -727,11 +766,16 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
-  **A STRIP TILE IS 70% OF A PICK** (`app.STRIP_OF_PICK`). The ten picks
-  are the SUBJECT of the screen and the two strips are advice about them;
-  at the same size the three rows read as equals, and twenty suggestions at
-  full size is most of the window. The strips still track the pick tile
-  rather than having a size of their own — see below.
+  **EVERY PORTRAIT IN THE APP IS THE PICK TILE'S BOX** (`app.
+  STRIP_OF_PICK` = 1.0, `MatrixTable.set_tile_width`). The strips were
+  briefly 70% of a pick, so the ten picks read as the subject and the
+  advice under them as advice; at the user's request that is reversed, and
+  the two GRIDS were brought into it as well — they had a size of their
+  own, so the same hero was one size at the top of the window, another in
+  the strip below it and a third in the grid under that. The draft panel
+  decides one box for all of them and everything else follows it. A grid
+  may only make it SMALLER, when six will not fit across its card
+  (`_portrait_room`), which is the one place the rule gives way.
   **EVERY TILE IN THE APP IS ONE BOX, and the draft panel decides it**
   (`TeamPanel.tile_resized` → `MainWindow._resize_strips` →
   `SuggestRow.set_tile_size` / `ItemRow.set_tile_size`). The strips were

@@ -3472,3 +3472,73 @@ def test_locking_never_squeezes_the_window_below_what_it_can_draw(qapp):
         assert win.height() >= win.minimumSizeHint().height()
     finally:
         win.close()
+
+
+def test_every_portrait_in_the_app_is_the_pick_tiles_box(window, qapp):
+    """One box for every picture on the screen. The strips were 70% of a
+    pick and the grids had a size of their own, so the same hero was three
+    different sizes down one window."""
+    from draft_assist.ui import item_row as item_mod
+    from draft_assist.ui.app import STRIP_OF_PICK
+    assert STRIP_OF_PICK == 1.0
+    window.show()
+    window.resize(1900, 1000)
+    window._demo_draft()
+    window.refresh()
+    _settle(qapp)
+    pick = window.team_panels["ally"].slots[0]
+    assert window.suggest_row.tile_width() == pick.width()
+    # The items keep their own 88x64 aspect off the same HEIGHT — a 16:9
+    # box round an icon is dead space either side of it.
+    assert window.item_row.tile_width() == item_mod.width_for(pick.height())
+    # And the grids are told the same box, up to what six of them fit
+    # across a card — which is the same number for both, since the two
+    # cards are the same width. (What they DRAW needs portraits on disk;
+    # that is `test_matrix_grid`, which has them.)
+    grids = (window.synergy_matrix, window.matchup_matrix)
+    for grid in grids:
+        assert grid._portrait_want() == pick.width()
+    assert grids[0]._portrait_room() == grids[1]._portrait_room()
+
+
+def test_the_size_setting_moves_the_base_and_keeps_the_behaviour(window, qapp):
+    """"I still want them to size dynamically when the window is resized,
+    I just want the base size to be dictated by this setting." So the
+    slider moves the CAP; the window still shrinks a tile below it, and
+    the floor — which the window's own minimum width is derived from —
+    does not move."""
+    from draft_assist.ui import teams, tilekit
+    window.show()
+    window.resize(1900, 1000)
+    _settle(qapp)
+    wide = window.team_panels["ally"].slots[0].width()
+    window._set_portrait_scale(0.6)
+    _settle(qapp)
+    small = window.team_panels["ally"].slots[0].width()
+    assert small < wide, "the setting should reach the tiles"
+    assert small == teams.tile_cap() == round(teams.TILE_MAX * 0.6)
+    assert window.settings["portrait_scale"] == 0.6
+    # Still dynamic: a narrow window takes them below the base.
+    window._set_portrait_scale(1.0)
+    window.resize(window._floor_w, 900)
+    _settle(qapp)
+    assert window.team_panels["ally"].slots[0].width() < teams.tile_cap()
+    # And the floor the window's minimum is derived from never moves.
+    assert teams.minimum_panel_width() == \
+        2 * teams.PANEL_MARGIN + 5 * teams.TILE_MIN + 4 * teams.TILE_GAP
+    window._set_number_scale(1.5)
+    assert tilekit.number_px() == round(tilekit.NUMBER_PX * 1.5)
+    assert window.settings["number_scale"] == 1.5
+    window._set_number_scale(1.0)
+    window._set_portrait_scale(1.0)
+
+
+def test_the_sizes_are_two_sliders_in_the_view_menu(window):
+    """One question asked twice, and tuned by eye against the window."""
+    from draft_assist.ui import settings as ui_settings
+    assert ui_settings.DEFAULTS["portrait_scale"] == 1.0
+    assert ui_settings.DEFAULTS["number_scale"] == 1.0
+    assert set(window.size_sliders) == {"portrait_scale", "number_scale"}
+    for slider in window.size_sliders.values():
+        assert (slider.minimum(), slider.maximum()) == (50, 200)
+    assert window.sizes_menu.menuAction() in window.view_menu.actions()

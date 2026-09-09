@@ -17,3 +17,19 @@ def _recordings_go_to_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(app_mod, "RECORDINGS_DIR", tmp_path / "recordings")
     monkeypatch.setattr(ui_settings, "SETTINGS_FILE",
                         tmp_path / "ui_settings.json")
+
+
+@pytest.fixture(autouse=True)
+def _sizes_start_at_one():
+    """The two size multipliers are MODULE state (View ▸ Sizes).
+
+    A test that turns the portraits down and then fails leaves every test
+    after it measuring smaller tiles, which is a failure in a file nobody
+    touched. Reset either side, so the leak cannot happen at all.
+    """
+    from draft_assist.ui import teams, tilekit
+    teams.set_scale(1.0)
+    tilekit.set_scale(1.0)
+    yield
+    teams.set_scale(1.0)
+    tilekit.set_scale(1.0)

@@ -298,71 +298,120 @@ def _render_pair_cell(table, row, col, size=(90, 40)):
     return picture
 
 
-def test_each_triangle_is_outlined_in_its_own_colour(qapp):
-    """Two triangles that touch need a line saying which is which, traced
-    per cell from its neighbours — which gives the stepped diagonal in
-    both colours for free.
+def _pair_grid(allies=3, enemies=3):
+    """A synergy grid of the shape the app builds: theirs upper right,
+    yours lower left, lifted one row so the two triangles touch."""
+    from draft_assist.model.scoring import PairCell, SynergyGrid
+    ally = [(i + 1, name) for i, name in enumerate(
+        [n for _, n in HEROES][:allies])]
+    enemy = [(i + 1, name) for i, name in enumerate(
+        [n for _, n in HEROES][:enemies])]
+    side = max(allies, enemies)
+    cells = []
+    for row in range(side - 1):
+        line = []
+        for col in range(side):
+            if col > row:
+                line.append(PairCell(enemy[row][0], enemy[col][0], 0.01,
+                                     "enemy"))
+            else:
+                line.append(PairCell(ally[row + 1][0], ally[col][0], -0.01,
+                                     "ally"))
+        cells.append(line)
+    return SynergyGrid(allies=ally, enemies=enemy, cells=cells,
+                       ally_totals={h: 0.02 for h, _ in ally},
+                       enemy_totals={h: -0.02 for h, _ in enemy})
 
-    The sides are ALLY and ENEMY here, not Radiant and Dire: which team is
-    which side is something only the UI knows, so the colours are set from
-    outside and default to your own team green."""
-    from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
+
+def _shot(art, qapp, width=700):
+    """The whole pair grid rendered, headers included."""
     from draft_assist.ui import theme
-    from draft_assist.ui.tables import PAIR_SIDE
-
-    # Yours in the lower left, theirs in the upper right.
-    table = QTableWidget(2, 3)
-    for row, col, side in ((0, 0, "ally"), (0, 1, "enemy"),
-                           (0, 2, "enemy"), (1, 0, "ally"),
-                           (1, 1, "ally"), (1, 2, "enemy")):
-        item = QTableWidgetItem()
-        item.setData(PAIR_SIDE, side)
-        table.setItem(row, col, item)
-
-    def colours(row, col):
-        picture = _render_pair_cell(table, row, col)
-        return {picture.pixelColor(x, y).name()
-                for y in range(picture.height())
-                for x in range(picture.width())}
-
-    # An outside edge: the top row borders the header either way.
-    assert theme.GOOD in colours(0, 0), "no green round your triangle"
-    assert theme.BAD in colours(0, 1), "no red round theirs"
-    # And where they meet, each side draws its own half of the boundary.
-    assert theme.GOOD in colours(1, 1)
-    assert theme.BAD in colours(1, 2)
+    table = MatrixTable()
+    table.set_compact(True, short_names=False)
+    table.set_icon_headers(True)
+    table.set_margins(False)
+    table.set_team_colours(theme.GOOD, theme.BAD)
+    table.resize(width, 400)
+    table.show()
+    QApplication.processEvents()
+    table.show_pairs(_pair_grid())
+    QApplication.processEvents()
+    return table, table.table.grab().toImage()
 
 
-def test_the_outline_colour_follows_the_side_the_player_is_on(qapp):
-    """Radiant is green and Dire is red — Dota's own colours — so which of
-    ally and enemy gets which changes with the match. Nothing below the UI
-    knows the answer, so it is set from outside."""
-    from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
+def test_each_triangle_is_outlined_in_its_own_colour(art, qapp):
+    """Two triangles that touch need a line saying which is which. The
+    sides are ALLY and ENEMY, not Radiant and Dire: which team is which
+    side is something only the UI knows, so the colours are set from
+    outside."""
     from draft_assist.ui import theme
-    from draft_assist.ui.tables import MatrixTable, PAIR_SIDE
-
-    grid = MatrixTable()
-    grid.set_icon_headers(True)
-    grid.set_team_colours(theme.BAD, theme.GOOD)      # the player is Dire
-    table = QTableWidget(1, 1)
-    item = QTableWidgetItem()
-    item.setData(PAIR_SIDE, "ally")
-    table.setItem(0, 0, item)
-
-    from PyQt6.QtCore import QRect
-    from PyQt6.QtGui import QImage, QPainter
-    from PyQt6.QtWidgets import QStyleOptionViewItem
-    picture = QImage(90, 40, QImage.Format.Format_ARGB32)
-    picture.fill(0)
-    painter = QPainter(picture)
-    option = QStyleOptionViewItem()
-    option.rect = QRect(0, 0, 90, 40)
-    grid._pair_delegate().paint(painter, option, table.model().index(0, 0))
-    painter.end()
+    _, picture = _shot(art, qapp)
     seen = {picture.pixelColor(x, y).name()
-            for y in range(picture.height()) for x in range(picture.width())}
-    assert theme.BAD in seen, "your own team on Dire should be outlined red"
-    assert theme.GOOD not in seen
+            for y in range(picture.height())
+            for x in range(picture.width())}
+    assert theme.GOOD in seen, "no green round your triangle"
+    assert theme.BAD in seen, "no red round theirs"
+
+
+def test_the_outline_is_one_continuous_line(art, qapp):
+    """It was drawn per cell, each stroking the edges where its four
+    neighbours disagreed — and between two cells there is the grid line,
+    so every edge stopped a pixel short of the next and the border came
+    out as a row of dashes with a break at each portrait."""
+    from draft_assist.ui import theme
+    _, picture = _shot(art, qapp)
+    green = [(x, y) for y in range(picture.height())
+             for x in range(picture.width())
+             if picture.pixelColor(x, y).name() == theme.GOOD]
+    assert green
+    # The bottom edge of your own region: the longest horizontal run of
+    # green there has to reach across the whole grid without a break.
+    bottom = max(y for _, y in green)
+    xs = sorted(x for x, y in green if y == bottom)
+    assert len(xs) > 100, "the bottom edge is not a line"
+    gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 1]
+    assert not gaps, f"the line breaks {len(gaps)} times: {gaps[:5]}"
+
+
+def test_nothing_is_drawn_between_two_cells_of_the_same_team(art, qapp):
+    """A union of rectangles was tried first and is not the answer:
+    `QPainterPath.simplified` leaves rectangles that merely touch as
+    separate subpaths, so every cell came out with a box round it — which
+    says the boundary is between every portrait rather than between the
+    two teams."""
+    from draft_assist.ui import theme
+    table, picture = _shot(art, qapp)
+    inner = table.table
+    # Row 1 of the body is yours at columns 0 and 1 (see `_pair_grid`).
+    left = inner.visualRect(inner.model().index(1, 0))
+    right = inner.visualRect(inner.model().index(1, 1))
+    origin = inner.viewport().mapTo(inner, left.topLeft())
+    band = origin.x() + left.width()
+    strip = [picture.pixelColor(x, y).name()
+             for x in range(band, band + (right.left() - left.right()) + 2)
+             for y in range(origin.y() + 4, origin.y() + left.height() - 4)]
+    assert theme.GOOD not in strip, "a line between two of your own cells"
+
+
+def test_the_top_strip_is_not_boxed_off_from_its_own_triangle(art, qapp):
+    """One of the two axis strips had a box round it while the other was
+    part of its triangle. Where the cells below a header section are the
+    same team, a line between them rules through the middle of one region
+    — the user's words were "outer edge only, not a box around just the
+    main high brightness row"."""
+    from PyQt6.QtCore import QPoint
+    from draft_assist.ui import theme
+    table, picture = _shot(art, qapp)
+    header = table.table.horizontalHeader()
+    join = header.mapTo(table.table, QPoint(0, header.height() - 1)).y()
+    red = [x for x in range(picture.width())
+           for y in (join - 1, join, join + 1)
+           if picture.pixelColor(x, y).name() == theme.BAD]
+    # Column 0 IS yours below the strip, so the strip is closed over that
+    # one column and open over the rest. A full-width line means the box
+    # is back.
+    assert len(set(red)) < picture.width() * 0.45, \
+        "the top strip is boxed off from the triangle below it"
 
 
 def test_the_counters_headers_are_boxed_by_team(art, qapp):
@@ -489,3 +538,36 @@ def test_a_counters_cell_has_the_same_halo_as_a_tiles_number(qapp):
                if picture.pixelColor(x, y).alpha() > 0}
     assert theme.GOOD in colours, "the number itself"
     assert "#000000" in colours, "no halo round it"
+
+
+def test_the_outline_colour_follows_the_side_the_player_is_on(qapp):
+    """Radiant is green and Dire is red — Dota's own colours — so which of
+    ally and enemy gets which changes with the match. Nothing below the UI
+    knows the answer, so it is set from outside."""
+    from draft_assist.ui import theme
+    grid = MatrixTable()
+    grid.set_icon_headers(True)
+    grid.set_team_colours(theme.BAD, theme.GOOD)      # the player is Dire
+    assert grid._pair_delegate().colours == {"ally": theme.BAD,
+                                             "enemy": theme.GOOD}
+
+
+def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
+    """A grid portrait had a size of its own, so the same hero was one
+    size at the top of the window and another in the grid under it. The
+    draft panel decides the box for the whole app and hands it down; the
+    grid can only make it smaller, when six will not fit across a card."""
+    table = built(qapp, width=1400)
+    table.set_tile_width(132)
+    table.show_matrix(grid())
+    QApplication.processEvents()
+    assert table._icon_box == min(132, table._portrait_room())
+    # Squeezed, it gives way rather than pushing the columns off the card.
+    narrow = built(qapp, width=520)
+    narrow.set_tile_width(132)
+    narrow.show_matrix(grid())
+    QApplication.processEvents()
+    assert narrow._icon_box < 132
+    assert narrow._icon_box == max(narrow._portrait_room(),
+                                   narrow.table.fontMetrics()
+                                   .horizontalAdvance("+12.34") + 6)

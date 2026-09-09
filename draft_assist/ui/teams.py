@@ -56,6 +56,25 @@ TILE_MAX = 132
 # Below this there is no room for a portrait and the tile stops being a
 # picture of a hero, which is the only reason it exists.
 TILE_MIN = 64
+# THE USER'S OWN MULTIPLIER (View ▸ Sizes ▸ Portraits). It moves the CAP,
+# not the floor: a pick still shrinks with the window, and the window's
+# own minimum width — which is derived from `TILE_MIN` — must not move
+# when a display setting does, or turning the portraits up would leave a
+# window that cannot be made narrow again.
+SCALE = 1.0
+SCALE_MIN, SCALE_MAX = 0.5, 2.0
+
+
+def set_scale(factor: float) -> None:
+    global SCALE
+    SCALE = max(SCALE_MIN, min(SCALE_MAX, float(factor)))
+
+
+def tile_cap() -> int:
+    """The biggest a pick tile gets, the user's multiplier included."""
+    return max(TILE_MIN, round(TILE_MAX * SCALE))
+
+
 # The two sizes this file draws itself, up with the rest of the app and
 # bold like everything else: the slot's role in its corner, and the "+" on
 # an empty one. Everything else on a tile comes from `tilekit`.
@@ -97,7 +116,7 @@ class HeroTile(QAbstractButton):
         self._delta_colour = theme.TEXT_DIM
         self._focused = False
         self._drop_target = False
-        self.setFixedSize(TILE_MAX, round(TILE_MAX * 9 / 16))
+        self.setFixedSize(tile_cap(), round(tile_cap() * 9 / 16))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         # Focusable so Tab walks the ten slots in order.
@@ -179,7 +198,7 @@ class HeroTile(QAbstractButton):
         with a dead strip above and below it, on all ten picks; matching
         the art's own aspect gives that height back to the window.
         """
-        edge = max(TILE_MIN, min(TILE_MAX, int(edge)))
+        edge = max(TILE_MIN, min(tile_cap(), int(edge)))
         height = max(TILE_MIN * 9 // 16, round(edge * 9 / 16))
         if (edge, height) != (self.width(), self.height()):
             self.setFixedSize(edge, height)
@@ -386,6 +405,17 @@ class TeamPanel(QFrame):
     # The panel owns the tile size: a square edge from the width available,
     # clamped, with the remainder going to the stretches either side. Qt
     # would otherwise hand each tile the leftover width and stretch the art.
+    def rescale(self) -> None:
+        """Re-size the tiles after the user changed the size setting.
+
+        The panel is the one place that decides how big a tile is, so it
+        is also the one place that has to be told the rule changed — the
+        strips and the grids are told by the signal this raises, the same
+        way they are when the window is dragged.
+        """
+        self._told = None       # the size may be the same NUMBER as before
+        self._resize_tiles(self.width())
+
     def resizeEvent(self, event) -> None:   # noqa: N802 - Qt naming
         super().resizeEvent(event)
         self._resize_tiles(event.size().width())

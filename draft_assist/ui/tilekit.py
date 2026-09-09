@@ -61,6 +61,27 @@ NAME_MIN_PT = 9
 NUMBER_PX = theme.BODY_PX
 # Only ever used when the tile is too narrow to print the figure at all.
 NUMBER_MIN_PX = 9
+# THE USER'S OWN MULTIPLIER (View ▸ Sizes ▸ Numbers). The size above is
+# the base; this scales every number in the app at once, which is the only
+# way it can be one setting — a figure on a pick, on a suggestion, in a
+# triangle and in a counters cell all come through here.
+SCALE = 1.0
+SCALE_MIN, SCALE_MAX = 0.5, 2.0
+
+
+def set_scale(factor: float) -> None:
+    global SCALE
+    SCALE = max(SCALE_MIN, min(SCALE_MAX, float(factor)))
+
+
+def number_px() -> int:
+    """The size a number is drawn at, the user's multiplier included.
+
+    Read at CALL time, never captured into a constant: the setting can
+    change while the app is running and a value copied at import would go
+    on being the old one until a restart.
+    """
+    return max(NUMBER_MIN_PX, round(NUMBER_PX * SCALE))
 
 # The name strip and the number badge share one plate, and it is SOLID
 # BLACK. It was 65% black, which let the portrait through behind the
@@ -124,9 +145,10 @@ def paint_band(painter: QPainter, band: QRect, text: str, base: QFont,
                   for line in lines))
 
 
-def stroke_width(pixel_size: int = NUMBER_PX) -> float:
+def stroke_width(pixel_size: int | None = None) -> float:
     """How thick the outline round the digits is."""
-    return max(2.0, pixel_size * STROKE_OF_SIZE)
+    return max(2.0, (number_px() if pixel_size is None else pixel_size)
+               * STROKE_OF_SIZE)
 
 
 def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
@@ -146,7 +168,7 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     if not text:
         return
     font = QFont(base)
-    font.setPixelSize(NUMBER_PX)
+    font.setPixelSize(number_px())
     font.setBold(True)
     metrics = QFontMetricsF(font)
     width = metrics.horizontalAdvance(text)
@@ -156,7 +178,7 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # a number clipped to "+21." is not a smaller number, it is a WRONG
     # one. So it steps down only far enough to fit, and only there.
     room = box.width() - 2 * (BADGE_INSET + stroke_width() / 2)
-    size = NUMBER_PX
+    size = number_px()
     while width > room and size > NUMBER_MIN_PX:
         size -= 1
         font.setPixelSize(size)
@@ -186,7 +208,7 @@ def paint_number(painter: QPainter, box: QRect, text: str, colour: str,
     if not text:
         return
     font = QFont(base)
-    font.setPixelSize(NUMBER_PX)
+    font.setPixelSize(number_px())
     font.setBold(True)
     metrics = QFontMetricsF(font)
     width = metrics.horizontalAdvance(text)
