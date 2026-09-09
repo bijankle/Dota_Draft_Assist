@@ -676,3 +676,78 @@ def test_the_paste_reports_both_taskbar_mechanisms(qapp):
     source = inspect.getsource(MainWindow._copy_debug_log)
     assert "identity_note" in source
     assert "window_icon_note" in source
+
+
+def test_the_start_menu_shortcut_is_written_automatically(qapp):
+    """AT THE USER'S REQUEST — "it should be all auto anyway" — and
+    because an AppUserModelID without one is worse than never setting one.
+
+    Declaring an ID stops Windows treating the process as pythonw.exe and
+    makes it its own application; the shell then resolves that
+    application's icon and name through the Start-menu shortcut carrying
+    the same string. With no such shortcut there is nothing to resolve
+    to, which is why the button drew as a BLANK PAGE rather than as
+    Python's logo — it had stopped being Python and had not become
+    anything.
+    """
+    import inspect
+    from draft_assist.ui import app as app_mod
+    from draft_assist.ui import appicon
+
+    source = inspect.getsource(app_mod.main)
+    assert "claim_taskbar_identity" in source
+    assert "ensure_start_menu_shortcut" in source, (
+        "claiming the identity without providing the shortcut it resolves "
+        "to is what left the taskbar button with nothing to draw")
+    # The claim comes first: the shortcut only matters because of it.
+    assert (source.index("claim_taskbar_identity")
+            < source.index("ensure_start_menu_shortcut"))
+    assert appicon.ensure_start_menu_shortcut() is False   # not Windows here
+    assert appicon.shortcut_note == "not Windows"
+
+
+def test_one_writer_for_the_shortcut(qapp):
+    """The menu item and the automatic call must not be able to produce
+    two different shortcuts for one AppUserModelID. Two lists that can
+    disagree is what made `shell_ico` and `_build` pick different files,
+    and it is the same failure shape."""
+    import inspect
+    import tools.make_shortcut as tool
+    from draft_assist.ui import appicon
+
+    assert hasattr(appicon, "write_shortcut")
+    source = inspect.getsource(tool.main)
+    assert "appicon.write_shortcut()" in source
+    assert "CoCreateInstance" not in source, \
+        "the tool must not build its own link"
+    # And one spelling of the name, for the reason the font family has one.
+    assert not hasattr(tool, "NAME"), \
+        "two spellings of one shortcut name is a shortcut that silently " \
+        "becomes two files"
+
+
+def test_the_shortcut_is_rewritten_rather_than_only_created(qapp):
+    """The thing it points at MOVES. This app is normally run from a
+    folder somebody unzipped, and downloading a newer ZIP produces a
+    second folder beside the first — a shortcut left pointing at the old
+    one is worse than none."""
+    import inspect
+    from draft_assist.ui import appicon
+
+    source = inspect.getsource(appicon.ensure_start_menu_shortcut)
+    assert "exists()" not in source, \
+        "it must not skip the write just because a file is there"
+    # Once per process, though: it is a disk write, not a per-tick cost.
+    assert "_shortcut_done" in source
+
+
+def test_the_paste_reports_all_three_taskbar_mechanisms(qapp):
+    """The identity, the window's own icon, and the shortcut the identity
+    resolves to. They fail independently, and five rounds of this went on
+    diagnostics that could not say which one was at fault."""
+    import inspect
+    from draft_assist.ui.app import MainWindow
+
+    source = inspect.getsource(MainWindow._copy_debug_log)
+    for note in ("identity_note", "window_icon_note", "shortcut_note"):
+        assert note in source, note

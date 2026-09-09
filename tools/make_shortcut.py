@@ -33,13 +33,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from draft_assist.config import REPO_ROOT  # noqa: E402
 # Must match what the app declares before its first window: the pin is
 # matched to this shortcut by that string and nothing else.
 from draft_assist.ui import appicon  # noqa: E402
 from draft_assist.ui.appicon import APP_ID  # noqa: E402
 
-NAME = "Dota Draft Assist"
 
 
 def python_for_launch() -> str:
@@ -64,26 +62,6 @@ def icon_path() -> str | None:
     return str(found) if found else None
 
 
-def stamp_identity(link, propsys, pscon) -> bool:
-    """Write System.AppUserModel.ID onto the link, if it can be done.
-
-    This is the property Windows matches a pinned taskbar button against,
-    so it is the difference between the pin showing our icon and showing
-    python.exe's. It is also the call that crashed the interpreter outright
-    when handed an explicit variant type, so it is kept to the form that
-    works and its failure is survivable.
-    """
-    try:
-        store = link.QueryInterface(propsys.IID_IPropertyStore)
-        store.SetValue(pscon.PKEY_AppUserModel_ID,
-                       propsys.PROPVARIANTType(APP_ID))
-        store.Commit()
-        return True
-    except Exception as exc:            # noqa: BLE001 - see the docstring
-        print(f"Could not write the AppUserModelID: {exc}")
-        return False
-
-
 def open_containing_folder(path: Path) -> None:
     """Show the shortcut, because pinning it is now the user's move.
 
@@ -101,50 +79,21 @@ def open_containing_folder(path: Path) -> None:
 def main() -> None:
     if sys.platform != "win32":
         raise SystemExit("Windows only — there is no Start menu to pin to.")
+    # ONE implementation, in `appicon`, shared with the automatic call the
+    # app makes at every startup. Two copies of this could write two
+    # different shortcuts for one AppUserModelID, which is precisely the
+    # kind of disagreement that made the taskbar icon take five attempts.
+    icon = icon_path()
     try:
-        import pythoncom
-        from win32com.propsys import propsys, pscon
-        from win32com.shell import shell
+        link_path = appicon.write_shortcut()
     except ImportError:
         raise SystemExit(
             "Needs pywin32: pip install -r requirements-windows.txt")
 
-    start_menu = (Path.home() / "AppData/Roaming/Microsoft/Windows"
-                  / "Start Menu/Programs")
-    start_menu.mkdir(parents=True, exist_ok=True)
-    link_path = start_menu / f"{NAME}.lnk"
-
-    link = pythoncom.CoCreateInstance(
-        shell.CLSID_ShellLink, None, pythoncom.CLSCTX_INPROC_SERVER,
-        shell.IID_IShellLink)
-    link.SetPath(python_for_launch())
-    # The same target the window's relaunch command uses, so a pin made
-    # from the shortcut and a pin made from the running window start the
-    # app exactly the same way.
-    link.SetArguments(f'"{REPO_ROOT / "draft_assist" / "__main__.py"}"')
-    link.SetWorkingDirectory(str(REPO_ROOT))
-    link.SetDescription("Read the Dota 2 draft and suggest picks and items")
-    icon = icon_path()
-    if icon:
-        link.SetIconLocation(icon, 0)
-
-    # The identity is stamped BEFORE the file is written, and the whole
-    # attempt is wrapped, because it has already taken the process down
-    # once: passing PROPVARIANTType an explicit VT killed the interpreter
-    # with STATUS_STACK_BUFFER_OVERRUN (exit 3221226505), which no `except`
-    # can catch. The one-argument form is the one that works. A shortcut
-    # without the identity is still a usable shortcut, so failing here must
-    # not cost the shortcut.
-    stamped = stamp_identity(link, propsys, pscon)
-    link.QueryInterface(pythoncom.IID_IPersistFile).Save(str(link_path), 0)
-
     print(f"Created {link_path}")
-    if stamped:
-        print(f"AppUserModelID: {APP_ID}")
-    else:
-        print("The AppUserModelID could not be written, so a pin made from "
-              "the running window will still show Python's icon. Pin THIS "
-              "shortcut instead and the icon is correct.")
+    print(f"AppUserModelID: {APP_ID}")
+    print("The app now writes this automatically on every start, so you "
+          "should not need to run it by hand.")
     if not icon:
         print("No icon — the shortcut uses Python's. Put an .ico in assets/ "
               "(or use Setup > Choose app icon) and run this again.")

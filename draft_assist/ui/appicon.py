@@ -600,6 +600,113 @@ def push_native_icon(hwnd: int) -> bool:
         return False
 
 
+SHORTCUT_NAME = "Dota Draft Assist"
+# What `ensure_start_menu_shortcut` last did, for the paste.
+shortcut_note = "not attempted"
+_shortcut_done = False
+
+
+def start_menu_link() -> Path:
+    """Where the app's own Start-menu shortcut goes."""
+    return (Path.home() / "AppData/Roaming/Microsoft/Windows"
+            / "Start Menu/Programs" / f"{SHORTCUT_NAME}.lnk")
+
+
+def write_shortcut(path=None) -> Path:
+    """Write the .lnk, with the AppUserModelID and the icon on it.
+
+    The ONE implementation, shared with `tools/make_shortcut.py` — the
+    menu item and the automatic call must not be able to produce two
+    different shortcuts. Raises on failure; the callers decide whether
+    that is worth saying anything about.
+    """
+    import pythoncom
+    from win32com.propsys import propsys, pscon
+    from win32com.shell import shell
+
+    link_path = Path(path) if path is not None else start_menu_link()
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    link = pythoncom.CoCreateInstance(
+        shell.CLSID_ShellLink, None, pythoncom.CLSCTX_INPROC_SERVER,
+        shell.IID_IShellLink)
+    link.SetPath(launch_python())
+    # The same target the window's relaunch command uses, so a pin made
+    # from the shortcut and one made from the running window start the app
+    # identically.
+    link.SetArguments(f'"{REPO_ROOT / "draft_assist" / "__main__.py"}"')
+    link.SetWorkingDirectory(str(REPO_ROOT))
+    link.SetDescription("Read the Dota 2 draft and suggest picks and items")
+    icon = shell_ico()
+    if icon is not None:
+        link.SetIconLocation(str(icon), 0)
+    # Stamped BEFORE the file is written, and survivable: this call has
+    # already taken the process down once (an explicit variant type killed
+    # the interpreter with STATUS_STACK_BUFFER_OVERRUN, which no `except`
+    # can catch), and a shortcut without the identity is still a shortcut.
+    try:
+        store = link.QueryInterface(propsys.IID_IPropertyStore)
+        store.SetValue(pscon.PKEY_AppUserModel_ID,
+                       propsys.PROPVARIANTType(APP_ID))
+        store.Commit()
+    except Exception:                   # noqa: BLE001 - see above
+        pass
+    link.QueryInterface(pythoncom.IID_IPersistFile).Save(str(link_path), 0)
+    return link_path
+
+
+def ensure_start_menu_shortcut() -> bool:
+    """Make sure the shortcut the AppUserModelID resolves to exists.
+
+    **THIS IS WHAT AN EXPLICIT AppUserModelID OBLIGES THE APP TO PROVIDE,
+    and not providing it is worse than never having set one.** Declaring
+    an ID tells Windows to stop treating the process as pythonw.exe and
+    to treat it as its own application — after which the shell resolves
+    that application's name and icon through the Start-menu shortcut
+    carrying the same string. With no such shortcut there is nothing to
+    resolve to, which is why the button drew as a BLANK PAGE rather than
+    as Python's logo: it had already stopped being Python and had not yet
+    become anything.
+
+    Evidence, from a real install, that this is the remaining half:
+    `window_icon_note` reported both HICON handles set on the window, so
+    the window itself was not the problem, and the button was still
+    wrong.
+
+    It is AUTOMATIC at the user's request — "it should be all auto
+    anyway" — rather than the menu item it used to be, which is a step
+    nobody who has just unzipped this app would know to take. It writes
+    ONE file inside the user's own Start menu and nothing else.
+
+    Rewritten on every start rather than only when missing, because the
+    thing it points at moves: this app is normally run from a folder
+    somebody unzipped, and downloading a newer ZIP produces a SECOND
+    folder beside the first. A shortcut left pointing at the old one is
+    worse than none, and re-writing it costs a few milliseconds against
+    a fault that is invisible until somebody clicks it.
+
+    Never fatal, once per process, and silent — a Start-menu entry is not
+    something to interrupt a first run about.
+    """
+    global shortcut_note, _shortcut_done
+    import sys
+    if _shortcut_done:
+        return True
+    if sys.platform != "win32":
+        shortcut_note = "not Windows"
+        return False
+    try:
+        written = write_shortcut()
+    except ImportError:
+        shortcut_note = "pywin32 is not installed"
+        return False
+    except Exception as exc:            # noqa: BLE001 - see the docstring
+        shortcut_note = f"{type(exc).__name__}: {exc}"
+        return False
+    _shortcut_done = True
+    shortcut_note = f"{written} -> {APP_ID}"
+    return True
+
+
 def _identity_summary(hwnd: int, command: str, icon_file) -> str:
     """What `claim_window_identity` reports it did.
 

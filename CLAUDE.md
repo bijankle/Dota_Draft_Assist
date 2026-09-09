@@ -1800,6 +1800,41 @@ credentials, and put the account at risk. Do not go there.
   the two fail independently, for different reasons, and a report naming
   one cannot say which is at fault.
 
+  **AND AN AppUserModelID OBLIGES THE APP TO PROVIDE THE SHORTCUT IT
+  RESOLVES TO** (`ensure_start_menu_shortcut`, `write_shortcut`,
+  `shortcut_note`). SIXTH cause, and the evidence that isolated it was
+  the readback added for the fifth: `window icon: ... reads back
+  big=217317543 small=69338861` says the window HAS its icon at both
+  sizes, and the button was still wrong — so the window is not the
+  source, and nothing about files is either.
+  Declaring an ID stops Windows treating the process as pythonw.exe and
+  makes it its own application; the shell then resolves that
+  application's icon and name through the Start-menu shortcut carrying
+  the same string. `claim_taskbar_identity` did the first half and
+  nothing did the second, so the button had **stopped being Python and
+  had not become anything** — which is why it drew as a BLANK PAGE
+  rather than as Python's logo. That distinction is the whole diagnosis
+  and it was in the user's words for several rounds before it was
+  used: Python's logo would have meant the ID was not taking, a blank
+  page means it took and resolved to nothing.
+  So the shortcut is written AUTOMATICALLY at startup, at the user's
+  request ("it should be all auto anyway") — it was Setup ▸ Make a
+  pinnable shortcut…, which is a step nobody who has just unzipped this
+  app would know to take. One file, inside the user's own Start menu.
+  **REWRITTEN ON EVERY START, not only when missing**, because the thing
+  it points at moves: this app is normally run from an unzipped folder,
+  and downloading a newer ZIP produces a SECOND folder beside the first,
+  so a shortcut left pointing at the old one is worse than none. A few
+  milliseconds against a fault that is invisible until somebody clicks
+  it. Once per process, never fatal, and silent — a Start-menu entry is
+  not worth interrupting a first run about.
+  `write_shortcut` is the ONE implementation and `tools/make_shortcut.py`
+  calls it: two copies could write two different shortcuts for one
+  AppUserModelID, which is the same disagreement that had `shell_ico` and
+  `_build` choosing different files. The tool keeps only what is its own
+  — the printing and opening the folder — and the shortcut NAME is spelled
+  once, for the reason the font family is.
+
   **The taskbar is a separate problem, and it has two halves.** A Python
   process is grouped under python.exe and shows Python's icon whatever
   `setWindowIcon` says, unless it declares an AppUserModelID before the

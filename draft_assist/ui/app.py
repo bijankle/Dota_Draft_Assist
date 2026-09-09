@@ -3433,6 +3433,7 @@ class MainWindow(QMainWindow):
             f"app icon: {appicon.describe()}",
             f"taskbar identity: {appicon.identity_note}",
             f"window icon: {appicon.window_icon_note}",
+            f"start menu: {appicon.shortcut_note}",
             "",
             "--- what the app is reading ---",
             self.unknown_label.text(),
@@ -3638,6 +3639,15 @@ def _report_crash(exc: BaseException) -> None:
 
 def main() -> None:
     appicon.claim_taskbar_identity()
+    # AND THE SHORTCUT THAT IDENTITY RESOLVES TO. Declaring an
+    # AppUserModelID stops Windows treating this as pythonw.exe and makes
+    # it its own application — after which the shell looks up that
+    # application's icon and name through the Start-menu shortcut carrying
+    # the same string. Claiming the identity without providing the
+    # shortcut left the taskbar button with nothing to resolve to, which
+    # is why it drew as a blank page rather than as Python's logo. Silent,
+    # never fatal, one file in the user's own Start menu.
+    appicon.ensure_start_menu_shortcut()
     try:
         _main()
     except SystemExit:
