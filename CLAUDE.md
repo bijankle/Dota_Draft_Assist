@@ -1705,6 +1705,33 @@ credentials, and put the account at risk. Do not go there.
   because none of the three causes is visible in the picture and all
   three are one line.
 
+  **AND THE ENTRIES BELOW 256 MUST BE DIBs, NOT PNGs** (`write_ico`,
+  `_dib_entry`, `PNG_ENTRY_MIN`). This is the FOURTH cause of the same
+  symptom and the one that survived fixing the other three: with the
+  right file chosen and every size baked, the shell's copy was still
+  wrong. `write_ico` PNG-compressed every entry on the strength of
+  "every Windows since Vista reads PNG icons" — but what Vista added was
+  PNG at **256**, for the extra-large view. The shell's older icon paths,
+  the ones that draw a TASKBAR BUTTON, a pin and a shortcut at 16, 32 and
+  48, expect the original DIB layout and draw nothing when handed a PNG
+  at those sizes. Qt reads either, which is exactly why the window's own
+  icon was perfect throughout while only the shell's copy was wrong —
+  and why the picture never showed which of the four faults was in play.
+  So 256 stays PNG (it is huge as a DIB, and it is the size the format
+  documents as PNG) and everything the taskbar actually asks for is
+  written the way icons have been written since 1985. Three silent traps
+  in that encoder: the BITMAPINFOHEADER's **height is DOUBLED** because
+  it counts the colour bitmap and the AND mask as one image, the mask's
+  rows are padded to four bytes, and a DIB is stored **BOTTOM-UP** — so
+  the rows are reversed, and the test compares every entry read back
+  against what the app draws AND against its own vertical flip, since a
+  16px icon is far too small for an upside-down one to be obvious.
+  `identity_note` NAMES THE ICON FILE (`_identity_summary`): it used to
+  read identically whether `shell_ico` had returned a path or None, so a
+  report saying "set on hwnd ..." was consistent both with the shell
+  having been handed a picture and with it having been handed none —
+  the one question the note exists to answer.
+
   **A SUPPLIED FILE IS REBUILT AT EVERY SIZE UNLESS IT IS AN `.ico`**
   (`_from_file`). A real .ico already carries each size drawn or hinted
   for it, so it is used exactly as supplied. Everything else is ONE

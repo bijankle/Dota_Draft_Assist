@@ -40,8 +40,9 @@ import struct
 from pathlib import Path
 
 from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
-from PyQt6.QtGui import (QColor, QIcon, QImageReader, QLinearGradient,
-                         QPainter, QPen, QPixmap, QPolygonF)
+from PyQt6.QtGui import (QColor, QIcon, QImage, QImageReader,
+                         QLinearGradient, QPainter, QPen, QPixmap,
+                         QPolygonF)
 
 from ..config import ASSETS_DIR, REPO_ROOT
 from . import theme
@@ -492,6 +493,21 @@ def _property_key(name: str, pscon, pythoncom):
     return (pythoncom.MakeIID(_AUM_FMTID), _AUM_PIDS[name])
 
 
+def _identity_summary(hwnd: int, command: str, icon_file) -> str:
+    """What `claim_window_identity` reports it did.
+
+    NAMING THE ICON is the whole reason this is separate. `shell_ico`
+    returning None — the .ico could not be written — used to leave the
+    note reading exactly as it does on success, so a report saying "set
+    on hwnd ..." was consistent both with the shell having been handed a
+    picture and with it having been handed none. That is the one question
+    the note exists to answer, and it was the one it could not.
+    """
+    drew = (f"icon {icon_file}" if icon_file is not None
+            else "NO ICON FILE — shell_ico() could not write one")
+    return f"set on hwnd {hwnd}: {command} | {drew}"
+
+
 def claim_window_identity(hwnd: int) -> bool:
     """Put the app's identity and relaunch details ON THE WINDOW.
 
@@ -548,7 +564,8 @@ def claim_window_identity(hwnd: int) -> bool:
             store.SetValue(_property_key(name, pscon, pythoncom),
                            propsys.PROPVARIANTType(value))
         store.Commit()
-        identity_note = f"set on hwnd {int(hwnd)}: {values['RelaunchCommand']}"
+        identity_note = _identity_summary(
+            int(hwnd), values["RelaunchCommand"], icon_file)
         return True
     except Exception as exc:            # noqa: BLE001 - see the docstring
         identity_note = f"{type(exc).__name__}: {exc}"
@@ -565,6 +582,40 @@ def pixmap(size: int) -> QPixmap:
     return _square(art, size)
 
 
+# Below this size an entry is written as a DIB rather than as a PNG. See
+# `write_ico`: PNG entries inside an .ico are only reliably read at 256,
+# and 256 is the one size the shell does NOT ask for when it draws a
+# taskbar button.
+PNG_ENTRY_MIN = 256
+
+
+def _dib_entry(size: int) -> bytes | None:
+    """One icon image in the ORIGINAL format: a BITMAPINFOHEADER, the
+    pixels bottom-up as BGRA, and an AND mask.
+
+    Written by hand because Qt has no "encode me a DIB" call, and it is
+    twenty lines: a 40-byte header whose HEIGHT IS DOUBLED (the format
+    counts the colour bitmap and the mask as one image), the rows in
+    reverse because a DIB is bottom-up, and a mask of zeroes since a
+    32-bit entry carries its own alpha and Windows uses that.
+    """
+    art = pixmap(size).toImage().convertToFormat(
+        QImage.Format.Format_ARGB32)
+    if art.isNull() or art.width() != size or art.height() != size:
+        return None
+    stride = art.bytesPerLine()
+    raw = bytes(art.constBits().asstring(stride * size))
+    # Format_ARGB32 is B, G, R, A per pixel on a little-endian machine,
+    # which is exactly a 32-bit DIB's byte order. Bottom row first.
+    rows = [raw[y * stride:y * stride + size * 4] for y in range(size)]
+    pixels = b"".join(reversed(rows))
+    mask_stride = ((size + 31) // 32) * 4
+    mask = b"\x00" * (mask_stride * size)
+    head = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0,
+                       len(pixels) + len(mask), 0, 0, 0, 0)
+    return head + pixels + mask
+
+
 def write_ico(path) -> Path:
     """Write a multi-size .ico from whatever the icon currently is.
 
@@ -575,22 +626,41 @@ def write_ico(path) -> Path:
     from the Start-menu shortcut whose AppUserModelID matches the running
     window — so if that shortcut has no usable icon, neither does the pin.
 
-    PNG-compressed entries, which every Windows since Vista reads, so this
-    is a header and the pixmaps we already have rather than a BMP encoder.
+    **THE ENTRIES BELOW 256 ARE DIBs, NOT PNGs, AND THAT IS THE WHOLE
+    POINT OF THIS FUNCTION.** Every entry used to be PNG-compressed on the
+    strength of "every Windows since Vista reads PNG icons". What Vista
+    added was PNG at **256**, for the extra-large view; the shell's older
+    icon paths — the ones that draw a TASKBAR BUTTON, a pin and a
+    shortcut, at 16, 32 and 48 — go through code that expects the original
+    DIB layout and quietly draw nothing when handed a PNG at those sizes.
+    Which is the signature this app has now produced three times over:
+    the window's own icon perfect, because Qt reads anything, and the
+    shell's copy blank or generic, because it does not.
+
+    So 256 stays PNG — it is huge as a DIB and it is the one size the
+    format documents as PNG — and everything the taskbar actually asks
+    for is written the way an icon has been written since 1985.
     """
     path = Path(path)
     frames = []
     for size in ICO_SIZES:
-        # QBuffer() with no argument owns its byte array. Handing it a
-        # temporary QByteArray instead lets Python free the array while Qt
-        # is still writing into it, which crashes the process.
-        buffer = QBuffer()
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        written = pixmap(size).save(buffer, "PNG")
-        data = bytes(buffer.data())
-        buffer.close()
-        if written:
-            frames.append((size, data))
+        if size >= PNG_ENTRY_MIN:
+            # QBuffer() with no argument owns its byte array. Handing it a
+            # temporary QByteArray instead lets Python free the array
+            # while Qt is still writing into it, which crashes the
+            # process.
+            buffer = QBuffer()
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            written = buffer if pixmap(size).save(buffer, "PNG") else None
+            data = bytes(buffer.data())
+            buffer.close()
+            if written is None:
+                continue
+        else:
+            data = _dib_entry(size)
+            if data is None:
+                continue
+        frames.append((size, data))
     if not frames:
         raise ValueError("no icon pixmaps could be encoded")
 

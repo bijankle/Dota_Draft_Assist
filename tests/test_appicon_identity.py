@@ -466,3 +466,151 @@ def test_describe_names_the_file_and_what_is_in_it(qapp, tmp_path,
     assert "app-default.ico" in said and "[32]" in said
     assert "rebuilt" in said, "it says the small one is not handed over"
     appicon.forget()
+
+
+def test_the_shell_sizes_are_dibs_and_only_256_is_a_png(qapp, tmp_path,
+                                                        monkeypatch):
+    """THE FOURTH CAUSE, and the one that survived fixing the other three.
+
+    Every entry used to be PNG-compressed, on the strength of "every
+    Windows since Vista reads PNG icons". What Vista added was PNG at
+    **256**, for the extra-large view. The shell's older icon paths — the
+    ones that draw a taskbar button, a pin and a shortcut, at 16, 32 and
+    48 — expect the original DIB layout and draw nothing when handed a
+    PNG at those sizes. Qt reads either, which is why the window's own
+    icon was perfect throughout and only the shell's copy was wrong: the
+    exact signature this app has now produced four separate times.
+    """
+    import struct
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    written = appicon.write_ico(tmp_path / "probe.ico")
+    raw = written.read_bytes()
+    count = struct.unpack("<HHH", raw[:6])[2]
+    assert count == len(appicon.ICO_SIZES)
+
+    seen = {}
+    for index in range(count):
+        entry = raw[6 + index * 16:22 + index * 16]
+        width, _, _, _, _, _, nbytes, offset = struct.unpack("<BBBBHHII",
+                                                            entry)
+        blob = raw[offset:offset + nbytes]
+        seen[width or 256] = blob[:8] == b"\x89PNG\r\n\x1a\n"
+
+    for size, is_png in seen.items():
+        if size >= appicon.PNG_ENTRY_MIN:
+            assert is_png, f"{size} should stay PNG"
+        else:
+            assert not is_png, (
+                f"{size} is a PNG entry; the shell draws nothing from one")
+    # The sizes the taskbar actually asks for are the ones that matter.
+    for asked in (16, 32, 48):
+        assert seen.get(asked) is False, f"{asked} must be a DIB"
+    appicon.forget()
+
+
+def test_every_dib_entry_describes_its_own_payload(qapp, tmp_path,
+                                                   monkeypatch):
+    """A DIB inside an .ico has three traps and all three are silent: the
+    header's HEIGHT IS DOUBLED (it counts the colour bitmap and the mask
+    as one image), the mask's rows are padded to four bytes, and the byte
+    count in the directory has to cover all of it. Get any of them wrong
+    and the file parses far enough to look fine."""
+    import struct
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    raw = appicon.write_ico(tmp_path / "probe.ico").read_bytes()
+    count = struct.unpack("<HHH", raw[:6])[2]
+    checked = 0
+    for index in range(count):
+        entry = raw[6 + index * 16:22 + index * 16]
+        _, _, _, _, _, _, nbytes, offset = struct.unpack("<BBBBHHII", entry)
+        blob = raw[offset:offset + nbytes]
+        if blob[:8] == b"\x89PNG\r\n\x1a\n":
+            continue
+        (hsize, width, height, planes, bits, compression,
+         _, _, _, _, _) = struct.unpack("<IiiHHIIiiII", blob[:40])
+        assert hsize == 40, "a BITMAPINFOHEADER is 40 bytes"
+        assert height == 2 * width, "the height is doubled for the mask"
+        assert planes == 1 and bits == 32 and compression == 0
+        mask_stride = ((width + 31) // 32) * 4
+        assert nbytes == 40 + width * width * 4 + mask_stride * width, (
+            "the directory's byte count does not cover header + pixels + mask")
+        checked += 1
+    assert checked >= 3, "there should be several DIB entries to check"
+    appicon.forget()
+
+
+def test_the_written_ico_still_reads_back_upright_and_unchanged(
+        qapp, tmp_path, monkeypatch):
+    """A DIB is stored BOTTOM-UP, so writing one is the obvious place to
+    ship an upside-down icon — and nothing about a wolf's face at 16
+    pixels makes that leap out of a screenshot. Read every entry back and
+    compare it against what the app draws."""
+    from draft_assist.ui import appicon
+    from PyQt6.QtGui import QIcon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    written = appicon.write_ico(tmp_path / "probe.ico")
+    back = QIcon(str(written))
+    assert {s.width() for s in back.availableSizes()} == set(appicon.ICO_SIZES)
+
+    for size in (16, 32, 48):
+        source = appicon.pixmap(size).toImage()
+        got = back.pixmap(size, size).toImage()
+        upright = flipped = 0
+        for y in range(size):
+            for x in range(size):
+                here = got.pixelColor(x, y)
+                same = source.pixelColor(x, y)
+                other = source.pixelColor(x, size - 1 - y)
+                if abs(same.red() - here.red()) > 6:
+                    upright += 1
+                if abs(other.red() - here.red()) > 6:
+                    flipped += 1
+        assert upright == 0, f"{size}px does not match what the app draws"
+        # And it is not accidentally symmetric, or the check above proves
+        # nothing about the row order.
+        assert flipped > size, f"{size}px is too symmetric to test with"
+    appicon.forget()
+
+
+def test_the_identity_note_says_whether_the_shell_got_an_icon(
+        qapp, tmp_path, monkeypatch):
+    """It used to read the same either way. A report saying "set on hwnd
+    ..." was consistent both with the shell having been handed a picture
+    and with it having been handed none, which is the one question the
+    note exists to answer — and the one it could not."""
+    from draft_assist.ui import appicon
+
+    got = appicon._identity_summary(4242, '"py.exe" "main.py"',
+                                    tmp_path / "app-generated.ico")
+    assert "4242" in got and "app-generated.ico" in got
+
+    missing = appicon._identity_summary(4242, '"py.exe" "main.py"', None)
+    assert "NO ICON FILE" in missing
+    assert missing != got, "the two outcomes must not read the same"
+
+
+def test_the_shell_is_actually_handed_an_icon_on_a_normal_install(
+        qapp, tmp_path, monkeypatch):
+    """The branch above only matters because it can go the other way.
+    With the shipped default present — the ordinary case — a file must
+    come back, or the pin has nothing to draw."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    appicon.forget()
+    art = QPixmap(1024, 1024)
+    art.fill()
+    assert art.save(str(tmp_path / "app-default.png"), "PNG")
+    handed = appicon.shell_ico()
+    assert handed is not None and handed.exists()
+    assert appicon.is_ico(handed)
+    appicon.forget()
