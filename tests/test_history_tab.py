@@ -592,10 +592,13 @@ def test_a_dict_preference_is_not_shared_with_DEFAULTS(qapp, tmp_path):
     order would edit DEFAULTS itself and the next fresh load would come
     back carrying it as though it had always been the default."""
     from draft_assist.ui import settings as ui_settings
+    shipped = dict(ui_settings.DEFAULTS["history_tables"])
     first = ui_settings.load(tmp_path / "missing.json")
-    first["history_tables"]["hero"] = {"top": 5}
-    assert ui_settings.DEFAULTS["history_tables"] == {}
-    assert ui_settings.load(tmp_path / "missing.json")["history_tables"] == {}
+    first["history_tables"]["hero"] = {"top": 5, "mutated": True}
+    assert ui_settings.DEFAULTS["history_tables"] == shipped, \
+        "writing a table's view edited the defaults themselves"
+    assert ui_settings.load(tmp_path / "missing.json")["history_tables"] \
+        == shipped
 
 
 # ---- the item block: one hero at a time --------------------------------

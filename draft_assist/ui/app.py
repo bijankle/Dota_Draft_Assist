@@ -271,11 +271,11 @@ class MainWindow(QMainWindow):
         tilekit.set_scale(float(self.settings.get("number_scale", 1.0)))
         for panel in self.team_panels.values():
             panel.rescale()
-        self.lock_action.blockSignals(True)
-        self.lock_action.setChecked(
-            bool(self.settings.get("window_locked", True)))
-        self.lock_action.blockSignals(False)
-        self._apply_window_lock()
+        # FREELY RESIZABLE, floored at what the layout can actually draw.
+        # There is no lock any more; the size is remembered on close
+        # (`closeEvent`) and applied above, which is what the lock was
+        # really for.
+        self.setMinimumSize(self._floor_w, 0)
         # Before the window is shown, because the taskbar reads a window's
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
@@ -341,25 +341,25 @@ class MainWindow(QMainWindow):
         # line of menu that has never been read.
 
         view_menu = bar.addMenu("&View")
-        # Transparency is inserted at the TOP of this menu later (see
-        # `_add_transparency_menu`), once the slider it holds exists — the
-        # toolbar is built after the menu bar and the slider belongs to it.
+        # Transparency and Sizes are inserted later (see
+        # `_add_transparency_menu` / `_add_sizes_menu`), once the sliders
+        # they hold exist — the toolbar is built after the menu bar and
+        # the sliders belong to it. Those two are the whole menu now.
+        #
+        # THREE ITEMS WERE REMOVED FROM HERE at the user's request:
+        # **Resize window (lock)** — the window is freely resizable and
+        # its size is remembered between runs, which is what the lock was
+        # buying at the price of a menu item and a mode. The protection
+        # it gave against a stray drag near the edge mid-draft goes with
+        # it; that was the trade.
+        # **Reset window position** — a rescue for a window dragged
+        # off-screen, which is a thing that has not happened.
+        # **Reload data and library** — the app reloads on its own after
+        # every download and relaunches itself after an update, so the
+        # only time this was reachable was when nothing needed it.
+        # `reload_backend` itself STAYS: the download tasks call it, and
+        # that is the path that actually needs a reload.
         self.view_menu = view_menu
-        # LOCKED BY DEFAULT, at the user's request. Ticked is locked —
-        # the "(lock)" in the label is what the tick does — and unticking
-        # it hands the size back to the resize corner.
-        self.lock_action = QAction("&Resize window (lock)", self)
-        self.lock_action.setCheckable(True)
-        self.lock_action.setStatusTip(
-            "Ticked: the window stays exactly the size it is now. Untick "
-            "to resize it, then tick again to lock the new size.")
-        self.lock_action.toggled.connect(self._set_window_locked)
-        view_menu.addAction(self.lock_action)
-        self._act(view_menu, "&Reset window position",
-                  self._reset_overlay_position)
-        view_menu.addSeparator()
-        self._act(view_menu, "Re&load data and library", self.reload_backend,
-                  "F5", "Re-read the downloaded data from disk")
 
         # Force recognition is a real control, but it belongs beside the
         # picture it affects (Debug ▸ Live) rather than in the menu bar.
@@ -520,17 +520,6 @@ class MainWindow(QMainWindow):
                     "How big the portraits and the numbers are.",
                     ("scale", "bigger", "smaller", "zoom", "font"),
                     lambda: self._show_view_menu()),
-            Command("Resize window (lock)", "View",
-                    "Ticked, the window keeps exactly the size it has now.",
-                    ("lock", "fixed", "resize"),
-                    lambda: self.lock_action.toggle()),
-            Command("Reset window position", "View",
-                    "Bring the window back to the middle of the screen.",
-                    ("move", "lost", "offscreen"),
-                    self._reset_overlay_position),
-            Command("Reload data and library", "View",
-                    "Re-read the downloaded data from disk.",
-                    ("refresh", "reload"), self.reload_backend),
             Command("Debug", "Settings",
                     "What the app is reading right now, and what past "
                     "sessions recorded.",
@@ -1488,69 +1477,6 @@ class MainWindow(QMainWindow):
         self.settings["overlay_opacity"] = float(opacity)
         ui_settings.save(self.settings)
         self.setWindowOpacity(opacity)
-
-    def _reset_overlay_position(self) -> None:
-        """Rescue for a window dragged off-screen or onto a monitor that is
-        no longer attached. A frameless window has no system menu to do
-        this from, so the app has to offer it.
-
-        It MOVES; it only resizes when the size is not locked. Rescuing a
-        window from off-screen and having it change size on the way back
-        is two things where the user asked for one.
-        """
-        self.move(60, 60)
-        if not self._locked():
-            self.resize(1240, 820)
-        self._say("Window moved back to the top-left", 5000)
-
-    # ---- the window's own size -----------------------------------------
-    def _locked(self) -> bool:
-        return bool(self.settings.get("window_locked", True))
-
-    def _set_window_locked(self, on: bool) -> None:
-        """View ▸ Resize window (lock). Ticked is locked.
-
-        Locking takes the size the window is NOW, so the way to change a
-        locked size is untick, drag the corner, tick again — and that new
-        size is written to disk, because otherwise the next start would
-        undo it.
-        """
-        self.settings["window_locked"] = bool(on)
-        self._apply_window_lock()
-        ui_settings.save(self.settings)
-        self._say("Window size locked" if on
-                  else "Window size unlocked — drag the bottom-right corner",
-                  5000)
-
-    def _apply_window_lock(self) -> None:
-        """Fix the window at its current size, or hand it back.
-
-        The size is clamped to what the layout can actually draw:
-        `setFixedSize` replaces the minimum as well as the maximum, so a
-        remembered size from a narrower build would otherwise clip the
-        grids rather than being refused. Unlocking puts the derived floor
-        back and takes the ceiling off, or unlocking would leave the
-        window capped at whatever size it was locked at.
-        """
-        locked = self._locked()
-        if locked:
-            floor = self.minimumSizeHint()
-            width = max(self.width(), self._floor_w, floor.width())
-            height = max(self.height(), floor.height())
-            self.settings["window_w"] = int(width)
-            self.settings["window_h"] = int(height)
-            self.setFixedSize(width, height)
-        else:
-            self.setMinimumSize(self._floor_w, 0)
-            # Qt's own "no maximum". There is no constant for it in PyQt's
-            # namespace, and leaving the locked size in place as a maximum
-            # would unlock the window into a cage.
-            self.setMaximumSize(16_777_215, 16_777_215)
-        grip = getattr(self, "resize_grip", None)
-        if grip is not None:
-            # A corner that cannot size anything is a control that does
-            # nothing, which reads as broken rather than as switched off.
-            grip.setVisible(not locked)
 
     # ---- game data (GSI) ----------------------------------------------
     def _install_gsi(self) -> None:
@@ -2737,10 +2663,9 @@ class MainWindow(QMainWindow):
         appicon.push_native_icon(int(self.winId()))
 
     def _toggle_maximised(self) -> None:
-        if self._locked() and not self.isMaximized():
-            self._say("The window size is locked — View ▸ Resize window "
-                      "(lock) unlocks it", 6000)
-            return
+        # It used to refuse while the size was locked, and there is no
+        # lock any more — the window is freely resizable and remembers
+        # whatever size it is closed at.
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
     def _open_settings(self, tab: str = "") -> None:

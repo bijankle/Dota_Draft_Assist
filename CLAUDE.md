@@ -1785,28 +1785,28 @@ credentials, and put the account at risk. Do not go there.
   system bar was providing has to be put back by hand and that is the whole
   cost of the decision: dragging lives on the bar, and one `ResizeGrip` in
   the bottom-right does the sizing.
-  **THE WINDOW IS LOCKED AT ITS SIZE, and View ▸ Resize window (lock)
-  unlocks it** (`_apply_window_lock`, `ui_settings.window_locked`, default
-  on, at the user's request). A draft is read at a glance with the cursor
-  moving fast near the window's edges, and a window that resizes when you
-  meant to click a pick has cost the pick. Ticked is locked — the "(lock)"
-  in the label is what the tick does — and the way to change a locked size
-  is untick, drag the corner, tick again, which locks whatever it is NOW
-  and writes that to disk, or the next start would undo it. Four things
-  make the lock real rather than decorative: `setFixedSize`, the grip
-  HIDDEN (a corner that cannot size anything reads as broken rather than
-  as switched off), maximise refused with a line saying why, and Reset
-  window position moving without resizing. The size is clamped to the
-  layout's own minimum on the way in, because `setFixedSize` replaces the
-  minimum as well as the maximum and a remembered size from a narrower
-  build would otherwise clip the grids rather than being refused; and
-  unlocking puts the derived floor back and takes the ceiling OFF, or the
-  window would unlock into a cage. Two traps: the tick is set at startup
-  with SIGNALS BLOCKED, since setting it to match the file is not the user
-  ticking it and letting it through announced "Window size locked" over
-  the status line on every start; and a locked window makes `resize()` a
-  no-op, so a test that sizes the window has to unlock it first or it is
-  testing one width. **The toolbar rides on the TAB STRIP**
+  **THE WINDOW IS FREELY RESIZABLE AND REMEMBERS ITS SIZE**, which
+  REVERSES the lock this file used to describe. It shipped locked
+  (`window_locked`, View ▸ Resize window (lock)) because a draft is read
+  at a glance with the cursor moving fast near the window's edges, and a
+  window that resizes when you meant to click a pick has cost the pick.
+  At the user's request the lock is GONE: the grip is always live, the
+  floor is the derived `_floor_w` and nothing caps the ceiling, and
+  `closeEvent` writes `window_w` / `window_h` — which is what the lock
+  was really buying, and it never needed a mode of its own. The
+  protection against a stray drag near the edge went with it; that was
+  the trade, stated.
+  **Two more View items went at the same time and for the same kind of
+  reason.** *Reset window position* rescued a window dragged off-screen
+  or onto a monitor that is no longer attached — a real hazard for a
+  frameless window with no system menu, and one that has not happened.
+  *Reload data and library* (F5) re-read the downloaded data from disk,
+  which every download task already does for itself and an update does
+  by relaunching the app, so the only moment it was reachable was one
+  where nothing needed it. `reload_backend` itself STAYS — the tasks
+  call it — and so does the method behind the banner. View is
+  Transparency and Sizes now, and nothing else.
+  **The toolbar rides on the TAB STRIP**
   (`tabs.setCornerWidget`), not in a band of its own: Record, Auto and
   Transparency are three controls and did not need a whole row of window
   height beside a half-empty tab row. It carries no expanding spacer there
@@ -2609,6 +2609,26 @@ credentials, and put the account at risk. Do not go there.
   itself to the Dota window rectangle, which Windows supplies from the window
   handle; anything drawn against specific portraits needs coordinates from a
   saved frame, which is what the snapshot key exists for.
+- **THE DEFAULTS ARE THE OWNER'S OWN SETUP** (`ui_settings.DEFAULTS`), at
+  their request: "have a look at the current state of the app — the size
+  of the window, the set points in the analysis — and make it the
+  default". Every value in that dict was read off their own
+  `ui_settings.json` rather than picked, so a fresh install (or a second
+  machine) opens on the arrangement they settled on: a 940x998 window,
+  fully opaque, 20 suggested picks and 7 items, the Analysis tab over six
+  months and 5000 matches with every split ticked and each table's own
+  top-N and sort. Their own file still wins on their own machine — it is
+  gitignored and survives every update — so this only ever decides what a
+  copy with no settings yet does.
+  Two things were deliberately NOT taken from that file. `item_hero`
+  names one account's most played hero, and shipping it would have a
+  fresh install open the item block on somebody who is not in its list;
+  it falls back to the first (most played) hero, which is right for
+  anybody. And `overlay_x`, `overlay_y`, `overlay_expanded` and
+  `overlay_rows` were REMOVED rather than updated: nothing has read any
+  of them since the floating overlay went, and because DEFAULTS is the
+  write filter a dead key is a line written into everybody's settings
+  file for ever.
 - **`ui_settings.DEFAULTS` is the write filter, not just a fallback.**
   `save` writes only the keys DEFAULTS names, so a preference the app set
   but that dict did not know about was written by the widget, kept in

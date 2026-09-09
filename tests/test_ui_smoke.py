@@ -43,13 +43,6 @@ def window(qapp):
     rules, meta = items_mod.load_rules(RULES_FILE)
     win = MainWindow(ds, provider, rules, meta)
     win.timer.stop()  # drive refresh manually
-    # UNLOCKED for the tests that size the window. The window ships locked
-    # at its own size (View ▸ Resize window), which is a fixed size and so
-    # makes `resize()` a no-op — a layout test that cannot change the
-    # width is testing one width. Set on the dict rather than through
-    # `_set_window_locked`, which would also claim the status line.
-    win.settings["window_locked"] = False
-    win._apply_window_lock()
     yield win
     win.close()
 
@@ -2994,10 +2987,6 @@ def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
     ds = demo_dataset()
     win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
     win.timer.stop()
-    # Unlocked, or `resize` is a no-op and this measures one width — the
-    # window ships locked at its own size (View ▸ Resize window).
-    win.settings["window_locked"] = False
-    win._apply_window_lock()
     try:
         win.show()
         win.resize(1500, 950)
@@ -3229,12 +3218,15 @@ def test_a_full_board_leaves_the_two_grids_the_same_size(window, qapp):
         f"{synergy.table.height()} vs {counters.table.height()}"
 
 
-def test_the_ad_slot_is_off_unless_it_is_asked_for(qapp):
-    """It is the user's own app on their own machine, and something that
-    sits over the board has to be asked for."""
+def test_the_ad_slot_is_a_switch_and_reserves_nothing_while_it_is_off(qapp):
+    """It ships ON now, because that is where the owner left it and the
+    defaults are their own setup — but the SWITCH is what matters and it
+    still has to work in both directions. Nothing is fetched either way:
+    the slot is a painted placeholder for a banner that does not exist,
+    and off means it takes no room at all rather than reserving a strip."""
     from draft_assist.ui import settings as ui_settings
     from draft_assist.ui.adslot import AdSlot
-    assert ui_settings.DEFAULTS["ads_enabled"] is False
+    assert ui_settings.DEFAULTS["ads_enabled"] is True
     slot = AdSlot()
     assert not slot.showing
     slot.set_enabled(True)
@@ -3323,83 +3315,69 @@ def test_the_ad_setting_reaches_the_slot(window):
     assert not window.ad_slot._enabled
 
 
-def test_the_window_ships_locked_at_its_own_size(qapp):
-    """A draft is read at a glance with the cursor moving fast near the
-    window's edges, and a window that resizes when you meant to click a
-    pick has cost the pick. Locked is the default and the tick in View
-    says so."""
+def test_the_window_is_freely_resizable_and_remembers_its_size(qapp,
+                                                              tmp_path,
+                                                              monkeypatch):
+    """THE LOCK IS GONE, at the user's request, and with it View ▸ Resize
+    window (lock).
+
+    It shipped locked because a draft is read at a glance with the cursor
+    moving fast near the window's edges, and a window that resizes when
+    you meant to click a pick has cost the pick. That protection is what
+    was given up; what it was really buying — a window that opens at the
+    size you left it — is kept by saving on close, which never needed a
+    mode of its own.
+    """
     from draft_assist.ui import settings as ui_settings
     from draft_assist.ui.manual import ManualDraft
     from draft_assist.ui.providers import ManualProvider
-    assert ui_settings.DEFAULTS["window_locked"] is True
+
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "s.json")
+    assert "window_locked" not in ui_settings.DEFAULTS
     ds = demo_dataset()
     win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
     win.timer.stop()
     try:
-        assert win.lock_action.isChecked()
-        size = win.size()
-        assert win.minimumSize() == win.maximumSize() == size, \
-            "a locked window has one size, not a range"
-        win.resize(size.width() + 300, size.height() + 200)
-        _settle(qapp)
-        assert win.size() == size, "it should not have moved"
-        assert win.resize_grip.isHidden(), \
-            "a corner that cannot size anything reads as broken"
-    finally:
-        win.close()
-
-
-def test_unticking_the_lock_hands_the_size_back(qapp):
-    """Untick, drag the corner, tick again — and the new size is written
-    to disk, or the next start would undo it."""
-    from draft_assist.ui import settings as ui_settings
-    from draft_assist.ui.manual import ManualDraft
-    from draft_assist.ui.providers import ManualProvider
-    ds = demo_dataset()
-    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
-    win.timer.stop()
-    try:
-        win.lock_action.setChecked(False)          # as the menu does it
-        assert win.maximumWidth() > win.width(), "still capped"
-        assert not win.resize_grip.isHidden()
-        # The floor is still the derived one: a window narrower than that
+        assert not hasattr(win, "lock_action")
+        assert win.maximumWidth() > win.width(), "still capped somewhere"
+        assert not win.resize_grip.isHidden(), \
+            "the corner sizes the window again, so it has to be there"
+        # FLOORED at what the layout can actually draw: a narrower window
         # is a grid that has stopped being a grid.
         assert win.minimumWidth() == win._floor_w
         win.resize(win._floor_w + 260, win.height() + 120)
         _settle(qapp)
-        win.lock_action.setChecked(True)
-        # Locked at whatever it is NOW — the size is read off the window
-        # rather than remembered from before, because an unshown window
-        # applies a resize a beat later than it is asked for.
-        assert win.minimumSize() == win.maximumSize() == win.size()
-        assert win.width() >= win._floor_w + 260, "it kept the wider size"
-        saved = ui_settings.load()
-        assert saved["window_locked"] is True
-        assert saved["window_w"] == win.width()
-        assert saved["window_h"] == win.height()
+        assert win.width() >= win._floor_w + 260
+
+        # And closing writes it, which is the whole of what the lock did.
+        wide, tall = win.width(), win.height()
+        win.close()
+        saved = ui_settings.load(tmp_path / "s.json")
+        assert (saved["window_w"], saved["window_h"]) == (wide, tall)
     finally:
         win.close()
 
 
-def test_locking_never_squeezes_the_window_below_what_it_can_draw(qapp):
-    """`setFixedSize` replaces the minimum as well as the maximum, so a
-    remembered size from a narrower build would clip the grids rather than
-    being refused."""
-    from draft_assist.ui.manual import ManualDraft
-    from draft_assist.ui.providers import ManualProvider
-    ds = demo_dataset()
-    win = MainWindow(ds, ManualProvider(ManualDraft()), [], {}, ManualDraft())
-    win.timer.stop()
-    try:
-        win.settings["window_locked"] = False
-        win._apply_window_lock()
-        win.resize(400, 200)                  # narrower than the floor
-        win.settings["window_locked"] = True
-        win._apply_window_lock()
-        assert win.width() >= win._floor_w
-        assert win.height() >= win.minimumSizeHint().height()
-    finally:
-        win.close()
+def test_the_three_view_items_are_gone_for_good(window):
+    """Removed at the user's request. Reset window position rescued a
+    window dragged off-screen, which has not happened; Reload data and
+    library re-read the disk, which every download already does for
+    itself and an update does by relaunching."""
+    everywhere = [c.label for c in window._all_commands()]
+    for gone in ("Resize window (lock)", "Reset window position",
+                 "Reload data and library"):
+        assert gone not in everywhere, gone
+    labels = []
+    for action in window.menu_bar.actions():
+        menu = action.menu()
+        if menu is not None:
+            labels += [a.text().replace("&", "") for a in menu.actions()]
+    for gone in ("Resize window (lock)", "Reset window position",
+                 "Reload data and library"):
+        assert gone not in labels, gone
+    # `reload_backend` itself STAYS — the download tasks call it, and that
+    # is the path that actually needs a reload.
+    assert callable(window.reload_backend)
 
 
 def test_every_portrait_in_the_app_is_the_pick_tiles_box(window, qapp):

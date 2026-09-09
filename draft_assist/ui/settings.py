@@ -25,76 +25,99 @@ COUNTS = ("suggested_picks", "suggested_items")
 DATA_REMINDER_DAYS = 14
 MAX_REMINDER_DAYS = 365
 
+# THE DEFAULTS ARE THE OWNER'S OWN SETUP, at their request: "have a look
+# at the current state of the app — the size of the window, the set points
+# in the analysis — and make it the default". Every value below was read
+# off their `ui_settings.json` rather than picked, so a fresh install (or
+# a second machine) opens on the arrangement they settled on rather than
+# on whatever the first version happened to ship.
+# Their own file still wins on their own machine — it is gitignored and
+# survives every update — so this only ever decides what a copy with no
+# settings yet does.
 DEFAULTS = {
-    "overlay_x": 40,
-    "overlay_y": 40,
-    "overlay_expanded": True,
-    "overlay_rows": 6,
     # Start a recording by itself when Dota reaches the draft. On by
     # default: the session you most want is the one you were not
     # expecting, and remembering to press Record before queueing is
     # exactly the thing that gets forgotten.
     "auto_record": True,
-    # Both sources on by default: they answer different
-    # questions and the app wants both. Turning one off is a
-    # debugging step, never a mode.
+    # Both sources on by default: they answer different questions and the
+    # app wants both. Turning one off is a debugging step, never a mode.
     "use_gsi": True,
     "use_vision": True,
-    # How see-through the window is, remembered between runs. It HAS to be
-    # listed here: `save` writes only the keys DEFAULTS names, so a
-    # preference the app set but this dict did not know about was written
-    # by the slider, kept in memory, and dropped on the way to disk.
-    "overlay_opacity": 0.7,
+    # How see-through the window is. It HAS to be listed here: `save`
+    # writes only the keys DEFAULTS names, so a preference the app set
+    # but this dict did not know about was written by the slider, kept in
+    # memory, and dropped on the way to disk. FULLY OPAQUE, which is
+    # where the owner left it — the see-through window is a thing to
+    # reach for rather than a thing to start at.
+    "overlay_opacity": 1.0,
     # How many tiles each strip shows AT MOST. A cap is not a quota: the
     # item strip stops at whatever clears the severity floor, so raising
     # this to 20 does not produce 20 items, it only stops truncating the
     # ones that were already worth showing.
-    "suggested_picks": 8,
-    "suggested_items": 5,
-    # THE ANALYSIS TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS at the
-    # user's request: "if I look up someone else's account, the sorts and
-    # filters should be the same as I had on the previous analysis". So
-    # they live here, in the app's settings, rather than beside the
-    # remembered accounts in `history_accounts.json` where they would be
-    # one person's answer restored over another person's.
-    # `history_tables` is {block id: {top, by, sort, desc}} — one entry per
-    # analysis block, written whenever a heading is clicked or a filter
-    # moved. `history_options` is the window, cap and tick boxes above
-    # them. Both are whole dicts rather than a key each, because the set
-    # of blocks changes when an analysis is added or removed and DEFAULTS
-    # is the WRITE FILTER: a key it does not name is dropped on the way
-    # to disk, so a per-block key would have to be added here every time.
-    "history_tables": {},
-    "history_options": {},
+    "suggested_picks": 20,
+    "suggested_items": 7,
+    # THE ANALYSIS TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
+    # look up someone else's account, the sorts and filters should be the
+    # same as I had on the previous analysis". So they live here rather
+    # than beside the remembered accounts, where they would be one
+    # person's answer restored over another person's.
+    # `history_tables` is {block id: {top, by, sort, desc}} and
+    # `history_options` the window, cap and tick boxes above them. Both
+    # are whole dicts rather than a key each, because the set of blocks
+    # changes when an analysis is added or removed and DEFAULTS is the
+    # WRITE FILTER: a per-block key would have to be added here every
+    # time. `load` copies each dict value, since `dict(DEFAULTS)` is
+    # shallow and the alternative is every caller sharing one object with
+    # the defaults.
+    # NOT `item_hero`, which the owner's file also carries: that names
+    # one account's most played hero, and shipping it would have a fresh
+    # install open the item block on somebody who is not in its list. It
+    # falls back to the first (most played) hero, which is the right
+    # answer for anybody.
+    "history_tables": {
+        "hero": {"top": 10, "by": "games", "sort": "value", "desc": True},
+        "length": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "tod": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "dow": {"top": 0, "by": "value", "sort": "value", "desc": True},
+        "session": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "tilt": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "side": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "party": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "items": {"top": 8, "by": "games", "sort": "value", "desc": True},
+        "herodmg": {"top": 10, "by": "games", "sort": "value", "desc": True},
+        "herokda": {"top": 10, "by": "games", "sort": "value", "desc": True},
+    },
+    "history_options": {
+        "window": "6m", "cap": 5000, "no_turbo": True, "ranked_only": True,
+        "picked": {"hero": True, "length": True, "tod": True, "dow": True,
+                   "session": True, "tilt": True, "side": True,
+                   "party": True, "herodmg": True, "herokda": True,
+                   "items": True},
+    },
     # How old the statistics have to get before the app says anything at
     # all about it: ONE dialog when the app opens, and nothing on screen
-    # for the fortnight before that. The age used to be a banner at the
-    # top, a pill on the tab row and a segment of the status line — three
-    # copies of a number worth acting on about twice a month. Zero turns
-    # the prompt off.
+    # for the fortnight before that. Zero turns it off.
     "data_reminder_days": DATA_REMINDER_DAYS,
-    # Off by default. It is the user's own app on the user's own machine,
-    # and something that sits above the draft the whole time it is running
-    # has to be asked for rather than assumed.
-    "ads_enabled": False,
-    # THE WINDOW IS LOCKED AT ITS SIZE, at the user's request, and it is
-    # unlocked from View > Resize window (lock). A draft is read at a
-    # glance with the cursor moving fast near the window's edges, and a
-    # window that resizes when you meant to click a pick has cost the
-    # pick. The size it is locked AT is remembered too, or unlocking,
-    # resizing and locking again would be undone by the next restart.
-    # HOW BIG THE PICTURES AND THE NUMBERS ARE, as a multiplier on the
-    # sizes the app derives (View ▸ Sizes). It moves the BASE, not the
-    # behaviour: a portrait still grows and shrinks with the window, this
-    # only says how big it is allowed to get. One number for every
-    # portrait in the app and one for every signed number, because a
-    # setting the user has to apply in four places is four settings.
+    # The placeholder ad slot. ON, because that is where the owner left
+    # it — no network is touched and no ad network is wired in; what it
+    # reserves is the SPACE a banner would take.
+    "ads_enabled": True,
     "portrait_scale": 1.0,
     "number_scale": 1.0,
-    "window_locked": True,
-    "window_w": 1240,
-    "window_h": 820,
+    # The size the window opens at, and the size it is closed at is
+    # written back over these (`closeEvent`). There is no lock any more:
+    # it is freely resizable, floored at what the layout can actually
+    # draw. 940x998 is where the owner settled — narrow and tall, which
+    # is the shape of a draft read beside a running game.
+    # `overlay_x`, `overlay_y`, `overlay_expanded` and `overlay_rows` were
+    # here and are GONE: nothing has read any of them since the floating
+    # overlay was removed, and DEFAULTS is the write filter, so a dead key
+    # is a line written to everybody's settings file for ever.
+    "window_w": 940,
+    "window_h": 998,
 }
+
 
 
 def clamp_count(value, fallback: int) -> int:
