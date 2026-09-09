@@ -1523,6 +1523,27 @@ credentials, and put the account at risk. Do not go there.
   all, and a "|" typed into a label is a glyph that resizes with the font
   and cannot be coloured apart from the label holding it. Same lesson as
   the tick box, the window buttons and the count box's arrows.
+  **A SCROLLBAR IS SIX PIECES AND ALL SIX MUST BE NAMED** (`theme`,
+  `QScrollBar::*`, `SCROLL` / `SCROLL_HOVER`). The stylesheet styled the
+  groove and the handle and stopped there, so `add-page` and `sub-page` —
+  the track either side of the handle, which is most of what the eye
+  reads as "the bar" — were left to the NATIVE style, along with the
+  stepper buttons and their arrows. On Windows that draws a dithered
+  texture, and through a translucent always-on-top window it reads as a
+  clump of white specks with more specks at each end. This is the tick
+  box's lesson from the other direction: once a stylesheet touches a
+  widget, the parts it does not name are not left alone, they are handed
+  to somebody else to draw. Zero width and height on the steppers is NOT
+  enough either — they need `background: none` and `border: none`, or
+  there is still a surface to paint into. `QAbstractScrollArea::corner`
+  is its own sub-control again, and drew as a grey notch where two bars
+  meet. The handle was `BG_DEEP`, DARKER than every surface it sits on,
+  so it read as a hole rather than as something to grab; `SCROLL` is
+  lighter than the content, a card and a log panel alike.
+  This cannot be reproduced on the development machine at all — Linux
+  renders with Fusion, and the fault is a Windows-native fallback — so
+  `tests/test_scrollbars.py` checks the thing that DECIDES it (every
+  sub-control named) rather than how it looks.
   **The count box draws its own arrows** (`chrome.CountBox`), which is the
   tick box's lesson again: styling `QSpinBox::up-button` puts Qt on the
   stylesheet path for that sub-control, and a stylesheet can colour one

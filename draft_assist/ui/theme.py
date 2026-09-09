@@ -42,6 +42,14 @@ FRAME_GOLD = "#c9a45a"
 # text, and a rule is neither; it has to read on the dark band and on the
 # card alike.
 RULE = "#808080"
+
+# The scrollbar handle. Light enough to find against every surface it sits
+# on — the content grey, a card, and the near-black of a log panel — and
+# quiet enough not to compete with the draft. It was BG_DEEP, which is
+# darker than the panel it sits in and so read as a hole rather than a
+# control.
+SCROLL = "#4e515a"
+SCROLL_HOVER = "#5f6470"
 # The card and team headings — "Radiant", "Suggested picks".
 HEADING_PX = 21
 # The body, and with it every signed number in the app: the grids print
@@ -268,14 +276,49 @@ QTextBrowser, QPlainTextEdit {{
     border-radius: 6px;
     padding: 6px;
 }}
-QScrollBar:vertical {{ background: transparent; width: 11px; margin: 0; }}
-QScrollBar::handle:vertical {{
-    background: {BG_DEEP}; border-radius: 5px; min-height: 28px;
+/* EVERY SUB-CONTROL IS STYLED, and that is the whole point of this block.
+   Qt draws a scrollbar out of six separate pieces — the groove, the
+   handle, two stepper buttons, their arrows, and the track either side of
+   the handle — and styling SOME of them leaves the rest to the native
+   style. That is what the speckled bars were: `add-page` and `sub-page`
+   (the track) were never named here, so Windows drew them itself, in a
+   dithered texture that reads as a clump of white specks through a
+   translucent window, with the stepper buttons as specks at each end.
+   Same lesson as the tick box and the count box's arrows, from the other
+   direction: once a stylesheet touches a widget, anything it does not
+   name is not "left alone", it is drawn by somebody else. */
+QScrollBar:vertical {{
+    background: transparent; border: none; width: 12px; margin: 0;
 }}
-QScrollBar::handle:vertical:hover {{ background: #111214; }}
-QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
-QScrollBar:horizontal {{ background: transparent; height: 11px; }}
-QScrollBar::handle:horizontal {{ background: {BG_DEEP}; border-radius: 5px; }}
+QScrollBar:horizontal {{
+    background: transparent; border: none; height: 12px; margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {SCROLL}; border: none; border-radius: 4px;
+    min-height: 32px; margin: 2px;
+}}
+QScrollBar::handle:horizontal {{
+    background: {SCROLL}; border: none; border-radius: 4px;
+    min-width: 32px; margin: 2px;
+}}
+QScrollBar::handle:hover {{ background: {SCROLL_HOVER}; }}
+QScrollBar::handle:pressed {{ background: {TEXT_DIM}; }}
+/* The steppers and their arrows, gone and EXPLICITLY gone: a zero size
+   alone still leaves the native style something to paint. */
+QScrollBar::add-line, QScrollBar::sub-line {{
+    background: none; border: none; height: 0; width: 0;
+}}
+QScrollBar::up-arrow, QScrollBar::down-arrow,
+QScrollBar::left-arrow, QScrollBar::right-arrow {{
+    background: none; border: none; image: none; height: 0; width: 0;
+}}
+/* The track either side of the handle. THIS is the one that was missing. */
+QScrollBar::add-page, QScrollBar::sub-page {{
+    background: transparent; border: none;
+}}
+/* The square where a vertical and a horizontal bar meet, which is its own
+   sub-control again and was drawing as a native grey notch. */
+QAbstractScrollArea::corner {{ background: transparent; border: none; }}
 
 /* The status line is a FOOTNOTE: it is read when something is wrong and
    ignored the rest of the time, so at the body size it competed with the
