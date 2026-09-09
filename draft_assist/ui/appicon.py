@@ -151,19 +151,38 @@ def icon() -> QIcon:
     return _icon
 
 
+def _from_file(path: Path) -> QIcon | None:
+    """An icon built from a file somebody supplied, or None if unreadable.
+
+    A REAL .ico ALREADY CARRIES EVERY SIZE the shell asks for, drawn or
+    hinted for each, so it is used exactly as it is.
+
+    ANYTHING ELSE IS ONE IMAGE — a 1024x1024 PNG is the normal case — and
+    handing the shell a QIcon with a single pixmap in it is precisely how
+    a taskbar button comes out blurry: Windows asks for 16, 32, 48 and
+    256, finds only the one, and scales it itself at whatever quality it
+    feels like. So a raster file is downsampled HERE, once per size in
+    `SIZES`, with a smooth transform. Same treatment the drawn and
+    portrait sources already got; this branch was skipping it.
+    """
+    if path.suffix.lower() == ".ico":
+        supplied = QIcon(str(path))
+        return supplied if not supplied.isNull() else None
+    art = QPixmap(str(path))
+    if art.isNull():
+        return None
+    built = QIcon()
+    for size in SIZES:
+        built.addPixmap(_square(art, size))
+    return built
+
+
 def _build() -> QIcon:
-    path = supplied_path()
-    if path is not None:
-        # A real .ico already carries every size the shell wants, and
-        # whatever the user supplied is meant to be used as it is.
-        candidate = QIcon(str(path))
-        if not candidate.isNull():
-            return candidate
-    path = default_path()
-    if path is not None:
-        candidate = QIcon(str(path))
-        if not candidate.isNull():
-            return candidate
+    for path in (supplied_path(), default_path()):
+        if path is not None:
+            candidate = _from_file(path)
+            if candidate is not None:
+                return candidate
     art = _hero_pixmap() or _drawn(256)
     built = QIcon()
     for size in SIZES:

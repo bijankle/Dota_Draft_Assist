@@ -148,3 +148,51 @@ def test_the_shipped_name_is_not_gitignored():
     done = subprocess.run(["git", "check-ignore", "assets/app.ico"],
                           capture_output=True, text=True)
     assert done.returncode == 0, "the user's own icon must stay ignored"
+
+
+def test_a_big_png_is_downsampled_at_every_size_the_shell_asks_for(
+        qapp, tmp_path, monkeypatch):
+    """The normal source file is one big square — 1024x1024 — and a QIcon
+    carrying a single pixmap is exactly how a taskbar button comes out
+    blurry: Windows asks for 16, 32, 48 and 256, finds only the one, and
+    scales it itself. The drawn and portrait sources were already built at
+    every size; a supplied file must be too."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    big = QPixmap(1024, 1024)
+    big.fill()
+    big.save(str(tmp_path / "app-default.png"))
+    appicon.forget()
+
+    baked = {size.width() for size in appicon.icon().availableSizes()}
+    assert set(appicon.SIZES) <= baked, (
+        f"missing {sorted(set(appicon.SIZES) - baked)} — the shell would "
+        "scale one pixmap itself")
+    # And each one really is that size, not the 1024 handed back.
+    for size in (16, 32, 48):
+        assert appicon.pixmap(size).width() == size
+    appicon.forget()
+
+
+def test_a_real_ico_is_used_exactly_as_supplied(qapp, tmp_path,
+                                                monkeypatch):
+    """It already carries every size, drawn or hinted for each, so
+    rebuilding it from one of them would throw that work away."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    art = QPixmap(256, 256)
+    art.fill()
+    appicon.forget()
+    written = appicon.write_ico(tmp_path / "app-default.ico")
+    assert written.exists()
+
+    appicon.forget()
+    assert appicon.default_path() == tmp_path / "app-default.ico"
+    assert not appicon.icon().isNull()
+    # A shipped .ico is what the shortcut and the taskbar pin point at.
+    assert appicon.shell_ico() == tmp_path / "app-default.ico"
+    appicon.forget()

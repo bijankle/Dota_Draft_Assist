@@ -1653,7 +1653,16 @@ credentials, and put the account at risk. Do not go there.
   file that is ignored would silently do nothing.
   Whatever goes in the default slot has to be THE PROJECT'S TO
   DISTRIBUTE: the same bar the bundled fonts had to clear, and the one
-  Valve's and Blizzard's artwork does not. The user asked first for the Frozen Throne icon and then
+  Valve's and Blizzard's artwork does not.
+  **A SUPPLIED FILE IS REBUILT AT EVERY SIZE UNLESS IT IS AN `.ico`**
+  (`_from_file`). A real .ico already carries each size drawn or hinted
+  for it, so it is used exactly as supplied. Everything else is ONE
+  image — a 1024x1024 PNG is the normal thing to be handed — and a QIcon
+  carrying a single pixmap is precisely how a taskbar button comes out
+  blurry: Windows asks for 16, 32, 48 and 256, finds only the one, and
+  scales it itself. So a raster file is downsampled once per size in
+  `SIZES` with a smooth transform, which the drawn and portrait sources
+  always did and this branch was skipping. The user asked first for the Frozen Throne icon and then
   for Bloodseeker's; both are someone else's artwork and this repository
   does not carry either. But the recogniser has ALREADY downloaded that
   portrait onto their disk, by a step they ran themselves, and pointing a
