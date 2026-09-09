@@ -826,7 +826,7 @@ class MainWindow(QMainWindow):
         # question, which the app was never asking: across a few hundred of
         # your own games, what actually goes with winning. See
         # `ui/history_tab.py`; nothing in the live loop touches it.
-        analysis = HistoryTab(say=self._say)
+        analysis = HistoryTab(say=self._say, settings=self.settings)
         self.history_tab = analysis
         tabs.addTab(analysis, "Analysis")
 

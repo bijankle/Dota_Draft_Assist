@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication          # noqa: E402
+from PyQt6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from draft_assist.history import analyse, shape    # noqa: E402
 from draft_assist.history.report import Options, Report  # noqa: E402
@@ -333,23 +333,61 @@ def test_item_findings_stay_out_of_the_summary(qapp):
     assert any(b.kind == "items" for b in report.blocks)
 
 
-def test_the_per_hero_summary_keeps_three_at_each_end(qapp):
-    """"cut it down dramatically... only the top 3 findings and bottom 3".
-    BOTH ends, because where you are worst on a hero is as much the point
-    as where you are best, and a list cut to its head only flatters."""
+def test_the_per_hero_summary_keeps_three_of_each_metric(qapp):
+    """"I only want the top 3 hero damage, and top 3 weighted KDA."
+
+    It was three at each END of the two metrics POOLED, which is a
+    different cut and a worse one to read: damage and KDA separate by
+    different amounts, so the pooled ends came out all damage with the
+    KDA ranking crowded out of its own summary. Per metric, both get
+    their three whatever the other is doing — and it is still the biggest
+    deviation EITHER WAY, because where you are worst on a hero is as
+    much the point as where you are best.
+    """
     from draft_assist.history.report import Report
 
-    sigmas = [9.0, -8.0, 7.0, -6.0, 5.0, -4.0, 3.0, -2.0, 1.5, -1.0]
-    report = _report([_block("metric", sigmas, "m")])
+    report = _report([_block("metric", [9.0, -8.0, 7.0, -6.0, 5.0], "dmg"),
+                      _block("metric", [4.0, -3.5, 3.0, -2.5, 2.0], "kda")])
     _, contributions = report.split_findings()
-    assert len(contributions) == 2 * Report.SUMMARY_EACH_END
-    kept = sorted(pair[1].sigma for pair in contributions)
-    assert kept[:3] == [-8.0, -6.0, -4.0], "the three most negative"
-    assert kept[-3:] == [5.0, 7.0, 9.0], "and the three most positive"
+    per_block = {}
+    for block, finding in contributions:
+        per_block.setdefault(block.id, []).append(finding.sigma)
+    assert set(per_block) == {"dmg", "kda"}, \
+        "a metric was crowded out of its own summary"
+    for ident, kept in per_block.items():
+        assert len(kept) == Report.SUMMARY_PER_METRIC, ident
+    # Strongest first, either direction — not the flattering end alone.
+    assert per_block["dmg"] == [9.0, -8.0, 7.0]
+    assert per_block["kda"] == [4.0, -3.5, 3.0]
 
-    # Too few to split: everything is kept rather than silently halved.
+    # Fewer than three: everything is kept rather than padded or dropped.
     _, few = _report([_block("metric", [1.0, -1.0], "m")]).split_findings()
     assert len(few) == 2
+
+
+def test_the_sigma_figure_is_never_drawn(qapp):
+    """"You can drive by the sigma, but don't show the sigma value — it
+    means nothing to people."
+
+    A count of standard errors is what DECIDES which findings appear and
+    in what order, and as a figure beside a sentence it is a number the
+    reader cannot act on sitting in the column their eye lands on first.
+    What it was carrying that does read is the DIRECTION, and that is on
+    the words now, in colour.
+    """
+    from draft_assist.ui import theme
+
+    tab = HistoryTab()
+    report = _report([_block("cat", [4.0, -3.0], "split")])
+    tab.render(report)
+    labels = [w.text() for w in tab.results.parentWidget().findChildren(QLabel)]
+    assert not any("σ" in text for text in labels), \
+        [t for t in labels if "σ" in t]
+    colours = [w.styleSheet() for w in
+               tab.results.parentWidget().findChildren(QLabel)]
+    assert any(theme.GOOD in css for css in colours), "no direction shown"
+    assert any(theme.BAD in css for css in colours)
+    tab.deleteLater()
 
 
 def test_the_export_button_is_the_same_button_as_run(qapp):
@@ -369,3 +407,163 @@ def test_the_export_button_is_the_same_button_as_run(qapp):
     assert (css.index('QPushButton[accent="true"] {')
             < css.index('QPushButton[accent="true"]:disabled'))
     tab.deleteLater()
+
+
+# ---- the tables: a cut, and a sort, and they are not the same thing ----
+
+def _buckets(spec):
+    """(name, games, rate) -> the rows a block hands its table."""
+    from draft_assist.history.analyse import Bucket
+    return [Bucket(key=name, n=games, rate=rate, delta=rate - 0.5,
+                   eligible=games >= 8) for name, games, rate in spec]
+
+
+ROWS = _buckets([("Lion", 42, 0.55), ("Axe", 30, 0.70), ("Pudge", 20, 0.40),
+                 ("Sniper", 12, 0.65), ("Bane", 4, 0.90)])
+
+
+def _table(rows=None):
+    from draft_assist.ui.history_tab import BucketTable
+    table = BucketTable(["Bucket", "Games", "Win rate", "Against 50%"])
+    table.show_rows(rows if rows is not None else ROWS,
+                    lambda r: f"{r.rate * 100:.0f}%", 0.2, (),
+                    lambda r: r.rate)
+    return table
+
+
+def _column(table, column=0):
+    return [table.item(i, column).text() for i in range(table.rowCount())]
+
+
+def test_a_table_opens_on_games_descending_with_every_row(qapp):
+    """"By default the sort should be number of games, as is right now.\""""
+    table = _table()
+    assert _column(table) == ["Lion", "Axe", "Pudge", "Sniper", "Bane"]
+    assert table.view() == {"top": 0, "by": "games", "sort": "games",
+                            "desc": True}
+    table.deleteLater()
+
+
+def test_clicking_a_heading_sorts_and_clicking_it_again_flips(qapp):
+    """And it sorts on the VALUE, not on the text. Qt's own sortItems
+    compares the item's string, so "10" lands before "9" and "62%" before
+    "9%" — every column here is a number wearing a suffix."""
+    from draft_assist.ui.history_tab import VALUE_COL, GAMES_COL
+    table = _table()
+    table._clicked(VALUE_COL)
+    assert _column(table) == ["Bane", "Axe", "Sniper", "Lion", "Pudge"]
+    table._clicked(VALUE_COL)
+    assert _column(table) == ["Pudge", "Lion", "Sniper", "Axe", "Bane"]
+    # A NEW column starts descending — "most" is what anybody wants first.
+    table._clicked(GAMES_COL)
+    assert _column(table, GAMES_COL) == ["42", "30", "20", "12", "4"]
+    table.deleteLater()
+
+
+def test_the_cut_is_by_the_filter_field_and_the_sort_only_reorders(qapp):
+    """"Filter the top 10 heroes by number of games played, and then sort
+    by win rate."
+
+    Two inputs, because the cut and the reading are different questions.
+    One control doing both would make them the same answer: the rows
+    shown would always be the rows the sort puts first, so asking for the
+    best win rates would quietly reduce the table to whichever four-game
+    buckets got lucky — which is exactly the row this sample has in it.
+    """
+    from draft_assist.ui.history_tab import VALUE_COL
+    table = _table()
+    table.set_view(top=3, by="games")
+    table._clicked(VALUE_COL)               # now read by win rate
+    # The three MOST PLAYED, in win-rate order. Bane's 90% off four games
+    # never had a chance to make it in.
+    assert _column(table) == ["Axe", "Lion", "Pudge"]
+    assert "Bane" not in _column(table)
+    # And the cut does not follow the sort direction: flipping the
+    # reading must not change WHICH rows exist.
+    table._clicked(VALUE_COL)
+    assert sorted(_column(table)) == ["Axe", "Lion", "Pudge"]
+    table.deleteLater()
+
+
+def test_a_cut_rescales_the_bars_it_left_behind(qapp):
+    """The fade is relative to the biggest sample IN THE TABLE, so a cut
+    that removes the biggest bucket has to re-scale the survivors or
+    every remaining bar reads too faint for what it is."""
+    from PyQt6.QtCore import Qt
+    from draft_assist.ui.history_tab import BAR_COLUMN
+
+    def weight_of(table, name):
+        row = _column(table).index(name)
+        return table.item(row, BAR_COLUMN).data(Qt.ItemDataRole.UserRole)[3]
+
+    table = _table()
+    with_lion = weight_of(table, "Axe")
+    table.set_view(top=2, by="value")        # Bane and Axe survive
+    assert weight_of(table, "Axe") > with_lion
+    table.deleteLater()
+
+
+def test_the_sorted_column_wears_the_caret(qapp):
+    """Drawn INTO the heading text. Qt's own sort indicator is a
+    sub-control this stylesheet does not name, and the parts a stylesheet
+    does not name are handed to the native style — the lesson the
+    scrollbars taught."""
+    from draft_assist.ui.history_tab import VALUE_COL
+    table = _table()
+    heads = lambda: [table.horizontalHeaderItem(c).text() for c in range(3)]
+    assert heads()[1].endswith("▼") and "▼" not in heads()[2]
+    table._clicked(VALUE_COL)
+    assert heads()[2].endswith("▼") and "▼" not in heads()[1]
+    table._clicked(VALUE_COL)
+    assert heads()[2].endswith("▲")
+    table.deleteLater()
+
+
+def test_the_table_view_is_remembered_across_accounts(qapp, tmp_path,
+                                                      monkeypatch):
+    """"If I look up someone else's account, the sorts and filters should
+    be the same as I had on the previous analysis." So it is keyed by the
+    BLOCK and kept in the app's own settings, not beside the remembered
+    accounts where it would be one player's answer restored over
+    another's."""
+    from draft_assist.ui import settings as ui_settings
+    from draft_assist.ui.history_tab import VALUE_COL
+
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "s.json")
+    settings = dict(ui_settings.DEFAULTS)
+    settings["history_tables"] = {}
+    tab = HistoryTab(settings=settings)
+    report = _report([_block("cat", [3.0], "hero")])
+    report.blocks[0].shown = list(ROWS)
+    report.blocks[0].rows = list(ROWS)
+    tab.render(report)
+    table = tab._tables["hero"][0]
+    table.controls.count.setValue(3)
+    table._clicked(VALUE_COL)
+    assert settings["history_tables"]["hero"] == {
+        "top": 3, "by": "games", "sort": "value", "desc": True}
+    # It reached DISK, so the next launch opens the same way.
+    assert ui_settings.load(tmp_path / "s.json")["history_tables"]["hero"] \
+        == settings["history_tables"]["hero"]
+
+    # A second tab — which is what looking up another account amounts to
+    # — opens wearing it.
+    again = HistoryTab(settings=dict(settings))
+    again.render(report)
+    assert again._tables["hero"][0].view()["top"] == 3
+    assert again._tables["hero"][0].view()["sort"] == "value"
+    assert _column(again._tables["hero"][0]) == ["Axe", "Lion", "Pudge"]
+    tab.deleteLater()
+    again.deleteLater()
+
+
+def test_a_dict_preference_is_not_shared_with_DEFAULTS(qapp, tmp_path):
+    """`dict(DEFAULTS)` is SHALLOW, so the two dict-valued preferences
+    would be the same object every caller shares — writing a table's sort
+    order would edit DEFAULTS itself and the next fresh load would come
+    back carrying it as though it had always been the default."""
+    from draft_assist.ui import settings as ui_settings
+    first = ui_settings.load(tmp_path / "missing.json")
+    first["history_tables"]["hero"] = {"top": 5}
+    assert ui_settings.DEFAULTS["history_tables"] == {}
+    assert ui_settings.load(tmp_path / "missing.json")["history_tables"] == {}

@@ -14,7 +14,7 @@ entirely — a row reading 0% next to an n of one is noise wearing a number
 — while the workbook still carries them and the block header says how many
 were hidden.
 
-TWELVE ANALYSES RUN AT ONCE, so some buckets clear the bar by chance
+ELEVEN ANALYSES RUN AT ONCE, so some buckets clear the bar by chance
 alone. The report says so on its own front page. A finding is a hypothesis
 to test against the next hundred games, not a conclusion.
 """
@@ -29,7 +29,6 @@ MIN_DISPLAY = 2         # games before a bucket appears in the table at all
 SIGMA_CAT = 1.5         # how far off the datum a bucket must sit
 MIN_SAMPLE = 10         # refuse to analyse a sample smaller than this
 TOP_HEROES = 3          # how many heroes the item block covers
-MONTHS_SHOWN = 14
 
 TOD_ORDER = [f"{h:02d}:00 to {h + 2:02d}:59" for h in range(0, 24, 3)]
 LEN_ORDER = ["Under 25 min", "25 to 35 min", "35 to 45 min", "Over 45 min"]
@@ -126,9 +125,6 @@ ANALYSES = [
     ("items", "Items and win rate, top 3 heroes", True,
      "For your three most played heroes, the win rate in games that ended "
      "with each item in your inventory, against that hero's own win rate."),
-    ("month", "Form by month", True,
-     "Calendar month, most recent fourteen. Watch the sample column: recent "
-     "months are often too thin to read."),
 ]
 NAMES = {key: name for key, name, _, _ in ANALYSES}
 DESCS = {key: desc.replace("{min}", str(MIN_BUCKET))
@@ -147,7 +143,6 @@ PHRASE = {
     "side": lambda k: f"playing {k}",
     "party": lambda k: ("playing solo" if k == "Solo"
                         else f"playing in a {k.lower()}"),
-    "month": lambda k: f"in {k}",
 }
 
 
@@ -342,8 +337,6 @@ SPLITS = {
     "side": (lambda m: "Radiant" if m.radiant else "Dire",
              ["Radiant", "Dire"], ()),
     "party": (_party, PARTY_ORDER, ("Unknown",)),
-    "month": (lambda m: f"{m.when.year}-{m.when.month:02d}",
-              lambda b: b.key, ()),
 }
 
 METRICS = {
@@ -373,9 +366,6 @@ def build_blocks(matches, baseline: float, picked: dict,
     def add_cat(block_id):
         key_of, order, no_finding = SPLITS[block_id]
         rows = categorical(matches, baseline, key_of, order)
-        if block_id == "month":
-            rows.sort(key=lambda b: b.key, reverse=True)
-            rows = rows[:MONTHS_SHOWN]
         shown = [r for r in rows if r.n >= MIN_DISPLAY]
         blocks.append(Block(
             id=block_id, name=NAMES[block_id], desc=DESCS[block_id],
@@ -392,9 +382,6 @@ def build_blocks(matches, baseline: float, picked: dict,
 
     if picked.get("items"):
         blocks.append(item_analysis(matches, item_names or {}))
-
-    if picked.get("month"):
-        add_cat("month")
 
     for block_id, spec in METRICS.items():
         if not picked.get(block_id):

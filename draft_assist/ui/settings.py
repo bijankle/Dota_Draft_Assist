@@ -51,6 +51,21 @@ DEFAULTS = {
     # ones that were already worth showing.
     "suggested_picks": 8,
     "suggested_items": 5,
+    # THE ANALYSIS TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS at the
+    # user's request: "if I look up someone else's account, the sorts and
+    # filters should be the same as I had on the previous analysis". So
+    # they live here, in the app's settings, rather than beside the
+    # remembered accounts in `history_accounts.json` where they would be
+    # one person's answer restored over another person's.
+    # `history_tables` is {block id: {top, by, sort, desc}} — one entry per
+    # analysis block, written whenever a heading is clicked or a filter
+    # moved. `history_options` is the window, cap and tick boxes above
+    # them. Both are whole dicts rather than a key each, because the set
+    # of blocks changes when an analysis is added or removed and DEFAULTS
+    # is the WRITE FILTER: a key it does not name is dropped on the way
+    # to disk, so a per-block key would have to be added here every time.
+    "history_tables": {},
+    "history_options": {},
     # How old the statistics have to get before the app says anything at
     # all about it: ONE dialog when the app opens, and nothing on screen
     # for the fortnight before that. The age used to be a banner at the
@@ -104,7 +119,13 @@ def load(path: Path | None = None) -> dict:
     """Path is resolved at call time, never bound as a default, so the
     destination can be repointed (tests do this)."""
     path = path or SETTINGS_FILE
-    settings = dict(DEFAULTS)
+    # A COPY PER VALUE, not just a copy of the dict. `dict(DEFAULTS)` is
+    # shallow, so the two dict-valued preferences would be the SAME object
+    # every caller shares — the Analysis tab writing a table's sort order
+    # would edit DEFAULTS itself, and the next fresh load would come back
+    # carrying it as though it had always been the default.
+    settings = {k: (dict(v) if isinstance(v, dict) else v)
+                for k, v in DEFAULTS.items()}
     if path.exists():
         try:
             stored = json.loads(path.read_text(encoding="utf-8"))

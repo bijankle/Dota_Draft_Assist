@@ -552,8 +552,10 @@ credentials, and put the account at risk. Do not go there.
   entirely — a rate next to an n of one is noise wearing a number — while
   the workbook still carries them and the block header says how many were
   hidden.
-  **TWELVE ANALYSES RUN AT ONCE**, so some buckets clear the bar by chance
-  alone, and the tab says so on its own front page. A finding is a
+  **ELEVEN ANALYSES RUN AT ONCE**, so some buckets clear the bar by chance
+  alone, and the tab says so on its own front page. **Form by month is
+  GONE**, at the user's request — a calendar month is not something you
+  can act on, and the recent months were always too thin to read. A finding is a
   hypothesis to test against the next hundred games. Do not add a summary
   sentence that reads as a conclusion.
   **THE TWO FAMILIES ARE HEADLINED APART** (`Report.split_findings`).
@@ -567,6 +569,59 @@ credentials, and put the account at risk. Do not go there.
   with more suspicion than the rest anyway — items are the FINAL
   inventory, so an expensive one is partly a consequence of the game going
   well rather than a cause of it.
+  **EVERY TABLE HAS A CUT AND A SORT, AND THEY ARE NOT THE SAME THING**
+  (`history_tab.BucketTable`, `TableControls`). At the user's request:
+  "filter the top 10 heroes by number of games played, and then sort by
+  win rate". TWO INPUTS, because those are two questions — a number and
+  the field that RANKS for it, above the table; and the column headings,
+  which re-order what survived. One control doing both would make them
+  one answer: the rows shown would always be the rows the sort puts
+  first, so asking for the best win rates would quietly reduce the table
+  to whichever four-game buckets got lucky. The cut is therefore always
+  descending by its own field whichever way the table is being READ, or
+  clicking a heading would silently change which rows exist.
+  Both default to GAMES, which is the order this table has always been
+  in, and nought on the count box means ALL and says the word — a table
+  cut to nothing looks the same as a table of nothing.
+  **IT RE-RENDERS RATHER THAN CALLING `sortItems`.** Qt sorts on the
+  item's TEXT, so "10" lands before "9" and "62%" before "9%", and every
+  column here is a number wearing a suffix. Re-drawing is also what
+  keeps the bar column honest: its fade is relative to the biggest
+  sample IN THE TABLE, so a cut that removes the biggest bucket has to
+  re-scale the survivors or every remaining bar reads too faint.
+  The caret is drawn INTO the heading text rather than through Qt's sort
+  indicator — the scrollbars' lesson, that a sub-control the stylesheet
+  does not name is handed to the native style.
+  **THE VIEW IS REMEMBERED PER BLOCK AND ACROSS ACCOUNTS**
+  (`ui_settings.history_tables` / `history_options`), also at the user's
+  request: "if I look up someone else's account, the sorts and filters
+  should be the same as I had on the previous analysis". So it is keyed
+  by the BLOCK rather than by the player and lives in the app's settings
+  rather than beside the remembered accounts — and `_apply_remembered`
+  no longer restores the options an account was last run with, because
+  the controls are the reader's and not the account's. `_apply_options`
+  blocks signals while it restores: setting a control to match what was
+  already saved is not the user changing it, and unblocked it rewrote
+  the settings file on every start. Both preferences are whole DICTS
+  because `DEFAULTS` is the write filter and the set of blocks changes;
+  `load` copies each dict value, since `dict(DEFAULTS)` is shallow and
+  the alternative is every caller sharing one object with the defaults.
+  **THE SIGMA DRIVES THE ORDER AND IS NEVER SHOWN**, at the user's
+  request — "it means nothing to people". It decides which findings
+  appear and in what sequence, which is what it is for; as a figure
+  beside a sentence it is a number the reader cannot act on, in the
+  column their eye lands on first. What it carried that DOES read is the
+  direction, so a small green or red arrow sits where it was. Colouring
+  the whole sentence was tried first and made a card of five findings a
+  wall of red that reads as five errors.
+  **THERE IS NO "THIS RUN" CARD.** It counted the matches, named the
+  window and tallied what was dropped — all true, all read once, and it
+  stood between the tick boxes and the first thing the run actually
+  says. The datum it uniquely carried is on the blocks themselves: every
+  table's fourth column is headed "Against 54%". The dim line under the
+  account box STAYS — the user changed their mind about that one, and it
+  answers a different question: when this account was last measured,
+  without measuring it again.
   **RANKED ONLY IS TICKED, AND LANE ROLE IS GONE** — both at the user's
   request. The question this tab asks is what goes with winning RANKED
   games, and turbo and unranked answer a different one, so
@@ -576,7 +631,7 @@ credentials, and put the account at risk. Do not go there.
   minority of matches, so the bucket was mostly "Unparsed" — an analysis
   that mostly reports it could not tell.
   **THE SUMMARY IS A HEADLINE, NOT EVERYTHING THAT CLEARED A FLOOR**
-  (`split_findings`, `SUMMARY_EACH_END` = 3). Item findings are OUT of
+  (`split_findings`, `SUMMARY_PER_METRIC` = 3). Item findings are OUT of
   "What goes with winning": there are three heroes' worth, they separate
   easily because an expensive item is partly a CONSEQUENCE of the game
   going well, and the tab already says to read that block with more
@@ -623,6 +678,19 @@ credentials, and put the account at risk. Do not go there.
   the folder is gitignored exactly like `.env`, so a copy of this app
   still carries nobody's history. What changed is only how much of your
   own run your own machine keeps for you.
+  **AN ITEM ID IS NOT A NAME, AND THE REBUILD HAS NO NETWORK**
+  (`cache.save_item_names` / `item_names`, `NAMES_FILE`). The item block
+  keys its buckets by OpenDota's numeric item id and turns them into
+  words with a map fetched from `/constants/items` — and `rebuild` was
+  handed an EMPTY map, so the names were right exactly once, on the run
+  that fetched them, and every later opening of that same run printed
+  "Item 1", "Item 63", "Item 116" down the whole block. Which is the
+  path the tab takes whenever you do not re-run. So the map is written
+  beside the runs and read back with them: tiny, changed about twice a
+  year, and the one part of a run that is not about the player at all.
+  Its keys come back as INTS, because that is what the buckets are keyed
+  by and a map keyed by strings misses every one of them silently —
+  which is the same numbers on screen from a different cause.
   **THE RAW MATCHES ARE STORED AND THE FINDINGS ARE NOT** (`cache.
   rebuild`). Recomputing the blocks on the way back in costs milliseconds
   and buys two things: the workbook's raw sheet still has something to

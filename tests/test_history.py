@@ -527,3 +527,57 @@ def test_only_the_newest_runs_are_kept(tmp_path, monkeypatch):
                           name="", matches=matches, blocks=[], dropped={},
                           sessions=1, returned=12))
     assert len(list(folder.glob("*.json"))) == cache.KEEP
+
+
+def test_a_cached_run_still_knows_its_items_by_name(tmp_path, monkeypatch):
+    """"Items are listed as numbers instead of names."
+
+    The item block keys its buckets by OpenDota's numeric item id and
+    turns them into words with a map fetched from `/constants/items`.
+    `cache.rebuild` recomputes every block on the way back in and was
+    handed an EMPTY map, so the names were right exactly once — on the
+    run that fetched them — and every later opening of that same run,
+    which is the path the tab takes whenever you do not re-run, printed
+    "Item 1", "Item 63" down the whole block.
+    """
+    from draft_assist.history import cache
+
+    folder = tmp_path / "cache"
+    monkeypatch.setattr(cache, "CACHE_DIR", folder)
+    cache.save_item_names({1: "Blink Dagger", 63: "Power Treads"})
+    # Read back as INTS, because that is what the buckets are keyed by —
+    # a map keyed by strings misses every one of them silently, which is
+    # the same numbers on screen from a different cause.
+    assert cache.item_names() == {1: "Blink Dagger", 63: "Power Treads"}
+
+    matches = shape.shape(rows_for(40), HEROES).matches
+    for index, match in enumerate(matches):
+        match.items = [1, 63] if index % 2 else [1]
+    report = Report(options=Options(account_id=9, picked={"items": True}),
+                    how="", name="", matches=matches, blocks=[],
+                    dropped={}, sessions=1, returned=40)
+    cache.save(report)
+
+    back = cache.load(9, {"items": True})
+    assert back is not None
+    keys = [row.key for block in back.blocks if block.kind == "items"
+            for group in block.groups for row in group.rows]
+    assert keys, "the item block came back empty"
+    assert not any(k.startswith("Item ") for k in keys), keys
+    assert "Blink Dagger" in keys
+
+
+def test_a_missing_name_map_is_no_names_rather_than_a_crash(tmp_path,
+                                                            monkeypatch):
+    """It is written by a run and read by every rebuild, so it is absent
+    on a fresh install and on any run made before it existed."""
+    from draft_assist.history import cache
+    folder = tmp_path / "cache"
+    folder.mkdir()
+    monkeypatch.setattr(cache, "CACHE_DIR", folder)
+    assert cache.item_names() == {}
+    (folder / cache.NAMES_FILE).write_text("{ not json", encoding="utf-8")
+    assert cache.item_names() == {}
+    (folder / cache.NAMES_FILE).write_text('{"nope": "x"}', encoding="utf-8")
+    assert cache.item_names() == {}
+    assert cache.save_item_names({}) is False

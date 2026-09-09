@@ -28,8 +28,9 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
                              QTableWidget, QTableWidgetItem, QVBoxLayout,
                              QWidget)
 
+from . import settings as ui_settings
 from . import theme
-from .chrome import TickBox, card
+from .chrome import CountBox, TickBox, card
 from ..history import analyse, cache, opendota, store, workbook
 from ..history.report import CAPS, WINDOWS, Options
 from ..history.runner import Refused, run as run_analysis
@@ -78,17 +79,125 @@ class Bar(QStyledItemDelegate):
         painter.restore()
 
 
+# The three text columns, as (index, key). The bar column is the figure
+# said again in ink, so it sorts by the same value rather than offering a
+# fourth answer.
+NAME_COL, GAMES_COL, VALUE_COL = 0, 1, 2
+SORT_KEYS = {NAME_COL: "name", GAMES_COL: "games", VALUE_COL: "value"}
+COL_OF = {key: col for col, key in SORT_KEYS.items()}
+# What the "top N by" dropdown offers. NAME IS NOT AMONG THEM: "the top
+# ten by name" is alphabetical, which is an ordering rather than a
+# ranking, and a filter that cannot say what it kept OUT is not a filter.
+FILTER_BY = (("games", "games"), ("value", "the figure"))
+# Nought is ALL, the same convention the strips' count boxes use, and it
+# is the default: a table that opens already cut has hidden something
+# before the reader has asked for anything.
+SHOW_ALL = 0
+MAX_ROWS = 200
+
+
+def sort_value(row, key: str, value_of):
+    """One row's answer for one sort key."""
+    if key == "name":
+        return str(row.key).lower()
+    if key == "value":
+        return float(value_of(row))
+    return int(row.n)
+
+
+class TableControls(QWidget):
+    """"Top [10] by [games]" — the filter, above its own table.
+
+    TWO INPUTS, at the user's request, because the cut and the reading
+    are different questions: "filter the top 10 heroes by number of games
+    played, and then sort by win rate". One control doing both would make
+    those the same answer — the ten shown would always be the ten the
+    sort puts first, so asking for the best win rates would quietly
+    reduce the table to whichever three-game buckets got lucky.
+    """
+
+    changed = pyqtSignal()
+
+    def __init__(self, value_label: str, parent=None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.addWidget(QLabel("Top"))
+        # The app's own count box, with the painted arrows every other
+        # number-with-arrows in this window uses.
+        self.count = CountBox(SHOW_ALL, SHOW_ALL, MAX_ROWS)
+        # NOUGHT READS AS "all", not as "0". The strips' count boxes use
+        # the same convention and can leave it implicit because a row is
+        # visibly full; a table cut to nothing looks the same as a table
+        # of nothing, so this one says the word.
+        self.count.setSpecialValueText("all")
+        self.count.setToolTip("How many rows to show, by the ranking "
+                              "beside this. Wind it down to nothing for "
+                              "all of them.")
+        self.count.valueChanged.connect(self.changed)
+        row.addWidget(self.count)
+        row.addWidget(QLabel("by"))
+        self.by = QComboBox()
+        for key, label in FILTER_BY:
+            self.by.addItem(label if key != "value" else value_label, key)
+        self.by.setToolTip(
+            "Which column decides who makes the cut. The sort below is "
+            "separate — click a heading to re-order what survived.")
+        self.by.currentIndexChanged.connect(self.changed)
+        row.addWidget(self.by)
+        row.addStretch(1)
+
+    def state(self) -> tuple:
+        return (self.count.value(), self.by.currentData())
+
+    def set_state(self, top: int, by: str) -> None:
+        for widget in (self.count, self.by):
+            widget.blockSignals(True)
+        self.count.setValue(max(SHOW_ALL, min(MAX_ROWS, int(top))))
+        index = self.by.findData(by)
+        self.by.setCurrentIndex(index if index >= 0 else 0)
+        for widget in (self.count, self.by):
+            widget.blockSignals(False)
+
+
 class BucketTable(QTableWidget):
     """One analysis block: bucket, games, the figure, and the bar.
 
     Sized to its rows and never scrolling, the same rule the draft grids
     live by: a scrollbar on a table that is meant to be read at a glance
     hides part of the answer while making the widget look correct.
+
+    **THE CUT AND THE SORT ARE TWO SEPARATE THINGS**, at the user's
+    request. The rows are ranked by the FILTER field and cut to the top
+    N; what survives is then ordered by whatever heading was last
+    clicked. Both default to games, which is the order this table has
+    always been in.
+
+    **IT RE-RENDERS RATHER THAN CALLING `sortItems`.** Qt sorts a table
+    on the item's TEXT, so "10" sorts before "9" and "62%" before "9%" —
+    every column here is a number wearing a suffix. Holding the rows and
+    drawing them again is also what keeps the bar column honest: its
+    fade is relative to the biggest sample IN THE TABLE, so a cut that
+    removes the biggest bucket has to re-scale the survivors or every
+    remaining bar reads too faint.
     """
+
+    changed = pyqtSignal()
 
     def __init__(self, headers, parent=None):
         super().__init__(0, 4, parent)
         self.setHorizontalHeaderLabels(headers)
+        self._headers = list(headers)
+        self._rows: list = []
+        self._figure = str
+        self._scale = 1.0
+        self._no_finding: tuple = ()
+        self._value_of = (lambda row: 0.0)
+        self._top = SHOW_ALL
+        self._by = "games"
+        self._sort = "games"
+        self._descending = True
         self.verticalHeader().setVisible(False)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
@@ -96,12 +205,6 @@ class BucketTable(QTableWidget):
         self.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setItemDelegateForColumn(BAR_COLUMN, Bar(self))
-        # The first column is a name, so its heading reads from the left
-        # with it; the two number columns keep Qt's centring.
-        item = QTableWidgetItem(headers[0])
-        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft
-                              | Qt.AlignmentFlag.AlignVCenter)
-        self.setHorizontalHeaderItem(0, item)
         head = self.horizontalHeader()
         head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in (1, 2):
@@ -111,19 +214,119 @@ class BucketTable(QTableWidget):
         self.setColumnWidth(BAR_COLUMN, 240)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Fixed)
+        head.setSectionsClickable(True)
+        head.sectionClicked.connect(self._clicked)
+        self._label_headers()
 
-    def fill(self, rows, figure, scale, no_finding=()) -> None:
-        """`figure` turns a bucket into the middle column's text."""
+    # ---- what it holds ------------------------------------------------
+    def show_rows(self, rows, figure, scale, no_finding=(),
+                  value_of=None) -> None:
+        """Every row this block measured. The cut happens at render."""
+        self._rows = list(rows)
+        self._figure = figure
+        self._scale = scale
+        self._no_finding = tuple(no_finding)
+        self._value_of = value_of or (lambda row: getattr(row, "rate", 0.0))
+        self.render_rows()
+
+    # Kept so a caller that only wants the old behaviour still works.
+    fill = show_rows
+
+    def set_view(self, top=None, by=None, sort=None,
+                 descending=None, desc=None) -> None:
+        """`desc` is the stored spelling, so a whole saved view can be
+        handed straight back in."""
+        if desc is not None and descending is None:
+            descending = desc
+        if top is not None:
+            self._top = max(SHOW_ALL, min(MAX_ROWS, int(top)))
+        if by in COL_OF or by == "games":
+            self._by = by
+        if sort in COL_OF:
+            self._sort = sort
+        if descending is not None:
+            self._descending = bool(descending)
+        self._label_headers()
+        self.render_rows()
+
+    def view(self) -> dict:
+        return {"top": self._top, "by": self._by, "sort": self._sort,
+                "desc": self._descending}
+
+    def view_state(self) -> tuple:
+        """Just the two the control row owns."""
+        return (self._top, self._by)
+
+    # ---- the cut, then the order --------------------------------------
+    def survivors(self) -> list:
+        """Ranked by the FILTER field, cut to the top N.
+
+        Always descending, because "top ten by games" means the ten most
+        played whichever way the table is being READ — tying the cut to
+        the sort direction would make clicking a heading silently change
+        which rows exist.
+        """
+        rows = list(self._rows)
+        if self._top and self._top < len(rows):
+            rows.sort(key=lambda r: sort_value(r, self._by, self._value_of),
+                      reverse=True)
+            rows = rows[:self._top]
+        return rows
+
+    def render_rows(self) -> None:
+        rows = self.survivors()
+        rows.sort(key=lambda r: sort_value(r, self._sort, self._value_of),
+                  reverse=self._descending)
+        self._draw(rows)
+
+    def _clicked(self, column: int) -> None:
+        """A heading re-orders; the bar column defers to the figure it
+        draws rather than offering a fourth answer."""
+        key = SORT_KEYS.get(column if column != BAR_COLUMN else VALUE_COL)
+        if key is None:
+            return
+        # Same column again flips it; a NEW column starts descending,
+        # because "most" is what anybody wants first from every one of
+        # these — most games, highest rate, and A-Z is the odd one out.
+        self._descending = (not self._descending if key == self._sort
+                            else key != "name")
+        self._sort = key
+        self._label_headers()
+        self.render_rows()
+        self.changed.emit()
+
+    def _label_headers(self) -> None:
+        """The caret is drawn INTO the heading text.
+
+        Qt's own sort indicator is a sub-control this stylesheet does not
+        name, and the parts a stylesheet does not name are handed to the
+        native style to draw — the lesson the scrollbars taught, and on
+        Windows through a translucent window it is exactly the sort of
+        stray mark that shows up as a speck. Two characters cost nothing
+        and look the same everywhere.
+        """
+        caret = " ▼" if self._descending else " ▲"
+        for column, key in SORT_KEYS.items():
+            text = self._headers[column] + (caret if key == self._sort else "")
+            item = QTableWidgetItem(text)
+            if column == NAME_COL:
+                # The first column is a name, so its heading reads from
+                # the left with it; the number columns keep Qt's centring.
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft
+                                      | Qt.AlignmentFlag.AlignVCenter)
+            self.setHorizontalHeaderItem(column, item)
+
+    def _draw(self, rows) -> None:
         self.setRowCount(len(rows))
         biggest = max((row.n for row in rows), default=1) or 1
         for index, row in enumerate(rows):
-            muted = not row.eligible or row.key in no_finding
+            muted = not row.eligible or row.key in self._no_finding
             name = QTableWidgetItem(row.key)
             name.setToolTip(row.key)
             count = QTableWidgetItem(str(row.n))
             count.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                    | Qt.AlignmentFlag.AlignVCenter)
-            value = QTableWidgetItem(figure(row))
+            value = QTableWidgetItem(self._figure(row))
             value.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                    | Qt.AlignmentFlag.AlignVCenter)
             if muted:
@@ -136,7 +339,7 @@ class BucketTable(QTableWidget):
             self.setItem(index, 2, value)
             bar = QTableWidgetItem("")
             bar.setData(Qt.ItemDataRole.UserRole,
-                        (row.delta, scale, not muted,
+                        (row.delta, self._scale, not muted,
                          (row.n / biggest) ** 0.5))
             self.setItem(index, BAR_COLUMN, bar)
         self._fit_height()
@@ -185,12 +388,23 @@ class Worker(QThread):
 class HistoryTab(QWidget):
     """The whole tab: who, what to measure, and what came back."""
 
-    def __init__(self, say=None, parent=None):
+    def __init__(self, say=None, parent=None, settings=None):
         super().__init__(parent)
         self.say = say or (lambda text, millis=4000: None)
         self.report = None
         self.worker = None
         self._account = None
+        # THE WINDOW'S OWN DICT when there is one, so the two do not write
+        # over each other. `ui_settings.save` writes every key DEFAULTS
+        # names from whatever dict it is handed — so a tab loading its own
+        # copy at startup and saving it later would put the window's
+        # startup values back over anything changed since.
+        self.settings = (settings if settings is not None
+                         else ui_settings.load())
+        self.views = self.settings.setdefault("history_tables", {})
+        # Every live table, by block id — see `_table`. Rebuilt with the
+        # results, since the widgets in it are destroyed with them.
+        self._tables: dict = {}
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -215,6 +429,8 @@ class HistoryTab(QWidget):
         lay.addLayout(self.results)
         lay.addStretch(1)
 
+        self._apply_options(Options.from_dict(
+            self.settings.get("history_options") or {}))
         self._load_accounts()
         # ONLY IF NOTHING CAME BACK OFF DISK. `_load_accounts` selects the
         # most recent account, which loads its cached run — and the
@@ -341,6 +557,15 @@ class HistoryTab(QWidget):
             self.analysis_ticks[key] = tick
             grid.addWidget(tick, index // 3, index % 3)
         lay.addLayout(grid)
+        # REMEMBERED AS THEY ARE CHANGED, rather than on Run: the point of
+        # keeping them is that the next account opens with what was last
+        # set, and a setting that is only written when something is
+        # measured is one lost by closing the app without measuring.
+        for box in (self.window_box, self.cap_box):
+            box.currentIndexChanged.connect(self._remember_options)
+        for tick in (self.turbo_tick, self.ranked_tick,
+                     *self.analysis_ticks.values()):
+            tick.toggled.connect(self._remember_options)
         return frame
 
     # ---- remembered accounts -------------------------------------------
@@ -373,10 +598,18 @@ class HistoryTab(QWidget):
             self._apply_remembered(row)
 
     def _apply_remembered(self, row: dict) -> None:
+        """Adopt an account — but NOT the options it was last run with.
+
+        It used to restore those too, and at the user's request it no
+        longer does: "if I look up someone else's account, the sorts and
+        filters should be the same as I had on the previous analysis".
+        The controls are the reader's, not the account's, so picking a
+        different player changes WHO is measured and nothing about HOW.
+        The cached run is still that account's own, and it is still drawn
+        for whatever is ticked NOW — which is the same rule `cache.load`
+        already followed.
+        """
         self.account_box.setText(str(row["account_id"]))
-        options = Options.from_dict(row.get("options") or {},
-                                    row["account_id"])
-        self._apply_options(options)
         self._show_last_run(row)
         self._load_cached(row["account_id"])
 
@@ -412,6 +645,24 @@ class HistoryTab(QWidget):
             "says, and nothing is re-fetched until you press this.")
 
     def _apply_options(self, options: Options) -> None:
+        """Put the controls where these options say, WITHOUT announcing it.
+
+        Every one of them writes the settings file when it changes, and
+        setting a control to match what was already saved is not the user
+        changing it — unblocked, opening the app rewrote the file on
+        every start, and the first thing a fresh install did was save.
+        """
+        boxes = [self.window_box, self.cap_box, self.turbo_tick,
+                 self.ranked_tick, *self.analysis_ticks.values()]
+        for box in boxes:
+            box.blockSignals(True)
+        try:
+            self._set_options(options)
+        finally:
+            for box in boxes:
+                box.blockSignals(False)
+
+    def _set_options(self, options: Options) -> None:
         index = self.window_box.findData(options.window)
         if index >= 0:
             self.window_box.setCurrentIndex(index)
@@ -423,6 +674,24 @@ class HistoryTab(QWidget):
         for key, tick in self.analysis_ticks.items():
             if key in options.picked:
                 tick.setChecked(bool(options.picked[key]))
+
+    def _save_settings(self) -> None:
+        """Write the tab's own two keys. Never fatal — a read-only disk
+        costs the preference, not the run."""
+        try:
+            ui_settings.save(self.settings)
+        except Exception:               # noqa: BLE001 - a preference
+            pass
+
+    def _save_views(self) -> None:
+        self.settings["history_tables"] = self.views
+        self._save_settings()
+
+    def _remember_options(self) -> None:
+        """The window, cap and tick boxes, kept across accounts."""
+        options = self.options()
+        self.settings["history_options"] = options.as_dict()
+        self._save_settings()
 
     def _show_last_run(self, row: dict) -> None:
         when = row.get("last_run") or ""
@@ -523,6 +792,11 @@ class HistoryTab(QWidget):
 
     # ---- drawing the report --------------------------------------------
     def _clear_results(self) -> None:
+        # The register holds WIDGETS, and these are about to be deleted.
+        # A stale entry here is a C++ object that has been destroyed and
+        # a Python wrapper that has not noticed, which raises the moment
+        # a sibling is told to move with it.
+        self._tables = {}
         while self.results.count():
             item = self.results.takeAt(0)
             widget = item.widget()
@@ -540,7 +814,7 @@ class HistoryTab(QWidget):
             "noise — at least "
             f"{analyse.MIN_BUCKET} games in the bucket and "
             f"{analyse.SIGMA_CAT} standard errors away.\n\n"
-            "Twelve analyses run at once, so some buckets clear that bar by "
+            "Eleven analyses run at once, so some buckets clear that bar by "
             "chance alone. A finding is a hypothesis to test against the "
             "next hundred games, not a conclusion.\n\n"
             "It reads public match history from OpenDota. If nothing comes "
@@ -552,8 +826,14 @@ class HistoryTab(QWidget):
         self.results.addWidget(frame)
 
     def render(self, report) -> None:
+        # NO "THIS RUN" CARD, at the user's request. It counted the
+        # matches, named the window, and tallied what was dropped — all
+        # true, all read once, and it stood between the tick boxes and
+        # the first thing the run actually says. What it uniquely
+        # carried, the datum every split is measured against, is on the
+        # blocks themselves: each table's third column is headed
+        # "Against 54%".
         self._clear_results()
-        self.results.addWidget(self._headline(report))
         rates, contributions = report.split_findings()
         # THE TWO FAMILIES ARE HEADLINED APART. Contribution metrics
         # separate far harder than win-rate splits because they are partly
@@ -571,30 +851,6 @@ class HistoryTab(QWidget):
         for block in report.blocks:
             self.results.addWidget(self._block_card(block, report))
 
-    def _headline(self, report) -> QFrame:
-        frame, lay = card("This run")
-        period = report.period
-        dropped = report.dropped
-        lines = [
-            f"{report.n} matches, {report.wins} won — "
-            f"{report.baseline * 100:.1f}% is the datum every split below "
-            "is measured against.",
-            f"{period[0]} to {period[1]}, {report.sessions} play sessions, "
-            f"{report.returned} returned by the API before filtering.",
-        ]
-        cut = [f"{count} {why}" for why, count in (
-            ("under five minutes", dropped.get("short", 0)),
-            ("outside the window", dropped.get("window", 0)),
-            ("Turbo", dropped.get("turbo", 0)),
-            ("not ranked", dropped.get("unranked", 0)),
-            ("malformed", dropped.get("malformed", 0))) if count]
-        if cut:
-            lines.append("Dropped: " + ", ".join(cut) + ".")
-        label = QLabel("\n".join(lines))
-        label.setWordWrap(True)
-        lay.addWidget(label)
-        return frame
-
     def _findings_card(self, title: str, pairs: list, empty: str,
                        metric: bool = False) -> QFrame:
         frame, lay = card(title)
@@ -607,11 +863,22 @@ class HistoryTab(QWidget):
         for block, finding in pairs:
             row = QHBoxLayout()
             row.setSpacing(10)
-            sigma = QLabel(f"{finding.sigma:+.1f}σ")
-            sigma.setMinimumWidth(58)
-            sigma.setStyleSheet(
+            # NO SIGMA ON SCREEN, at the user's request: "it means nothing
+            # to people". A count of standard errors is what DECIDES which
+            # findings appear and in what order — that is what it is for —
+            # but as a figure beside a sentence it is a number the reader
+            # cannot act on, in the column their eye lands on first.
+            # An ARROW, not a coloured sentence. Colouring the words was
+            # the first try and it made a card of five findings a wall of
+            # red text, which reads as five errors rather than as five
+            # measurements. The direction is the only part of the sigma
+            # worth showing, and it belongs in the narrow column the
+            # figure used to sit in.
+            mark = QLabel("▲" if finding.sigma > 0 else "▼")
+            mark.setMinimumWidth(20)
+            mark.setStyleSheet(
                 f"color: {theme.GOOD if finding.sigma > 0 else theme.BAD};")
-            row.addWidget(sigma)
+            row.addWidget(mark)
             text = QLabel(finding.text)
             text.setWordWrap(True)
             row.addWidget(text, 1)
@@ -620,6 +887,51 @@ class HistoryTab(QWidget):
             row.addWidget(name)
             lay.addLayout(row)
         return frame
+
+    def _table(self, ident, headers, rows, figure, scale, no_finding,
+               value_of) -> "BucketTable":
+        """A block's table, wearing whatever view was left on it.
+
+        The view is REMEMBERED PER BLOCK AND ACROSS ACCOUNTS, at the
+        user's request: "if I look up someone else's account, the sorts
+        and filters should be the same as I had on the previous
+        analysis". So it is keyed by the block rather than by the player,
+        and it lives in the app's own settings file rather than beside
+        the remembered accounts.
+        """
+        table = BucketTable(headers)
+        table.controls = TableControls(headers[VALUE_COL])
+        # SIBLINGS MOVE TOGETHER. The item block draws one table per hero
+        # and all three share a key, because they are the same question
+        # asked three times — so a cut set on one has to reach the others
+        # or the block shows three different answers to one control.
+        family = self._tables.setdefault(ident, [])
+        family.append(table)
+        saved = dict(self.views.get(ident) or {})
+        table.set_view(top=saved.get("top", SHOW_ALL),
+                       by=saved.get("by", "games"),
+                       sort=saved.get("sort", "games"),
+                       descending=saved.get("desc", True))
+        table.controls.set_state(*table.view_state())
+        table.show_rows(rows, figure, scale, no_finding, value_of)
+
+        def remember():
+            view = table.view()
+            self.views[ident] = view
+            for other in family:
+                if other is not table:
+                    other.set_view(**view)
+                    other.controls.set_state(*other.view_state())
+            self._save_views()
+
+        def from_controls():
+            top, by = table.controls.state()
+            table.set_view(top=top, by=by)
+            remember()
+
+        table.controls.changed.connect(from_controls)
+        table.changed.connect(remember)
+        return table
 
     def _block_card(self, block, report) -> QFrame:
         frame, lay = card(block.name)
@@ -652,8 +964,11 @@ class HistoryTab(QWidget):
             scale = max(BAR_MIN_SCALE,
                         max((abs(r.delta) for r in block.shown
                              if r.eligible), default=0.0))
-        table = BucketTable(headers)
-        table.fill(block.shown, figure, scale, block.no_finding)
+        value_of = ((lambda row: row.mean) if block.kind == "metric"
+                    else (lambda row: row.rate))
+        table = self._table(block.id, headers, block.shown, figure, scale,
+                            block.no_finding, value_of)
+        lay.addWidget(table.controls)
         lay.addWidget(table)
 
         if block.hidden:
@@ -694,12 +1009,18 @@ class HistoryTab(QWidget):
             scale = max(BAR_MIN_SCALE,
                         max((abs(r.delta) for r in group.shown
                              if r.eligible), default=0.0))
-            table = BucketTable(
+            # ONE view for every hero's table in this block, keyed
+            # "items": they are the same question asked three times, and
+            # setting the cut separately on each would be three controls
+            # doing one job.
+            table = self._table(
+                "items",
                 ["Item", "Games", "Win rate",
                  f"Against {group.baseline * 100:.0f}%"
-                 if group.baseline is not None else "—"])
-            table.fill(group.shown, lambda row: f"{row.rate * 100:.0f}%",
-                       scale)
+                 if group.baseline is not None else "—"],
+                group.shown, lambda row: f"{row.rate * 100:.0f}%", scale,
+                (), lambda row: row.rate)
+            lay.addWidget(table.controls)
             lay.addWidget(table)
 
     def shutdown(self) -> None:

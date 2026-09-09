@@ -48,6 +48,19 @@ def cache_dir() -> Path:
     return CACHE_DIR
 
 
+# ITEM IDS ARE NOT NAMES, AND THE REBUILD HAS NO NETWORK. The item block
+# keys its buckets by OpenDota's numeric item id and turns them into words
+# with a map fetched from `/constants/items`. `rebuild` recomputes every
+# block on the way back in and had no map to give it, so a CACHED run —
+# which is what the tab shows whenever you open an account without
+# re-running it — printed "Item 1", "Item 63", "Item 116" down the whole
+# block. The names were only ever right on the run that fetched them.
+# So the map is written beside the runs and read back with them. It is
+# tiny, it changes about twice a year, and it is the one part of a run
+# that is not about the player at all.
+NAMES_FILE = "items.json"
+
+
 def _path(account_id: int, where: Path | None = None) -> Path:
     return (where or cache_dir()) / f"{int(account_id)}.json"
 
@@ -125,6 +138,43 @@ def _prune(folder: Path) -> None:
         pass
 
 
+def save_item_names(names: dict, where: Path | None = None) -> bool:
+    """Keep the id -> name map for every later rebuild. Never fatal: a run
+    that cannot write it still names its own items."""
+    if not names:
+        return False
+    folder = where or cache_dir()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / NAMES_FILE).write_text(
+            json.dumps({str(k): v for k, v in names.items()}),
+            encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def item_names(where: Path | None = None) -> dict:
+    """The remembered id -> name map, or empty. Keys come back as INTS,
+    because that is what the buckets are keyed by and a map keyed by
+    strings would miss every one of them silently — which is the same
+    "Item 63" the missing file produced."""
+    try:
+        raw = json.loads(
+            ((where or cache_dir()) / NAMES_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, value in raw.items():
+        try:
+            out[int(key)] = str(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def load(account_id: int, picked: dict | None = None,
          where: Path | None = None) -> Report | None:
     """The last run for this account, with its blocks rebuilt, or None.
@@ -162,7 +212,10 @@ def rebuild(options: Options, matches: list, raw: dict,
     from . import analyse
     baseline = (sum(1 for m in matches if m.win) / len(matches)
                 if matches else 0.0)
-    blocks = analyse.build_blocks(matches, baseline, options.picked, {})
+    # The remembered map, not {}: see NAMES_FILE. With no map the item
+    # block prints raw ids, and this is the path every cached run takes.
+    blocks = analyse.build_blocks(matches, baseline, options.picked,
+                                  item_names())
     return Report(options=options, how=str(raw.get("how") or ""),
                   name=str(raw.get("name") or ""), matches=matches,
                   blocks=blocks, dropped=dict(raw.get("dropped") or {}),

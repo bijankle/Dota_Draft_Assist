@@ -110,13 +110,14 @@ class Report:
         out.sort(key=lambda pair: -abs(pair[1].sigma))
         return out
 
-    # How many contribution rankings the summary shows at each end. At the
-    # user's request: the block ran to every hero that cleared the floor,
-    # which on a few hundred games is a wall of damage rows nobody reads.
-    # BOTH ENDS, not the top: "what you do on each hero" is as much about
-    # where you are worst as where you are best, and a list cut to its
-    # head only ever flatters.
-    SUMMARY_EACH_END = 3
+    # How many contribution rankings the summary shows PER METRIC, at
+    # the user's request: "I only want the top 3 hero damage and top 3
+    # weighted KDA". It was three at each END of the two metrics POOLED,
+    # which is a different cut and a worse one to read — damage and KDA
+    # separate by different amounts, so the pooled ends were usually all
+    # damage rows with the KDA ranking crowded out of its own summary.
+    # Per metric, both get their three whatever the other is doing.
+    SUMMARY_PER_METRIC = 3
 
     def split_findings(self) -> tuple:
         """(win rate splits, contribution rankings) — see `findings`.
@@ -134,21 +135,29 @@ class Report:
                  if pair[0].kind not in ("metric", "items")]
         contributions = [pair for pair in self.findings
                          if pair[0].kind == "metric"]
-        return rates, self._each_end(contributions)
+        return rates, self._per_metric(contributions)
 
     @classmethod
-    def _each_end(cls, pairs: list) -> list:
-        """The strongest few at each end, in one list, order kept.
+    def _per_metric(cls, pairs: list) -> list:
+        """The strongest few of EACH metric, in one list, order kept.
 
-        `findings` is already sorted by |sigma|, so the head is the
-        strongest either way; the two ends are taken by SIGNED sigma and
-        merged back without duplicating anything when there are too few to
-        split.
+        `findings` is already sorted by |sigma|, so taking the head of
+        each block's share is taking the strongest — the sigma drives the
+        pick, which is what it is for. It is never SHOWN: a number of
+        standard errors means nothing to somebody reading how they play,
+        and the tab says the same thing in words and in colour.
+
+        Biggest deviation either way rather than the good end alone,
+        which is the rule this block has always followed: where you are
+        worst on a hero is as much the point as where you are best, and a
+        list cut to its top only ever flatters.
         """
-        keep = cls.SUMMARY_EACH_END
-        if len(pairs) <= 2 * keep:
-            return pairs
-        by_sign = sorted(pairs, key=lambda pair: pair[1].sigma)
-        picked = by_sign[:keep] + by_sign[-keep:]
-        chosen = {id(pair) for pair in picked}
-        return [pair for pair in pairs if id(pair) in chosen]
+        taken: dict = {}
+        keep = []
+        for pair in pairs:
+            block = pair[0]
+            count = taken.get(block.id, 0)
+            if count < cls.SUMMARY_PER_METRIC:
+                taken[block.id] = count + 1
+                keep.append(pair)
+        return keep

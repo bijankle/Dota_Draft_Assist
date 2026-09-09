@@ -9,7 +9,7 @@ near a network call.
 
 from datetime import datetime
 
-from . import analyse, opendota, shape
+from . import analyse, cache, opendota, shape
 from .report import Options, Report
 
 
@@ -83,6 +83,11 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     if options.picked.get("items"):
         say("Reading the item list…")
         item_names = opendota.item_names()
+        # KEPT, because `cache.rebuild` has no network and every later
+        # opening of this run goes through it. Without this the names were
+        # right exactly once — on the run that fetched them — and every
+        # cached view of the same run printed numeric ids.
+        cache.save_item_names(item_names)
 
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
@@ -146,6 +151,10 @@ def enrich_items(report: Report, say=None, cancelled=None) -> int:
     # Rebuild the item block against what is now known.
     from .opendota import item_names as fetch_names
     names = fetch_names() if read else {}
+    if names:
+        cache.save_item_names(names)
+    else:
+        names = cache.item_names()
     rebuilt = analyse.item_analysis(report.matches, names)
     report.blocks = [rebuilt if b.kind == "items" else b
                      for b in report.blocks]
