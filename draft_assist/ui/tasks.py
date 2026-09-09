@@ -140,12 +140,17 @@ TASKS = {
     "update_app": Task(
         key="update_app",
         title="Update application",
-        steps=[["git", "pull", "--rebase", "--autostash"],
+        steps=[[PY, "tools/update_app.py"],
                [PY, "-m", "pip", "install", "-q", "-r", "requirements.txt",
                 "-r", "requirements-windows.txt"]],
-        blurb=("Pulls the latest code from GitHub, keeping any local edits "
-               "(such as your item rules) and re-applying them on top, then "
-               "refreshes dependencies. Restart the app afterwards."),
+        blurb=("Pulls the latest code from GitHub for THIS app and nothing "
+               "else, keeping any local edits (such as your item rules) and "
+               "re-applying them on top, then refreshes dependencies and "
+               "reopens.\n\nA bare `git pull` was the whole step and it "
+               "failed on a branch with no upstream — 'there is no tracking "
+               "information for the current branch'. It works out what to "
+               "pull instead, and sets the tracking so the next one is an "
+               "ordinary pull."),
         needs_network=True,
     ),
     "list_windows": Task(

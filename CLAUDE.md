@@ -1734,6 +1734,38 @@ credentials, and put the account at risk. Do not go there.
   nothing is wrong is read once and skipped forever.
 - **Update restarts the app, and it lives in Help** (`_update_and_restart`,
   `_update_app`).
+  **IT RESOLVES WHAT TO PULL RATHER THAN ASSUMING IT**
+  (`tools/update_app.py`). The step was a bare `git pull --rebase
+  --autostash`, which fails outright on a branch with no upstream —
+  *"There is no tracking information for the current branch"* — and that
+  is not an exotic state: a branch made locally has no upstream until
+  something sets one, and THIS repository's remote has never carried a
+  `main` or a `master`, so a checkout sitting on `master` has nothing to
+  track and nothing to guess from. The target is worked out in order: the
+  branch's own upstream, then `origin/<same name>`, then the remote's
+  default branch, then — when the remote has exactly ONE branch — that
+  one, which is unambiguous whenever it holds. Several branches and no
+  match is REFUSED with the command to run, because pulling somebody's
+  half-finished branch into their working copy because it sorted first is
+  worse than saying so. The upstream is then set, so the next update is an
+  ordinary pull and the ladder is skipped.
+  **IT ONLY EVER UPDATES THIS REPOSITORY.** `origin` is checked against
+  the app's own name before anything is fetched. The match history
+  analyser was folded in from another repository and nothing may reach
+  back to it; an origin that is not this app is named and refused.
+  **THREE FAILURES THAT ARE NOT BUGS, each with its own sentence.** Git
+  not installed (the app runs, drafts and analyses without it — Update is
+  the one thing that needs it, and it says so with the download link);
+  no `.git` directory, which is what GitHub's Download ZIP button leaves
+  behind, answered with the clone command rather than with "not a git
+  repository"; and no `origin` remote at all. A missing `git` cannot be
+  caught by `tasks.py`'s own `FileNotFoundError` branch any more, because
+  the step invokes PYTHON now and the script invokes git — so the script
+  catches it itself.
+  Git is a REQUIREMENT of the update button and deliberately not worked
+  around: it is the only thing that can bring new code down while keeping
+  the user's own edits, and copying a fresh download over the top would
+  take `rules/items.yaml` with it.
   **BOTH task paths must end in `_task_finished`.** It was connected only
   to the modeless one, so a modal task's restart request was recorded and
   then never acted on — Update pulled the new version and left the old
