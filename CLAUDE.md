@@ -1769,6 +1769,37 @@ credentials, and put the account at risk. Do not go there.
   transparent square keeps the whole picture and lets a square icon fill
   the bar edge to edge, which is what the title bar's ICON (bar height less
   a few pixels) assumes.
+  **AND THE LIVE TASKBAR BUTTON IS NOT DRAWN FROM ANY OF THAT**
+  (`push_native_icon`, `window_icon_note`). Fifth cause, and the first
+  one outside the files: with the right source file chosen, every size
+  baked, a valid DIB `.ico` written and the relaunch properties set and
+  NAMED in the diagnostic, the button was still wrong. Everything above
+  is what a PIN and a jump list are built from. A button for a window
+  that is RUNNING comes from the window itself — `WM_GETICON`, then the
+  window class, then the executable — and the only thing addressing that
+  was Qt's `setWindowIcon`.
+  Which this app then undermined by ORDER. `setWindowIcon` ran at the
+  top of `MainWindow.__init__` and `setWindowFlags(FramelessWindowHint |
+  WindowStaysOnTopHint)` five lines later — and changing a window's
+  flags on Windows DESTROYS AND RECREATES the native handle, so the icon
+  went to an HWND that no longer existed and the button fell back to
+  pythonw.exe. Note the shape, because it is the same one five times
+  over: our own painted title bar reads `appicon.pixmap` directly and
+  was right throughout, while every mechanism the SHELL reads had
+  nothing in it. So the icon is re-applied after the flags, and
+  `push_native_icon` sets it explicitly through `WM_SETICON` from the
+  `.ico` already rendered, at `SM_CXICON`/`SM_CXSMICON` rather than at
+  guessed sizes because a display at 150% asks for different numbers.
+  Two traps in that ctypes call, both silent: **`restype` is not
+  optional** — the default is a 32-bit `int`, so a 64-bit `HICON` comes
+  back TRUNCATED and the call cheerfully sets a handle to nothing — and
+  **the handles must outlive the call**, since Windows does not copy
+  them, so they are kept in a module list. It READS THE ICON BACK with
+  `WM_GETICON` rather than reporting that a message was sent, and
+  `window_icon_note` carries that into the paste beside `identity_note`:
+  the two fail independently, for different reasons, and a report naming
+  one cannot say which is at fault.
+
   **The taskbar is a separate problem, and it has two halves.** A Python
   process is grouped under python.exe and shows Python's icon whatever
   `setWindowIcon` says, unless it declares an AppUserModelID before the

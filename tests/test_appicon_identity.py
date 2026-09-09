@@ -614,3 +614,65 @@ def test_the_shell_is_actually_handed_an_icon_on_a_normal_install(
     assert handed is not None and handed.exists()
     assert appicon.is_ico(handed)
     appicon.forget()
+
+
+def test_pushing_the_native_icon_is_a_no_op_off_windows(qapp):
+    """Same rule as the identity: it says no rather than raising, and the
+    note says which half stopped it."""
+    from draft_assist.ui import appicon
+
+    assert appicon.push_native_icon(0) is False
+    assert appicon.window_icon_note == "no window handle"
+    assert appicon.push_native_icon(1234) is False
+    assert appicon.window_icon_note == "not Windows"
+
+
+def test_the_window_icon_is_reapplied_after_the_frameless_flags(qapp):
+    """THE ORDERING IS THE BUG. `setWindowIcon` ran at the top of
+    `__init__` and `setWindowFlags(FramelessWindowHint | ...)` five lines
+    later — and changing a window's flags on Windows DESTROYS AND
+    RECREATES the native handle, so the icon was pushed at an HWND that
+    no longer existed. The taskbar draws a running window's button from
+    the window's own Win32 icon, not from any relaunch property, so it
+    fell back to pythonw.exe while our painted title bar — which reads
+    `appicon.pixmap` directly — looked right the whole time.
+
+    Read the source: the effect needs a real Windows handle, but the
+    ORDER is the thing that was wrong and it is checkable anywhere.
+    """
+    import inspect
+    from draft_assist.ui.app import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+    flags = source.index("setWindowFlags")
+    after = source.rindex("setWindowIcon")
+    assert after > flags, (
+        "the window icon must be applied AFTER setWindowFlags, which "
+        "recreates the native window and drops it")
+    assert source.rindex("push_native_icon") > flags
+
+
+def test_choosing_a_new_icon_reaches_the_window_as_well_as_the_files(qapp):
+    """A newly chosen icon has to reach all of it: the QIcon, the shell's
+    .ico, the relaunch properties AND the window's own Win32 icon. The
+    last one was the half nobody was setting."""
+    import inspect
+    from draft_assist.ui.app import MainWindow
+
+    source = inspect.getsource(MainWindow._apply_app_icon)
+    for call in ("setWindowIcon", "claim_window_identity",
+                 "push_native_icon"):
+        assert call in source, call
+
+
+def test_the_paste_reports_both_taskbar_mechanisms(qapp):
+    """They fail independently and for different reasons — one is a
+    property store, the other a window message — so a report naming only
+    one cannot say which is at fault. Four rounds of this were spent on
+    diagnostics that could not tell two outcomes apart."""
+    import inspect
+    from draft_assist.ui.app import MainWindow
+
+    source = inspect.getsource(MainWindow._copy_debug_log)
+    assert "identity_note" in source
+    assert "window_icon_note" in source

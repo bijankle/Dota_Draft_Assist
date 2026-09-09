@@ -493,6 +493,113 @@ def _property_key(name: str, pscon, pythoncom):
     return (pythoncom.MakeIID(_AUM_FMTID), _AUM_PIDS[name])
 
 
+# The Win32 icon a window is asked for, and the two sizes the shell asks
+# it for. WM_SETICON is how a window TELLS Windows what it looks like;
+# everything else in this module is about files the shell reads later.
+_WM_SETICON = 0x0080
+_WM_GETICON = 0x007F
+_ICON_SMALL, _ICON_BIG = 0, 1
+_SM_CXICON, _SM_CYICON = 11, 12
+_SM_CXSMICON, _SM_CYSMICON = 49, 50
+_IMAGE_ICON = 1
+_LR_LOADFROMFILE = 0x0010
+# The handles must OUTLIVE the call. Windows does not copy them, and a
+# destroyed HICON leaves the taskbar drawing whatever it likes.
+_handles: list = []
+
+# What `push_native_icon` last did. In the paste beside `identity_note`,
+# because between them they say which of the two mechanisms is at fault.
+window_icon_note = "not attempted"
+
+
+def push_native_icon(hwnd: int) -> bool:
+    """Set the window's OWN Win32 icon, which is what the taskbar draws.
+
+    **THE LIVE TASKBAR BUTTON IS NOT DRAWN FROM `RelaunchIconResource`.**
+    That property, and the AppUserModelID beside it, are what a PIN and a
+    jump list are built from. A button for a window that is running comes
+    from the window itself — `WM_GETICON`, falling back to the window
+    class, falling back to the executable. Everything this module did
+    before was about files the shell reads later, and the live button was
+    never addressed at all except through Qt's `setWindowIcon`.
+
+    Which this app then undermined. `setWindowIcon` ran BEFORE
+    `setWindowFlags(FramelessWindowHint | ...)`, and changing a window's
+    flags on Windows DESTROYS AND RECREATES the native handle — so the
+    icon was pushed at an HWND that no longer exists, and the button fell
+    back to pythonw.exe. It is the same shape as every other fault in this
+    module: our own title bar draws from `appicon.pixmap` and was always
+    right, while the thing the SHELL reads had nothing in it.
+
+    So the icon is set here, explicitly, from the .ico this module
+    already renders — at the two sizes Windows asks for by name rather
+    than at guessed ones, because a display at 150% scaling asks for
+    different numbers. Never fatal: an icon is not worth failing to start
+    over.
+    """
+    global window_icon_note
+    import sys
+    if not hwnd:
+        window_icon_note = "no window handle"
+        return False
+    if sys.platform != "win32":
+        window_icon_note = "not Windows"
+        return False
+    icon_file = shell_ico()
+    if icon_file is None:
+        window_icon_note = "no .ico to load"
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        # RESTYPES ARE NOT OPTIONAL HERE. ctypes defaults a return to
+        # `int`, which is 32 bits — so a 64-bit HICON comes back
+        # TRUNCATED, and the truncated value is a handle to nothing. The
+        # call then succeeds, sets garbage, and reports success.
+        user32.LoadImageW.restype = wintypes.HANDLE
+        user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR,
+                                      wintypes.UINT, ctypes.c_int,
+                                      ctypes.c_int, wintypes.UINT]
+        user32.SendMessageW.restype = ctypes.c_void_p
+        user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                        ctypes.c_void_p, ctypes.c_void_p]
+
+        def load(cx: int, cy: int):
+            return user32.LoadImageW(
+                None, str(icon_file), _IMAGE_ICON,
+                user32.GetSystemMetrics(cx), user32.GetSystemMetrics(cy),
+                _LR_LOADFROMFILE)
+
+        big = load(_SM_CXICON, _SM_CYICON)
+        small = load(_SM_CXSMICON, _SM_CYSMICON)
+        if not big and not small:
+            window_icon_note = f"LoadImage found nothing in {icon_file.name}"
+            return False
+        window = wintypes.HWND(int(hwnd))
+        for which, handle in ((_ICON_BIG, big), (_ICON_SMALL, small)):
+            if handle:
+                _handles.append(handle)
+                user32.SendMessageW(window, _WM_SETICON,
+                                    ctypes.c_void_p(which),
+                                    ctypes.c_void_p(handle))
+        # READ IT BACK. "I sent the message" is not the same claim as
+        # "the window has an icon", and this module has already shipped
+        # four fixes whose diagnostics could not tell those apart.
+        got_big = user32.SendMessageW(window, _WM_GETICON,
+                                      ctypes.c_void_p(_ICON_BIG), None)
+        got_small = user32.SendMessageW(window, _WM_GETICON,
+                                        ctypes.c_void_p(_ICON_SMALL), None)
+        window_icon_note = (f"{icon_file.name} -> hwnd {int(hwnd)}; "
+                            f"reads back big={got_big or 0} "
+                            f"small={got_small or 0}")
+        return bool(got_big or got_small)
+    except Exception as exc:            # noqa: BLE001 - see the docstring
+        window_icon_note = f"{type(exc).__name__}: {exc}"
+        return False
+
+
 def _identity_summary(hwnd: int, command: str, icon_file) -> str:
     """What `claim_window_identity` reports it did.
 

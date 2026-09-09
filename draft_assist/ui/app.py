@@ -280,6 +280,17 @@ class MainWindow(QMainWindow):
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
         appicon.claim_window_identity(int(self.winId()))
+        # AFTER `setWindowFlags`, and that is the whole point of it being
+        # here rather than beside the `setWindowIcon` further up.
+        # Changing a window's flags on Windows DESTROYS AND RECREATES the
+        # native handle, so an icon pushed before that went to an HWND
+        # that no longer exists — and the taskbar, which draws a running
+        # window's button from the window's OWN Win32 icon rather than
+        # from any of the relaunch properties above, fell back to
+        # pythonw.exe. Our title bar draws from `appicon.pixmap` and so
+        # looked right throughout, which is what made this invisible.
+        self.setWindowIcon(appicon.icon())
+        appicon.push_native_icon(int(self.winId()))
 
     # ---- menus ---------------------------------------------------------
     def _act(self, menu, text, slot, shortcut=None, tip=""):
@@ -2580,6 +2591,7 @@ class MainWindow(QMainWindow):
         # relaunch icon, which is a FILE, so a new icon has to be written
         # out again for it.
         appicon.claim_window_identity(int(self.winId()))
+        appicon.push_native_icon(int(self.winId()))
 
     def _toggle_maximised(self) -> None:
         if self._locked() and not self.isMaximized():
@@ -3420,6 +3432,7 @@ class MainWindow(QMainWindow):
             f"brackets {self.ds.meta.get('target_brackets', '?')}",
             f"app icon: {appicon.describe()}",
             f"taskbar identity: {appicon.identity_note}",
+            f"window icon: {appicon.window_icon_note}",
             "",
             "--- what the app is reading ---",
             self.unknown_label.text(),
