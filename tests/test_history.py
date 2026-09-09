@@ -547,8 +547,11 @@ def test_a_cached_run_still_knows_its_items_by_name(tmp_path, monkeypatch):
     cache.save_item_names({1: "Blink Dagger", 63: "Power Treads"})
     # Read back as INTS, because that is what the buckets are keyed by —
     # a map keyed by strings misses every one of them silently, which is
-    # the same numbers on screen from a different cause.
-    assert cache.item_names() == {1: "Blink Dagger", 63: "Power Treads"}
+    # the same numbers on screen from a different cause. The saved file
+    # sits OVER the bundled map rather than replacing it.
+    names = cache.item_names()
+    assert names[1] == "Blink Dagger" and names[63] == "Power Treads"
+    assert len(names) > 100, "the bundled map is not underneath" 
 
     matches = shape.shape(rows_for(40), HEROES).matches
     for index, match in enumerate(matches):
@@ -567,17 +570,36 @@ def test_a_cached_run_still_knows_its_items_by_name(tmp_path, monkeypatch):
     assert "Blink Dagger" in keys
 
 
-def test_a_missing_name_map_is_no_names_rather_than_a_crash(tmp_path,
-                                                            monkeypatch):
-    """It is written by a run and read by every rebuild, so it is absent
-    on a fresh install and on any run made before it existed."""
+def test_the_bundled_map_names_items_with_no_run_and_no_network(tmp_path,
+                                                                monkeypatch):
+    """The saved file only exists after a run has written one, so an
+    install that updated without re-measuring went on printing ids until
+    Update was pressed — and it "fixed itself" with nothing having been
+    done differently. Worse, the fetch it depends on fails SILENTLY:
+    `opendota.item_names` answers {} on any ApiError.
+
+    So the map SHIPS. A fresh install with no run, a cold cache and a
+    dead connection all still name their items, and a saved file only
+    ever adds to it.
+    """
     from draft_assist.history import cache
     folder = tmp_path / "cache"
     folder.mkdir()
     monkeypatch.setattr(cache, "CACHE_DIR", folder)
-    assert cache.item_names() == {}
-    (folder / cache.NAMES_FILE).write_text("{ not json", encoding="utf-8")
-    assert cache.item_names() == {}
-    (folder / cache.NAMES_FILE).write_text('{"nope": "x"}', encoding="utf-8")
-    assert cache.item_names() == {}
+
+    bundled = cache.bundled_item_names()
+    assert len(bundled) > 400, "the bundled map is missing or short"
+    assert bundled[1] == "Blink Dagger"
+    # Nothing saved at all — a fresh install.
+    assert cache.item_names() == bundled
+    # And a file that cannot be read degrades to it rather than to
+    # nothing, which is what put numbers on screen in the first place.
+    for junk in ("{ not json", '{"nope": "x"}', "[]"):
+        (folder / cache.NAMES_FILE).write_text(junk, encoding="utf-8")
+        assert cache.item_names() == bundled, junk
     assert cache.save_item_names({}) is False
+
+    # It is the real map, not a stub: every id the screenshot showed.
+    for hero_item in (41, 63, 110, 116, 141, 178, 259, 277):
+        assert bundled.get(hero_item), hero_item
+    assert not any(str(v).startswith("Item ") for v in bundled.values())

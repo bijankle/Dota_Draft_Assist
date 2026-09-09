@@ -20,7 +20,7 @@ programs.
 
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QPushButton,
@@ -273,11 +273,26 @@ class BucketTable(QTableWidget):
             rows = rows[:self._top]
         return rows
 
+    def _muted(self, row) -> bool:
+        """Too little behind it to act on: under `MIN_BUCKET` games, or a
+        bucket its analysis never draws a finding from."""
+        return not row.eligible or row.key in self._no_finding
+
     def render_rows(self) -> None:
         rows = self.survivors()
         rows.sort(key=lambda r: sort_value(r, self._sort, self._value_of),
                   reverse=self._descending)
-        self._draw(rows)
+        # THE GREY ONES SINK, at the user's request, and in BOTH
+        # directions — which is why this is a partition rather than a
+        # second sort key. A muted row is one there is not enough behind
+        # to act on, and sorting by damage put three heroes with two,
+        # three and four games above every hero with a real sample: the
+        # figures at the top of the table were the ones least worth
+        # reading. Folding "muted" into the key instead would flip with
+        # the direction and float them to the top the other way round.
+        # Python's sort is stable, so each half keeps the order above.
+        self._draw([r for r in rows if not self._muted(r)]
+                   + [r for r in rows if self._muted(r)])
 
     def _clicked(self, column: int) -> None:
         """A heading re-orders; the bar column defers to the figure it
@@ -320,7 +335,7 @@ class BucketTable(QTableWidget):
         self.setRowCount(len(rows))
         biggest = max((row.n for row in rows), default=1) or 1
         for index, row in enumerate(rows):
-            muted = not row.eligible or row.key in self._no_finding
+            muted = self._muted(row)
             name = QTableWidgetItem(row.key)
             name.setToolTip(row.key)
             count = QTableWidgetItem(str(row.n))
@@ -421,6 +436,10 @@ class HistoryTab(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         outer.addWidget(scroll)
+        # KEPT, because `_hold_still` needs it: a table that changes how
+        # many rows it draws changes the height of this whole page.
+        self.scroll = scroll
+        self.page = page
 
         lay.addWidget(self._build_account_card())
         lay.addWidget(self._build_options_card())
@@ -675,6 +694,31 @@ class HistoryTab(QWidget):
             if key in options.picked:
                 tick.setChecked(bool(options.picked[key]))
 
+    def _hold_still(self, anchor, change) -> None:
+        """Make a change, keeping `anchor` exactly where it is on screen.
+
+        Stepping "Top 10" to "Top 9" removes a row, which shortens the
+        table, which shortens this whole page — and the scroll area then
+        re-clamps, so everything jumped and the arrow moved out from
+        under the cursor between one click and the next. "I can't spam
+        the arrow, it shifts and I have to track it."
+        The fix is not to stop the page changing height — it genuinely
+        has fewer rows in it — but to pin the control the user is holding
+        the cursor over. Its offset from the top of the viewport is
+        measured, the change is made, the layout is FORCED to run (Qt
+        defers it, so measuring straight afterwards reads the old
+        geometry), and the scrollbar is moved by whatever it takes to put
+        that offset back.
+        """
+        bar = self.scroll.verticalScrollBar()
+        before = anchor.mapTo(self.page, QPoint(0, 0)).y() - bar.value()
+        change()
+        layout = self.page.layout()
+        if layout is not None:
+            layout.activate()
+        self.page.adjustSize()
+        bar.setValue(anchor.mapTo(self.page, QPoint(0, 0)).y() - before)
+
     def _save_settings(self) -> None:
         """Write the tab's own two keys. Never fatal — a read-only disk
         costs the preference, not the run."""
@@ -889,7 +933,7 @@ class HistoryTab(QWidget):
         return frame
 
     def _table(self, ident, headers, rows, figure, scale, no_finding,
-               value_of) -> "BucketTable":
+               value_of, controls=None) -> "BucketTable":
         """A block's table, wearing whatever view was left on it.
 
         The view is REMEMBERED PER BLOCK AND ACROSS ACCOUNTS, at the
@@ -900,7 +944,11 @@ class HistoryTab(QWidget):
         the remembered accounts.
         """
         table = BucketTable(headers)
-        table.controls = TableControls(headers[VALUE_COL])
+        # SHARED where one is handed in: the item block draws a table per
+        # hero and they are the same question asked several times, so one
+        # control governs all of them rather than each carrying its own.
+        table.controls = controls or TableControls(headers[VALUE_COL])
+        table.owns_controls = controls is None
         # SIBLINGS MOVE TOGETHER. The item block draws one table per hero
         # and all three share a key, because they are the same question
         # asked three times — so a cut set on one has to reach the others
@@ -926,20 +974,30 @@ class HistoryTab(QWidget):
 
         def from_controls():
             top, by = table.controls.state()
-            table.set_view(top=top, by=by)
+            # ANCHORED ON THE CONTROL ITSELF, so the arrow stays under
+            # the cursor while it is being stepped.
+            self._hold_still(table.controls,
+                             lambda: table.set_view(top=top, by=by))
             remember()
 
         table.controls.changed.connect(from_controls)
+        # A heading click only RE-ORDERS what is already there, so the
+        # page keeps its height and there is nothing to hold still.
         table.changed.connect(remember)
         return table
 
     def _block_card(self, block, report) -> QFrame:
+        # THE HEADING AND THE TABLE, and nothing else, at the user's
+        # request — "just the header is fine". Each card carried three
+        # paragraphs of prose: what the split measures, how many
+        # single-game buckets were left out, and a caveat about reading
+        # the figures. All three are true, all three are read once and
+        # skipped for ever after, and between them they pushed the table
+        # — the thing the card exists for — most of a screen down. The
+        # `desc` survives as the tick box's TOOLTIP in "What to measure",
+        # which is where somebody deciding whether to run a split is
+        # actually standing.
         frame, lay = card(block.name)
-        note = QLabel(block.desc)
-        note.setWordWrap(True)
-        note.setProperty("dim", True)
-        lay.addWidget(note)
-
         if block.kind == "items":
             self._item_block(block, lay)
             return frame
@@ -971,57 +1029,98 @@ class HistoryTab(QWidget):
         lay.addWidget(table.controls)
         lay.addWidget(table)
 
-        if block.hidden:
-            hidden = QLabel(
-                f"{block.hidden} bucket(s) holding a single game are not "
-                "shown — a rate next to an n of one is noise wearing a "
-                "number. They are in the workbook.")
-            hidden.setWordWrap(True)
-            hidden.setProperty("dim", True)
-            lay.addWidget(hidden)
-        if block.caveat:
-            caveat = QLabel(block.caveat)
-            caveat.setWordWrap(True)
-            caveat.setProperty("dim", True)
-            lay.addWidget(caveat)
+        # `block.hidden` and `block.caveat` are NOT drawn — see above.
+        # Both are still computed and both still go into the workbook,
+        # which is where a caveat can be read once at leisure rather than
+        # sat over the table every time it is looked at.
         return frame
 
     def _item_block(self, block, lay) -> None:
-        if block.covered < block.total:
-            note = QLabel(
-                f"{block.covered} of {block.total} matches came back with "
-                "item columns. Items are only guaranteed on OpenDota's "
-                "single-match endpoint, which is one request per match.")
-            note.setWordWrap(True)
-            note.setProperty("dim", True)
-            lay.addWidget(note)
+        """ONE HERO AT A TIME, chosen from a dropdown.
+
+        At the user's request, and it replaces a fixed "your three most
+        played" — then briefly a count of how many to stack down the
+        card. Stacking is the wrong shape for this block: each hero's
+        items are read against THAT HERO'S own win rate, so two tables
+        side by side share nothing but a column heading, and the answer
+        anybody wants is about the one hero they are thinking of picking.
+        The list is ordered MOST PLAYED FIRST, so the heroes worth
+        reading are the ones already at the top of it, and every hero
+        with item data is in it rather than an arbitrary few.
+        """
+        chooser = QComboBox()
+        chooser.setMinimumWidth(220)
+        chooser.setToolTip("Which hero's items to show. Most played "
+                           "first — the ones with a sample worth reading.")
         for group in block.groups:
-            heading = QLabel(
-                f"{group.hero} — {group.games} games, "
-                + (f"{group.measured} with item data, "
-                   f"{group.baseline * 100:.0f}% on this hero"
-                   if group.baseline is not None
-                   else "no item data on any of them"))
-            heading.setWordWrap(True)
-            lay.addWidget(heading)
+            chooser.addItem(f"{group.hero}  ({group.games} games)",
+                            group.hero)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(QLabel("Hero"))
+        row.addWidget(chooser)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        if not block.groups:
+            empty = QLabel("No matches came back with item data.")
+            empty.setProperty("dim", True)
+            lay.addWidget(empty)
+            return
+
+        # REMEMBERED BY NAME, not by position: the list is this account's
+        # own heroes in its own order, so an index means a different hero
+        # the moment you look somebody else up.
+        wanted = (self.views.get("item_hero") or {}).get("hero")
+        index = chooser.findData(wanted)
+        chooser.setCurrentIndex(index if index >= 0 else 0)
+
+        items = TableControls("Win rate")
+        lay.addWidget(items)
+        body = QWidget()
+        inner = QVBoxLayout(body)
+        inner.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(body)
+
+        def fill():
+            # THE REGISTER FIRST. It holds WIDGETS, and the ones below are
+            # about to be deleted — a stale entry is a destroyed C++
+            # object behind a live Python wrapper, which raises the moment
+            # a sibling is told to move with it. Replacing the list rather
+            # than clearing it leaves the closures that captured the old
+            # one pointing at tables that are gone, which is harmless.
+            self._tables["items"] = []
+            while inner.count():
+                held = inner.takeAt(0)
+                widget = held.widget()
+                if widget is not None:
+                    widget.setParent(None)
+                    widget.deleteLater()
+            group = block.groups[max(0, chooser.currentIndex())]
             if not group.shown:
-                continue
+                note = QLabel("No item data on any of these games.")
+                note.setProperty("dim", True)
+                inner.addWidget(note)
+                return
             scale = max(BAR_MIN_SCALE,
                         max((abs(r.delta) for r in group.shown
                              if r.eligible), default=0.0))
-            # ONE view for every hero's table in this block, keyed
-            # "items": they are the same question asked three times, and
-            # setting the cut separately on each would be three controls
-            # doing one job.
             table = self._table(
                 "items",
                 ["Item", "Games", "Win rate",
                  f"Against {group.baseline * 100:.0f}%"
                  if group.baseline is not None else "—"],
-                group.shown, lambda row: f"{row.rate * 100:.0f}%", scale,
-                (), lambda row: row.rate)
-            lay.addWidget(table.controls)
-            lay.addWidget(table)
+                group.shown, lambda r: f"{r.rate * 100:.0f}%", scale,
+                (), lambda r: r.rate, controls=items)
+            inner.addWidget(table)
+
+        def chosen():
+            self.views["item_hero"] = {"hero": chooser.currentData()}
+            self._save_views()
+            self._hold_still(chooser, fill)
+
+        chooser.currentIndexChanged.connect(chosen)
+        fill()
 
     def shutdown(self) -> None:
         """Stop a run in flight, and WAIT for it.

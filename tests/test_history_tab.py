@@ -450,13 +450,42 @@ def test_clicking_a_heading_sorts_and_clicking_it_again_flips(qapp):
     "9%" — every column here is a number wearing a suffix."""
     from draft_assist.ui.history_tab import VALUE_COL, GAMES_COL
     table = _table()
+    # Bane is the four-game bucket, so it is muted and sinks either way
+    # (see the test below); the other four are what the sort orders.
     table._clicked(VALUE_COL)
-    assert _column(table) == ["Bane", "Axe", "Sniper", "Lion", "Pudge"]
+    assert _column(table) == ["Axe", "Sniper", "Lion", "Pudge", "Bane"]
     table._clicked(VALUE_COL)
     assert _column(table) == ["Pudge", "Lion", "Sniper", "Axe", "Bane"]
     # A NEW column starts descending — "most" is what anybody wants first.
     table._clicked(GAMES_COL)
     assert _column(table, GAMES_COL) == ["42", "30", "20", "12", "4"]
+    table.deleteLater()
+
+
+def test_the_muted_rows_sink_whichever_way_the_sort_runs(qapp):
+    """"The sort should keep the grey rows at the bottom."
+
+    A muted row is one there is not enough behind to act on, and sorting
+    by a figure floated them: three heroes with two, three and four games
+    stood above every hero with a real sample, so the numbers at the top
+    of the table were the ones least worth reading. Folding "muted" into
+    the sort key would only move the problem — it would flip with the
+    direction and put them back on top the other way round — so it is a
+    partition applied after the sort, in both directions.
+    """
+    from draft_assist.ui.history_tab import VALUE_COL, GAMES_COL, NAME_COL
+    table = _table()
+    # DERIVED, not written down: `_buckets` decides eligibility from the
+    # sample, and a set typed out here goes stale the moment that does.
+    grey = {r.key for r in ROWS if not r.eligible}
+    assert grey, "the sample has no muted row to sink"
+    table.set_view(top=0)
+    for column in (VALUE_COL, GAMES_COL, NAME_COL):
+        for _ in range(2):               # descending, then ascending
+            table._clicked(column)
+            shown = _column(table)
+            muted = [name for name in shown if name in grey]
+            assert shown[-len(muted):] == muted, (column, shown)
     table.deleteLater()
 
 
@@ -567,3 +596,121 @@ def test_a_dict_preference_is_not_shared_with_DEFAULTS(qapp, tmp_path):
     first["history_tables"]["hero"] = {"top": 5}
     assert ui_settings.DEFAULTS["history_tables"] == {}
     assert ui_settings.load(tmp_path / "missing.json")["history_tables"] == {}
+
+
+# ---- the item block: one hero at a time --------------------------------
+
+def _item_report(spec=(("Lion", 42), ("Axe", 30), ("Pudge", 9))):
+    """A report whose item block carries one group per named hero."""
+    from draft_assist.history.analyse import Block, ItemGroup
+    groups = [ItemGroup(hero=name, games=games, measured=games,
+                        baseline=0.5, rows=list(ROWS), shown=list(ROWS),
+                        hidden=0)
+              for name, games in spec]
+    block = Block(id="items", name="Items and win rate by hero", desc="d",
+                  kind="items", groups=groups, covered=len(spec), total=9)
+    return _report([block])
+
+
+def test_the_item_block_shows_one_hero_chosen_from_a_dropdown(qapp,
+                                                              tmp_path,
+                                                              monkeypatch):
+    """"I don't need to see them simultaneously — the user should just
+    select what they want to see the most effective items for, hero by
+    hero."
+
+    Stacking was the wrong shape for this block: each hero's items are
+    read against THAT HERO's own win rate, so two tables side by side
+    share nothing but a column heading.
+    """
+    from PyQt6.QtWidgets import QComboBox
+    from draft_assist.ui import settings as ui_settings
+
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "s.json")
+    settings = dict(ui_settings.DEFAULTS)
+    settings["history_tables"] = {}
+    tab = HistoryTab(settings=settings)
+    tab.render(_item_report())
+
+    boxes = [b for b in tab.results.parentWidget().findChildren(QComboBox)
+             if b.count() and " games)" in b.itemText(0)]
+    assert len(boxes) == 1, "one chooser, not one per hero"
+    chooser = boxes[0]
+    # MOST PLAYED FIRST — the heroes worth reading are already at the top.
+    assert [chooser.itemData(i) for i in range(chooser.count())] == \
+        ["Lion", "Axe", "Pudge"]
+    assert "42 games" in chooser.itemText(0)
+    # And exactly ONE table on the card, whichever hero is picked.
+    assert len(tab._tables.get("items", [])) == 1
+
+    chooser.setCurrentIndex(1)
+    assert len(tab._tables.get("items", [])) == 1
+    # REMEMBERED BY NAME: the list is this account's own heroes in its own
+    # order, so an index means a different hero the moment you look
+    # somebody else up.
+    assert settings["history_tables"]["item_hero"] == {"hero": "Axe"}
+
+    again = HistoryTab(settings=dict(settings))
+    again.render(_item_report())
+    reopened = [b for b in again.results.parentWidget().findChildren(QComboBox)
+                if b.count() and " games)" in b.itemText(0)][0]
+    assert reopened.currentData() == "Axe"
+    tab.deleteLater()
+    again.deleteLater()
+
+
+def test_a_block_card_is_its_heading_and_its_table(qapp):
+    """"Remove this blurb on all the sections — it's just fluff", and
+    "just the header is fine".
+
+    Each card carried three paragraphs: what the split measures, how many
+    single-game buckets were left out, and a caveat about reading the
+    figures. All true, all read once, and between them they pushed the
+    table — the thing the card exists for — most of a screen down.
+    """
+    from PyQt6.QtWidgets import QLabel
+    from draft_assist.history.analyse import Block
+
+    block = Block(id="hero", name="Hero win rates",
+                  desc="Win rate by hero played.", kind="cat",
+                  rows=list(ROWS), shown=list(ROWS), hidden=4,
+                  caveat="This ranks heroes, not your play.")
+    tab = HistoryTab()
+    tab.render(_report([block]))
+    said = " ".join(w.text() for w in
+                    tab.results.parentWidget().findChildren(QLabel))
+    assert "Hero win rates" in said, "the heading is the one thing kept"
+    for fluff in (block.desc, block.caveat, "bucket(s)", "workbook"):
+        assert fluff not in said, fluff
+    tab.deleteLater()
+
+
+def test_stepping_the_count_keeps_the_page_where_it_was(qapp):
+    """"When I hit the up/down arrow the whole page shifts, so I can't
+    spam the arrow — I have to track it."
+
+    Removing a row shortens the table, which shortens the page, and the
+    scroll area then re-clamps. The page genuinely has fewer rows in it;
+    what has to stay put is the control the cursor is over.
+    """
+    tab = HistoryTab()
+    tab.resize(700, 300)
+    block = _block("cat", [3.0], "hero")
+    block.rows = block.shown = list(ROWS)
+    tab.render(_report([block]))
+    tab.results.parentWidget().layout().activate()
+    table = tab._tables["hero"][0]
+    bar = tab.scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    qapp.processEvents()
+
+    def where():
+        from PyQt6.QtCore import QPoint
+        return (table.controls.mapTo(tab.page, QPoint(0, 0)).y()
+                - bar.value())
+
+    before = where()
+    tab._hold_still(table.controls,
+                    lambda: table.set_view(top=2))
+    assert where() == before, "the control moved under the cursor"
+    tab.deleteLater()

@@ -583,6 +583,50 @@ credentials, and put the account at risk. Do not go there.
   Both default to GAMES, which is the order this table has always been
   in, and nought on the count box means ALL and says the word — a table
   cut to nothing looks the same as a table of nothing.
+  **THE MUTED ROWS SINK, in BOTH directions**, at the user's request. A
+  muted row is one there is not enough behind to act on, and sorting by
+  a figure floated them: three heroes with two, three and four games
+  stood above every hero with a real sample, so the numbers at the top
+  of the table were the ones least worth reading. It is a PARTITION
+  applied after the sort rather than a second sort key — folding "muted"
+  into the key would flip with the direction and put them back on top
+  the other way round.
+  **AND THE PAGE HOLDS STILL WHILE THE COUNT IS STEPPED**
+  (`_hold_still`). Removing a row shortens the table, which shortens the
+  whole page, and the scroll area then re-clamps — so the arrow moved
+  out from under the cursor between one click and the next: "I can't
+  spam the arrow, it shifts and I have to track it." The page genuinely
+  has fewer rows in it, so what is pinned is the CONTROL: its offset
+  from the top of the viewport is measured, the change is made, the
+  layout is FORCED to run (Qt defers it, so measuring straight after
+  reads the old geometry) and the scrollbar is moved by the difference.
+  **A BLOCK CARD IS ITS HEADING AND ITS TABLE**, also at the user's
+  request — "just the header is fine". Each carried three paragraphs:
+  what the split measures, how many single-game buckets were left out,
+  and a caveat about reading the figures. All true, all read once and
+  skipped for ever after, and between them they pushed the table most of
+  a screen down. `desc` survives as the TICK BOX's tooltip in "What to
+  measure", which is where somebody deciding whether to run a split is
+  standing; `hidden` and `caveat` are still computed and still go to the
+  workbook, where a caveat can be read at leisure rather than sat over
+  the table every time.
+  **THE ITEM BLOCK IS ONE HERO AT A TIME, from a dropdown ordered most
+  played first** (`_item_block`). It was fixed at your three most played
+  and called itself "top 3 heroes", then briefly a count of how many to
+  stack down the card, and stacking is the wrong shape for it: each
+  hero's items are read against THAT HERO'S own win rate, so two tables
+  side by side share nothing but a column heading, and the answer
+  anybody wants is about the one hero they are thinking of picking. The
+  hero is remembered BY NAME rather than by position — the list is one
+  account's own heroes in its own order, so an index means a different
+  hero the moment you look somebody else up — and there is ONE item
+  control for the card rather than one per hero. `analyse.item_analysis`
+  therefore computes EVERY hero with item data rather than a top few; it
+  costs one pass over the sample however many that is.
+  `fill()` must replace `self._tables["items"]` before it deletes the
+  widgets in it: the register holds WIDGETS, and a stale entry is a
+  destroyed C++ object behind a live Python wrapper, which raises the
+  moment a sibling is told to move with it.
   **IT RE-RENDERS RATHER THAN CALLING `sortItems`.** Qt sorts on the
   item's TEXT, so "10" lands before "9" and "62%" before "9%", and every
   column here is a number wearing a suffix. Re-drawing is also what
@@ -678,19 +722,37 @@ credentials, and put the account at risk. Do not go there.
   the folder is gitignored exactly like `.env`, so a copy of this app
   still carries nobody's history. What changed is only how much of your
   own run your own machine keeps for you.
-  **AN ITEM ID IS NOT A NAME, AND THE REBUILD HAS NO NETWORK**
-  (`cache.save_item_names` / `item_names`, `NAMES_FILE`). The item block
-  keys its buckets by OpenDota's numeric item id and turns them into
-  words with a map fetched from `/constants/items` — and `rebuild` was
-  handed an EMPTY map, so the names were right exactly once, on the run
-  that fetched them, and every later opening of that same run printed
-  "Item 1", "Item 63", "Item 116" down the whole block. Which is the
-  path the tab takes whenever you do not re-run. So the map is written
-  beside the runs and read back with them: tiny, changed about twice a
-  year, and the one part of a run that is not about the player at all.
-  Its keys come back as INTS, because that is what the buckets are keyed
-  by and a map keyed by strings misses every one of them silently —
-  which is the same numbers on screen from a different cause.
+  **AN ITEM ID IS NOT A NAME, AND THE MAP IS BUNDLED**
+  (`item_names.json`, `cache.bundled_item_names` / `item_names` /
+  `save_item_names`). The item block keys its buckets by OpenDota's
+  numeric item id and turns them into words with a map fetched from
+  `/constants/items`. This went wrong in TWO layers and the second is
+  the instructive one.
+  First, `cache.rebuild` was handed an EMPTY map, so the names were
+  right exactly once — on the run that fetched them — and every later
+  opening of that same run printed "Item 1", "Item 63" down the whole
+  block. That is the path the tab takes whenever you do not re-run.
+  Writing the map beside the runs fixed the rebuild and left a hole the
+  user walked straight into: **the file only exists after a run has
+  written one**, so an install that updated without re-measuring went on
+  printing ids, and then "fixed itself" when they pressed Update with
+  nothing having been done differently. A fix that only takes effect
+  after an action nobody was told to take is not a fix.
+  And underneath both, the fetch fails SILENTLY: `opendota.item_names`
+  answers `{}` on any ApiError, `save_item_names({})` writes nothing,
+  and the block prints numbers with nothing on screen saying why — the
+  item icons' "four causes and one appearance" all over again.
+  So the map SHIPS, and the layering is bundled < saved < fetched. A
+  fresh install with no run, a cold cache and a dead connection all
+  still name their items; a run's own fetch is written beside the runs
+  so an item added since the file was cut is named from then on. 500
+  items and twelve kilobytes, changed about twice a year, and it is
+  factual data rather than anybody's artwork — the same bar
+  `rules/items.yaml` already clears by naming items in this repository.
+  Every reader's keys come back as INTS, because that is what the
+  buckets are keyed by and a map keyed by strings misses every one of
+  them silently, which is the same numbers on screen from a third
+  cause.
   **THE RAW MATCHES ARE STORED AND THE FINDINGS ARE NOT** (`cache.
   rebuild`). Recomputing the blocks on the way back in costs milliseconds
   and buys two things: the workbook's raw sheet still has something to

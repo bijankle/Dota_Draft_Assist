@@ -59,6 +59,21 @@ def cache_dir() -> Path:
 # tiny, it changes about twice a year, and it is the one part of a run
 # that is not about the player at all.
 NAMES_FILE = "items.json"
+# AND THE MAP IS BUNDLED, so it never depends on a fetch at all.
+# Writing it beside the runs fixed the rebuild, and left a hole the user
+# walked straight into: the file only exists after a run has written one,
+# so an install that updated without re-measuring went on printing ids
+# until they pressed Update, and it "fixed itself" with nothing having
+# been done differently. Worse, the fetch it depends on fails SILENTLY —
+# `opendota.item_names` answers {} on any ApiError, `save_item_names({})`
+# writes nothing, and the block prints numbers with nothing on screen
+# saying why. That is the item icons' "four causes and one appearance"
+# again, and the answer is the same: do not make a name depend on the
+# network. 500 items, twelve kilobytes, changed about twice a year, and
+# it is factual data rather than anybody's artwork — the same bar
+# `rules/items.yaml` already clears by naming items in this repository.
+BUNDLED_NAMES = Path(__file__).with_name("item_names.json")
+_bundled: dict | None = None
 
 
 def _path(account_id: int, where: Path | None = None) -> Path:
@@ -154,14 +169,12 @@ def save_item_names(names: dict, where: Path | None = None) -> bool:
         return False
 
 
-def item_names(where: Path | None = None) -> dict:
-    """The remembered id -> name map, or empty. Keys come back as INTS,
-    because that is what the buckets are keyed by and a map keyed by
-    strings would miss every one of them silently — which is the same
-    "Item 63" the missing file produced."""
+def _read_names(path: Path) -> dict:
+    """One id -> name file. Keys come back as INTS, because that is what
+    the buckets are keyed by and a map keyed by strings would miss every
+    one of them silently — the same "Item 63" from a different cause."""
     try:
-        raw = json.loads(
-            ((where or cache_dir()) / NAMES_FILE).read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     if not isinstance(raw, dict):
@@ -173,6 +186,28 @@ def item_names(where: Path | None = None) -> dict:
         except (TypeError, ValueError):
             continue
     return out
+
+
+def bundled_item_names() -> dict:
+    """The map that ships with the app. Read once — it is a file inside
+    the package, so no test repoints it and nothing invalidates it."""
+    global _bundled
+    if _bundled is None:
+        _bundled = _read_names(BUNDLED_NAMES)
+    return dict(_bundled)
+
+
+def item_names(where: Path | None = None) -> dict:
+    """Every id -> name this machine can offer, best last.
+
+    THE BUNDLED MAP IS THE FLOOR and a run's own fetch is the ceiling: a
+    fresh install with no run, a cold cache and a failed fetch all still
+    name their items, and an item added since this file was cut is still
+    picked up the next time the list is fetched.
+    """
+    names = bundled_item_names()
+    names.update(_read_names((where or cache_dir()) / NAMES_FILE))
+    return names
 
 
 def load(account_id: int, picked: dict | None = None,

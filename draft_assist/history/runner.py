@@ -82,12 +82,16 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     item_names = {}
     if options.picked.get("items"):
         say("Reading the item list…")
-        item_names = opendota.item_names()
-        # KEPT, because `cache.rebuild` has no network and every later
-        # opening of this run goes through it. Without this the names were
-        # right exactly once — on the run that fetched them — and every
-        # cached view of the same run printed numeric ids.
-        cache.save_item_names(item_names)
+        # THE BUNDLED MAP UNDERNEATH, always. `opendota.item_names`
+        # answers {} on any ApiError, so a fetch that fails used to leave
+        # the block printing numeric ids with nothing saying why.
+        fetched = opendota.item_names()
+        # SAVED, because `cache.rebuild` has no network and every later
+        # opening of this run goes through it — an item added since the
+        # bundled file was cut is named on the next run and stays named.
+        cache.save_item_names(fetched)
+        item_names = cache.item_names()
+        item_names.update(fetched)
 
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
@@ -150,11 +154,11 @@ def enrich_items(report: Report, say=None, cancelled=None) -> int:
 
     # Rebuild the item block against what is now known.
     from .opendota import item_names as fetch_names
-    names = fetch_names() if read else {}
-    if names:
-        cache.save_item_names(names)
-    else:
-        names = cache.item_names()
+    fetched = fetch_names() if read else {}
+    if fetched:
+        cache.save_item_names(fetched)
+    names = cache.item_names()
+    names.update(fetched)
     rebuilt = analyse.item_analysis(report.matches, names)
     report.blocks = [rebuilt if b.kind == "items" else b
                      for b in report.blocks]

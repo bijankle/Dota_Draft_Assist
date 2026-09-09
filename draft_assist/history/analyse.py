@@ -28,7 +28,12 @@ MIN_BUCKET = 8          # games before a bucket may produce a finding
 MIN_DISPLAY = 2         # games before a bucket appears in the table at all
 SIGMA_CAT = 1.5         # how far off the datum a bucket must sit
 MIN_SAMPLE = 10         # refuse to analyse a sample smaller than this
-TOP_HEROES = 3          # how many heroes the item block covers
+# EVERY HERO, most played first — there is no cap any more. The block was
+# fixed at your three most played and called itself "top 3 heroes"; at the
+# user's request the card now has a DROPDOWN and shows one hero at a time,
+# so the list it offers has to be the whole list. It costs nothing: each
+# group walks only its own hero's matches, so the total work is one pass
+# over the sample however many heroes that is.
 
 TOD_ORDER = [f"{h:02d}:00 to {h + 2:02d}:59" for h in range(0, 24, 3)]
 LEN_ORDER = ["Under 25 min", "25 to 35 min", "35 to 45 min", "Over 45 min"]
@@ -122,9 +127,10 @@ ANALYSES = [
     ("herokda", "Weighted KDA by hero", True,
      "Kills plus three tenths of assists over deaths, averaged across your "
      "games on each hero."),
-    ("items", "Items and win rate, top 3 heroes", True,
-     "For your three most played heroes, the win rate in games that ended "
-     "with each item in your inventory, against that hero's own win rate."),
+    ("items", "Items and win rate by hero", True,
+     "One hero at a time, chosen on the card: the win rate in games that "
+     "ended with each item in your inventory, against that hero's own "
+     "win rate."),
 ]
 NAMES = {key: name for key, name, _, _ in ANALYSES}
 DESCS = {key: desc.replace("{min}", str(MIN_BUCKET))
@@ -258,7 +264,8 @@ def item_analysis(matches, item_names: dict) -> Block:
     by_hero = {}
     for match in matches:
         by_hero.setdefault(match.hero, []).append(match)
-    top = sorted(by_hero, key=lambda h: (-len(by_hero[h]), h))[:TOP_HEROES]
+    # Most played first, which is the order the dropdown offers.
+    top = sorted(by_hero, key=lambda h: (-len(by_hero[h]), h))
 
     groups, findings = [], []
     for hero in top:
