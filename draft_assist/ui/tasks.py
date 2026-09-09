@@ -56,12 +56,17 @@ TASKS = {
     "update_data": Task(
         key="update_data",
         title="Update statistics and portraits",
-        steps=[[PY, "tools/pull_data.py"], [PY, "tools/build_library.py"]],
-        blurb=("Downloads hero statistics for the bracket set in "
-               "Data > Statistics bracket, verifies bracket indexing across "
-               "OpenDota and Stratz, rebuilds the interaction matrices, and "
-               "fetches hero portraits. Run about once a day, and after a "
-               "patch."),
+        steps=[[PY, "tools/pull_data.py"], [PY, "tools/fetch_assets.py"]],
+        blurb=("Downloads hero statistics for the ranks set in Setup ▸ "
+               "Statistics bracket, verifies bracket indexing across "
+               "OpenDota and Stratz, rebuilds the interaction matrices, "
+               "and then tops up any artwork this machine is missing "
+               "— which is how a hero added in a patch gets its "
+               "picture.\n\nThis is the ONE recurring job: the "
+               "statistics stop tracking the current patch after a few "
+               "weeks, and the banner at the top of the window says so "
+               "once they are older than the reminder set in Settings. "
+               "Nothing else needs updating on a schedule."),
         needs_network=True,
         reload_after=True,
     ),

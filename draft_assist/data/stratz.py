@@ -53,6 +53,73 @@ def _post(query: str, dump_name: str | None = None) -> dict:
     return payload["data"]
 
 
+# ---------------------------------------------------------- the key ----
+
+class KeyCheck:
+    """Whether a Stratz key works. THREE-VALUED, like every other "did the
+    network answer" question in this codebase: True is accepted, False is
+    rejected, and None is "could not ask" — a rate limit, a timeout, a dead
+    connection. None must never be shown as a bad key, or somebody with a
+    perfectly good key and flaky wifi is told to go and get another one.
+    """
+
+    def __init__(self, ok: bool | None, message: str):
+        self.ok = ok
+        self.message = message
+
+    def __repr__(self) -> str:                       # pragma: no cover
+        return f"KeyCheck({self.ok!r}, {self.message!r})"
+
+
+def check_key(key: str) -> KeyCheck:
+    """Ask Stratz whether this key is accepted, WITHOUT touching `.env`.
+
+    The wizard needs to test a key the user has just pasted, before it is
+    saved anywhere — so this takes the key as an argument rather than
+    reading it back through `stratz_api_key()`.
+
+    THE QUERY IS `{__typename}`, and that is deliberate. Every other call
+    in this module validates its schema assumptions against the live
+    schema first, because this file's own docstring says nothing here is
+    trusted from memory — but a key check that depended on Stratz's schema
+    would start reporting "your key is bad" the day they rename a field.
+    `__typename` is part of the GraphQL specification itself, so it is
+    valid against any GraphQL server that has ever existed. What is being
+    tested is the AUTHORISATION, and the HTTP status carries that on its
+    own: 401 or 403 is the key, anything else is not.
+    """
+    key = (key or "").strip()
+    if not key or key == "your-stratz-api-key-here":
+        return KeyCheck(False, "No key entered yet.")
+    try:
+        resp = requests.post(
+            URL, json={"query": "{__typename}"},
+            headers={"Authorization": f"Bearer {key}",
+                     "User-Agent": "STRATZ_API"},
+            timeout=20)
+    except requests.RequestException:
+        return KeyCheck(None,
+                        "Could not reach Stratz to check the key. That says "
+                        "nothing about the key itself — carry on, and the "
+                        "download will say if it is wrong.")
+    if resp.status_code in (401, 403):
+        return KeyCheck(False,
+                        "Stratz rejected that key. Check it was copied "
+                        "whole, from stratz.com/api while signed in.")
+    if resp.status_code == 429:
+        return KeyCheck(None,
+                        "Stratz is rate limiting right now, so the key "
+                        "could not be checked. Wait a minute, or carry on "
+                        "and let the download tell you.")
+    if resp.status_code >= 500:
+        return KeyCheck(None,
+                        f"Stratz answered {resp.status_code}, which is their "
+                        "end rather than your key. Try again shortly.")
+    if not resp.ok:
+        return KeyCheck(None, f"Stratz answered HTTP {resp.status_code}.")
+    return KeyCheck(True, "Key accepted.")
+
+
 def introspect() -> dict:
     """Discover matchUp's argument names/types and bracket enum values from
     the live schema. Returns {"args": {name: type_desc}, "enums": {enum_name:

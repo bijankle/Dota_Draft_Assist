@@ -120,8 +120,64 @@ TARGET_BRACKETS = DEFAULT_TARGET_BRACKETS
 CACHE_MAX_AGE_HOURS = 36
 
 
+ENV_FILE = REPO_ROOT / ".env"
+KEY_NAME = "STRATZ_API_KEY"
+PLACEHOLDER = "your-stratz-api-key-here"
+
+
+def env_file() -> Path:
+    """Resolved at CALL time, never bound as a default — the rule this
+    codebase learned from `load_layout`, where a module-level default let
+    a test write into the real repository."""
+    return ENV_FILE
+
+
+def has_stratz_key() -> bool:
+    """Is there a real key on this machine? Used to decide whether the
+    first-run setup has anything left to ask for."""
+    try:
+        return bool(stratz_api_key())
+    except RuntimeError:
+        return False
+
+
+def save_stratz_key(key: str) -> None:
+    """Write the key into `.env`, KEEPING whatever else is in there.
+
+    Rewriting the file wholesale would drop any other variable the user
+    has put beside it, and `.env` is exactly the sort of file people add
+    lines to. So the KEY's line is replaced in place and everything else
+    is left alone; a file that does not exist yet is created with the
+    comment from `.env.example`, because a bare assignment with no note
+    saying the file is gitignored invites somebody to commit it.
+    """
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("the key is empty")
+    path = env_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = ["# Written by the app's first-run setup.",
+                 "# This file is gitignored and must never be committed."]
+    out, replaced = [], False
+    for line in lines:
+        if line.strip().startswith(f"{KEY_NAME}=") and not replaced:
+            out.append(f"{KEY_NAME}={key}")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        out.append(f"{KEY_NAME}={key}")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    # The key is read through `load_dotenv`, which does NOT overwrite a
+    # variable already in the environment — so a key entered after one was
+    # read this session would otherwise be ignored until a restart.
+    os.environ[KEY_NAME] = key
+
+
 def stratz_api_key() -> str:
-    load_dotenv(REPO_ROOT / ".env")
+    load_dotenv(env_file())
     key = os.environ.get("STRATZ_API_KEY", "").strip()
     if not key or key == "your-stratz-api-key-here":
         raise RuntimeError(

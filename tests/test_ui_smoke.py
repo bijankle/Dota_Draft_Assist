@@ -213,12 +213,14 @@ def test_app_opens_before_any_data_is_downloaded(qapp, monkeypatch):
         assert "artwork" in win.banner_button.text()
 
         # With the pictures on disk it moves on to the half that needs a
-        # key, and says where to get one rather than just naming the file.
+        # key — and hands that to the WIZARD rather than explaining it in
+        # a strip, because the wizard is where the key is entered and
+        # checked. The banner is the way back to it, not a second copy.
         monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
         win.refresh()
         assert "No statistics downloaded yet" in win.banner_label.text()
-        assert "stratz.com" in win.banner_label.text()
-        assert "Download" in win.banner_button.text()
+        assert "Set up" in win.banner_button.text()
+        assert win._banner_action == win._run_setup
         assert "no statistics" in win.status.currentMessage()
     finally:
         win.close()
@@ -376,6 +378,8 @@ def test_banner_warns_when_data_bracket_differs_from_selection(
     monkeypatch.setattr(config, "PREFS_FILE", tmp_path / "preferences.json")
     monkeypatch.setattr(app_mod, "target_brackets",
                         lambda: ("LEGEND", "ANCIENT"))
+    from draft_assist.ui import portraits
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
     ds = demo_dataset()          # built for ANCIENT+DIVINE
     win = make_window(qapp, ds)
     try:
@@ -383,7 +387,10 @@ def test_banner_warns_when_data_bracket_differs_from_selection(
         assert win.banner.isVisible() or not win.isVisible()
         text = win.banner_label.text()
         assert "ANCIENT+DIVINE" in text and "LEGEND+ANCIENT" in text
-        assert "Rebuild" in win.banner_button.text()
+        # It names the CHANGE, because that is what the user just did —
+        # they ticked new boxes in Settings and came straight back here.
+        assert "changed" in text.lower()
+        assert "Update" in win.banner_button.text()
     finally:
         win.close()
 
@@ -2454,18 +2461,37 @@ def test_the_blank_plates_are_the_size_of_the_real_tiles(window, qapp):
     assert theme.BORDER in colours
 
 
-def test_the_statistics_age_is_only_ever_a_dialog(window, qapp):
-    """No banner, no pill, no status segment — one prompt at startup."""
-    from draft_assist.ui import settings as ui_settings
+def test_the_statistics_age_is_one_banner_and_nothing_else(window, qapp,
+                                                          monkeypatch):
+    """It was a banner, a pill AND a status segment — three copies of a
+    number worth acting on twice a month. Then one startup dialog, which
+    you dismiss on the way to a draft and never see again while the thing
+    it asked about stays true. Now one strip at the top, with the days on
+    it and a button that fixes it. Still exactly one place."""
+    from draft_assist.ui import portraits, settings as ui_settings
     assert not hasattr(window, "data_pill")
     window.refresh()
     assert "data" not in window.status.currentMessage().lower()
-    # Fresh data asks nothing, and neither does a reminder set to 0.
-    asked = []
-    window._prompt_if_data_is_old()          # demo data is fresh
+    assert not hasattr(window, "_prompt_if_data_is_old"), \
+        "the startup dialog was replaced, not added to"
+
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+    # Fresh data says nothing at all.
+    assert window._stale_days() == 0
+    window._update_first_run_banner()
+    assert not window.banner.isVisible()
+
+    # Past the reminder it names the days and offers the fix.
+    monkeypatch.setattr(type(window.ds), "age_hours",
+                        lambda self: 40 * 24.0)
+    assert window._stale_days() >= 40
+    window._update_first_run_banner()
+    assert "40 days ago" in window.banner_label.text()
+    assert "Update" in window.banner_button.text()
+
+    # A reminder of 0 turns it off entirely, as it always did.
     window.settings["data_reminder_days"] = 0
-    window._prompt_if_data_is_old()
-    assert not asked
+    assert window._stale_days() == 0
     assert ui_settings.DEFAULTS["data_reminder_days"] == 14
 
 

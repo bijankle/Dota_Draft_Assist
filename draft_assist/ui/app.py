@@ -323,6 +323,9 @@ class MainWindow(QMainWindow):
         self._act(downloads, "&Check item icons…",
                   lambda: self.run_task("check_item_icons"), None,
                   "Which items in the rules have no picture, and why")
+        self._act(setup_menu, "&Run first-time setup…", self._run_setup,
+                  None, "The key and the rank brackets, then download "
+                        "everything")
         self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
                   None, "Which ranks the statistics are drawn from")
         self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
@@ -1146,39 +1149,65 @@ class MainWindow(QMainWindow):
         self._banner_action = action
         self.banner.setVisible(True)
 
-    def _prompt_if_data_is_old(self) -> None:
-        """Ask ONCE, at startup, whether to refresh statistics this old.
+    def _update_everything(self) -> None:
+        """Statistics AND artwork, which is what every banner button that
+        says "update" should mean. One task, so there is one thing to
+        watch and one thing that can fail."""
+        self.run_task("update_data")
 
-        This is the only thing the app says about the age of its data. It
-        was a banner at the top, a pill on the tab row and a segment of the
-        status line, permanently — three copies of a number that is worth
-        acting on about twice a month, taking up room every other day. A
-        dialog is the right shape for something that wants an answer, and
-        a fortnight (Settings ▸ When to remind you) is roughly a patch.
+    def _run_setup(self) -> None:
+        """The first-run wizard, on demand.
 
-        Nothing at all when there are no statistics: the first-run banner
-        already says that, and it says it better.
+        The banner's button and Setup ▸ Run first-time setup… both land
+        here, so there is one way to do this rather than a wizard that can
+        only ever be seen once.
+        """
+        from .setup_wizard import SetupWizard
+        wizard = SetupWizard(self)
+        accepted = wizard.exec() == SetupWizard.DialogCode.Accepted
+        self._update_first_run_banner()
+        if accepted:
+            # TICKING THE BOXES IS THE WHOLE INTERACTION. An install that
+            # ends by telling the user to go and find a menu item has not
+            # finished installing.
+            self._update_everything()
+
+    def offer_setup(self) -> None:
+        """Show the wizard on a fresh install, once, after the window is up.
+
+        AFTER `show()`: it is modal, and a modal dialog raised over a
+        window that has not appeared yet is a dialog with nothing behind
+        it. Skippable, so nobody offline or merely curious meets a wall —
+        the banner is the way back and this asks again next start.
+        """
+        from .setup_wizard import needed
+        if needed():
+            self._run_setup()
+
+    def _stale_days(self) -> float:
+        """How many days past the reminder the statistics are, or 0.
+
+        THIS IS A BANNER NOW, not the startup dialog it used to be — at
+        the user's request, and it is a REPLACEMENT rather than an
+        addition. The age was once a banner, a pill on the tab row AND a
+        segment of the status line, which is three copies of a number
+        worth acting on twice a month; it was cut back to one dialog for
+        that reason. A dialog you dismiss on the way to a draft is one you
+        dismiss forever, though, and the thing it was asking about goes on
+        being true. So it is one strip at the top, with the days on it and
+        a button that fixes it — still exactly one place, still nothing at
+        all until it matters.
         """
         days = ui_settings.clamp_days(
             self.settings.get("data_reminder_days"),
             ui_settings.DATA_REMINDER_DAYS)
         if not days or self.ds.is_empty:
-            return
+            return 0.0
         try:
             age = self.ds.age_hours() / 24.0
         except Exception:
-            return
-        if age < days:
-            return
-        answer = QMessageBox.question(
-            self, "Statistics are getting old",
-            f"The match statistics are {age:.0f} days old.\n\n"
-            "Recommendations still work — the numbers just stop tracking "
-            "the current patch. Update them now?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes)
-        if answer == QMessageBox.StandardButton.Yes:
-            self.run_task("update_data")
+            return 0.0
+        return age if age >= days else 0.0
 
     def _update_first_run_banner(self, snap=None) -> None:
         """The one strip at the top that says what is wrong RIGHT NOW.
@@ -1201,15 +1230,6 @@ class MainWindow(QMainWindow):
                 "which side is yours.",
                 "Check game data", self._diagnose_gsi)
             return
-        mismatch = self._bracket_mismatch()
-        if mismatch:
-            cached, wanted = mismatch
-            self._show_banner(
-                f"<b>Statistics are for {cached}, but {wanted} is "
-                "selected.</b> The numbers below are still the old bracket "
-                "until the data is rebuilt.",
-                "Rebuild now", lambda: self.run_task("update_data"))
-            return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
         # works. A fresh install has neither, and the statistics need a
         # free Stratz key the user has to go and get — so leading with
@@ -1227,19 +1247,35 @@ class MainWindow(QMainWindow):
             self._show_banner(
                 "<b>No statistics downloaded yet.</b> Every number in the "
                 "app comes from these, so the tiles stay blank until they "
-                "are pulled. It needs a free API key from stratz.com "
-                "pasted into the .env file beside this app — see "
-                ".env.example, and your key is never sent anywhere but "
-                "Stratz.",
-                "Download now", lambda: self.run_task("update_data"))
-        else:
-            # NOT how old the data is. That was a banner up all evening for
-            # something worth acting on once a fortnight, and a banner
-            # nobody reads is a banner that does not work on the night it
-            # matters. The age is a dialog at startup instead — see
-            # `_prompt_if_data_is_old` — and the empty case above stays,
-            # because with no statistics at all the app has nothing to say.
-            self.banner.setVisible(False)
+                "are pulled.",
+                "Set up now", self._run_setup)
+            return
+
+        # THE BRACKET CHANGED. Checked before the age, because the numbers
+        # on screen are the WRONG RANK rather than merely old — and the
+        # user changes this in a dialog and comes straight back here, so
+        # this strip is where they find out it needs a rebuild.
+        mismatch = self._bracket_mismatch()
+        if mismatch:
+            cached, wanted = mismatch
+            self._show_banner(
+                f"<b>Rank bracket changed to {wanted}.</b> The numbers "
+                f"below are still {cached} until the statistics are pulled "
+                "again.",
+                "Update now", self._update_everything)
+            return
+
+        # HOW OLD, and only past the reminder. Under it there is nothing
+        # to say and the strip stays away entirely.
+        stale = self._stale_days()
+        if stale:
+            self._show_banner(
+                f"<b>Statistics were updated {stale:.0f} days ago.</b> "
+                "Recommendations still work — the numbers just stop "
+                "tracking the current patch.",
+                "Update now", self._update_everything)
+            return
+        self.banner.setVisible(False)
 
     def _edit_rules(self) -> None:
         if sys.platform == "win32":
@@ -3625,7 +3661,7 @@ def _main() -> None:
     win._refresh_sources()
     # After show(), because it is a modal dialog and one raised over a
     # window that has not appeared yet is a dialog with nothing behind it.
-    win._prompt_if_data_is_old()
+    win.offer_setup()
     if getattr(provider, "error", ""):
         win.snapshot_label.setText(provider.error.splitlines()[0])
     code = app.exec()
