@@ -1654,6 +1654,18 @@ credentials, and put the account at risk. Do not go there.
   Whatever goes in the default slot has to be THE PROJECT'S TO
   DISTRIBUTE: the same bar the bundled fonts had to clear, and the one
   Valve's and Blizzard's artwork does not.
+  **"IS AN .ico" MEANS THE CONTAINER, NOT THE NAME** (`is_ico`). Qt
+  sniffs an image's content and ignores its extension, so a PNG renamed
+  to `.ico` loads perfectly and the TITLE BAR looks right — while the
+  Windows shell, which needs a genuine ICO container for a taskbar
+  button, a pin and a shortcut, quietly draws something else. Title bar
+  correct and taskbar wrong is the whole signature of that mistake, and
+  it is the obvious way to "convert" an image. So the six-byte header is
+  READ (zero, a 1 for icon, and a non-zero image count — a header
+  claiming zero images is not a usable icon either), and a file that is
+  not really one is rebuilt at every size like any other raster and a
+  proper `app-generated.ico` is rendered for the shell. The picture was
+  never the problem; the wrapper was.
   **A SUPPLIED FILE IS REBUILT AT EVERY SIZE UNLESS IT IS AN `.ico`**
   (`_from_file`). A real .ico already carries each size drawn or hinted
   for it, so it is used exactly as supplied. Everything else is ONE

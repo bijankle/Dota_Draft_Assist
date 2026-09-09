@@ -151,6 +151,32 @@ def icon() -> QIcon:
     return _icon
 
 
+def is_ico(path) -> bool:
+    """Is this REALLY an .ico, or just something named one?
+
+    Qt sniffs an image's content and ignores its extension, so a PNG
+    renamed to .ico loads perfectly and the title bar looks right. The
+    WINDOWS SHELL does not: it needs a genuine ICO container for a
+    taskbar button, a pin and a shortcut, and given anything else it
+    quietly draws something else. That combination — title bar correct,
+    taskbar wrong — is exactly what a renamed PNG produces, and nothing
+    anywhere said so.
+
+    The header is six bytes: a zero, a 1 for "icon", and how many images
+    are inside.
+    """
+    try:
+        head = Path(path).open("rb").read(6)
+    except OSError:
+        return False
+    if len(head) < 6:
+        return False
+    reserved = int.from_bytes(head[0:2], "little")
+    kind = int.from_bytes(head[2:4], "little")
+    count = int.from_bytes(head[4:6], "little")
+    return reserved == 0 and kind == 1 and count > 0
+
+
 def _from_file(path: Path) -> QIcon | None:
     """An icon built from a file somebody supplied, or None if unreadable.
 
@@ -165,7 +191,10 @@ def _from_file(path: Path) -> QIcon | None:
     `SIZES`, with a smooth transform. Same treatment the drawn and
     portrait sources already got; this branch was skipping it.
     """
-    if path.suffix.lower() == ".ico":
+    # The CONTENT, not the extension: a real .ico carries every size, and
+    # something merely named .ico carries one image that Qt would then
+    # hand out at 1024 for a 16px request.
+    if is_ico(path):
         supplied = QIcon(str(path))
         return supplied if not supplied.isNull() else None
     art = QPixmap(str(path))
@@ -310,12 +339,12 @@ def shell_ico() -> Path | None:
     it. Never fatal: no icon is worse than the right icon and better than
     not starting.
     """
-    supplied = ASSETS_DIR / "app.ico"
-    if supplied.exists():
-        return supplied
-    shipped = ASSETS_DIR / "app-default.ico"
-    if shipped.exists():
-        return shipped
+    # Only a file that really IS an ICO goes to the shell. One that is
+    # not gets rendered into a proper one below, which is what makes a
+    # renamed PNG work in the taskbar instead of silently not.
+    for candidate in (ASSETS_DIR / "app.ico", ASSETS_DIR / "app-default.ico"):
+        if candidate.exists() and is_ico(candidate):
+            return candidate
     try:
         return write_ico(ASSETS_DIR / "app-generated.ico")
     except Exception:                   # noqa: BLE001 - see the docstring

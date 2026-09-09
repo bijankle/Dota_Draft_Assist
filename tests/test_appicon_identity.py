@@ -65,10 +65,21 @@ def test_shell_ico_is_a_multi_size_icon(qapp, tmp_path, monkeypatch):
 
 
 def test_a_supplied_ico_is_used_as_it_is(qapp, tmp_path, monkeypatch):
+    """A REAL one, carrying at least one image. A header claiming zero
+    images is not a usable icon — the shell would draw nothing from it —
+    so `is_ico` refuses it and one gets generated instead."""
     monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
-    supplied = tmp_path / "app.ico"
-    supplied.write_bytes(b"\x00\x00\x01\x00\x00\x00")
+    appicon.forget()
+    supplied = appicon.write_ico(tmp_path / "app.ico")
+    appicon.forget()
+    assert appicon.is_ico(supplied)
     assert appicon.shell_ico() == supplied
+
+    empty = tmp_path / "app.ico"
+    empty.write_bytes(b"\x00\x00\x01\x00\x00\x00")   # zero images
+    assert not appicon.is_ico(empty)
+    assert appicon.shell_ico().name == "app-generated.ico"
+    appicon.forget()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="this IS the Windows path")
@@ -195,4 +206,56 @@ def test_a_real_ico_is_used_exactly_as_supplied(qapp, tmp_path,
     assert not appicon.icon().isNull()
     # A shipped .ico is what the shortcut and the taskbar pin point at.
     assert appicon.shell_ico() == tmp_path / "app-default.ico"
+    appicon.forget()
+
+
+def test_a_png_renamed_to_ico_is_not_treated_as_one(qapp, tmp_path,
+                                                    monkeypatch):
+    """THE TITLE BAR WORKED AND THE TASKBAR DID NOT, which is the whole
+    signature of this. Qt sniffs an image's content and ignores its
+    extension, so a PNG renamed to .ico loads fine and the window looks
+    right — but the Windows shell needs a genuine ICO container for a
+    taskbar button, a pin and a shortcut, and quietly draws something else
+    when it does not get one."""
+    import struct
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    art = QPixmap(1024, 1024)
+    art.fill()
+    fake = tmp_path / "app-default.ico"
+    art.save(str(fake), "PNG")                  # named .ico, is a PNG
+    appicon.forget()
+
+    assert not appicon.is_ico(fake)
+    # It is still USED — the picture is fine, it is the container that is
+    # wrong — but rebuilt at every size rather than passed through whole.
+    baked = {size.width() for size in appicon.icon().availableSizes()}
+    assert set(appicon.SIZES) <= baked
+
+    # And the shell is handed a real one, generated from it.
+    shell = appicon.shell_ico()
+    assert shell.name == "app-generated.ico"
+    assert appicon.is_ico(shell)
+    assert struct.unpack("<HHH", shell.read_bytes()[:6])[2] == len(
+        appicon.ICO_SIZES)
+    appicon.forget()
+
+
+def test_is_ico_reads_the_header_rather_than_the_name(qapp, tmp_path):
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    art = QPixmap(32, 32)
+    art.fill()
+    appicon.forget()
+    real = appicon.write_ico(tmp_path / "no-extension-at-all")
+    assert appicon.is_ico(real), "a real ICO, whatever it is called"
+
+    art.save(str(tmp_path / "actually.png"), "PNG")
+    assert not appicon.is_ico(tmp_path / "actually.png")
+    assert not appicon.is_ico(tmp_path / "does-not-exist.ico")
+    (tmp_path / "empty.ico").write_bytes(b"")
+    assert not appicon.is_ico(tmp_path / "empty.ico")
     appicon.forget()
