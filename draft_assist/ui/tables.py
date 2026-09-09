@@ -103,7 +103,7 @@ CARD_MARGIN = 12
 # into the portraits ... they should run directly on the edge". At 4 the
 # line lives in the margin with its inner edge against the portrait, and
 # the two teams' borders have real background between them.
-CELL_PAD = 4
+CELL_PAD = 3
 # How big a header portrait grows on its own account. It is no longer the
 # ceiling: a column must print "+12.34" whatever the picture would have
 # liked to be, so where the number is wider the number wins.
@@ -116,6 +116,78 @@ ROW_HEADER = HEADER_ICON + 4
 # inside a team's own region a green number is that team's pair working,
 # whichever team it is.
 PAIR_EDGE_W = 2
+# WHERE A TEAM'S BORDER SITS, measured from the edge of whatever it is
+# drawn inside — a grid cell or a header section, which must agree or the
+# line jogs sideways where the strip meets the triangle under it.
+#
+# The portrait starts CELL_PAD in and a centred pen reaches half its width
+# either way, so this puts the pen's INNER edge exactly on the picture:
+# the line runs along the portrait's boundary without covering a pixel of
+# it. Two neighbouring cells then hold their two lines back to back with a
+# hairline of background between them, which is the "only just visible"
+# gap that was asked for, and it is the whole reason CELL_PAD exists.
+# THE BORDER IS NOT PLACED BY ARITHMETIC. Three rounds of this were spent
+# deriving an inset from CELL_PAD, and each was a pixel or two out for a
+# reason nothing in the sum could see: Qt's own grid line takes a column
+# out of `visualRect`, and a 16:9 portrait fitted into a cell lands on
+# whatever height the rounding gives it. So the line is drawn round the
+# rectangle the portrait was ACTUALLY drawn in, which the painter that
+# drew it reports (`PairCellDelegate.drawn`, `PortraitHeader` passing its
+# own box down) — one pixel of background outside the picture, so the pen
+# traces the edge of the art without ever covering a pixel of it.
+# MEASURED, NOT ASSUMED: a width-2 pen drawn at x paints columns x-1 and
+# x — Qt lays an even pen out BACKWARDS from its coordinate, so it is not
+# symmetric about it. That asymmetry is a whole pixel, which is why one
+# inset used on all four sides cleared the picture on the left and top and
+# covered a column of it on the right and bottom. It is exactly the last
+# of "the line cuts into the portrait", and no amount of tuning a single
+# number could ever have fixed it.
+# What a line is extended by to cross the grid line into the next cell.
+# Without it a border along five portraits is five separate segments with
+# a break at every one of them, which is what this kept looking like.
+GRID_GAP = 1
+# The four edges of a cell as (row, column) steps, which of them run
+# perpendicular to each, and how to read one side off a rectangle. A
+# border turning a corner has to name the edge it is turning into, and
+# spelling that out four times over is where the earlier versions of this
+# quietly disagreed with themselves.
+DELTA = {"top": (-1, 0), "bottom": (1, 0), "left": (0, -1), "right": (0, 1)}
+OPPOSITE = {"top": "bottom", "bottom": "top", "left": "right",
+            "right": "left"}
+PERPENDICULAR = {"top": ("left", "right"), "bottom": ("left", "right"),
+                 "left": ("top", "bottom"), "right": ("top", "bottom")}
+
+
+def _ring(art):
+    """Where to draw so the pen sits FLUSH against this rectangle.
+
+    Four coordinates, one per side, each chosen so the band the pen
+    actually paints is the pixels immediately outside the picture and not
+    one of the picture's own — "directly on the edge of the portraits",
+    which is what was asked for, rather than across them.
+    """
+    half = PAIR_EDGE_W // 2
+    return art.adjusted(-half, -half, 1 + half, 1 + half)
+
+
+def _reach(rect, which: str) -> int:
+    """How far a line must run to close the corner on a `_ring` side.
+
+    A perpendicular line drawn at a ring's left or top paints one pixel
+    BACK from it (see the note on the pen above), so a line stopping on
+    that coordinate leaves a single pixel of the corner unpainted — a
+    notch at every step of the staircase, twenty of them across a grid.
+    Reaching past by the same half-pen closes it, and on the right and
+    bottom the coordinate already covers its own band.
+    """
+    edge = _side_of(rect, which)
+    return edge - PAIR_EDGE_W // 2 if which in ("left", "top") else edge
+
+
+def _side_of(rect, which: str) -> int:
+    """One edge's coordinate: x for left/right, y for top/bottom."""
+    return {"top": rect.top(), "bottom": rect.bottom(),
+            "left": rect.left(), "right": rect.right()}[which]
 # A cell has to hold "+12.34" without eliding, and that is wider than the
 # portrait above it — so the column, not the icon, sets the floor.
 # The narrowest a cell can be and still print a signed delta. It is a
@@ -225,7 +297,7 @@ class PortraitHeader(QHeaderView):
         self.sides = {i: side for i in self.heroes} if side and colour else {}
         self.viewport().update()
 
-    def _paint_outline(self, painter, rect, index) -> None:
+    def _paint_outline(self, painter, rect, index, art=None) -> None:
         """This section's share of the box round the whole strip.
 
         A header paints one section at a time, so the box has to be drawn
@@ -256,32 +328,52 @@ class PortraitHeader(QHeaderView):
             return
         painter.save()
         painter.setPen(QPen(QColor(self.outline), PAIR_EDGE_W))
-        inset = PAIR_EDGE_W // 2
-        edge = rect.adjusted(inset, inset, -inset, -inset)
+        # ROUND THE PICTURE, one pixel of background clear of it — the
+        # same rule `PairGrid.paintEvent` draws by, and it has to be the
+        # same or the line jogs sideways where the strip meets the
+        # triangle under it. Deriving an inset from the section instead
+        # put this border hard against the section edge, several pixels
+        # off the portrait it is meant to be tracing, while the cells'
+        # own borders were somewhere else again.
+        face = art if art is not None else rect
+        ring = _ring(face)
         across = self.orientation() == Qt.Orientation.Horizontal
         first, last = heads[0], heads[-1]
         open_here = index in self.open_edges
+        # A long edge runs the section's WHOLE span and one pixel over
+        # into the next, so the segment along one portrait meets the
+        # segment along the next and the strip is one line rather than a
+        # box round every face. At the two ends it stops on the end cap
+        # instead of poking out past it.
         if across:
+            head = ring.left() if index == first else rect.left()
+            tail = (ring.right() if index == last
+                    else rect.right() + GRID_GAP)
             # OUTER first, then the one facing the grid unless it is open.
-            lines = [(QPoint(rect.left(), edge.top()),
-                      QPoint(rect.right(), edge.top()))]
+            lines = [(QPoint(head, ring.top()), QPoint(tail, ring.top()))]
             if not open_here:
-                lines.append((QPoint(rect.left(), edge.bottom()),
-                              QPoint(rect.right(), edge.bottom())))
+                lines.append((QPoint(head, ring.bottom()),
+                              QPoint(tail, ring.bottom())))
             if index == first:
-                lines.append((edge.topLeft(), edge.bottomLeft()))
+                lines.append((QPoint(ring.left(), ring.top()),
+                              QPoint(ring.left(), ring.bottom())))
             if index == last:
-                lines.append((edge.topRight(), edge.bottomRight()))
+                lines.append((QPoint(ring.right(), ring.top()),
+                              QPoint(ring.right(), ring.bottom())))
         else:
-            lines = [(QPoint(edge.left(), rect.top()),
-                      QPoint(edge.left(), rect.bottom()))]
+            head = ring.top() if index == first else rect.top()
+            tail = (ring.bottom() if index == last
+                    else rect.bottom() + GRID_GAP)
+            lines = [(QPoint(ring.left(), head), QPoint(ring.left(), tail))]
             if not open_here:
-                lines.append((QPoint(edge.right(), rect.top()),
-                              QPoint(edge.right(), rect.bottom())))
+                lines.append((QPoint(ring.right(), head),
+                              QPoint(ring.right(), tail)))
             if index == first:
-                lines.append((edge.topLeft(), edge.topRight()))
+                lines.append((QPoint(ring.left(), ring.top()),
+                              QPoint(ring.right(), ring.top())))
             if index == last:
-                lines.append((edge.bottomLeft(), edge.bottomRight()))
+                lines.append((QPoint(ring.left(), ring.bottom()),
+                              QPoint(ring.right(), ring.bottom())))
         for line in lines:
             painter.drawLine(*line)
         painter.restore()
@@ -324,7 +416,7 @@ class PortraitHeader(QHeaderView):
                                 theme.GOOD if float(value) > 0 else theme.BAD,
                                 self.font())
         painter.restore()
-        self._paint_outline(painter, rect, index)
+        self._paint_outline(painter, rect, index, box)
 
 
 # The roles a paired-triangle cell carries: whose portrait backs it, the
@@ -377,11 +469,7 @@ class PairGrid(QTableWidget):
     # each cell instead and the two lines sit apart, with a hairline of
     # background between them — visible, but only just, which is what
     # was asked for.
-    GAP = 1
-    # Measured so the pen's INNER edge lands on the portrait, not across
-    # it: the picture starts CELL_PAD in from the cell, and a centred pen
-    # reaches half its width either way.
-    INSET = CELL_PAD - PAIR_EDGE_W // 2
+    GAP = GRID_GAP
 
     def _side(self, row: int, col: int) -> str | None:
         item = self.item(row, col)
@@ -416,65 +504,107 @@ class PairGrid(QTableWidget):
                         found.setdefault((side, which), set()).add((row, col))
         return found
 
-    @staticmethod
-    def _runs(cells: set, across: bool) -> list:
-        """Merge neighbouring cells into CONTINUOUS runs.
-
-        **THIS IS WHAT STOPS THE BORDER COMING OUT AS DASHES.** Drawn one
-        cell at a time, every segment has two ends, and two ends that are
-        meant to meet are the width of a grid line and an inset apart —
-        so the line broke at every portrait it ran past. Merged first, a
-        team's border along five cells is ONE line with two ends, and
-        there is nothing left to fail to meet.
-        """
-        runs, seen = [], set()
-        for cell in sorted(cells):
-            if cell in seen:
-                continue
-            row, col = cell
-            run = [cell]
-            seen.add(cell)
-            step = (0, 1) if across else (1, 0)
-            nxt = (row + step[0], col + step[1])
-            while nxt in cells and nxt not in seen:
-                run.append(nxt)
-                seen.add(nxt)
-                nxt = (nxt[0] + step[0], nxt[1] + step[1])
-            runs.append((run[0], run[-1]))
-        return runs
-
     def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        """Outline each team's region as one continuous border.
+
+        Two things decide whether this looks like an outline or like a row
+        of boxes, and both had been got wrong by reasoning about pixels
+        instead of looking at them.
+
+        **WHERE the line goes.** Round the portrait the delegate actually
+        drew, one pixel of background clear of it, so it traces the edge
+        of the picture without covering any of it. Derived insets kept
+        landing a pixel or two inside the art, because the cell is not the
+        picture: Qt's grid line takes a column out of `visualRect` and the
+        fitted 16:9 portrait lands wherever the rounding puts it. Asking
+        the painter that drew it cannot be off.
+
+        **HOW FAR it runs.** A line held inside its own portrait's width
+        stops short of the next portrait's, so a border along five cells
+        comes out as five separate rectangles with a break at every face —
+        which is exactly what this looked like. So each segment is
+        measured against the neighbour ON ITS OWN LINE: it runs to the
+        cell's full edge, and a step over the grid line (`GAP`), wherever
+        that neighbour is the same team, so the next segment carries on
+        from precisely where this one stopped; and it stops on the
+        portrait's own corner where the neighbour is not, which is where
+        the perpendicular edge is waiting for it. Every join is exact by
+        construction rather than by an overshoot that has to be tuned.
+        """
         super().paintEvent(event)
-        colours = getattr(self.itemDelegate(), "colours", {})
+        cells = self.itemDelegate()
+        colours = getattr(cells, "colours", {})
+        drawn = getattr(cells, "drawn", {})
         edges = self._edges()
         if not edges:
             return
-        inset, half = self.INSET, PAIR_EDGE_W // 2
+        heads = getattr(self.horizontalHeader(), "sides", {})
+
+        def side_at(row: int, col: int):
+            """The neighbour, with the header standing in above row 0."""
+            if row < 0:
+                return heads.get(col)
+            if col < 0:
+                return None
+            return self._side(row, col)
+
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        for (side, which), cells in edges.items():
+        for (side, which), members in edges.items():
             painter.setPen(QPen(QColor(colours.get(side, theme.GOOD)),
                                 PAIR_EDGE_W))
-            across = which in ("top", "bottom")
-            for first, last in self._runs(cells, across):
-                head = self.visualRect(self.model().index(*first))
-                tail = self.visualRect(self.model().index(*last))
-                if head.isEmpty() or tail.isEmpty():
+            for row, col in sorted(members):
+                cell = self.visualRect(self.model().index(row, col))
+                if cell.isEmpty():
                     continue
-                if across:
-                    y = (head.top() + inset if which == "top"
-                         else head.bottom() - inset)
-                    # Extended by half the pen at each end so a run meets
-                    # the perpendicular run at the corner instead of
-                    # stopping a pixel short of it.
-                    painter.drawLine(head.left() + inset - half, y,
-                                     tail.right() - inset + half, y)
+                # The picture, or the whole cell where there is none to
+                # trace (no portraits downloaded yet).
+                art = drawn.get((row, col), cell)
+                ring = _ring(art)
+                ends = [self._end(row, col, side, which, step, cell,
+                                  ring, drawn, side_at)
+                        for step in PERPENDICULAR[which]]
+                if which in ("top", "bottom"):
+                    y = ring.top() if which == "top" else ring.bottom()
+                    painter.drawLine(ends[0], y, ends[1], y)
                 else:
-                    x = (head.left() + inset if which == "left"
-                         else head.right() - inset)
-                    painter.drawLine(x, head.top() + inset - half,
-                                     x, tail.bottom() - inset + half)
+                    x = ring.left() if which == "left" else ring.right()
+                    painter.drawLine(x, ends[0], x, ends[1])
         painter.end()
+
+    def _end(self, row, col, side, which, step, cell, ring, drawn, side_at):
+        """Where one end of one edge stops, and why there are three cases.
+
+        A border turns three different ways at a step of the staircase and
+        each needs a different answer, which is what made every attempt at
+        one blanket rule leave either a gap or a stub:
+
+        1. **It carries on.** The cell along this line is the same team and
+           does not have this edge's neighbour behind it, so it draws this
+           same edge — run to the cell's own boundary and one pixel over
+           the grid line, and the next segment starts exactly there.
+        2. **It turns at this cell.** The cell along the line belongs to
+           the other team, so THIS cell has a perpendicular edge, drawn at
+           this cell's own ring — so stop on that ring and the two meet in
+           the corner.
+        3. **It turns at the cell diagonally across.** The cell along the
+           line is ours and so is the one diagonally beyond it, which
+           means the border steps out and away: the perpendicular edge
+           belongs to that DIAGONAL cell and is drawn on ITS ring, so this
+           segment has to reach that far to meet it. This is the case a
+           staircase is made of, and the one that was missing.
+        """
+        dr, dc = DELTA[step]
+        wr, wc = DELTA[which]
+        far = step in ("right", "bottom")
+        if side_at(row + dr, col + dc) != side:                    # case 2
+            return _reach(ring, step)
+        if side_at(row + dr + wr, col + dc + wc) != side:          # case 1
+            return _side_of(cell, step) + (self.GAP if far else 0)
+        turn = drawn.get((row + dr + wr, col + dc + wc))           # case 3
+        if turn is None:
+            return _side_of(cell, step) + (self.GAP if far else 0)
+        return _reach(_ring(turn), OPPOSITE[step])
 
 
 class DeltaCellDelegate(QStyledItemDelegate):
@@ -524,6 +654,21 @@ class PairCellDelegate(QStyledItemDelegate):
         # outlined in its own team's real colour. Read by `PairGrid` when
         # it strokes the two regions.
         self.colours = {"ally": theme.GOOD, "enemy": theme.BAD}
+        # THE SAME BOX THE HEADERS GET (`MatrixTable._apply_icon_box`),
+        # and getting this wrong is what made the borders look ragged. A
+        # cell is CELL_PAD wider than its portrait on each side, so
+        # fitting the art to the whole cell rect drew it a few pixels
+        # WIDER than the identical portrait in the header above — and
+        # left it touching the cell edge, with the result that a border
+        # inset to clear the picture ran straight across it instead. One
+        # box, one picture, everywhere in the grid; None until the table
+        # has been sized, where the cell is all there is to go on.
+        self.box: int | None = None
+        # Where each cell's portrait actually landed, keyed by (row,
+        # column) — read by `PairGrid.paintEvent`, which runs after every
+        # cell has been painted, so the border traces the real picture
+        # rather than a prediction of it.
+        self.drawn: dict[tuple[int, int], QRect] = {}
 
     def paint(self, painter, option, index):        # noqa: N802 - Qt naming
         from .portraits import scaled
@@ -537,13 +682,15 @@ class PairCellDelegate(QStyledItemDelegate):
         # (expand and crop) made these read as stretched: a cell is wider
         # than it is tall, so covering it threw away the top and bottom of
         # a 16:9 head shot and left a wide slice of the middle.
-        art = scaled(hero, rect.width(), rect.height()) if hero else None
+        room = min(self.box or rect.width(), rect.width())
+        art = scaled(hero, room, rect.height()) if hero else None
         box = rect
         if art is not None:
             box = QRect(rect.left() + (rect.width() - art.width()) // 2,
                         rect.top() + (rect.height() - art.height()) // 2,
                         art.width(), art.height())
             painter.drawPixmap(box.topLeft(), art)
+            self.drawn[(index.row(), index.column())] = QRect(box)
             if not index.data(PAIR_HEADER):
                 # Knocked back, so the figure over it stays the subject.
                 # Not the axis rows: those ARE the subject.
@@ -984,8 +1131,8 @@ class MatrixTable(QWidget):
             return None, BLANK_ROW
         digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
         size = max(min(self._portrait_want(), self._portrait_room()),
-                   digits - 4)
-        return size + 4, round(size * 9 / 16) + 4
+                   digits - 2 * CELL_PAD)
+        return size + 2 * CELL_PAD, round(size * 9 / 16) + 2 * CELL_PAD
 
     def set_tile_width(self, width: int) -> None:
         """The pick tile's width — the box every portrait in the app takes.
@@ -1045,7 +1192,8 @@ class MatrixTable(QWidget):
         n = self.sections()
         if n < 1:
             return 0            # nothing to measure; see `sections`
-        return max(HEADER_ICON, (room - 2 * CARD_MARGIN) // n - 4)
+        return max(HEADER_ICON,
+                   (room - 2 * CARD_MARGIN) // n - 2 * CELL_PAD)
 
     def portrait_ceiling(self) -> int:
         """The biggest portrait this card can draw. Read by the window,
@@ -1106,7 +1254,10 @@ class MatrixTable(QWidget):
         # follow it.
         digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
         size = max(floor, min(self._portrait_want(), self._portrait_room()),
-                   digits - 4)
+                   digits - 2 * CELL_PAD)
+        cells = self.table.itemDelegate()
+        if isinstance(cells, PairCellDelegate):
+            cells.box = size
         if size != getattr(self, "_icon_box", None):
             self._icon_box = size
             from .portraits import scaled

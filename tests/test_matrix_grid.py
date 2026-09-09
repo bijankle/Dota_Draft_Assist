@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import QApplication                    # noqa: E402
 
 from draft_assist.model.scoring import Matrix               # noqa: E402
 from draft_assist.ui import portraits                       # noqa: E402
-from draft_assist.ui.tables import (HEADER_ICON,            # noqa: E402
+from draft_assist.ui.tables import (CELL_PAD, HEADER_ICON,  # noqa: E402
                                     HEADER_ICON_MAX, BLANK_SIDE,
                                     MatrixTable, PortraitHeader)
 
@@ -137,7 +137,7 @@ def test_the_two_headers_agree_at_every_width(art, qapp):
     from draft_assist.ui.tables import WIDEST_TOTAL
     roomy = [built(qapp, width=w) for w in (700, 1400)]
     digits = roomy[0].table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
-    want = max(HEADER_ICON_MAX, digits - 4)
+    want = max(HEADER_ICON_MAX, digits - 2 * CELL_PAD)
     assert [boxes(t)[0] for t in roomy] == [want, want], \
         "with room to spare the size should stop chasing the window"
 
@@ -607,7 +607,8 @@ def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
     assert narrow._icon_box < 132
     assert narrow._icon_box == max(narrow._portrait_room(),
                                    narrow.table.fontMetrics()
-                                   .horizontalAdvance(WIDEST_TOTAL) + 6)
+                                   .horizontalAdvance(WIDEST_TOTAL)
+                                   + 10 - 2 * CELL_PAD)
 
 
 def test_the_grid_divides_by_its_own_sections(art, qapp):
@@ -661,3 +662,61 @@ def test_the_cap_is_taken_again_once_the_grids_are_filled(qapp):
         "when the window is resized")
     assert (source.index("_update_matrices")
             < source.index("_match_grid_portraits"))
+
+
+def test_the_border_runs_on_the_portrait_edge_and_never_across_it(art, qapp):
+    """"They cut into the portraits" — three rounds of this, three misses.
+
+    Every attempt placed the line by arithmetic, deriving an inset from
+    the cell padding, and every one landed a pixel or two inside the art
+    for a reason no sum could see: Qt's grid line takes a column out of
+    `visualRect`, a fitted 16:9 portrait lands wherever the rounding puts
+    it, and an even-width pen paints BACKWARDS from its coordinate, so one
+    number cannot be right on the left and on the right at once.
+
+    So the rule is checked against the pixels rather than the arithmetic,
+    on the two facts that matter: the outermost row and column of the
+    picture are untouched, and the line is nonetheless hard against it
+    with no daylight in between. Sampled a quarter of the way along,
+    clear of the number in the bottom-right corner, which is drawn in
+    these very colours.
+    """
+    from draft_assist.ui import theme
+    from draft_assist.ui.tables import PAIR_SIDE
+    table, _ = _shot(art, qapp)
+    grid = table.table
+    picture = grid.viewport().grab().toImage()
+    drawn = grid.itemDelegate().drawn
+    edges = {theme.GOOD, theme.BAD}
+
+    def side(row, col):
+        item = grid.item(row, col)
+        return (item.data(PAIR_SIDE) or None) if item is not None else None
+
+    checked = 0
+    for (row, col), face in sorted(drawn.items()):
+        mine = side(row, col)
+        if not mine:
+            continue
+        # A top edge, and a left edge: the two the staircase is made of.
+        for which, neighbour in (("top", side(row - 1, col)),
+                                 ("left", side(row, col - 1) if col else None)):
+            if row == 0 and which == "top":
+                continue        # the outer edge has no cell above to ask
+            if neighbour is None or neighbour == mine:
+                continue
+            if which == "top":
+                at = (face.left() + face.width() // 4, face.top())
+                out = (at[0], face.top() - 1)
+            else:
+                at = (face.left(), face.top() + face.height() // 4)
+                out = (face.left() - 1, at[1])
+            assert picture.pixelColor(*at).name() not in edges, (
+                f"the {which} border cuts into the portrait of cell "
+                f"{(row, col)} at {at}")
+            assert picture.pixelColor(*out).name() in edges, (
+                f"the {which} border of cell {(row, col)} is not against "
+                f"its portrait: {out} is "
+                f"{picture.pixelColor(*out).name()}")
+            checked += 1
+    assert checked >= 4, f"only {checked} boundaries were checked"

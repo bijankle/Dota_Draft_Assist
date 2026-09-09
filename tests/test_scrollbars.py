@@ -116,4 +116,11 @@ def test_a_real_scrollbar_paints_without_falling_back(qapp):
     # A dithered native track shows up as many near-identical greys; a
     # styled one is a small handful of flat colours.
     assert len(seen) <= 4, f"too many colours down the track: {sorted(seen)}"
+    # CLOSED, not merely scheduled for deletion. `deleteLater` needs an
+    # event loop to reach the deferred-delete, and a test run has none —
+    # so this stayed a SHOWN TOP-LEVEL WIDGET for the rest of the session
+    # and tripped the smoke test that counts the app's windows, whenever
+    # allocation happened to keep it alive that long.
+    box.close()
     box.deleteLater()
+    qapp.processEvents()

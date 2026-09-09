@@ -729,26 +729,58 @@ credentials, and put the account at risk. Do not go there.
   where the answer differs, which gives the stepped diagonal for free, in
   both colours, and cannot go stale when the columns resize the way a
   path computed from row and column numbers would.
-  **AND IT IS DRAWN AS MERGED RUNS, INSET INTO ITS OWN CELLS**
-  (`PairGrid._edges`, `_runs`, `INSET`). Two faults, both visible in a
-  screenshot the user circled. **The colours fought**: two cells of
-  different teams share one boundary, so each drew a line at effectively
-  the same pixel and one simply painted over the other — which one won
-  depended on iteration order, so it was inconsistent along the diagonal.
-  Each side's border is now inset INTO its own cell, so the two lines sit
-  apart with a hairline of background between them and BOTH colours are
-  always visible; that hairline is also the "very slight gap, only just
-  visible" that was asked for, and it costs no grid at all. **And the
-  line still broke at every portrait**: drawn one cell at a time, every
-  segment has two ends, and two ends meant to meet are a grid line and an
-  inset apart. Collinear edges are MERGED INTO RUNS first, so a team's
-  border along five cells is one line with two ends and there is nothing
-  left to fail to meet; each run is extended by half the pen at both ends
-  so it closes against the perpendicular run at a corner. The inset fixed
-  a third thing for free — the outer border used to be drawn a pixel
-  OUTSIDE the first column with a centred pen, so half of it fell beyond
-  the viewport and was clipped, which is what "a missing green line down
-  the entire left side" was.
+  **AND IT IS DRAWN ROUND THE PICTURE THE PAINTER ACTUALLY DREW**
+  (`PairCellDelegate.drawn`, `PairGrid._edges` / `_end`, `_ring`,
+  `_reach`). Four rounds were spent placing this line by ARITHMETIC — an
+  inset derived from `CELL_PAD` — and every one of them landed a pixel or
+  two inside the portraits, which is what "the border still looks like
+  shit" and "they cut into the portraits" were both about. The sum can
+  never be right, for three separate reasons that do not appear in it:
+  Qt's own grid line takes a column out of `visualRect`, so a cell is not
+  the width the column was set to; a fitted 16:9 portrait lands wherever
+  the rounding puts it; and **an even-width pen is not centred on its
+  coordinate** — a width-2 pen at x paints x-1 and x — so one number
+  clears the art on the left and covers a column of it on the right.
+  So the delegate RECORDS the rectangle it drew each portrait in, and the
+  border traces that. `_ring` turns a picture into the four coordinates
+  that put the pen flush against it, per side, and cannot be off by
+  construction. The two teams' lines therefore sit back to back in the
+  gutter with a hairline of background between them, which is both the
+  "only just visible" gap that was asked for and the reason both colours
+  are always visible — an edge drawn IN the gutter is drawn at the same
+  coordinates by the cell on each side, so one simply painted over the
+  other and which one won depended on iteration order.
+  **AND THE CELL'S PORTRAIT IS THE HEADER'S PORTRAIT.** The delegate
+  fitted its art to the whole cell rect while the header fitted its own
+  to `set_box`, so the same hero was drawn a few pixels WIDER in the body
+  than in the strip above it, touching the cell edge with no margin for a
+  border to sit in — which is why a line placed to clear the picture ran
+  straight across it, and why "the portraits at the top have a gap
+  between them" and the ragged border were one fault rather than two.
+  `_apply_icon_box` hands the delegate the same box it hands both
+  headers.
+  **THE SPAN OF EACH EDGE IS THE OTHER HALF**, and a run stopping at its
+  own portrait is what made this read as a box round every cell rather
+  than as two outlines. Each end asks the cell along its own line: it
+  carries on over the grid line where that cell draws the same edge; it
+  stops on THIS cell's ring where that cell is the other team, because
+  the perpendicular edge is there waiting; and where that cell is ours
+  but the one diagonally beyond it is too, the border steps out — the
+  perpendicular edge belongs to that DIAGONAL cell and the run has to
+  reach its ring to meet it. That third case is what a staircase is made
+  of and it was the one missing. `_reach` adds the half-pen a line needs
+  to cover the corner it lands on, or every step keeps a one-pixel notch.
+  A union of rectangles was tried early and is NOT the answer:
+  `QPainterPath.simplified` leaves rectangles that merely touch as
+  separate subpaths, so every cell came out boxed.
+  The inset fixed a third thing for free — the outer border used to be
+  drawn a pixel OUTSIDE the first column with a centred pen, so half of
+  it fell beyond the viewport and was clipped, which is what "a missing
+  green line down the entire left side" was.
+  `tests/test_matrix_grid.py` checks this against the PIXELS rather than
+  the arithmetic — the outermost row and column of each picture untouched,
+  and the line nonetheless hard against it — because four rounds of
+  reasoning about pixel sums got it wrong four times.
 
   **It is DRAWN over the viewport, not by the delegate** (`PairGrid.
   paintEvent`), and that is what makes it a line rather than a row of
@@ -768,10 +800,13 @@ credentials, and put the account at risk. Do not go there.
   the same way, by leaving out the edge facing the grid wherever the cells
   below it are the same team (`PortraitHeader.set_outline(open_edges=...)`,
   `_pair_open_edges`). Without that, one axis strip had a box round it
-  while the other was part of its triangle. A header's long edges also run
-  the section's WHOLE width with no inset: an inset one stops a pixel
-  short at each end, which across five sections is a border with a break
-  at every portrait. The model says `ally` and
+  while the other was part of its triangle. A header's long edges run
+  the section's WHOLE width and one pixel over into the next: a run that
+  stops at its own section is a border with a break at every portrait.
+  Its line is placed by `_ring` round the portrait it drew, exactly as a
+  cell's is — deriving an inset from the pen instead put the strip's
+  border hard against the section edge while the cells' sat somewhere
+  else, and a visible jog where the two meet is worse than either. The model says `ally` and
   `enemy`, never `radiant` and `dire`: which team is which side is
   something only the UI knows (`MatrixTable.set_team_colours`, set from
   `_update_team_labels`), and on Dire your own triangle is the red one.
