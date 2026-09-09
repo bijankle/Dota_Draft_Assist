@@ -1846,6 +1846,24 @@ credentials, and put the account at risk. Do not go there.
   milliseconds against a fault that is invisible until somebody clicks
   it. Once per process, never fatal, and silent — a Start-menu entry is
   not worth interrupting a first run about.
+  **AND WRITING THE FILE IS NOT ENOUGH ON THE RUN THAT WRITES IT**
+  (`announce_shortcut`, `SHChangeNotify`). The shell resolves an
+  AppUserModelID against its own INDEX of Start-menu shortcuts, and a
+  `.lnk` that has just appeared is not in it yet — so the taskbar button,
+  created moments later when the window is shown, still finds nothing.
+  By the next launch the index has caught up, which is exactly the shape
+  reported: blank on a fresh unzip, correct once an update has restarted
+  the app, "so its progress - but not fulling auto yet".
+  `SHChangeNotify` is the documented way to say "notice this now", and
+  BOTH the file and its folder are announced because they are indexed
+  separately. Never fatal — an un-announced shortcut is still a shortcut
+  and is picked up on the next start regardless, which is the behaviour
+  it is replacing rather than relying on.
+  Deciding WHICH icon file (`chosen_path`, `biggest_image`,
+  `covers_the_shell`) is byte reads and an image HEADER read, so it is
+  safe before a QApplication; only RENDERING is not. That is checked in
+  a subprocess, because if it ever stops being true the app stops
+  opening rather than failing a test.
   `write_shortcut` is the ONE implementation and `tools/make_shortcut.py`
   calls it: two copies could write two different shortcuts for one
   AppUserModelID, which is the same disagreement that had `shell_ico` and

@@ -828,3 +828,71 @@ def test_the_shortcut_refuses_early_rather_than_aborting(qapp, monkeypatch):
     monkeypatch.setattr(_sys, "platform", "win32")
     assert appicon.ensure_start_menu_shortcut() is False
     assert "before the QApplication" in appicon.shortcut_note
+
+
+def test_writing_the_shortcut_announces_it_to_the_shell(qapp, monkeypatch):
+    """**WRITING THE FILE IS NOT ENOUGH ON THE RUN THAT WRITES IT.**
+
+    The shell resolves an AppUserModelID against its own index of
+    Start-menu shortcuts, and a .lnk that has just appeared is not in it
+    yet — so the taskbar button, created moments later when the window is
+    shown, still finds nothing and draws blank. By the next launch the
+    index has caught up. That is exactly the shape reported: wrong on a
+    fresh unzip, right once an update has restarted the app.
+    """
+    import inspect
+
+    from draft_assist.ui import appicon
+
+    source = inspect.getsource(appicon.write_shortcut)
+    assert "announce_shortcut" in source, \
+        "a shortcut the shell has not noticed is a shortcut that does nothing"
+    # The announcement comes after the file is on disk, or there is
+    # nothing there for the shell to look at.
+    assert source.index("Save(") < source.index("announce_shortcut")
+
+    told = []
+    monkeypatch.setattr(appicon, "announce_shortcut", told.append)
+    # Off Windows the COM half cannot run, so drive the announcement
+    # directly — the point under test is that it is wired in, above.
+    appicon.announce_shortcut("/tmp/whatever.lnk")
+    assert told == ["/tmp/whatever.lnk"]
+
+
+def test_announcing_is_a_safe_no_op_off_windows(qapp):
+    """It is ctypes into shell32. Everywhere else it must do nothing and
+    say nothing, like every other Windows-only call in this module."""
+    from draft_assist.ui import appicon
+
+    appicon.announce_shortcut("/nowhere/at/all.lnk")
+    appicon.announce_shortcut(Path("/nowhere/at/all.lnk"))
+
+
+def test_deciding_which_icon_file_paints_nothing(qapp):
+    """`chosen_path` and its helpers are byte reads and an image HEADER
+    read, so they are safe before a QApplication — which is what lets the
+    shortcut be written early. If that ever stops being true, the app
+    stops opening rather than failing a test, so it is checked in a
+    subprocess with no QApplication at all."""
+    import subprocess
+    import sys
+
+    from draft_assist.config import REPO_ROOT
+
+    probe = """
+import sys
+sys.path.insert(0, %r)
+from draft_assist.ui import appicon
+assert appicon.gui_ready() is False
+appicon.chosen_path()
+appicon.default_path()
+appicon.supplied_path()
+print("SURVIVED")
+""" % str(REPO_ROOT)
+    done = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True, timeout=300,
+                          env={"QT_QPA_PLATFORM": "offscreen",
+                               "PATH": "/usr/bin:/bin"})
+    assert "SURVIVED" in done.stdout, (
+        f"deciding the path now paints.\nstdout: {done.stdout}\n"
+        f"stderr: {done.stderr}")

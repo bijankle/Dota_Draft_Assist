@@ -677,7 +677,53 @@ def write_shortcut(path=None) -> Path:
     except Exception:                   # noqa: BLE001 - see above
         pass
     link.QueryInterface(pythoncom.IID_IPersistFile).Save(str(link_path), 0)
+    announce_shortcut(link_path)
     return link_path
+
+
+# SHChangeNotify, and the two events that mean "there is a new item here".
+_SHCNE_CREATE = 0x00000002
+_SHCNE_UPDATEDIR = 0x00001000
+_SHCNF_PATHW = 0x0005
+
+
+def announce_shortcut(link_path) -> None:
+    """Tell the shell the Start menu changed, NOW.
+
+    **WRITING THE FILE IS NOT ENOUGH ON THE RUN THAT WRITES IT.** The
+    shell resolves an AppUserModelID against its own index of Start-menu
+    shortcuts, and a .lnk that has just appeared is not in that index
+    yet — so the taskbar button, created moments later when the window is
+    shown, still finds nothing and draws blank. By the NEXT launch the
+    index has caught up and the icon is correct, which is exactly the
+    shape the user reported: wrong on a fresh unzip, right after an
+    update restarts the app.
+
+    `SHChangeNotify` is the documented way to say "notice this now"
+    rather than waiting for the shell to get round to it. Both the file
+    and its folder are announced, because the two are indexed
+    separately. Never fatal: an un-announced shortcut is still a
+    shortcut, and it will be picked up on the next start regardless.
+    """
+    import sys
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        shell32 = ctypes.windll.shell32
+        shell32.SHChangeNotify.restype = None
+        shell32.SHChangeNotify.argtypes = [wintypes.LONG, wintypes.UINT,
+                                           ctypes.c_void_p, ctypes.c_void_p]
+        here = ctypes.c_wchar_p(str(link_path))
+        folder = ctypes.c_wchar_p(str(Path(link_path).parent))
+        shell32.SHChangeNotify(_SHCNE_CREATE, _SHCNF_PATHW,
+                               ctypes.cast(here, ctypes.c_void_p), None)
+        shell32.SHChangeNotify(_SHCNE_UPDATEDIR, _SHCNF_PATHW,
+                               ctypes.cast(folder, ctypes.c_void_p), None)
+    except Exception:                   # noqa: BLE001 - see the docstring
+        pass
 
 
 def ensure_start_menu_shortcut() -> bool:
