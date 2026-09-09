@@ -1639,10 +1639,21 @@ credentials, and put the account at risk. Do not go there.
   under a stylesheet drew the plate and nothing else, so the one thing on
   screen with the window hidden was a blank square. Same class of bug as
   QHeaderView refusing to honour `iconSize`, and the same answer: draw it.
-- **The app icon has three sources and ships none of them**
-  (`ui/appicon.py`): `assets/app.ico` or `.png` if the user put one there,
-  else **Bloodseeker's portrait out of `assets/portraits/base/`**, else a
-  drawn fallback. The user asked first for the Frozen Throne icon and then
+- **The app icon has FOUR sources** (`ui/appicon.py`): `assets/app.ico`
+  or `.png` if the user put one there, else **`assets/app-default.png`
+  (or `.ico`) if this repository ships one**, else **Bloodseeker's
+  portrait out of `assets/portraits/base/`**, else a drawn fallback.
+  **THE SHIPPED DEFAULT HAS A DIFFERENT NAME FROM THE USER'S, and that
+  is the whole point of it** (`DEFAULT_CANDIDATES`, `default_path`).
+  Setup ▸ Choose app icon… writes `app.ico`; if the committed default
+  used that name too, the ZIP updater would stamp on a choice somebody
+  made on their own machine every single update. Two names, two owners,
+  and the user's wins. `assets/app.*` stays gitignored for exactly that
+  reason and `assets/app-default.*` deliberately is not — a committed
+  file that is ignored would silently do nothing.
+  Whatever goes in the default slot has to be THE PROJECT'S TO
+  DISTRIBUTE: the same bar the bundled fonts had to clear, and the one
+  Valve's and Blizzard's artwork does not. The user asked first for the Frozen Throne icon and then
   for Bloodseeker's; both are someone else's artwork and this repository
   does not carry either. But the recogniser has ALREADY downloaded that
   portrait onto their disk, by a step they ran themselves, and pointing a

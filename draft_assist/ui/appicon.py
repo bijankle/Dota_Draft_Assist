@@ -1,10 +1,16 @@
 """The application's icon, and the one place that decides what it is.
 
-Three sources, in order, and none of them is a file this repository ships:
+Four sources, in order:
 
 1. `assets/app.ico` (or .png/.jpg), if the user put one there — by hand or
    through Setup ▸ Choose app icon…, which copies their file into place.
-   Their own artwork on their own machine, whatever they like.
+   Their own artwork on their own machine, whatever they like. Gitignored,
+   so an update never overwrites it.
+1b. `assets/app-default.png` (or .ico) — the icon this repository SHIPS,
+   if one has been committed. A DIFFERENT NAME from the above on purpose:
+   Setup ▸ Choose app icon… writes `app.ico`, so sharing the name would
+   make every update stamp on the user's own pick. Whatever goes here has
+   to be the project's to distribute.
 2. Bloodseeker's portrait, which the app has ALREADY downloaded into
    `assets/portraits/base/` for the recogniser. Valve's artwork, so it is
    not committed here — but it is already on their disk, fetched by a step
@@ -39,8 +45,16 @@ from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
 from ..config import ASSETS_DIR, REPO_ROOT
 from . import theme
 
-# Anything here wins over everything below, in this order.
+# Anything here wins over everything below, in this order. THESE ARE THE
+# USER'S OWN and are gitignored, so an update can never land on top of a
+# choice somebody made on their own machine.
 CANDIDATES = ("app.ico", "app.png", "app.jpg", "app.jpeg", "app.bmp")
+# The icon this repository SHIPS, if one has been committed. Deliberately
+# a different name from CANDIDATES rather than the same file: Setup ▸
+# Choose app icon… writes `app.ico`, and if the shipped default used that
+# name too, every update would overwrite the user's pick with it. Two
+# names, two owners, and the user's wins.
+DEFAULT_CANDIDATES = ("app-default.ico", "app-default.png")
 # The sizes Windows actually asks a taskbar icon for.
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 # What goes into a .ico for a shortcut. Fewer than SIZES: the file is read
@@ -145,11 +159,32 @@ def _build() -> QIcon:
         candidate = QIcon(str(path))
         if not candidate.isNull():
             return candidate
+    path = default_path()
+    if path is not None:
+        candidate = QIcon(str(path))
+        if not candidate.isNull():
+            return candidate
     art = _hero_pixmap() or _drawn(256)
     built = QIcon()
     for size in SIZES:
         built.addPixmap(_square(art, size))
     return built
+
+
+def default_path() -> Path | None:
+    """The icon this repository ships, if one has been committed.
+
+    Unlike everything around it this file IS in the repository, so it
+    reaches every install and a fresh download opens with the app's real
+    icon rather than the drawn fallback. Whatever goes here has to be the
+    project's to distribute — the same bar the bundled fonts had to clear,
+    and the one Valve's and Blizzard's artwork does not.
+    """
+    for name in DEFAULT_CANDIDATES:
+        path = ASSETS_DIR / name
+        if path.exists():
+            return path
+    return None
 
 
 def supplied_path() -> Path | None:
@@ -259,6 +294,9 @@ def shell_ico() -> Path | None:
     supplied = ASSETS_DIR / "app.ico"
     if supplied.exists():
         return supplied
+    shipped = ASSETS_DIR / "app-default.ico"
+    if shipped.exists():
+        return shipped
     try:
         return write_ico(ASSETS_DIR / "app-generated.ico")
     except Exception:                   # noqa: BLE001 - see the docstring
@@ -399,6 +437,8 @@ def source() -> str:
     """Where the icon came from — for the About box and for tests."""
     if supplied_path() is not None:
         return "assets"
+    if default_path() is not None:
+        return "default"
     if _hero_pixmap() is not None:
         return "portrait"
     return "drawn"
