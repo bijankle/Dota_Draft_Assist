@@ -15,12 +15,46 @@ press, a move, a release.
 from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
                           Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
-from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QHBoxLayout,
+from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QFrame, QHBoxLayout,
                              QLabel, QMenuBar, QPushButton, QSizeGrip,
                              QSizePolicy, QSpinBox, QTabBar,
-                             QTabWidget, QWidget)
+                             QTabWidget, QVBoxLayout, QWidget)
 
 from . import appicon, theme
+
+
+def card(title: str | None = None,
+         corner: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """A titled panel. `corner` rides on the heading's right-hand end.
+
+    That is where a control BELONGS when it changes the panel under it —
+    "how many of these do I want" is answered by looking at the answer, and
+    it was two menus away in Settings.
+
+    It lives HERE rather than in `app.py` because it is the app's one
+    container: the draft screen and the match history tab both build
+    themselves out of these, and a second card that only looked nearly the
+    same is exactly how two halves of one window start to disagree.
+    """
+    frame = QFrame()
+    frame.setProperty("card", True)
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(12, 10, 12, 12)
+    layout.setSpacing(8)
+    if title:
+        label = QLabel(title)
+        label.setProperty("heading", True)
+        if corner is None:
+            layout.addWidget(label)
+        else:
+            head = QHBoxLayout()
+            head.setContentsMargins(0, 0, 0, 0)
+            head.addWidget(label)
+            head.addSpacing(8)
+            head.addWidget(corner)
+            head.addStretch(1)
+            layout.addLayout(head)
+    return frame, layout
 
 # Tall enough for the app icon to be an icon rather than a bullet point.
 BAR_HEIGHT = 48

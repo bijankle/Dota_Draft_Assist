@@ -37,17 +37,14 @@ from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
-                             QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                             QHBoxLayout, QLabel,
                              QFileDialog,
                              QMainWindow, QMenuBar, QMessageBox,
                              QPlainTextEdit,
                              QDoubleSpinBox, QListWidget,
                              QPushButton,
                              QScrollArea, QSizePolicy, QSlider,
-                             QSplitter,
-                             QTableWidget,
-                             QStatusBar,
-                             QTableWidgetItem, QTabWidget,
+                             QStatusBar, QTabWidget,
                              QToolBar, QVBoxLayout, QWidget)
 
 from ..gsi.state import DRAFTING_STATES
@@ -72,7 +69,7 @@ from . import reasons
 from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
-from .chrome import ResizeGrip, TitleBar
+from .chrome import ResizeGrip, TitleBar, card
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
@@ -81,22 +78,15 @@ from .item_row import ItemRow
 from .flowlayout import fits_in_one_row
 from .suggest_row import SuggestRow
 from .manual import ManualDraft
-from .tables import (BreakdownPanel, MatrixTable, ValueItem,
-                     minimum_grid_width)
+from .tables import MatrixTable, minimum_grid_width
 from .task_dialog import TaskDialog
 from . import teams
+from .history_tab import HistoryTab
 from .teams import TeamPanel, minimum_panel_width
 from .tasks import TASKS
 
 # Loose mapping from queued position to OpenDota hero role tags, used ONLY
 # for the visual highlight (the list itself is never filtered by role).
-ROLE_TAGS = {
-    "carry": {"Carry"},
-    "mid": {"Carry", "Nuker"},
-    "offlane": {"Initiator", "Durable"},
-    "soft_support": {"Support", "Disabler"},
-    "hard_support": {"Support"},
-}
 ROLE_LABELS = [("(no role)", None), ("Carry (1)", "carry"), ("Mid (2)", "mid"),
                ("Offlane (3)", "offlane"), ("Soft support (4)", "soft_support"),
                ("Hard support (5)", "hard_support")]
@@ -104,7 +94,6 @@ ROLE_LABELS = [("(no role)", None), ("Carry (1)", "carry"), ("Mid (2)", "mid"),
 # in one place, so the two cannot drift apart.
 ROLE_BY_LABEL = {"Pos 1": "carry", "Pos 2": "mid", "Pos 3": "offlane",
                  "Pos 4": "soft_support", "Pos 5": "hard_support"}
-HIGHLIGHT = QColor(theme.HIGHLIGHT_ROW)
 
 
 def open_folder(path: Path) -> None:
@@ -176,35 +165,6 @@ STRIP_OF_PICK = 1.0
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
     st.replace("DOTA_GAMERULES_STATE_", "") for st in DRAFTING_STATES)
-
-
-def card(title: str | None = None,
-         corner: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
-    """A titled panel. `corner` rides on the heading's right-hand end.
-
-    That is where a control BELONGS when it changes the panel under it —
-    "how many of these do I want" is answered by looking at the answer, and
-    it was two menus away in Settings.
-    """
-    frame = QFrame()
-    frame.setProperty("card", True)
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(12, 10, 12, 12)
-    layout.setSpacing(8)
-    if title:
-        label = QLabel(title)
-        label.setProperty("heading", True)
-        if corner is None:
-            layout.addWidget(label)
-        else:
-            head = QHBoxLayout()
-            head.setContentsMargins(0, 0, 0, 0)
-            head.addWidget(label)
-            head.addSpacing(8)
-            head.addWidget(corner)
-            head.addStretch(1)
-            layout.addLayout(head)
-    return frame, layout
 
 
 class MainWindow(QMainWindow):
@@ -707,100 +667,17 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(draft_widget, "Draft")
 
-        # ----- Analysis tab: everything that ranks heroes NOT in the game.
-        # It was on the draft screen and competed with it: a list of 120
-        # candidates next to the ten picks made the ten harder to read.
-        analysis = QWidget()
-        alay = QVBoxLayout(analysis)
-        alay.setContentsMargins(12, 12, 12, 12)
-        split = QSplitter()
-        alay.addWidget(split, 1)
-
-        left = QWidget()
-        llay = QVBoxLayout(left)
-        llay.setContentsMargins(0, 0, 0, 0)
-        llay.setSpacing(8)
-        search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("Filter:"))
-        self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText(
-            "Filter the list below — type any part of a hero's name")
-        self.search_box.setClearButtonEnabled(True)
-        self.search_box.textChanged.connect(self._apply_filter)
-        search_row.addWidget(self.search_box, 1)
-        llay.addLayout(search_row)
-
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(
-            ["Hero", "Fit", "vs enemies", "with allies"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(
-            QTableWidget.SelectionMode.SingleSelection)
-        self.table.itemSelectionChanged.connect(self._on_candidate_selected)
-        # Sorting is on the numbers behind the cells, not their text: as
-        # text "+10.0" sorts above "+9.0" and a percentage column comes out
-        # alphabetical.
-        self.table.setSortingEnabled(True)
-        self.table.sortItems(1, Qt.SortOrder.DescendingOrder)
-        header = self.table.horizontalHeader()
-        header.setSortIndicatorShown(True)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col in range(1, 4):
-            header.setSectionResizeMode(
-                col, QHeaderView.ResizeMode.ResizeToContents)
-        llay.addWidget(self.table, 1)
-        split.addWidget(left)
-
-        # The right column holds three stacked cards. On a short window
-        # their combined minimum exceeds the height available, and Qt
-        # resolves that by crushing them — which is what sheared the bottom
-        # off the hero names. A scroll area means the column keeps its
-        # proper size and the window scrolls instead.
-        right = QWidget()
-        rlay = QVBoxLayout(right)
-        rlay.setContentsMargins(0, 0, 0, 0)
-        rlay.setSpacing(10)
-        right_scroll = QScrollArea()
-        right_scroll.setWidget(right)
-        right_scroll.setWidgetResizable(True)
-        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        right_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        split.addWidget(right_scroll)
-        split.setSizes([780, 520])
-
-        detail_card, dlay2 = card("Why this score")
-        # The breakdown is the panel that catches a plausible total reached
-        # for poor reasons, so it gets real estate rather than two lines,
-        # and the terms sort by size so the ones that moved the number are
-        # never buried under a dozen near-zeroes.
-        self.detail = BreakdownPanel()
-        self.detail.setMinimumHeight(190)
-        self.detail.show_message(
-            "Pick a hero from the list",
-            "…and every term behind its score appears here, split into "
-            "allies and enemies and sorted by how much it moved the "
-            "number.")
-        dlay2.addWidget(self.detail)
-        rlay.addWidget(detail_card, 3)
-
-        # Kept apart from "Why this score" on purpose: that panel is about
-        # heroes in THIS game, and mixing a ranked list of heroes nobody has
-        # picked into it made the breakdown look wrong.
-        counters_card, clay2 = card("Counters to a drafted hero")
-        self.counters = BreakdownPanel()
-        self.counters.setMinimumHeight(150)
-        self.counters.show_message(
-            "Click a filled draft slot",
-            "…and the heroes that beat it appear here. These are "
-            "candidates, not picks in this game.")
-        clay2.addWidget(self.counters)
-        rlay.addWidget(counters_card, 2)
-
+        # ----- Analysis tab: one account's match history, measured.
+        # It used to be the ranked list of every hero NOT in this game,
+        # with a breakdown and a counters list beside it. That answered
+        # "what should I pick", which the Draft tab answers in the one
+        # place it belongs — under the picks, where Suggested picks is that
+        # same list cut to its head. This tab now answers the other
+        # question, which the app was never asking: across a few hundred of
+        # your own games, what actually goes with winning. See
+        # `ui/history_tab.py`; nothing in the live loop touches it.
+        analysis = HistoryTab(say=self._say)
+        self.history_tab = analysis
         tabs.addTab(analysis, "Analysis")
 
         # ----- Debug tab: the picture answers what a log never will
@@ -3000,44 +2877,10 @@ class MainWindow(QMainWindow):
 
     def _refresh_views(self) -> None:
         draft = self._current_draft()
+        # Still the whole ranked list, even with the table that showed it
+        # gone: Suggested picks is its head, "Why this score" reads terms
+        # off it, and the item advice is filtered by the same roles.
         self.scored = scoring.score_all(self.ds, draft)
-        role = draft.my_role
-        tags = ROLE_TAGS.get(role, set()) if role else set()
-
-        self.table.blockSignals(True)
-        selected = self._selected_hero_id()
-        scroll_pos = self.table.verticalScrollBar().value()
-        # Populate unsorted, then re-enable: Qt re-applies whichever column
-        # the user chose, so a refresh every second does not fight them.
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(self.scored))
-        for row, s in enumerate(self.scored):
-            hero_roles = set(self.ds.heroes.get(s.hero_id, {})
-                             .get("roles", []))
-            # Every column is a signed interaction term now. The hero's own
-            # win rate is not one of them and is not shown: it is not in the
-            # score, and a percentage beside these numbers invited reading
-            # the two as the same kind of thing.
-            cells = [(s.name, None),
-                     (f"{s.score * 100:+.1f}", s.score),
-                     (f"{s.vs_total * 100:+.1f}", s.vs_total),
-                     (f"{s.with_total * 100:+.1f}", s.with_total)]
-            for col, (text, value) in enumerate(cells):
-                item = (QTableWidgetItem(text) if value is None
-                        else ValueItem(text, value))
-                item.setData(Qt.ItemDataRole.UserRole, s.hero_id)
-                if col and value:
-                    item.setForeground(
-                        QColor(theme.GOOD if value > 0 else theme.BAD))
-                if tags and tags & hero_roles:
-                    item.setBackground(HIGHLIGHT)
-                self.table.setItem(row, col, item)
-        self.table.setSortingEnabled(True)
-        self.table.blockSignals(False)
-        self.table.verticalScrollBar().setValue(scroll_pos)
-        if selected is not None:
-            self._select_hero_row(selected)
-        self._apply_filter()
         self._update_matrices(draft)
         self._update_suggestions(draft)
         self._update_items(draft)
@@ -3066,49 +2909,6 @@ class MainWindow(QMainWindow):
             self.synergy_matrix.show_pairs(
                 scoring.team_synergy_grid(self.ds, draft))
 
-    def _apply_filter(self) -> None:
-        needle = self.search_box.text().strip().lower()
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 0)
-            self.table.setRowHidden(
-                row, bool(needle and item and needle not in item.text().lower()))
-
-    def _selected_hero_id(self) -> int | None:
-        items_sel = self.table.selectedItems()
-        return items_sel[0].data(Qt.ItemDataRole.UserRole) if items_sel else None
-
-    def _select_hero_row(self, hero_id: int) -> None:
-        for row in range(self.table.rowCount()):
-            it = self.table.item(row, 0)
-            if it and it.data(Qt.ItemDataRole.UserRole) == hero_id:
-                self.table.selectRow(row)
-                return
-
-    def _on_candidate_selected(self) -> None:
-        hid = self._selected_hero_id()
-        if hid is None:
-            return
-        draft = self._current_draft()
-        terms = scoring.breakdown(self.ds, hid, draft)
-        by_id = {s.hero_id: s for s in self.scored}
-        s = by_id.get(hid)
-        subtitle = ""
-        if s:
-            subtitle = (f"draft fit {s.score * 100:+.1f} "
-                        f"(win rate {s.baseline * 100:.1f}%, not scored)")
-        banks = [("With ally", [(t.other_name, t.delta) for t in terms
-                                if t.kind != "vs"]),
-                 ("Vs enemy", [(t.other_name, t.delta) for t in terms
-                               if t.kind == "vs"])]
-        self.detail.show_banks(
-            self.ds.name(hid), subtitle, banks,
-            footnote=("Individual terms in percentage points, not the sum — "
-                      "check whether a plausible total has poor reasons. "
-                      "Click a heading to re-sort that side."),
-            empty=("No drafted heroes resolved yet — the score is pure "
-                   "baseline. Fill in the draft slots and the terms appear "
-                   "here."))
-
     def _on_slot_clicked(self) -> None:
         b = self.sender()
         hid = b.property("hero_id")
@@ -3117,10 +2917,12 @@ class MainWindow(QMainWindow):
             self._edit_slot(side, b.property("slot_index"))
             return
         # Clicking the focused hero again clears the view, so the way out
-        # is the same gesture as the way in.
+        # is the same gesture as the way in. The counters list that used to
+        # open beside it went with the Analysis tab: what beats this hero
+        # is a question about heroes NOT in the game, and the click view
+        # answers the one about the ten that are.
         self.focus = None if self.focus == (side, hid) else (side, hid)
         self._update_relations()
-        self._show_counters(hid, side)
 
     def _update_relations(self) -> None:
         """Write the signed numbers above the other nine slots.
@@ -3188,25 +2990,6 @@ class MainWindow(QMainWindow):
                        (tile.property("hero_id") for tile in panel.slots)
                        if hid is not None and hid in net]
             panel.set_total(sum(figures) if figures else None)
-
-    def _on_drafted_clicked(self) -> None:
-        """Kept for callers that click a slot expecting the counters view."""
-        b = self.sender()
-        hid = b.property("hero_id")
-        if hid is not None:
-            self._show_counters(hid, b.property("side"))
-
-    def _show_counters(self, hid: int, side: str) -> None:
-        draft = self._current_draft()
-        drafted = set(draft.allies) | set(draft.enemies)
-        counters = scoring.counters_to(self.ds, hid, exclude=drafted)[:15]
-        cap = "counters to" if side == "enemy" else "what beats your"
-        self.counters.show_banks(
-            f"Best against {self.ds.name(hid)}",
-            f"{cap} {side} pick",
-            [("Hero", [(name, delta) for _chid, name, delta in counters])],
-            footnote="Percentage points against this hero alone.",
-            empty="No matchup data for this hero yet.")
 
     def _why_this_hero(self, hero_id: int) -> None:
         """The terms behind a suggestion's number — never a story about it.
@@ -3594,6 +3377,9 @@ class MainWindow(QMainWindow):
         # to a port nobody is listening on any more.
         for dialog in list(self._open_tasks):
             dialog.close()
+        # And a match-history run owns a thread. A QThread destroyed while
+        # it is still running takes the process down with it.
+        self.history_tab.shutdown()
         super().closeEvent(event)
 
     def _save_snapshot(self) -> None:

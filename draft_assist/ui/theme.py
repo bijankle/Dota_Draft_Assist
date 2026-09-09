@@ -53,7 +53,6 @@ BODY_PX = 18
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
 # app's own voice raised rather than a second typeface arguing with it.
 TITLE_FAMILY = "Alegreya Black"
-HIGHLIGHT_ROW = "#28352c"
 # Alegreya, under the SIL Open Font License — registered from
 # `assets/fonts/` at startup by `ui/fonts.load_bundled` rather than
 # installed. Everything after it is the fallback if the files are not

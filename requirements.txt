@@ -5,3 +5,6 @@ requests>=2.31
 PyYAML>=6.0
 python-dotenv>=1.0
 pytest>=8.0
+# The match history analyser's export. Two sheets, one of them an autofilter
+# over every match, which is the one thing a CSV cannot carry.
+openpyxl>=3.1

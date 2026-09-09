@@ -528,6 +528,81 @@ credentials, and put the account at risk. Do not go there.
   from where" lives. Note for tests: a widget on a tab that is not current
   is hidden BY THE TAB WIDGET, so `isVisibleTo(window)` there answers "is
   this the open tab", not "did the app hide this" — ask `isHidden()`.
+- **THE ANALYSIS TAB IS THE MATCH HISTORY ANALYSER** (`draft_assist/
+  history/`, `ui/history_tab.py`). It was the ranked list of every hero NOT
+  in this game, with "Why this score" and a counters list beside it; all
+  three are GONE at the user's request. That list answered "what should I
+  pick", which the Draft tab already answers in the one place it belongs —
+  under the picks, where Suggested picks is that same list cut to its head
+  and clicking a suggestion still shows the terms behind its number. The
+  tab now answers the question the app was never asking: across a few
+  hundred of your own games, what actually goes with winning.
+  It came from a separate repository — a single-file browser page,
+  `bijankle/DotaGameHistoryAnalyser` — and the port keeps its statistics
+  exactly. **The datum is the player's OWN win rate** across the filtered
+  sample, and every split asks whether a bucket is distinguishable from
+  sampling noise against it: the standard error on a proportion is
+  sqrt(p(1-p)/k), and the sigma is how many of those the bucket sits away.
+  Not 50%, not a rank average — any other datum answers a different
+  question.
+  **TWO FLOORS doing two jobs.** `MIN_BUCKET` (8) is how many games a
+  bucket needs before it may produce a FINDING; below it the row still
+  appears, muted, so what was measured is visible without inviting anyone
+  to act on it. `MIN_DISPLAY` (2) keeps single-game buckets off the screen
+  entirely — a rate next to an n of one is noise wearing a number — while
+  the workbook still carries them and the block header says how many were
+  hidden.
+  **TWELVE ANALYSES RUN AT ONCE**, so some buckets clear the bar by chance
+  alone, and the tab says so on its own front page. A finding is a
+  hypothesis to test against the next hundred games. Do not add a summary
+  sentence that reads as a conclusion.
+  **THE TWO FAMILIES ARE HEADLINED APART** (`Report.split_findings`).
+  Contribution metrics separate far harder than win-rate splits because
+  they are partly structural — a mid laner out-damages a hard support by
+  construction — so one merged ranking by sigma would be nothing but hero
+  damage rows with every behavioural finding buried under them.
+  **AN ITEM IS MEASURED AGAINST THAT HERO'S OWN RATE**, never the
+  player's: comparing a Pudge item against an overall rate dominated by
+  other heroes would measure the hero and not the item. Read that block
+  with more suspicion than the rest anyway — items are the FINAL
+  inventory, so an expensive one is partly a consequence of the game going
+  well rather than a cause of it.
+  **NOTHING IS INFERRED TO FILL A GAP.** OpenDota populates the parsed
+  fields — `lane_role` above all — on a minority of matches and frequently
+  returns a null `party_size`; those go into an explicit unknown bucket
+  that never produces a finding. Matches under five minutes are abandons
+  and are dropped. A win is `player_slot < 128` agreeing with
+  `radiant_win`, and getting that backwards would invert every number in
+  the tab. Sessions are cut where more than three hours pass between the
+  end of one match and the start of the next, and the tilt check only
+  counts the previous result INSIDE a session — a loss you slept on is not
+  charged against the next morning.
+  **Comparing winning games against losing games is deliberately absent.**
+  Winning hands you towers, gold and a lower death count by construction,
+  so those comparisons separate at eight to ten sigma and report only that
+  wins looked like wins.
+  **IT RUNS WHEN ASKED AND NEVER OTHERWISE.** The app's live loop makes no
+  network calls and this does not change that: a run is a button, on a
+  QThread, and `MainWindow.refresh` never touches it. The thread is
+  stopped and WAITED FOR in `closeEvent` — a QThread destroyed while still
+  running takes the process with it, and closing mid-fetch is exactly when
+  that happens.
+  **THE ACCOUNTS ARE REMEMBERED LOCALLY, and that is the feature**
+  (`history/store.py`, `history_accounts.json`, gitignored beside
+  `ui_settings.json`). The tab opens saying when that account was last
+  measured and with what, so running it again is one press — and sending
+  someone a copy of this app sends them none of it. What is stored is a
+  BOOKMARK, not a copy of anybody's match history: the id, the name, the
+  date and the headline. The workbook is where a run is kept.
+  **A DISPLAY NAME IS REFUSED, deliberately.** OpenDota's `/search` scans
+  a very large table and times out more often than it answers, so the tab
+  says to use the friend ID rather than hanging on it. `opendota.search`
+  exists and is not wired to a control.
+  **The export is TWO SHEETS**, at the user's request: every match in one
+  under an autofilter, the whole report in the other. The browser version
+  wrote one sheet per analysis plus a summary, and thirteen tabs is a
+  worse way to read the same thing than one you can scroll. openpyxl is in
+  `requirements.txt` for it — a CSV pair cannot carry an autofilter.
 - **The Draft tab is the whole board and nothing else.** Your five on the
   left, theirs on the right (`ui/teams.py`), because that is where they sit
   on the pick bar, with the two grids directly under the sides they
@@ -654,11 +729,12 @@ credentials, and put the account at risk. Do not go there.
   measuring inside the table would be measuring the last answer, and the
   portraits shrank a few pixels on every layout pass. The empty outline
   works the same numbers out (`_blank_metrics`) rather than using a
-  constant, so the shape does not change when the first hero arrives. Everything that ranks heroes NOT in the game —
-  the ranked list, the filter, "Why this score", the counters list and the
-  items panel — moved to the **Analysis** tab, because 120 candidates
-  beside the ten picks made the ten harder to read. There is no longer a
-  separate Matrix tab.
+  constant, so the shape does not change when the first hero arrives.
+  Everything that ranked heroes NOT in the game — the list, the filter,
+  "Why this score" and the counters list — is GONE rather than moved: it
+  went to the Analysis tab when it left the draft screen, and the Analysis
+  tab is now the match history analyser. The item advice stayed, as the
+  strip under the picks.
 - **Every tile in the app is the same tile** (`ui/tilekit.py`). There are
   three strips of them — the ten picks, the suggested picks and the items
   — and they had drifted into three designs: hero names 11pt bold on a
@@ -1743,5 +1819,9 @@ listener itself is testable by POSTing payloads to it, which the tests do.
 
 ## Out of scope for the prototype
 
-Ban-phase handling and the personal match-history review tool. Don't preclude
-them architecturally; don't build them.
+Ban-phase handling. Don't preclude it architecturally; don't build it.
+
+The personal match-history review tool WAS on this list and is now built —
+see the Analysis tab above. It arrived as a whole separate repository
+(`bijankle/DotaGameHistoryAnalyser`, a single-file browser page) and was
+folded in at the user's request; that repository is theirs to archive.

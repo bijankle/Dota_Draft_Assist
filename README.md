@@ -175,43 +175,46 @@ The window opens even before anything is downloaded and tells you what to do
 next. It also opens when Dota is not running: capture is simply unbound, and
 the Capture menu lets you pick a source.
 
-**Draft tab** — the draft itself and the role/pick controls sit on the LEFT
-with the ranked hero list (never filtered by role; heroes matching your
-queued role are highlighted) and a filter box, leaving the right column to
-the panels below.
+**Draft tab** — the whole board and nothing else. Your five on the left,
+theirs on the right, in the same order Dota's own pick bar puts them, with
+**Suggested picks** and the **item strip** under them and the two grids at
+the bottom under the sides they describe. **Counters** is every
+ally-versus-enemy pairing, positive favouring you: a comfortable total can
+conceal one lane that loses badly, and only the cells show it.
+**Synergies** carries both teams in one square — synergy is symmetric, so
+each team's own pairings only ever fill half of it, and the other half is
+exactly the shape of the other team's. Yours is the lower-left triangle,
+outlined in your side's colour.
 
-Entering picks: type a few letters and press **Enter** — the pick lands in
-the next empty slot on the active side and the box stays focused for the
-next one. **Ctrl+Tab** flips between Enemy and Ally; plain **Tab** walks the
-ten slots. Clicking an empty slot opens the picker for that slot only and
-never chains into the next. A hero already in the draft cannot be entered
-again, on either team. **Right-click a slot** to change it, clear it, or
-give it a role (Pos 1–5), which then shows on the slot — the role belongs to
-the lane, so it survives the hero being replaced — or **move it to the other
-team**, which exchanges it with the hero opposite so the draft stays 5v5.
-That is for when the game's line-up comes back with one hero on the wrong
-side; **⇅ Swap teams** is for when the whole reading is backwards.
+Entering picks: **click a slot** and use the picker. **Right-click** a
+slot to change it, clear it, name it as your own pick, or give it a role
+(Pos 1–5), which belongs to the lane and survives the hero being replaced.
+**Drag** a tile onto the other team to exchange it with the hero opposite,
+so the draft stays 5v5, or within a team to swap two positions. Clicking a
+pick shows what every other hero on the board is worth beside or against
+it; clicking it again clears that.
 
-Two panels sit on the right, kept apart on purpose:
+**Analysis tab** — your own match history, measured. Put in a Dota friend
+ID (or a Steam ID, or a profile URL) and press **Run**: it reads the public
+match history from OpenDota and reports which conditions correlate with
+winning — hero, match length, time of day, day of week, position in a
+session, the previous game's result, side, party size, lane role, form by
+month, hero damage and weighted KDA per hero, and the final inventory on
+your three most played heroes.
 
-- **Why this score** — the selected candidate's terms against the heroes in
-  *this* game, allies in one bank and enemies in the other.
-- **Counters to a drafted hero** — click a filled slot and the heroes that
-  beat it are listed here. These are candidates, not picks in this game,
-  which is why they no longer share a panel with the breakdown.
+Your own win rate across the sample is the datum, and every split asks
+whether a bucket sits far enough off it to be distinguishable from sampling
+noise: at least eight games in the bucket and 1.5 standard errors away.
+Twelve analyses run at once, so some buckets clear that bar by chance — a
+finding is a hypothesis to test against the next hundred games, not a
+conclusion. **Export workbook** writes two sheets: every match in one under
+an autofilter, and the whole report in the other.
 
-**Matrix tab** — what a summed score hides. **Your team against theirs** is
-every ally-versus-enemy pairing in a 5x5 grid, positive favouring you: a
-comfortable total can conceal one lane that loses badly, and only the cells
-show it. **Your team with itself** is the synergy grid, each pair appearing
-once — synergy is symmetric, so the lower half would only repeat the upper.
-
-Every table sorts on click, and on the **numbers behind** the cells rather
-than their text — sorted as text, `+9.0` lands above `+10.0` and a percentage
-column comes out alphabetical. A sort you choose survives the once-a-second
-refresh. **Why this score** puts allies and enemies in two banks side by
-side, each ordered by size so the terms that actually moved the number are on
-top; clicking one bank's heading re-sorts only that bank.
+Accounts you have run are remembered *on this machine only* — the file is
+gitignored, like the settings and the API key — so the tab opens saying
+when that account was last measured, and a copy of this app carries
+nobody's history. If nothing comes back, the usual cause is **Expose
+Public Match Data** being switched off in the Dota 2 settings.
 
 **Debug tab** — the captured frame with the crop boxes drawn on it and the
 match confidence beside each slot. This answers almost every recognition

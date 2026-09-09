@@ -35,6 +35,11 @@ Thumbs.db
 .vscode/
 ui_settings.json
 preferences.json
+# Which accounts the match history analyser has looked at. Local only, so
+# a copy of this app carries nobody's account numbers or results.
+history_accounts.json
+# Workbooks the analyser exported.
+history_reports/
 
 # Recording sessions: payloads, frames and state logs from real games.
 recordings/
