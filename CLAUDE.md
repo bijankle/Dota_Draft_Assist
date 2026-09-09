@@ -775,15 +775,42 @@ credentials, and put the account at risk. Do not go there.
   is an ordinary last ROW of the table rather than a second header, because
   Qt has no bottom header and a separate widget under the table would not
   keep its columns in step with it.
-  **THE TWO TRIANGLES TOUCH, and there is no empty diagonal.** Five a side
-  is ten pairs each and twenty across both teams, which is exactly a four-
-  by-five rectangle — so the lower triangle is LIFTED ONE ROW (it starts at
-  ally 1), every cell in the body is a real pair, and with the axis row the
-  table is five rows by five: the same five counters has. That is the whole
-  reason the two cards line up at the bottom as well as the top, with
-  neither told anything about the other. The first version left the
-  diagonal empty on the grounds that a hero with itself means nothing, and
-  paid a whole row of grid for a gap.
+  **THE TWO TRIANGLES ARE ONE COLUMN APART, and that is why this grid is
+  SIX wide for five a side** (`scoring.team_synergy_grid`,
+  `tables.ENEMY_SHIFT`). They used to TOUCH along the stepped diagonal,
+  which is the tightest the pairs can be packed — ten pairs each is
+  exactly a four-by-five rectangle with no cell to spare — and it made
+  this card FIVE across where counters beside it is six (five columns
+  plus the portrait column down its side). Two cards of the same width
+  divided into a different number of portraits draw those portraits at
+  different sizes, so the same hero was visibly bigger in one grid than
+  in the other.
+  At the user's request each half moves half a portrait outward: yours
+  flush LEFT, theirs flush RIGHT, one empty cell walking down the
+  diagonal between them. Six sections against counters' six, so the two
+  scale to one portrait with neither told anything about the other —
+  the same way their heights already agreed. **Everything about the
+  enemy half is therefore off by one**: at body (row, col), `col <= row`
+  is your pair (ally row+1, ally col), `col == row + 1` is the gap, and
+  `col >= row + 2` is their pair (enemy row, enemy **col - 1**). The
+  enemy AXIS moved with its triangle — enemy `i` heads column `i + 1`
+  and column 0 heads nothing — because a face standing over a column it
+  does not name is an axis that lies. The ally axis stays flush left
+  with the last column blank, and that blank still needs an ITEM: the
+  outline reads `PAIR_SIDE` off whatever is there and a missing item is
+  a cell it cannot ask about.
+  The lower triangle is still LIFTED ONE ROW (it starts at ally 1),
+  which is what keeps the body one row shorter than it is wide and the
+  card the same height as counters. The first version left the diagonal
+  empty on the grounds that a hero with itself means nothing, and paid a
+  whole ROW for a gap; this pays a COLUMN for one deliberately, and buys
+  the matching portrait size with it.
+  **The two only agree once both teams are full.** Counters is as wide
+  as the ENEMY line-up plus its portrait column while synergy is as wide
+  as the LONGER team plus the gap, so at 5v4 counters is five sections
+  and synergy six. That is the honest answer to a half-drafted board
+  rather than a mismatch — on the 5v5 the card is read at, they are
+  equal.
   **WHICH TEAM GETS WHICH TRIANGLE: yours is the lower left**, at the
   user's request. The card sits under your own five and the lower-left
   triangle reaches the same edge that panel does; play Radiant — the left
@@ -878,26 +905,26 @@ credentials, and put the account at risk. Do not go there.
   `enemy`, never `radiant` and `dire`: which team is which side is
   something only the UI knows (`MatrixTable.set_team_colours`, set from
   `_update_team_labels`), and on Dire your own triangle is the red one.
-  **A TOTAL WEARS A SIGMA, AND COUNTERS HAS THEM NOW** (`tables.SIGMA`,
-  `sigma`, `WIDEST_TOTAL`). At the user's request: these cards carry two
-  kinds of figure — one pair, and the sum of a row or column — and
-  nothing said which was which. Every total takes a capital sigma ahead
-  of the digits: the synergy grid's two axis rows, and counters' row and
-  column headers, which used to carry no figure at all. They go ON THE
-  PORTRAIT, in the same corner as every other number, rather than into a
-  margin row and column — the Sigma row and column stay OFF, because a
-  total drawn on the face it belongs to costs no grid, where a margin
-  would have cost a section of width and made every portrait smaller.
-  `WIDEST_TOTAL` is what the column is measured against now: the sigma
-  sits ahead of the digits, so measuring the bare number would have put
-  "..." where the totals are.
-
-  **EACH HERO'S TOTAL IS ON ITS FACE**, in both axis rows: the sum of that
-  hero's four pairs with its own team, in the same badge and the same
-  bottom-right corner as every other number in the app. It is NOT a row or
-  column total off the drawn grid — a hero's pairs are split between a row
-  and a column of its own triangle, so summing what is drawn in either
-  direction alone is a partial answer.
+  **NEITHER GRID DRAWS A TOTAL ANY MORE**, at the user's request — "it
+  causes more confusion than anything", and it REVERSES what this file
+  said two rounds ago. The axis portraits briefly carried each hero's
+  sum with its own team, wearing a capital sigma to say it was a sum;
+  counters' row and column headers took the same treatment so the two
+  cards would agree. The trouble is that every other figure on these
+  cards is ONE PAIR — this hero against that one — and a sum of five of
+  them sat in the same badge, at the same size, in the same corner,
+  distinguished only by a glyph most people do not read as an operator.
+  Two kinds of number that look identical is worse than one kind and a
+  gap. `Matrix.row_totals` / `col_totals` and `SynergyGrid.ally_totals`
+  are still computed and still reach the workbook; what changed is only
+  that the grids stopped printing them, and the Sigma row and column
+  were already off.
+  So a column is measured against `WIDEST_CELL` again rather than
+  `WIDEST_TOTAL`. That mattered while the totals were drawn — the sigma
+  sits ahead of the digits, so measuring the bare number put "..." where
+  a total was — and now it is the narrower measure that is correct,
+  which also stops it forcing a floor under the portrait size the card
+  did not need.
   **THE AXIS ROWS ARE NOT VEILED.** They are the subject: they name the ten
   heroes the card is about. Knocking them back the way a cell behind a
   number is made the bottom row read as a different kind of thing from the
@@ -1093,13 +1120,16 @@ credentials, and put the account at risk. Do not go there.
   So the picks fill their card, which sets the app's box, and everything
   else follows it: the strips take it outright, and a grid takes it as a
   CEILING and goes smaller only when its own sections will not fit
-  (`_portrait_room`). Synergy is five across, like the picks, so it lands
-  on exactly the same number and its grid reaches the same left and right
-  edges as the tiles above it. **Counters is the one exception and can
-  only be**: six across, it fills its card at about five sixths of the
-  size. Dropping its portrait column — putting each row's face into its
-  own cells the way synergy does — is the single change that would make
-  all three equal again, and it has NOT been made.
+  (`_portrait_room`). **BOTH GRIDS ARE SIX ACROSS** — counters' five
+  columns plus its portrait column, and synergy's five plus the gap
+  between its triangles — so the two agree with each other exactly and
+  both come out about five sixths of a pick tile. That is the trade the
+  user chose when the synergy grid was widened: the two matrices
+  matching each other was the point, and five picks filling a card
+  cannot equal six sections filling an equal card. All three being one
+  size would need counters to drop its portrait column, putting each
+  row's face into its own cells the way synergy does, and that has NOT
+  been done.
   `TILE_MAX` is a sanity ceiling rather than a working size for the same
   reason. At 132 it was a size an ordinary window reaches and passes, so
   past about 1500px the picks stopped growing and the complaint came

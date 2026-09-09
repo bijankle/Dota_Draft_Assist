@@ -205,6 +205,13 @@ WIDEST_CELL = "+12.34"
 # total is that: the sigma sits ahead of the digits, so measuring the bare
 # number would put "..." where the totals are.
 WIDEST_TOTAL = SIGMA + " " + WIDEST_CELL
+# NOT WHAT THE COLUMNS ARE MEASURED AGAINST ANY MORE. It was, while the
+# axis portraits carried a hero's total: the sigma sits ahead of the
+# digits, so measuring the bare number put "..." where the totals were.
+# The totals are gone at the user's request, so the widest thing a cell
+# can hold is one pair again and the columns went back to `WIDEST_CELL` —
+# which is narrower, so it also stops forcing a floor under the portrait
+# size that the card did not need.
 
 
 def sigma(value: float) -> str:
@@ -432,6 +439,13 @@ PAIR_SIDE = PAIR_HERO + 3
 # knocking them back made the bottom row read as another kind of thing
 # from the identical portraits along the top.
 PAIR_VEIL = 110
+# HOW FAR THE ENEMY HALF SITS ALONG. The synergy grid is one column wider
+# than a team so the two triangles stand a whole portrait apart instead of
+# sharing a stepped diagonal — yours flush left, theirs flush right — and
+# that makes this card six sections across, the same as counters, so the
+# two scale to one portrait size. Everything about the enemy half is
+# therefore off by one: its cells, and the header naming them.
+ENEMY_SHIFT = 1
 
 
 class PairGrid(QTableWidget):
@@ -1001,6 +1015,8 @@ class MatrixTable(QWidget):
                     item.setData(SORT_ROLE, cell.delta)
                 self.table.setItem(row, col, item)
         for col, (hero_id, name) in enumerate(grid.allies):
+            if col >= columns:
+                break
             item = QTableWidgetItem()
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setData(PAIR_HERO, hero_id)
@@ -1011,11 +1027,20 @@ class MatrixTable(QWidget):
             # the pairs as one region instead of drawing a line between a
             # team and its own portraits.
             item.setData(PAIR_SIDE, "ally")
-            total = grid.ally_totals.get(hero_id)
-            if total is not None:
-                item.setData(PAIR_VALUE, total)
+            # NO TOTAL, at the user's request — see `_set_headers`. The
+            # portrait still names the hero, which is the axis's job; the
+            # sum of its four pairs was a second kind of number wearing
+            # the first kind's badge.
             item.setToolTip(name)
             self.table.setItem(rows, col, item)
+        # The ally axis is flush LEFT under its own triangle, so the last
+        # column of the bottom row heads nothing. It still needs an item:
+        # `_edges` reads `PAIR_SIDE` off whatever is there, and a missing
+        # one is a cell the outline cannot ask about.
+        for col in range(len(grid.allies), columns):
+            blank = QTableWidgetItem()
+            blank.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.table.setItem(rows, col, blank)
 
         self._set_pair_columns(grid)
         header = self.table.horizontalHeader()
@@ -1043,33 +1068,40 @@ class MatrixTable(QWidget):
 
     def _set_pair_columns(self, grid) -> None:
         """The TOP header is the ENEMIES, whose triangle it sits on; there
-        is no left header at all."""
+        is no left header at all.
+
+        SHIFTED ONE COLUMN RIGHT, with the triangle it names. The grid is
+        a column wider than a team now (see `scoring.SynergyGrid`) and
+        the enemy half is flush right, so enemy `i` heads table column
+        `i + 1` and column 0 heads nothing — a face has to stand over its
+        own pairs or the axis is naming the wrong column.
+        """
         from .portraits import portrait
-        by_index, totals = {}, {}
+        by_index = {}
+        used = set()
         for index, (hero_id, name) in enumerate(grid.enemies):
+            column = index + ENEMY_SHIFT
+            if column >= self.table.columnCount():
+                break
+            used.add(column)
             item = QTableWidgetItem()
-            total = grid.enemy_totals.get(hero_id)
             if portrait(hero_id) is None:
-                # No art to print a badge on, so the total goes in the
-                # text beside the name rather than being dropped.
-                item.setText(name if total is None
-                             else f"{name} {total * 100:+.2f}")
+                item.setText(name)
             else:
-                by_index[index] = hero_id
-                if total is not None:
-                    totals[index] = total
+                by_index[column] = hero_id
                 item.setToolTip(name)
-            self.table.setHorizontalHeaderItem(index, item)
-        # BLANK THE REST. The grid is as wide as the LONGER team, so a
-        # 5v4 leaves a column with no hero to head it — and a header
-        # section with no item of its own draws Qt's default label, which
-        # came out as a white box with "5" in it in the corner of the card.
-        for index in range(len(grid.enemies), self.table.columnCount()):
-            self.table.setHorizontalHeaderItem(index, QTableWidgetItem(""))
+            self.table.setHorizontalHeaderItem(column, item)
+        # BLANK THE REST — column 0 above the ally triangle, and whatever
+        # a 5v4 leaves over. A header section with no item of its own
+        # draws Qt's default label, which came out as a white box with a
+        # number in it in the corner of the card.
+        for index in range(self.table.columnCount()):
+            if index not in used:
+                self.table.setHorizontalHeaderItem(index, QTableWidgetItem(""))
         head = self.table.horizontalHeader()
         if isinstance(head, PortraitHeader):
             head.set_heroes(by_index)
-            head.set_values(totals)
+            head.set_values({})
 
     def _show_outline(self) -> None:
         """Five by five of nothing — the shape the grid will have."""
@@ -1129,7 +1161,7 @@ class MatrixTable(QWidget):
         """
         if not getattr(self, "_icon_headers", False):
             return None, BLANK_ROW
-        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
         size = max(min(self._portrait_want(), self._portrait_room()),
                    digits - 2 * CELL_PAD)
         return size + 2 * CELL_PAD, round(size * 9 / 16) + 2 * CELL_PAD
@@ -1252,7 +1284,7 @@ class MatrixTable(QWidget):
         # stopped being a grid. Measured rather than guessed at, because
         # the body size has been raised twice and a constant does not
         # follow it.
-        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
+        digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
         size = max(floor, min(self._portrait_want(), self._portrait_room()),
                    digits - 2 * CELL_PAD)
         cells = self.table.itemDelegate()
@@ -1327,17 +1359,16 @@ class MatrixTable(QWidget):
                 setter(index, item)
             if isinstance(header, PortraitHeader):
                 header.set_heroes(by_index)
-                # EACH HERO'S TOTAL, ON ITS OWN FACE, at the user's
-                # request — a column header carries that enemy's whole
-                # column and a row header that ally's whole row, with a
-                # sigma to say it is a sum. This is the same rule the
-                # synergy axis rows follow, so the two cards agree, and it
-                # is why the Sigma row and column stay OFF: a total drawn
-                # on the portrait it belongs to costs no grid at all,
-                # where a margin row and column would have cost a section
-                # of width each and made every portrait smaller.
-                totals = (matrix.col_totals if header is
-                          self.table.horizontalHeader() else matrix.row_totals)
-                header.set_values({i: v for i, v in enumerate(totals)
-                                   if i < len(ids)})
+                # NO TOTAL ON THE FACE, at the user's request: "it
+                # causes more confusion than anything". Every other figure
+                # on these cards is ONE PAIR — this hero against that
+                # one — and a sum of five of them sat in the same badge,
+                # the same size and the same corner, distinguished only by
+                # a sigma most people do not read as an operator. Two
+                # kinds of number that look identical is worse than one
+                # kind and a gap.
+                # `Matrix.row_totals` / `col_totals` are still computed
+                # and still go into the workbook; what changed is only
+                # that the grid stopped drawing them.
+                header.set_values({})
         self._apply_icon_box()

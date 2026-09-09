@@ -130,13 +130,16 @@ def test_the_two_headers_agree_at_every_width(art, qapp):
     # have liked to be, so the picture is whichever of the two is bigger.
     # Above the width where the room runs out, that is the whole answer and
     # more window does not move it.
-    # The widest figure is a TOTAL — the sigma sits ahead of the digits —
-    # and this reads the module's own constant rather than repeating the
-    # string, so a change to what a cell can hold cannot leave the check
-    # measuring something the app stopped drawing.
-    from draft_assist.ui.tables import WIDEST_TOTAL
+    # The widest figure is ONE PAIR again. It was a total, while the axis
+    # portraits carried a hero's sum — the sigma sits ahead of the digits,
+    # so measuring the bare number put "..." where the totals were — and
+    # the totals are gone at the user's request. Read from the module's
+    # own constant rather than repeated here, so a change to what a cell
+    # can hold cannot leave this measuring something the app stopped
+    # drawing.
+    from draft_assist.ui.tables import WIDEST_CELL
     roomy = [built(qapp, width=w) for w in (700, 1400)]
-    digits = roomy[0].table.fontMetrics().horizontalAdvance(WIDEST_TOTAL) + 10
+    digits = roomy[0].table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
     want = max(HEADER_ICON_MAX, digits - 2 * CELL_PAD)
     assert [boxes(t)[0] for t in roomy] == [want, want], \
         "with room to spare the size should stop chasing the window"
@@ -592,7 +595,7 @@ def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
     window takes the smaller of the two cards' answers, because counters
     fits its row header plus five columns where a panel fits five tiles
     and no amount of margin-matching closes six against five."""
-    from draft_assist.ui.tables import WIDEST_TOTAL
+    from draft_assist.ui.tables import WIDEST_CELL
     table = built(qapp, width=1400)
     table.set_tile_width(132)
     table.show_matrix(grid())
@@ -607,7 +610,7 @@ def test_the_grid_portrait_is_the_pick_tiles_box(art, qapp):
     assert narrow._icon_box < 132
     assert narrow._icon_box == max(narrow._portrait_room(),
                                    narrow.table.fontMetrics()
-                                   .horizontalAdvance(WIDEST_TOTAL)
+                                   .horizontalAdvance(WIDEST_CELL)
                                    + 10 - 2 * CELL_PAD)
 
 

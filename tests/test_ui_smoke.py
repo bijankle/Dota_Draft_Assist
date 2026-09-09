@@ -1187,67 +1187,99 @@ def _cell_value(table, row, col):
     return None if item is None else item.data(SORT_ROLE)
 
 
-def test_the_synergy_grid_is_two_triangles_that_touch(window):
+def test_the_synergy_grid_is_two_triangles_a_column_apart(window):
     """Synergy is symmetric, so a team's own pairings only ever fill half a
-    square — and that is exactly the shape of the other team's. Yours above
-    the diagonal against the ally portraits on TOP, theirs below it against
-    the enemy portraits along the BOTTOM row.
+    square — and that is exactly the shape of the other team's. Theirs
+    above the diagonal against the enemy portraits on TOP, yours below it
+    against the ally portraits along the BOTTOM row.
 
-    The two triangles TOUCH: n a side is n(n-1) pairs across both teams,
-    which is exactly (n-1) rows of n, so the body has no cell to spare and
-    no diagonal gap. With the bottom axis row that is n by n — the same
-    five rows counters has."""
-    from draft_assist.ui.tables import (PAIR_HEADER, PAIR_HERO, PAIR_SIDE,
-                                        PAIR_VALUE)
+    THE TWO TRIANGLES USED TO TOUCH, and at the user's request they no
+    longer do: yours moves half a portrait left and theirs half a portrait
+    right, so the grid is ONE COLUMN WIDER than a team with an empty cell
+    walking down the diagonal. That makes this card six sections across
+    for five a side — the same as counters, whose five columns sit beside
+    a portrait column — and two cards of one width divided into the same
+    number of portraits draw them at the same size, which is the whole
+    reason for it.
+    """
+    from draft_assist.ui.tables import (ENEMY_SHIFT, PAIR_HEADER, PAIR_HERO,
+                                        PAIR_SIDE, PAIR_VALUE)
     window.refresh()
     draft = window._current_draft()
     allies, enemies = list(draft.allies), list(draft.enemies)
     table = window.synergy_matrix.table
     side = max(len(allies), len(enemies))
-    # Square overall: (side - 1) rows of pairs, plus the enemy axis row,
-    # because Qt has no bottom header to put it in.
-    assert table.columnCount() == side
-    assert table.rowCount() == side
     body = side - 1
+    # ONE WIDER than a team, and still as tall as counters: the body loses
+    # a row to the lift, and the ally axis puts it back.
+    assert table.columnCount() == side + 1
+    assert table.rowCount() == side
 
     def value(row, col):
         item = table.item(row, col)
         return None if item is None else item.data(PAIR_VALUE)
 
-    upper = [(r, c) for r in range(body) for c in range(side)
-             if value(r, c) is not None and c > r]
-    lower = [(r, c) for r in range(body) for c in range(side)
-             if value(r, c) is not None and c <= r]
-    # THEIRS above the diagonal, YOURS below it: your own five take the
-    # lower left, the half of the square reaching the edge your panel
-    # sits at.
+    filled = [(r, c) for r in range(body) for c in range(side + 1)
+              if value(r, c) is not None]
+    upper = [(r, c) for r, c in filled if c > r + 1]
+    lower = [(r, c) for r, c in filled if c <= r]
     assert len(upper) == len(enemies) * (len(enemies) - 1) // 2
     assert len(lower) == len(allies) * (len(allies) - 1) // 2
-    # With both teams full the body has no hole at all: every cell is a
-    # real pair, which is what "the triangles touch" means. A short side
-    # leaves gaps, and that is the only thing that may.
+    assert not [rc for rc in filled if rc not in upper and rc not in lower]
+    # THE GAP IS EXACTLY ONE CELL PER ROW, on the diagonal. That is what
+    # "half a portrait each way" comes to, and it is the only hole a full
+    # board may have.
+    for row in range(body):
+        assert value(row, row + 1) is None, f"row {row} has no gap"
     if len(allies) == len(enemies) == side:
-        assert len(upper) + len(lower) == body * side
+        assert len(filled) == body * side
 
     # Every cell is backed by its own ROW hero — which is what replaced the
     # left-hand header column — and says which triangle it is in, which is
     # what the green and red outlines are traced from.
     for row, col in upper:
+        # SHIFTED: the enemy this cell is about is `col - 1`, because the
+        # whole half moved a column right.
         assert table.item(row, col).data(PAIR_HERO) == enemies[row]
         assert table.item(row, col).data(PAIR_SIDE) == "enemy"
     for row, col in lower:
         # LIFTED BY ONE: your triangle starts at ally 1, which is what
-        # closes the diagonal.
+        # squares the two halves into one rectangle.
         assert table.item(row, col).data(PAIR_HERO) == allies[row + 1]
         assert table.item(row, col).data(PAIR_SIDE) == "ally"
     # And the bottom row is your own axis: portraits, that hero's total
     # with its own four, and the same side as the triangle it sits under —
-    # so the outline encloses a team and its faces as one region.
+    # so the outline encloses a team and its faces as one region. FLUSH
+    # LEFT, under the triangle it names, with the spare column blank.
     for col, hero in enumerate(allies):
         item = table.item(body, col)
         assert item.data(PAIR_HEADER) and item.data(PAIR_HERO) == hero
         assert item.data(PAIR_SIDE) == "ally"
-        assert item.data(PAIR_VALUE) is not None
+        # AND NO TOTAL, at the user's request — "it causes more confusion
+        # than anything". Every figure on these cards is one pair now; a
+        # sum of five of them wore the same badge in the same corner and
+        # was told apart only by a sigma.
+        assert item.data(PAIR_VALUE) is None
+    spare = table.item(body, side)
+    assert spare is None or spare.data(PAIR_HERO) is None
+
+    # The enemy axis is the top HEADER, and it moved with its triangle:
+    # enemy i heads column i + 1, and column 0 heads nothing at all. A
+    # face standing over the wrong column is an axis that lies.
+    # Checked BOTH WAYS, because a header with no portrait on disk falls
+    # back to the hero's NAME — which is what this fixture has, and
+    # asserting only on the picture passed while naming nothing.
+    heads = window.synergy_matrix.table.horizontalHeader()
+    named = getattr(heads, "heroes", {})
+    for index, hero in enumerate(enemies):
+        column = index + ENEMY_SHIFT
+        item = table.horizontalHeaderItem(column)
+        assert named.get(column) == hero or \
+            window.ds.name(hero) in item.text(), f"column {column}"
+    first = table.horizontalHeaderItem(0)
+    assert 0 not in named, "column 0 heads nothing"
+    assert first is None or not first.text()
+    assert max(named, default=ENEMY_SHIFT) <= len(enemies)
 
 
 def test_the_synergy_grid_has_no_left_header_and_counters_still_does(window):
@@ -1276,8 +1308,10 @@ def test_the_enemy_half_is_not_sign_flipped(window):
     table = window.synergy_matrix.table
     raw = float(window.ds.delta_with[window.ds.index[enemies[0]],
                                      window.ds.index[enemies[1]]])
-    # (0, 1) is the first cell of THEIR triangle, which is the upper one.
-    assert table.item(0, 1).data(PAIR_VALUE) == pytest.approx(raw)
+    # The first cell of THEIR triangle. It is at (0, 2) rather than
+    # (0, 1) now: the enemy half is shifted a column right so the two
+    # triangles stand a portrait apart, and (0, 1) is the gap.
+    assert table.item(0, 2).data(PAIR_VALUE) == pytest.approx(raw)
     # The click view still flips, because there the enemy figures sit among
     # your own with no line between them.
     flipped = next(r for r in scoring.relations_to(window.ds, enemies[0],
@@ -3385,14 +3419,22 @@ def test_every_portrait_in_the_app_is_the_pick_tiles_box(window, qapp):
     # The items keep their own 88x64 aspect off the same HEIGHT — a 16:9
     # box round an icon is dead space either side of it.
     assert window.item_row.tile_width() == item_mod.width_for(pick.height())
-    # And the grids are told the same box, up to what six of them fit
-    # across a card — which is the same number for both, since the two
-    # cards are the same width. (What they DRAW needs portraits on disk;
-    # that is `test_matrix_grid`, which has them.)
+    # And the grids are told the same box, which each takes as a CEILING.
+    # (What they DRAW needs portraits on disk; that is `test_matrix_grid`,
+    # which has them.)
     grids = (window.synergy_matrix, window.matchup_matrix)
     for grid in grids:
         assert grid._portrait_want() == pick.width()
-    assert grids[0]._portrait_room() == grids[1]._portrait_room()
+    # The two agree on the ROOM only once both teams are full. Counters is
+    # as wide as the ENEMY line-up plus its portrait column, while synergy
+    # is as wide as the LONGER team plus the gap between its triangles —
+    # so mid-draft, at 5v4, counters is five sections across and synergy
+    # is six. That is the honest answer to a half-drafted board rather
+    # than a mismatch: on the 5v5 the card is read at, they are equal.
+    draft = window._current_draft()
+    if len(draft.allies) == len(draft.enemies) == 5:
+        assert grids[0].sections() == grids[1].sections() == 6
+        assert grids[0]._portrait_room() == grids[1]._portrait_room()
 
 
 def test_the_size_setting_moves_the_base_and_keeps_the_behaviour(window, qapp):

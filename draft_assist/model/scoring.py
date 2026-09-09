@@ -206,13 +206,22 @@ class SynergyGrid:
     touches its own axis, which is the only arrangement where a column can
     be read straight off the faces at the end of it.
 
-    THE TWO TRIANGLES TOUCH: there is no empty diagonal between them. Five
-    heroes a side is ten pairs each and twenty in total, which is exactly a
-    four-by-five rectangle — so the enemy triangle is lifted one row, every
-    cell in the body holds a real pair, and the card comes out the same
-    height as the counters grid beside it instead of a row taller. What
-    separates the halves is the colour drawn round each triangle's outer
-    edge, and the step down the middle where they meet.
+    THE TWO TRIANGLES ARE ONE COLUMN APART, and that column is why this
+    grid is SIX wide for five heroes a side. They used to touch along the
+    stepped diagonal, which is the tightest the pairs can be packed —
+    twenty pairs is exactly a four-by-five rectangle with nothing to
+    spare — and it made this card FIVE across where the counters grid
+    beside it is six (its five columns plus the portrait column down its
+    side). Two cards of the same width divided into a different number of
+    portraits draw those portraits at different sizes, so the same hero
+    was visibly bigger in one grid than in the other.
+    At the user's request the halves move half a portrait apart each:
+    yours flush LEFT, theirs flush RIGHT, one empty cell walking down the
+    diagonal between them. Six sections against counters' six, so the two
+    now scale to the same portrait with neither told anything about the
+    other — which is the same way the card heights already agree. The gap
+    also gives each team's outline a whole portrait of background to sit
+    against instead of a shared hairline.
 
     Every cell is backed by its own ROW hero's portrait, which is what
     replaced the left-hand header column: with the picture in the cell the
@@ -273,25 +282,36 @@ def team_synergy_grid(ds: Dataset, draft: DraftState) -> SynergyGrid:
     """
     allies = [h for h in draft.allies if h in ds.index]
     enemies = [h for h in draft.enemies if h in ds.index]
-    columns = max(len(allies), len(enemies), 0)
+    heroes = max(len(allies), len(enemies), 0)
+    # ONE COLUMN WIDER THAN A TEAM, which is what pushes the triangles
+    # apart — see the note on the class. Five a side draws six across.
+    width = heroes + 1 if heroes else 0
 
     def pair(a: int, b: int, side: str) -> PairCell:
         return PairCell(a, b, float(ds.delta_with[ds.index[a], ds.index[b]]),
                         side)
 
     cells: list[list[PairCell | None]] = []
-    for row in range(max(0, columns - 1)):
+    for row in range(max(0, heroes - 1)):
         line: list[PairCell | None] = []
-        for col in range(columns):
-            if col > row:
-                ok = row < len(enemies) and col < len(enemies)
-                line.append(pair(enemies[row], enemies[col], "enemy")
-                            if ok else None)
-            else:
-                # LIFTED BY ONE: the lower triangle starts at ally 1, which
-                # is what closes the diagonal and squares the two together.
+        for col in range(width):
+            if col <= row:
+                # YOURS, flush LEFT and lifted by one: the lower triangle
+                # starts at ally 1, which is what squares the two halves
+                # into one rectangle rather than paying a row for a gap.
                 ok = row + 1 < len(allies) and col < len(allies)
                 line.append(pair(allies[row + 1], allies[col], "ally")
+                            if ok else None)
+            elif col == row + 1:
+                # THE GAP. One empty cell per row, walking down the
+                # diagonal, which is the whole point of the extra column.
+                line.append(None)
+            else:
+                # THEIRS, flush RIGHT: shifted one column along, so the
+                # enemy this cell is about is `col - 1` rather than `col`.
+                other = col - 1
+                ok = row < len(enemies) and other < len(enemies)
+                line.append(pair(enemies[row], enemies[other], "enemy")
                             if ok else None)
         cells.append(line)
 
