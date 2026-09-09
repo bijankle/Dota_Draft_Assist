@@ -278,6 +278,21 @@ QHeaderView::section {{
 /* Centred both ways: a grid of signed numbers reads as a grid, and
    left-aligned cells under a centred portrait do not line up with it. */
 QTableWidget::item {{ padding: 2px 4px; }}
+/* A LIST IS STYLED OR IT IS NATIVE, the same rule the scrollbars taught:
+   the parts a stylesheet does not name are not left alone, they are
+   handed to somebody else to draw. The session list and the search
+   results were painting their selection in Qt's own blue — the one
+   colour in the app that means nothing, in a palette where colour is
+   reserved for meaning and the accent is red. */
+QListWidget, QListView {{
+    background: {BG_INPUT}; border: 1px solid {BG_DEEP};
+    border-radius: 4px;
+}}
+QListWidget::item, QListView::item {{ padding: 4px 8px; }}
+QListWidget::item:selected, QListView::item:selected {{
+    background: {ACCENT}; color: #ffffff;
+}}
+QListWidget::item:hover, QListView::item:hover {{ background: {BG_HOVER}; }}
 
 QTextBrowser, QPlainTextEdit {{
     background: {BG_ELEVATED};

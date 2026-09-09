@@ -1519,6 +1519,73 @@ credentials, and put the account at risk. Do not go there.
   so a typical draft tripped one or two rules and the strip read as broken.
   It now names 94; a hero with no rule is still a silent hero, so new ones
   are worth adding whenever a draft goes quiet that should not have.
+- **THE MENU BAR IS FILE | VIEW | HELP, AND EVERYTHING ELSE IS A TAB IN
+  SETTINGS** (`ui/settings_window.py`, `MainWindow._build_menus` /
+  `_command_groups`). It was Setup | Game | View | Help, and most of what
+  those two held is done ONCE — install the game config, fetch the
+  artwork, pick your ranks — sitting permanently across the top of a
+  window that is read at a glance while a draft timer runs. At the user's
+  request everything out of Setup and Game is a tab in a settings window
+  "like any typical application": General, Downloads, Game data,
+  Appearance, Advanced and **Debug**, which is no longer a tab of the
+  main window at all. File is Settings… and Update application… and
+  **no Quit** — the window's close button is where everybody closes a
+  window.
+  **FOUR ITEMS WENT ENTIRELY rather than moving**, also at the user's
+  request, because each asked for something the app now does for itself
+  or says somewhere better: *Make a pinnable shortcut…* (written
+  automatically at every start), *Run first-time setup…* (the wizard
+  opens itself when needed and the banner is the way back), *Check item
+  icons…* (the strip already draws the name and the download reports what
+  failed) and *Game data status…* (Diagnose answers the same question by
+  naming the ONE broken link).
+  **THE SETTINGS WINDOW IS MODELESS AND APPLIES AS YOU GO**, and the
+  second half of that is what decides it. A preferences window with OK
+  and Cancel is fine for a page of tick boxes — but this one holds the
+  DEBUG VIEW, a live picture of what the app is reading, and a live view
+  inside a modal dialog cannot be watched while using the thing it is
+  showing. So it is built ONCE, kept, and **owns the debug pages
+  outright**: borrowing them per opening would mean handing a live widget
+  back and forth between two parents, which is exactly the
+  parentless-QWidget trap that has produced a second taskbar window three
+  times in this app. `_update_debug` goes on asking whether they are
+  VISIBLE, which they are not while the window is shut, so it still costs
+  nothing when nobody is looking. `_apply_settings` runs on EVERY edit,
+  so it has to be idempotent, and is: each branch compares against what
+  is already in `self.settings`.
+- **HELP ▸ SEARCH IS THE WAY BACK** (`ui/commands.py`,
+  `ui/search_dialog.py`, Ctrl+K). Folding two menus into tabs is a better
+  place to KEEP a control and a worse place to FIND one, so the app
+  carries a list of what it can do and Help searches it. **ONE list, used
+  twice**: it builds the Settings tabs and it is what the search
+  searches, because two lists would be one of them going stale and it
+  would be the search — the half nobody notices is wrong until they
+  cannot find something. `test_every_command_the_app_offers_can_be_found_
+  by_its_own_name` holds that.
+  **IT IS NOT KEYWORD MATCHING**, and that is the whole point: somebody
+  looking for a thing types what THEY call it, not what the menu called
+  it — "pictures" for artwork, "broken" for diagnose, "my mmr" for the
+  rank bracket, "see through" for transparency. Every entry declares the
+  words a person might reach for, `SYNONYMS` maps the rest, and the
+  ranking is deliberately explainable rather than clever: a whole word of
+  the label beats a prefix of it, beats a declared synonym, beats a hit
+  in the explanation, and a shorter label on the same terms wins as the
+  more specific answer. **EVERY term must hit something** or the entry is
+  dropped — a search that always has an answer is one where the top match
+  means nothing — which makes `STOP` load-bearing rather than cosmetic:
+  a filler word left out of it sinks a whole query, and "it's broken" and
+  "nothing from dota" both found the right answer and were then sunk by
+  "its" and "from". Enter takes the top match and any result is
+  CLICKABLE, at the user's request: a box that only obeys Enter makes the
+  list a display rather than a control, and the list is the part that
+  answers "what else is there". An empty box shows everything, for the
+  same reason. Transparency and Sizes are SLIDERS inside the View menu
+  with no dialog to open, so a result for them drops that menu open
+  rather than pretending to apply a value.
+  **A LIST IS STYLED OR IT IS NATIVE**, the scrollbars' lesson again: the
+  results and the session list were painting their selection in Qt's own
+  blue — the one colour in this app that means nothing — until
+  `QListWidget::item:selected` was named in the stylesheet.
 - **The WINDOW is the overlay** (`ui/chrome.py`). There used to be three:
   a badge that expanded into a callout, numbers painted under the ten
   portraits, and this window — three copies of the same information, each

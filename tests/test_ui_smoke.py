@@ -232,17 +232,21 @@ def test_banner_hidden_once_data_is_fresh(window):
 
 
 def test_menus_expose_every_maintenance_action(window):
-    """Everything that used to be a .bat file is reachable from the menus."""
-    menus = {m.title().replace("&", ""): m
-             for m in window.menu_bar.findChildren(type(window.menu_bar
-                                                         .addMenu("x")))}
-    labels = {title: [a.text().replace("&", "") for a in menu.actions()]
-              for title, menu in menus.items()}
-    flat = [text for texts in labels.values() for text in texts]
+    """Everything that used to be a .bat file is still reachable.
+
+    NOT from the menu bar any more: that is File | View | Help, and
+    everything out of Setup and Game is a tab in Settings. So the thing
+    to check is the app's own list of what it can do — which is what
+    builds those tabs AND what Help ▸ Search searches, so a maintenance
+    action missing from it is missing from both.
+    """
+    flat = [c.label for c in window._all_commands()]
     for expected in ("Statistics and portraits…", "Tune recognition…",
                      "List capture sources…", "Run capture probe…",
                      "Update application…", "Save debug snapshot"):
-        assert expected in flat, f"{expected} missing from menus: {flat}"
+        assert expected in flat, f"{expected} is not reachable: {flat}"
+    # And every one of them actually does something when taken.
+    assert all(callable(c.run) for c in window._all_commands())
 
 
 def test_force_recognition_menu_and_toolbar_stay_in_sync(window):
@@ -1000,9 +1004,12 @@ def test_menus_no_longer_offer_a_source_mode(window):
 
 
 def test_the_menu_bar_stays_small(window):
+    """Three headings, at the user's request. Setup and Game were mostly
+    things you do ONCE, sitting permanently across the top of a window
+    that is read at a glance during a draft."""
     titles = [a.text().replace("&", "") for a in window.menu_bar.actions()
               if a.menu() is not None]
-    assert titles == ["Setup", "Game", "View", "Help"]
+    assert titles == ["File", "View", "Help"]
     for action in window.menu_bar.actions():
         menu = action.menu()
         if menu is not None:
@@ -1012,17 +1019,26 @@ def test_the_menu_bar_stays_small(window):
 
 def test_the_downloads_are_one_group(window):
     """Three siblings called Update / Fetch / Fetch are one idea said three
-    times, and they pushed Setup past the size a menu stays readable at."""
-    setup = next(a.menu() for a in window.menu_bar.actions()
-                 if a.text().replace("&", "") == "Setup")
-    names = [a.text().replace("&", "") for a in setup.actions()]
-    assert "Download" in names
-    downloads = next(a.menu() for a in setup.actions()
-                     if a.text().replace("&", "") == "Download")
-    inside = [a.text().replace("&", "") for a in downloads.actions()]
+    times. They were a submenu; they are a Settings TAB now, which is the
+    same argument one level out."""
+    groups = {title: commands
+              for title, _intro, commands in window._command_groups()}
+    assert "Downloads" in groups
+    inside = [c.label for c in groups["Downloads"]]
     assert any("Statistics and portraits" in n for n in inside)
     assert any("Alternative portraits" in n for n in inside)
     assert any("Item icons" in n for n in inside)
+    assert any("All artwork" in n for n in inside)
+
+
+def test_the_four_deleted_items_are_gone_for_good(window):
+    """Each asked for something the app now does for itself or says
+    somewhere better, and each was removed at the user's request rather
+    than moved into Settings with the rest."""
+    everywhere = [c.label for c in window._all_commands()]
+    for gone in ("Make a pinnable shortcut…", "Run first-time setup…",
+                 "Check item icons…", "Game data status…"):
+        assert gone not in everywhere, f"{gone} came back"
 
 
 def test_both_sources_are_on_by_default():
@@ -1294,7 +1310,7 @@ def test_the_draft_tab_carries_the_teams_and_both_matrices(window):
     """The matrices moved onto the draft screen: the grid explaining the
     ten picks belongs beside the ten picks, not behind a tab."""
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "Analysis", "Debug"]
+    assert titles == ["Draft", "Analysis"]
     draft_tab = window.tabs.widget(0)
     for widget in (window.matchup_matrix, window.synergy_matrix,
                    window.team_panels["ally"], window.team_panels["enemy"]):
@@ -1732,10 +1748,13 @@ def test_a_tall_tab_does_not_set_the_windows_floor(window, qapp):
     entire desktop height and would not shrink."""
     window.show()
     qapp.processEvents()
-    pages = {window.tabs.tabText(i): window.tabs.widget(i)
-             for i in range(window.tabs.count())}
-    assert pages["Debug"].minimumSizeHint().height() < 200, \
-        "the Debug tab is not scrolling; it will dictate the window height"
+    # Debug is a tab of the SETTINGS window now, so it can no longer set
+    # the main window's floor at all — but the rule it taught still has to
+    # hold there, or the settings window opens taller than the screen.
+    window._open_settings("Debug")
+    qapp.processEvents()
+    assert window.debug_tabs.minimumSizeHint().height() < 400, \
+        "the Debug pages are not scrolling; they dictate a window height"
     assert window.minimumSizeHint().height() < 900, \
         f"the window cannot be made short: {window.minimumSizeHint()}"
 
@@ -2144,7 +2163,7 @@ def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
         for r in DraftLayout().slots()])
     snap.game_state = gsi_state.STATE_IN_PROGRESS
     window.show()
-    window.tabs.setCurrentIndex(window.tabs.count() - 1)
+    window._open_settings("Debug")
     _settle(qapp)
     assert window.debug_image.isVisible(), "the Debug tab is not on screen"
     window._update_debug(snap)
@@ -2282,8 +2301,8 @@ def test_the_two_tab_bars_stay_in_step(window, qapp):
     assert tabs.bar.count() == tabs.count()
     assert [tabs.bar.tabText(i) for i in range(tabs.bar.count())] == \
         [tabs.tabText(i) for i in range(tabs.count())]
-    tabs.bar.setCurrentIndex(2)
-    assert tabs.currentIndex() == 2
+    tabs.bar.setCurrentIndex(1)
+    assert tabs.currentIndex() == 1
     tabs.setCurrentIndex(0)
     assert tabs.bar.currentIndex() == 0
 
@@ -3545,3 +3564,44 @@ def test_the_picks_fill_their_card_and_the_grids_line_up_with_them(window,
     # against portraits in `test_the_grid_portrait_is_the_pick_tiles_box`.
     for grid in (window.synergy_matrix, window.matchup_matrix):
         assert grid._portrait_want() == tiles[0].width()
+
+
+def test_settings_is_one_tabbed_window_that_owns_the_debug_pages(window,
+                                                                 qapp):
+    """Everything out of Setup and Game is a tab in here, the Debug pages
+    among them, at the user's request.
+
+    It is MODELESS and it owns the debug pages outright: they are a live
+    view of what the app is reading, which a modal dialog could not be
+    watched through, and borrowing the widget per opening would mean
+    handing a live widget between two parents — how this app has ended up
+    with a second taskbar window before.
+    """
+    window._open_settings()
+    settings = window.settings_window
+    titles = [settings.tabs.tabText(i) for i in range(settings.tabs.count())]
+    assert titles == ["General", "Downloads", "Game data", "Appearance",
+                      "Advanced", "Debug"]
+    assert settings.isModal() is False
+    assert window.debug_tabs.parent() is not None
+    # Opening it again is the SAME window, or the debug pages would be
+    # rebuilt out from under the refresh loop.
+    again = window.settings_window
+    window._open_settings("Downloads")
+    assert window.settings_window is again
+    assert settings.tabs.tabText(settings.tabs.currentIndex()) == "Downloads"
+
+
+def test_settings_apply_as_you_go(window, qapp, tmp_path, monkeypatch):
+    """There is no OK button: a preferences window holding a live view has
+    no use for one, and a change that waits for a press nobody makes is a
+    setting that looks broken."""
+    from draft_assist.ui import settings as ui_settings
+    monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "s.json")
+    window._open_settings()
+    page = window.settings_window.general
+    before = bool(window.settings.get("auto_record", True))
+    page.boxes["auto_record"].setChecked(not before)
+    _settle(qapp)
+    assert window.settings["auto_record"] is (not before)
+    assert window.auto_record_check.isChecked() is (not before)

@@ -252,7 +252,7 @@ def test_the_ranked_list_of_every_hero_is_gone(window):
     assert not hasattr(window, "detail")
     assert not hasattr(window, "counters")
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "Analysis", "Debug"]
+    assert titles == ["Draft", "Analysis"]
     assert window.history_tab is window.tabs.widget(1)
 
 

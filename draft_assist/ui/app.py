@@ -304,67 +304,41 @@ class MainWindow(QMainWindow):
         return action
 
     def _build_menus(self) -> None:
+        """File | View | Help, and nothing else on the bar.
+
+        It was Setup | Game | View | Help, and most of what those two held
+        is done ONCE — install the game config, fetch the artwork, pick
+        your ranks — sitting permanently across the top of a window read
+        at a glance during a draft. At the user's request everything out
+        of Setup and Game is a tab in Settings (`settings_window`), the
+        Debug tab with them, and what is left up here is the three
+        headings a person opens on purpose.
+
+        FOUR ITEMS WENT ENTIRELY rather than moving, also at the user's
+        request, because each asked for something the app now does for
+        itself or says elsewhere: "Make a pinnable shortcut…" (written
+        automatically at every start — see `appicon.
+        ensure_start_menu_shortcut`), "Run first-time setup…" (the wizard
+        opens itself when it is needed and the banner is the way back),
+        "Check item icons…" (the strip already draws the name and the
+        download reports what failed) and "Game data status…" (Diagnose
+        answers the same question by naming the ONE broken link rather
+        than printing the whole checklist).
+        """
         # NOT self.menuBar(): QMainWindow puts that above the central
         # widget, which would leave a menu strip sitting on top of our own
         # title bar. It goes inside the bar instead, the way Steam does it.
         bar = chrome.RuledMenuBar()
         self.menu_bar = bar
 
-        setup_menu = bar.addMenu("&Setup")
-        # The three downloads live together rather than as three siblings
-        # of everything else: they are one idea — go and fetch the pictures
-        # and numbers — and a menu you have to read twice is a menu that
-        # has stopped helping.
-        downloads = setup_menu.addMenu("&Download")
-        # FIRST, because it is the one a fresh install needs and the only
-        # one that needs no account anywhere.
-        self._act(downloads, "All &artwork…",
-                  lambda: self.run_task("fetch_assets"), None,
-                  "Every hero portrait and item icon — no API key needed")
-        self._act(downloads, "&Statistics and portraits…",
-                  lambda: self.run_task("update_data"), "Ctrl+U",
-                  "The hero numbers and Valve's base portrait for each")
-        self._act(downloads, "&Alternative portraits…",
-                  lambda: self.run_task("fetch_custom_portraits"), None,
-                  "Persona, arcana and custom-set pictures, so a set "
-                  "portrait stops reading as UNKNOWN")
-        self._act(downloads, "&Item icons…",
-                  lambda: self.run_task("fetch_item_icons"), None,
-                  "Just the item pictures, with the reason if it fails")
-        self._act(downloads, "&Check item icons…",
-                  lambda: self.run_task("check_item_icons"), None,
-                  "Which items in the rules have no picture, and why")
-        self._act(setup_menu, "&Run first-time setup…", self._run_setup,
-                  None, "The key and the rank brackets, then download "
-                        "everything")
-        self._act(setup_menu, "Statistics &bracket…", self._choose_brackets,
-                  None, "Which ranks the statistics are drawn from")
-        self._act(setup_menu, "Choose app &icon…", self._choose_app_icon,
-                  None, "Use your own .ico or .png for the window and the "
-                        "taskbar")
-        self._act(setup_menu, "Make a &pinnable shortcut…",
-                  lambda: self.run_task("make_shortcut"), None,
-                  "A .lnk with the app's icon and identity, ready to "
-                  "drag onto the taskbar")
-        setup_menu.addSeparator()
-        self._act(setup_menu, "&Set up game data (GSI)…", self._install_gsi,
-                  None, "Install Dota's Game State Integration config")
-        self._act(setup_menu, "S&ettings…", self._open_settings, "Ctrl+,",
-                  "What the app reads, and what it does with it")
-
-        game_menu = bar.addMenu("&Game")
-        self._act(game_menu, "&Diagnose game data…", self._diagnose_gsi,
-                  "Ctrl+G",
-                  "Check every requirement and name the one that is failing")
-        self._act(game_menu, "Game data &status…", self._gsi_status,
-                  None, "What the game is actually reporting right now")
-        self._act(game_menu, "&Clear manual draft", self._clear_manual,
-                  "Ctrl+Shift+C", "Empty every hand-entered slot")
-        # THE TWO "Simulate a draft" ITEMS ARE GONE. They each spawned a
-        # subprocess posting fake payloads at the real GSI listener and
-        # left it running, which is a whole second moving part to see one
-        # board full of heroes. **Demo** on the tab row fills the board in
-        # one press and touches nothing else.
+        file_menu = bar.addMenu("&File")
+        self._act(file_menu, "S&ettings…", self._open_settings, "Ctrl+,",
+                  "Everything the app reads, downloads and diagnoses")
+        self._act(file_menu, "&Update application…", self._update_app,
+                  None, "Pull the latest code, then reopen the app")
+        # NO QUIT, at the user's request: the window's own close button is
+        # where everybody closes a window, and a menu item for it is a
+        # line of menu that has never been read.
 
         view_menu = bar.addMenu("&View")
         # Transparency is inserted at the TOP of this menu later (see
@@ -396,32 +370,189 @@ class MainWindow(QMainWindow):
         self.addAction(self.force_action)
 
         help_menu = bar.addMenu("&Help")
-        self._act(help_menu, "&Update application…", self._update_app,
-                  None,
-                  "Pull the latest code and data, then reopen the app")
-        # Everything under Advanced diagnoses the app itself. It is
-        # occasionally necessary and it is not what a menu bar is for.
-        advanced = help_menu.addMenu("&Advanced")
-        self._act(advanced, "&Tune recognition…",
-                  lambda: self.run_task("tune"), None,
-                  "Search for recognition settings that never misidentify")
-        self._act(advanced, "&List capture sources…",
-                  lambda: self.run_task("list_windows"))
-        self._act(advanced, "Run capture &probe…",
-                  lambda: self.run_task("probe"))
-        advanced.addSeparator()
-        self._act(advanced, "&Save debug snapshot", self._save_snapshot,
-                  "Ctrl+S",
-                  "Write the current frame, crops and matches to disk")
-        self._act(advanced, "Edit &item rules", self._edit_rules)
-        self._act(advanced, "Re&load item rules", self._reload_rules)
-        advanced.addSeparator()
-        self._act(advanced, "Open &data folder",
-                  lambda: open_folder(REPO_ROOT / "data_cache"))
-        self._act(advanced, "Open de&bug folder",
-                  lambda: open_folder(DEBUG_OUT))
+        # FIRST, because it is the way back to everything the bar stopped
+        # listing. Ctrl+K is what every application with a command box
+        # uses, so it costs nothing to learn.
+        self._act(help_menu, "&Search…", self._open_search, "Ctrl+K",
+                  "Find any setting or action by what you call it")
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
+
+    # ---- what the app can be asked to do -------------------------------
+    def _command_groups(self) -> list:
+        """The Settings tabs, as (title, intro, commands).
+
+        ONE list, used twice: it builds the tabs and it is what Help ▸
+        Search searches. Two lists would be one of them going stale, and
+        the one that would go stale is the search — the half nobody
+        notices is wrong until they cannot find something.
+        """
+        from .commands import Command
+
+        def act(label, detail, words, run):
+            return Command(label=label, detail=detail, words=tuple(words),
+                           run=run)
+
+        downloads = [
+            # FIRST, because it is the one a fresh install needs and the
+            # only one that needs no account anywhere.
+            act("All artwork…",
+                "Every hero portrait and item icon — no API key needed.",
+                ("pictures", "portraits", "images", "icons", "artwork"),
+                lambda: self.run_task("fetch_assets")),
+            act("Statistics and portraits…",
+                "The hero numbers and Valve's base portrait for each. This "
+                "is the one that takes a few minutes.",
+                ("data", "numbers", "stats", "update"),
+                lambda: self.run_task("update_data")),
+            act("Alternative portraits…",
+                "Persona, arcana and custom-set pictures, so a set "
+                "portrait stops reading as UNKNOWN.",
+                ("arcana", "persona", "variants", "pictures"),
+                lambda: self.run_task("fetch_custom_portraits")),
+            act("Item icons…",
+                "Just the item pictures, with the reason if it fails.",
+                ("items", "pictures", "icons"),
+                lambda: self.run_task("fetch_item_icons")),
+            act("Statistics bracket…",
+                "Which ranks the statistics are drawn from. Changing it "
+                "means re-pulling: the matrices are built for the ranks "
+                "you choose.",
+                ("rank", "ranks", "mmr", "legend", "ancient", "divine"),
+                self._choose_brackets),
+        ]
+        game = [
+            act("Set up game data (GSI)…",
+                "Install Dota's Game State Integration config, which is "
+                "how the app knows a draft has started.",
+                ("gsi", "install", "config", "dota"),
+                self._install_gsi),
+            act("Diagnose game data…",
+                "Check every requirement and name the one that is "
+                "failing. Start here when the app sees nothing.",
+                ("gsi", "broken", "problem", "nothing", "silent"),
+                self._diagnose_gsi),
+            act("Clear manual draft",
+                "Empty every hand-entered slot.",
+                ("reset", "empty", "manual"),
+                self._clear_manual),
+        ]
+        appearance = [
+            act("Choose app icon…",
+                "Use your own .ico or .png for the window and the taskbar.",
+                ("icon", "logo", "taskbar", "picture"),
+                self._choose_app_icon),
+        ]
+        # Everything under Advanced diagnoses the APP rather than the
+        # draft. It is occasionally necessary and it is not what a menu
+        # bar is for, which is why it was a submenu before and is a tab
+        # now.
+        advanced = [
+            act("Tune recognition…",
+                "Search for recognition settings that never misidentify.",
+                ("vision", "accuracy", "calibrate"),
+                lambda: self.run_task("tune")),
+            act("List capture sources…",
+                "Every window the capture layer can see.",
+                ("windows", "capture", "screen"),
+                lambda: self.run_task("list_windows")),
+            act("Run capture probe…",
+                "Confirm occluded-window capture works on this machine.",
+                ("capture", "screen", "test"),
+                lambda: self.run_task("probe")),
+            act("Save debug snapshot",
+                "Write the current frame, crops and matches to disk.",
+                ("frame", "screenshot", "snapshot"),
+                self._save_snapshot),
+            act("Edit item rules",
+                "The hand-authored file behind the item strip.",
+                ("items", "rules", "yaml", "build"),
+                self._edit_rules),
+            act("Reload item rules",
+                "Re-read that file without restarting.",
+                ("items", "rules"),
+                self._reload_rules),
+            act("Open data folder",
+                "Where the downloaded statistics live.",
+                ("folder", "cache", "files"),
+                lambda: open_folder(REPO_ROOT / "data_cache")),
+            act("Open debug folder",
+                "Where snapshots and recordings are written.",
+                ("folder", "files", "recordings"),
+                lambda: open_folder(DEBUG_OUT)),
+        ]
+        return [
+            ("Downloads",
+             "Everything the app needs off the internet. Each of these "
+             "skips what is already on disk, so running one again costs "
+             "only what is missing.", downloads),
+            ("Game data", "How the app hears from Dota itself.", game),
+            ("Appearance", "", appearance),
+            ("Advanced",
+             "Diagnosing the app rather than the draft.", advanced),
+        ]
+
+    def _all_commands(self) -> list:
+        """Everything searchable: the Settings tabs, plus the handful of
+        things that stayed on the menu bar. A search that only knew about
+        Settings would answer "where is Transparency" with nothing."""
+        from .commands import Command
+        found = []
+        for title, _intro, commands in self._command_groups():
+            where = f"Settings ▸ {title}"
+            for command in commands:
+                found.append(Command(label=command.label, where=where,
+                                     detail=command.detail,
+                                     words=command.words, run=command.run))
+        found += [
+            Command("Settings…", "File",
+                    "Everything the app reads, downloads and diagnoses.",
+                    ("preferences", "options", "config"),
+                    self._open_settings),
+            Command("Update application…", "File",
+                    "Pull the latest code, then reopen the app.",
+                    ("upgrade", "version", "new"), self._update_app),
+            Command("Transparency", "View",
+                    "How see-through the window is, on a slider.",
+                    ("opacity", "seethrough", "faded"),
+                    lambda: self._show_view_menu()),
+            Command("Sizes", "View",
+                    "How big the portraits and the numbers are.",
+                    ("scale", "bigger", "smaller", "zoom", "font"),
+                    lambda: self._show_view_menu()),
+            Command("Resize window (lock)", "View",
+                    "Ticked, the window keeps exactly the size it has now.",
+                    ("lock", "fixed", "resize"),
+                    lambda: self.lock_action.toggle()),
+            Command("Reset window position", "View",
+                    "Bring the window back to the middle of the screen.",
+                    ("move", "lost", "offscreen"),
+                    self._reset_overlay_position),
+            Command("Reload data and library", "View",
+                    "Re-read the downloaded data from disk.",
+                    ("refresh", "reload"), self.reload_backend),
+            Command("Debug", "Settings",
+                    "What the app is reading right now, and what past "
+                    "sessions recorded.",
+                    ("log", "live", "recordings", "frame", "timings"),
+                    lambda: self._open_settings("Debug")),
+            Command("About", "Help", "Which version this is.",
+                    ("version",), self._about),
+        ]
+        return found
+
+    def _show_view_menu(self) -> None:
+        """Drop the View menu open under the bar.
+
+        Transparency and Sizes are SLIDERS inside that menu — there is no
+        dialog to open and no single value to set — so the honest thing a
+        search result can do for them is put the menu on screen with them
+        in it, rather than pretending to apply something.
+        """
+        for action in self.menu_bar.actions():
+            if action.text().replace("&", "") == "View":
+                self.menu_bar.setActiveAction(action)
+                return
 
     # ---- widgets -----------------------------------------------------
     def _build(self) -> None:
@@ -903,7 +1034,15 @@ class MainWindow(QMainWindow):
         debug_tabs.addTab(_scrolling(dbg), "Live")
         debug_tabs.addTab(_scrolling(self._build_sessions_tab()),
                           "Recordings")
-        tabs.addTab(debug_tabs, "Debug")
+        # NOT a tab of the main window any more, at the user's request: it
+        # is handed to the settings window as its Debug tab the first time
+        # that is opened (`_open_settings`). It keeps THIS window as its
+        # parent until then, because a parentless QWidget in this app is a
+        # second window in the taskbar — a bug that has already happened
+        # three times — and `_update_debug` goes on asking whether it is
+        # VISIBLE, which it is not while it is parked here unshown.
+        debug_tabs.setParent(self)
+        debug_tabs.hide()
 
         # Our own, INSIDE the shell, rather than QMainWindow's: the
         # ornate frame is drawn round the shell, and a status bar hung off
@@ -982,7 +1121,10 @@ class MainWindow(QMainWindow):
         the screen's reading and the game's payloads were never two
         separate questions."""
         self._refresh_sessions()
-        self.tabs.setCurrentIndex(1)
+        # Debug is a tab of the SETTINGS window now, so the way to it is
+        # to open that on Debug rather than to index into the main tabs —
+        # where index 1 is the Analysis tab and used to be this.
+        self._open_settings("Debug")
         self.debug_tabs.setCurrentIndex(1)
         if not self.sessions:
             self._say(
@@ -2600,15 +2742,38 @@ class MainWindow(QMainWindow):
             return
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
-    def _open_settings(self) -> None:
-        from .settings_dialog import SettingsDialog
+    def _open_settings(self, tab: str = "") -> None:
+        """Show the settings window, building it the first time.
+
+        BUILT ONCE AND KEPT, because it owns the debug pages: they are a
+        live view of what the app is reading, and handing a live widget
+        back and forth between two parents is how this app has previously
+        ended up with a second window in the taskbar. Modeless, so the
+        debug view can be watched while the draft runs, and it applies as
+        you go rather than on an OK that a live view has no use for.
+        """
+        from .settings_window import SettingsWindow
 
         self.settings.setdefault("pair_source", pair_source())
-        dialog = SettingsDialog(self.settings, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+        if getattr(self, "settings_window", None) is None:
+            self.settings_window = SettingsWindow(
+                self.settings, self._command_groups(),
+                debug=getattr(self, "debug_tabs", None), parent=self)
+            self.settings_window.applied.connect(self._apply_settings)
+        self.settings_window.show_tab(tab)
+
+    def _apply_settings(self, values: dict) -> None:
+        """Take one edit from the settings window.
+
+        Called on EVERY change rather than once at the end, so it has to
+        be cheap and it has to be idempotent — which it is: each branch
+        compares against what is already in `self.settings` and does
+        nothing when it matches.
+        """
         before = dict(self.settings)
-        self.settings.update(dialog.values())
+        self.settings.update(values)
+        if self.settings == before:
+            return
         ui_settings.save(self.settings)
         # The strips are redrawn only when a PICK changes, so without this
         # a new "how many to show" would sit in the settings file doing
@@ -2628,8 +2793,16 @@ class MainWindow(QMainWindow):
             # pull runs in a subprocess and reads it there.
             save_pair_source(chosen)
             self._say(
-                f"Statistics source set to {chosen} — run Data ▸ Update "
-                "statistics to rebuild the matrices from it", 12000)
+                f"Statistics source set to {chosen} — run Settings ▸ "
+                "Downloads ▸ Statistics and portraits to rebuild the "
+                "matrices from it", 12000)
+
+    def _open_search(self) -> None:
+        """Help ▸ Search — the way back to everything the bar stopped
+        listing."""
+        from .search_dialog import SearchDialog
+
+        SearchDialog(self._all_commands(), self).exec()
 
     def _apply_sources(self) -> None:
         """Rebuild the draft source from the settings.
