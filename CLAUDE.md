@@ -2030,6 +2030,16 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   is the worst possible place: they run before anything else, so the
   error was the first thing a new user ever saw. The file's line endings
   are **CRLF** and must stay that way.
+  **THE KEY IS THE APP'S JOB, NOT THE LAUNCHER'S.** The script used to
+  copy `.env.example` over and open it in Notepad, so a new user was
+  asked for a Stratz key TWICE — once by a text editor before the app had
+  opened, and again by the first-run wizard inside it. The wizard wins:
+  it checks the key against Stratz before accepting it and takes the rank
+  brackets in the same pass, neither of which a text editor can do. The
+  launcher builds the environment and starts the app, and nothing else;
+  `save_stratz_key` writes `.env` when it needs to. `.env.example` stays
+  in the repository as documentation for anyone who would rather do it by
+  hand.
 
 ## Out of scope for the prototype
 

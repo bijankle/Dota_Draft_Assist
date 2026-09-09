@@ -38,17 +38,18 @@ echo Installing dependencies...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt -r requirements-windows.txt || goto :failed
 
-if not exist ".env" (
-    copy .env.example .env >nul
-    echo.
-    echo Paste your Stratz API key into the file that just opened, then save
-    echo and close it. Get a free key at https://stratz.com/api
-    start /wait notepad .env
-)
+rem THE KEY IS THE APP'S JOB, not this script's. This used to copy
+rem .env.example over and open it in Notepad, which meant a new user was
+rem asked for a Stratz key twice: once by a text editor, before the app
+rem had even opened, and again by the first-run wizard inside it. The
+rem wizard is the better of the two -- it checks the key against Stratz
+rem before accepting it, and takes the rank brackets in the same pass --
+rem so this script now does nothing but build the environment and start
+rem the app. The wizard writes .env itself when it needs to.
 
 echo.
 echo Setup complete. Starting the application...
-echo In the app: Data - Update statistics and portraits, to fetch data.
+echo It will ask for a free Stratz API key and which ranks to use.
 echo.
 
 :launch

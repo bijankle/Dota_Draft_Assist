@@ -55,3 +55,23 @@ def test_every_probe_swallows_both_streams(script):
         assert ">nul 2>&1" in stripped, (
             f"{script.name}:{number} probes without silencing stderr: "
             f"{stripped}")
+
+
+@pytest.mark.parametrize("script", scripts(), ids=lambda p: p.name)
+def test_the_launcher_does_not_ask_for_the_key_itself(script):
+    """It used to copy .env.example over and open it in Notepad, so a new
+    user was asked for a Stratz key TWICE: once by a text editor before
+    the app had opened, and again by the first-run wizard inside it.
+
+    The wizard is the better of the two — it checks the key against
+    Stratz before accepting it, and takes the rank brackets in the same
+    pass — so the script builds the environment and starts the app, and
+    nothing else. It writes .env itself when it needs to.
+    """
+    text = script.read_text(encoding="utf-8")
+    body = "\n".join(line for line in text.splitlines()
+                     if not line.strip().lower().startswith("rem "))
+    assert "notepad" not in body.lower(), (
+        "the app asks for the key, in a dialog that verifies it")
+    assert ".env.example" not in body, (
+        "a .env full of the placeholder is not a setup step")

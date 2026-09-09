@@ -142,16 +142,31 @@ The first run installs a private Python environment beside the app. Every
 run after that just starts the application — no console window, no other
 scripts.
 
-Then two downloads, both from inside the app, both offered by the banner
-across the top on first run:
+**The app asks for the rest itself.** On first open a setup dialog wants two
+things, and then does the work:
 
-- **The artwork** — every hero portrait and item icon. Needs no account.
-  Until you have it every tile is blank, because these are Valve's pictures
-  and this repository does not carry them; they come to your own machine.
-- **The statistics** — every number the app shows. Needs a **free Stratz API
-  key** from https://stratz.com/api, pasted into a file called `.env` beside
-  the app (copy `.env.example` and fill it in). Your key stays on your
-  machine.
+- A **free Stratz API key** from https://stratz.com/api — every number the
+  app shows comes from match statistics, and that is what fetches them. It
+  is checked against Stratz before it is accepted, stored in a file called
+  `.env` beside the app, and never sent anywhere else. An update never
+  replaces it. (`.env.example` is there if you would rather write it by
+  hand.)
+- **Which ranks** the statistics should describe, as tick boxes. Hero win
+  rates and matchups differ by rank, so pulling from about one bracket
+  above where you play tilts the advice toward the games you are trying to
+  win.
+
+Finish downloads the statistics and the artwork — every hero portrait and
+item icon, which are Valve's pictures and so come to your own machine
+rather than in this repository. Until they arrive every tile is blank.
+
+You can skip the dialog; the app opens with empty tiles and a banner at the
+top to come back to it. Setup ▸ Run first-time setup… reopens it any time.
+
+After that the **only** thing needing a regular update is the statistics,
+which stop tracking the current patch after a few weeks. The banner says so
+once they are older than the reminder interval in Settings, and its button
+does it.
 
 ### Updating
 
