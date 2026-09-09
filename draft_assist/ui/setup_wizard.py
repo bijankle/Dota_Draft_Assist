@@ -26,9 +26,10 @@ wizard opens again next time until setup is actually done.
 
 import webbrowser
 
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel,
-                             QLineEdit, QPushButton, QVBoxLayout)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout,
+                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QVBoxLayout)
 
 from ..config import (ALL_BRACKETS, DEFAULT_TARGET_BRACKETS, has_stratz_key,
                       save_stratz_key, save_target_brackets, target_brackets)
@@ -73,13 +74,42 @@ class KeyWorker(QThread):
         self.answered.emit(check_key(self.key))
 
 
+# How much width a paragraph inside a card actually gets: the dialog's
+# minimum, less the dialog's margins and the card's.
+TEXT_WIDTH = 640 - 72
+
+
+def paragraph(text: str, width: int = TEXT_WIDTH) -> QLabel:
+    """A wrapped label that reports its own height honestly.
+
+    A word-wrapped QLabel's size hint is a single line until something
+    tells it how wide it will be, and `heightForWidth` does not propagate
+    up through nested layouts — so the dialog measured every paragraph
+    here as one line tall, and the two long ones were drawn ON TOP of the
+    controls beneath them with the preset buttons squashed to nothing.
+    Measuring the text at the width it will actually get and making that
+    the minimum is the fix, and it holds at any size at or above the
+    dialog's minimum because a wider label only ever needs fewer lines.
+    """
+    label = QLabel(text)
+    label.setWordWrap(True)
+    # `heightForWidth`, not a font-metrics bounding rect: the metrics
+    # measure the STRING, while the label measures what it will actually
+    # lay out — margins, indent and the stylesheet's font included. The
+    # bounding rect came out a line short, which put the last line of two
+    # paragraphs underneath the controls below them.
+    needed = label.heightForWidth(width)
+    label.setMinimumHeight(max(needed, label.sizeHint().height()))
+    return label
+
+
 class SetupWizard(QDialog):
     """One dialog: what this needs, the key, the ranks, and Finish."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Set up Dota Draft Assist")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(640)
         self.checked: bool | None = None       # what check_key last said
         self.worker: KeyWorker | None = None
 
@@ -90,12 +120,11 @@ class SetupWizard(QDialog):
         heading.setProperty("heading", True)
         lay.addWidget(heading)
 
-        blurb = QLabel(
+        blurb = paragraph(
             "Every number this app shows comes from real match statistics, "
             "which are downloaded to your own machine. That needs a free "
             "API key, and it needs to know which ranks you want the "
             "numbers to describe.")
-        blurb.setWordWrap(True)
         blurb.setProperty("dim", True)
         lay.addWidget(blurb)
 
@@ -133,12 +162,11 @@ class SetupWizard(QDialog):
         title = QLabel("1 · Your Stratz API key")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = QLabel(
+        why = paragraph(
             "Free, and it takes a minute: sign in at stratz.com/api and "
             "copy the key. It is stored in a file called .env beside this "
             "app, it never leaves your machine, and an update never "
             "replaces it.")
-        why.setWordWrap(True)
         why.setProperty("dim", True)
         lay.addWidget(why)
 
@@ -171,35 +199,40 @@ class SetupWizard(QDialog):
         title = QLabel("2 · Which ranks")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = QLabel(
+        why = paragraph(
             "Hero win rates and matchups differ by rank. Pulling from about "
             "one bracket above where you play tilts the advice toward the "
             "games you are trying to win. You can change this later in "
             "Setup ▸ Statistics bracket.")
-        why.setWordWrap(True)
         why.setProperty("dim", True)
         lay.addWidget(why)
 
+        # A GRID, NOT A ROW. Eight brackets and five presets across one
+        # line each came out with every label elided — "Guardi", "Crusad",
+        # "ald - Crusa" — which is a rank picker you cannot read the ranks
+        # off. Four columns fits the longest name at the app's body size
+        # with room to spare, and the dialog stays a sensible shape.
         current = target_brackets() or DEFAULT_TARGET_BRACKETS
-        ticks = QHBoxLayout()
+        ticks = QGridLayout()
+        ticks.setHorizontalSpacing(18)
         self.boxes: dict[str, QCheckBox] = {}
-        for bracket in ALL_BRACKETS:
+        for index, bracket in enumerate(ALL_BRACKETS):
             box = QCheckBox(bracket.title())
             box.setChecked(bracket in current)
             box.toggled.connect(self._update_summary)
-            ticks.addWidget(box)
+            ticks.addWidget(box, index // 4, index % 4)
             self.boxes[bracket] = box
-        ticks.addStretch(1)
         lay.addLayout(ticks)
 
-        presets = QHBoxLayout()
-        presets.addWidget(QLabel("Quick pick:"))
-        for label, brackets in PRESETS:
+        quick = QLabel("Or pick a pair:")
+        quick.setProperty("dim", True)
+        lay.addWidget(quick)
+        presets = QGridLayout()
+        for index, (label, brackets) in enumerate(PRESETS):
             button = QPushButton(label)
             button.clicked.connect(
                 lambda _c, b=brackets: self._apply_preset(b))
-            presets.addWidget(button)
-        presets.addStretch(1)
+            presets.addWidget(button, index // 3, index % 3)
         lay.addLayout(presets)
 
         self.summary = QLabel("")

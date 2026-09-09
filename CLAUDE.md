@@ -1912,6 +1912,20 @@ credentials, and put the account at risk. Do not go there.
   verdict, or a rejected key corrected by one character would inherit it.
   It is SKIPPABLE at the user's request, and skipping writes nothing at
   all; the banner is the way back.
+  **A WRAPPED QLabel MEASURES ITSELF AS ONE LINE** (`setup_wizard.
+  paragraph`), and `heightForWidth` does not propagate up through nested
+  layouts — so both long paragraphs in this dialog were drawn ON TOP of
+  the controls beneath them, with the preset buttons squashed to no
+  height at all. The fix is to ask the LABEL what it needs at the width
+  it will get (`heightForWidth`, never a font-metrics bounding rect,
+  which came out a line short because it measures the string rather than
+  what the label lays out) and make that its minimum. It holds at any
+  size at or above the dialog's minimum, since a wider label only ever
+  needs fewer lines. The ranks and the presets are GRIDS for the same
+  reason: eight brackets and five pairs across one line each elided to
+  "Guardi", "Crusad", "ald – Crusa", which is a rank picker you cannot
+  read the ranks off. This was caught by rendering the dialog and looking
+  at it, not by a test — the tests all passed.
   `config.save_stratz_key` rewrites only the key's LINE — `.env` is
   exactly the sort of file people add variables to — and sets
   `os.environ` as well, because `load_dotenv` does not overwrite a

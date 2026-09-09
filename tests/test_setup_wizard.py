@@ -195,3 +195,32 @@ def test_skipping_writes_nothing_at_all(qapp, sandbox):
     assert not (sandbox / ".env").exists()
     assert not config.has_stratz_key()
     wizard.deleteLater()
+
+
+def test_a_paragraph_reserves_room_for_every_line_it_wraps_to(qapp):
+    """A word-wrapped QLabel's size hint is ONE LINE until something tells
+    it how wide it will be, and heightForWidth does not propagate up
+    through nested layouts — so both long paragraphs in this dialog were
+    drawn on top of the controls under them, with the preset buttons
+    squashed to no height at all."""
+    from draft_assist.ui.setup_wizard import TEXT_WIDTH, paragraph
+    long_text = ("Hero win rates and matchups differ by rank. Pulling from "
+                 "about one bracket above where you play tilts the advice "
+                 "toward the games you are trying to win. You can change "
+                 "this later in Setup - Statistics bracket.")
+    label = paragraph(long_text)
+    one_line = label.fontMetrics().height()
+    assert label.minimumHeight() >= 3 * one_line
+    assert label.minimumHeight() >= label.heightForWidth(TEXT_WIDTH)
+
+
+def test_the_ranks_are_readable_rather_than_elided(qapp, sandbox):
+    """Eight brackets and five presets across one line each came out as
+    "Guardi", "Crusad", "ald - Crusa" — a rank picker you cannot read the
+    ranks off."""
+    wizard = SetupWizard()
+    wizard.resize(640, 820)
+    qapp.processEvents()
+    for name, box in wizard.boxes.items():
+        assert box.width() >= box.sizeHint().width(), name
+    wizard.deleteLater()
