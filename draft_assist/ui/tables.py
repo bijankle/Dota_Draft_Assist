@@ -98,6 +98,12 @@ HEADER_ICON = 34
 # width it is given, exactly as a team panel takes off its own margin,
 # or the two are not measuring the same room.
 CARD_MARGIN = 12
+# Slack around the portrait inside its cell, each side. It was 2, which
+# left the team outline nowhere to sit but ON the picture — "they cut
+# into the portraits ... they should run directly on the edge". At 4 the
+# line lives in the margin with its inner edge against the portrait, and
+# the two teams' borders have real background between them.
+CELL_PAD = 4
 # How big a header portrait grows on its own account. It is no longer the
 # ceiling: a column must print "+12.34" whatever the picture would have
 # liked to be, so where the number is wider the number wins.
@@ -126,13 +132,15 @@ WIDEST_CELL = "+12.34"
 # A column has to fit the widest thing it can be asked to draw, and a
 # total is that: the sigma sits ahead of the digits, so measuring the bare
 # number would put "..." where the totals are.
-WIDEST_TOTAL = SIGMA + WIDEST_CELL
+WIDEST_TOTAL = SIGMA + " " + WIDEST_CELL
 
 
 def sigma(value: float) -> str:
     """A total, written like every other figure in the app with the sigma
     in front of it."""
-    return f"{SIGMA}{float(value) * 100:+.2f}"
+    # A SPACE after it: the sigma is a word, not a sign, and set hard
+    # against a "+" it read as one glyph.
+    return f"{SIGMA} {float(value) * 100:+.2f}"
 
 
 def minimum_grid_width(columns: int = 5) -> int:
@@ -370,7 +378,10 @@ class PairGrid(QTableWidget):
     # background between them — visible, but only just, which is what
     # was asked for.
     GAP = 1
-    INSET = 3
+    # Measured so the pen's INNER edge lands on the portrait, not across
+    # it: the picture starts CELL_PAD in from the cell, and a centred pen
+    # reaches half its width either way.
+    INSET = CELL_PAD - PAIR_EDGE_W // 2
 
     def _side(self, row: int, col: int) -> str | None:
         item = self.item(row, col)
@@ -1106,12 +1117,13 @@ class MatrixTable(QWidget):
                 if isinstance(header, PortraitHeader):
                     header.set_box(size)
         width, height = self._icon_drawn
-        across.setFixedHeight(height + 4)
-        down.setFixedWidth(width + 4)
+        pad = 2 * CELL_PAD
+        across.setFixedHeight(height + pad)
+        down.setFixedWidth(width + pad)
         down.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        down.setDefaultSectionSize(height + 4)
+        down.setDefaultSectionSize(height + pad)
         for row in range(self.table.rowCount()):
-            self.table.setRowHeight(row, height + 4)
+            self.table.setRowHeight(row, height + pad)
         # Every column is CUT TO ITS PORTRAIT, not stretched to the card.
         # The rows were already snug — a row is the height of the picture
         # in it — and stretching the other axis meant a gap between every
@@ -1119,7 +1131,7 @@ class MatrixTable(QWidget):
         # the grid having come apart horizontally. The slack goes to the
         # RIGHT of the table (see `_fit_width`), so the grid still starts
         # under the heading above it.
-        column = max(width + 4, digits)
+        column = max(width + 2 * CELL_PAD, digits)
         for col in range(columns):
             across.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(col, column)

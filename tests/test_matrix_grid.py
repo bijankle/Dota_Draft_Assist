@@ -100,11 +100,17 @@ def test_both_headers_draw_the_same_portrait(art, qapp):
 def test_the_sections_are_cut_to_what_they_draw(art, qapp):
     """A portrait is 256x144, so a square header section would be 40%
     empty space and every row 40% too tall."""
+    # The padding is a CONSTANT, read here rather than repeated: it is the
+    # slack the team outline sits in, so it moves when that does, and a
+    # literal 4 would leave this measuring a layout the app stopped
+    # drawing — which is exactly what it did.
+    from draft_assist.ui.tables import CELL_PAD
+    pad = 2 * CELL_PAD
     table = built(qapp)
     width, height = drawn(table)[0]
-    assert table.table.horizontalHeader().height() == height + 4
-    assert table.table.verticalHeader().width() == width + 4
-    assert table.table.rowHeight(0) == height + 4
+    assert table.table.horizontalHeader().height() == height + pad
+    assert table.table.verticalHeader().width() == width + pad
+    assert table.table.rowHeight(0) == height + pad
 
 
 def test_the_two_headers_agree_at_every_width(art, qapp):
@@ -154,9 +160,10 @@ def test_the_columns_are_snug_and_the_slack_is_on_the_right(art, qapp):
     from PyQt6.QtCore import Qt
     table = built(qapp, width=1400)
     inner = table.table
+    from draft_assist.ui.tables import CELL_PAD
     drawn_w = drawn(table)[0][0]
     for col in range(5):
-        assert inner.columnWidth(col) == drawn_w + 4
+        assert inner.columnWidth(col) == drawn_w + 2 * CELL_PAD
     assert inner.width() < table.width(), "the table still fills the card"
     assert inner.x() < 20, "the slack should all be on the right"
     align = table.layout().itemAt(table.layout().indexOf(inner)).alignment()

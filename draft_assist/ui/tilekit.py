@@ -187,9 +187,20 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # SNUG INTO THE CORNER. It used to float three pixels off both edges,
     # which on a small tile is a number apparently hovering in the middle
     # of the art rather than sitting in its corner.
+    # AND ON ONE BASELINE, whatever size it stepped down to. The descent
+    # was read off the font AFTER the shrink loop, so a figure that had to
+    # step down — which a sigma makes more likely, being one glyph wider —
+    # got a smaller descent and sat a pixel or two lower than its
+    # neighbours. Every badge in a row is meant to sit on the same line,
+    # so the baseline comes off the FULL-SIZE font and the shrink only
+    # ever changes the letters, never where they stand.
+    full = QFont(base)
+    full.setPixelSize(number_px())
+    full.setBold(True)
     edge = BADGE_INSET + stroke_width() / 2
     stroked(painter, QPointF(box.right() - edge - width,
-                             box.bottom() - edge - metrics.descent()),
+                             box.bottom() - edge
+                             - QFontMetricsF(full).descent()),
             text, colour, font)
 
 
