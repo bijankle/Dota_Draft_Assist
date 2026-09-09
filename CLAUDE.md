@@ -1666,6 +1666,18 @@ credentials, and put the account at risk. Do not go there.
   not really one is rebuilt at every size like any other raster and a
   proper `app-generated.ico` is rendered for the shell. The picture was
   never the problem; the wrapper was.
+  **AND AN `.ico` IS A DIRECTORY OF IMAGES, WHICH MAY HOLD ONE**
+  (`ico_sizes`, `covers_the_shell`, `PASS_THROUGH_MIN` 128). A genuine
+  icon file carrying a single 32x32 passes every header check, draws a
+  title bar perfectly, and leaves a TASKBAR button — which asks for 40,
+  48 and 256 depending on the display's scaling — nothing to work from.
+  Title bar right and taskbar wrong for the second time, from a
+  completely different cause than the renamed PNG. So the DIRECTORY is
+  parsed too, and a file whose biggest image is under 128 is rebuilt
+  around that image rather than handed over: upscaling a 32 to a 256 is
+  not pretty, but a button drawn from something beats one drawn from
+  nothing, and the real fix is to supply the PNG and let the app render
+  the .ico itself.
   **A SUPPLIED FILE IS REBUILT AT EVERY SIZE UNLESS IT IS AN `.ico`**
   (`_from_file`). A real .ico already carries each size drawn or hinted
   for it, so it is used exactly as supplied. Everything else is ONE

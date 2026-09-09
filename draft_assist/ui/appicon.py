@@ -177,6 +177,42 @@ def is_ico(path) -> bool:
     return reserved == 0 and kind == 1 and count > 0
 
 
+# The smallest LARGEST image an .ico must carry to be handed over whole.
+# One 32x32 inside is enough for a title bar and not for a taskbar button,
+# which asks for 40, 48 and 256 depending on the display's scaling.
+PASS_THROUGH_MIN = 128
+
+
+def ico_sizes(path) -> set:
+    """Every image size inside an .ico, or an empty set.
+
+    A real .ico is a DIRECTORY of images and may hold as few as one. The
+    header alone says it is an icon; only the directory says whether it
+    covers the sizes the shell will ask for.
+    """
+    import struct
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:
+        return set()
+    if len(raw) < 6:
+        return set()
+    reserved, kind, count = struct.unpack("<HHH", raw[:6])
+    if reserved or kind != 1 or count < 1 or len(raw) < 6 + 16 * count:
+        return set()
+    found = set()
+    for index in range(count):
+        # A zero in the one-byte width field means 256.
+        width = raw[6 + index * 16] or 256
+        found.add(width)
+    return found
+
+
+def covers_the_shell(path) -> bool:
+    """Does this .ico carry a big enough image to hand over untouched?"""
+    return is_ico(path) and max(ico_sizes(path), default=0) >= PASS_THROUGH_MIN
+
+
 def _from_file(path: Path) -> QIcon | None:
     """An icon built from a file somebody supplied, or None if unreadable.
 
@@ -191,13 +227,24 @@ def _from_file(path: Path) -> QIcon | None:
     `SIZES`, with a smooth transform. Same treatment the drawn and
     portrait sources already got; this branch was skipping it.
     """
-    # The CONTENT, not the extension: a real .ico carries every size, and
-    # something merely named .ico carries one image that Qt would then
-    # hand out at 1024 for a 16px request.
-    if is_ico(path):
+    # The CONTENT, not the extension, and the CONTENTS, not just the
+    # header: an .ico holding a single 32x32 satisfies `is_ico` and still
+    # leaves the shell nothing to draw a taskbar button from.
+    if covers_the_shell(path):
         supplied = QIcon(str(path))
         return supplied if not supplied.isNull() else None
     art = QPixmap(str(path))
+    if art.isNull():
+        # A thin .ico still loads through QIcon, so fall back to its
+        # biggest image and rebuild the range around it. Upscaling a 32
+        # to 256 is not pretty, but a button drawn from something beats
+        # one drawn from nothing.
+        thin = QIcon(str(path))
+        biggest = max(thin.availableSizes(), key=lambda s: s.width(),
+                      default=None)
+        if biggest is None:
+            return None
+        art = thin.pixmap(biggest)
     if art.isNull():
         return None
     built = QIcon()
@@ -343,7 +390,7 @@ def shell_ico() -> Path | None:
     # not gets rendered into a proper one below, which is what makes a
     # renamed PNG work in the taskbar instead of silently not.
     for candidate in (ASSETS_DIR / "app.ico", ASSETS_DIR / "app-default.ico"):
-        if candidate.exists() and is_ico(candidate):
+        if candidate.exists() and covers_the_shell(candidate):
             return candidate
     try:
         return write_ico(ASSETS_DIR / "app-generated.ico")

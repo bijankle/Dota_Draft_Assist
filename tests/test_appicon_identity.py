@@ -259,3 +259,66 @@ def test_is_ico_reads_the_header_rather_than_the_name(qapp, tmp_path):
     (tmp_path / "empty.ico").write_bytes(b"")
     assert not appicon.is_ico(tmp_path / "empty.ico")
     appicon.forget()
+
+
+def test_an_ico_holding_one_small_image_is_rebuilt_not_passed_through(
+        qapp, tmp_path, monkeypatch):
+    """A REAL .ico can hold as few as one image. A single 32x32 satisfies
+    the header check and is enough for a title bar, and leaves a taskbar
+    button — which asks for 40, 48 and 256 depending on the display's
+    scaling — nothing to draw from. Title bar right, taskbar wrong, again,
+    for a completely different reason from a renamed PNG."""
+    import struct
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    art = QPixmap(32, 32)
+    art.fill()
+    appicon.forget()
+    monkeypatch.setattr(appicon, "ICO_SIZES", (32,))     # one image only
+    thin = appicon.write_ico(tmp_path / "app-default.ico")
+    monkeypatch.setattr(appicon, "ICO_SIZES", (16, 32, 48, 64, 128, 256))
+    appicon.forget()
+
+    assert appicon.is_ico(thin), "it is a genuine icon file"
+    assert appicon.ico_sizes(thin) == {32}
+    assert not appicon.covers_the_shell(thin), "one 32 is not enough"
+
+    baked = {size.width() for size in appicon.icon().availableSizes()}
+    assert set(appicon.SIZES) <= baked, "rebuilt around its biggest image"
+
+    shell = appicon.shell_ico()
+    assert shell.name == "app-generated.ico"
+    assert appicon.ico_sizes(shell) == set(appicon.ICO_SIZES)
+    appicon.forget()
+
+
+def test_a_full_ico_is_still_handed_over_untouched(qapp, tmp_path,
+                                                   monkeypatch):
+    """One that carries the big sizes was drawn or hinted for each of
+    them, and rebuilding from one would throw that work away."""
+    from PyQt6.QtGui import QPixmap
+    from draft_assist.ui import appicon
+
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    art = QPixmap(256, 256)
+    art.fill()
+    appicon.forget()
+    full = appicon.write_ico(tmp_path / "app-default.ico")
+    appicon.forget()
+
+    assert appicon.covers_the_shell(full)
+    assert max(appicon.ico_sizes(full)) >= appicon.PASS_THROUGH_MIN
+    assert appicon.shell_ico() == full
+    appicon.forget()
+
+
+def test_ico_sizes_refuses_what_is_not_a_directory_of_images(tmp_path):
+    from draft_assist.ui import appicon
+    assert appicon.ico_sizes(tmp_path / "missing.ico") == set()
+    (tmp_path / "short.ico").write_bytes(b"\x00\x00\x01\x00")
+    assert appicon.ico_sizes(tmp_path / "short.ico") == set()
+    # Claims two images and carries no directory for them.
+    (tmp_path / "lying.ico").write_bytes(b"\x00\x00\x01\x00\x02\x00")
+    assert appicon.ico_sizes(tmp_path / "lying.ico") == set()
