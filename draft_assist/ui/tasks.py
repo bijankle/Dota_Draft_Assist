@@ -273,7 +273,17 @@ class TaskWorker(QThread):
         return [sys.executable if part == PY else part for part in step]
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", **self.task.env}
+        # ONE ENCODING, DECLARED AT BOTH ENDS. `text=True` with nothing
+        # said uses the machine's locale, which on Windows is cp1252 —
+        # so a tool printing any character outside it raised
+        # UnicodeEncodeError INSIDE THE TOOL, writing to our pipe. That
+        # is what killed `fetch_assets`' error handler mid-report. The
+        # child is told to speak UTF-8 and we decode UTF-8, so a tool
+        # keeps its glyphs whatever codepage the machine is set to; the
+        # `:replace` and `errors=` are the belt to that braces, since
+        # neither end may raise over a character.
+        env = {**os.environ, "PYTHONUNBUFFERED": "1",
+               "PYTHONIOENCODING": "utf-8:replace", **self.task.env}
         for index, step in enumerate(self.task.steps, start=1):
             if self._cancelled:
                 self.done.emit(1, "Cancelled.")
@@ -284,7 +294,7 @@ class TaskWorker(QThread):
                 self._proc = subprocess.Popen(
                     argv, cwd=str(REPO_ROOT), env=env,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, bufsize=1,
+                    text=True, encoding="utf-8", errors="replace", bufsize=1,
                     creationflags=(subprocess.CREATE_NO_WINDOW
                                    if sys.platform == "win32" else 0),
                 )

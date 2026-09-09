@@ -26,15 +26,31 @@ anything it cannot place is LISTED rather than filed somewhere arbitrary.
 `--dry-run` prints the whole mapping and downloads nothing, which is the
 way to check it before it writes anything.
 
-`EXPECTED` is the set of heroes known to have one, so the dry run can say
-which of them ended up with no file. That is the signal that the mapping,
-or the category, has missed something.
+`EXPECTED` is the set of heroes known to have one, so a run can say which
+of them ended up with no file. That is the signal that the mapping, or the
+category, has missed something, and it is reported on a REAL run as well
+as a dry one — a dry run is the check nobody remembers to do, and the
+whole point of the list is to notice a miss.
 
-Not testable where this was written: the network policy there blocks the
-site outright, so this code has never run against the real API. Read the
-dry run before trusting it. The app also learns an unmatched portrait off
-your own screen by elimination while you play, which needs no download at
-all and produces exactly the picture your HUD draws.
+IT HAS NOW RUN AGAINST THE LIVE API, which reverses the warning that used
+to stand here. This was written where the network policy blocks the site
+outright, so for a long time nothing but `--dry-run` had ever been read.
+The first real run, on the user's own machine: **32 files in the
+category, 32 mapped, 0 it could not place, and every one of the 23 heroes
+in `EXPECTED` covered.** The awkward cases the matcher was built for came
+out right — "Crown of the One True King Wraith King" on Wraith King and
+not Monkey King, "Davion of Dragon Hold Dragon Knight" on Dragon Knight —
+and several heroes correctly took more than one file (Pudge three, and
+the "Alt" styles beside their base arcanas). The mapping is confirmed;
+what is still unverified is only what a future patch adds to the
+category.
+
+NEEDS NO API KEY (see `hero_names`), which is the whole reason it can be
+one step of `tools/fetch_assets.py`.
+
+The app also learns an unmatched portrait off your own screen by
+elimination while you play, which needs no download at all and produces
+exactly the picture your HUD draws.
 """
 
 import argparse
@@ -47,7 +63,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests  # noqa: E402
 
-from draft_assist.data import store  # noqa: E402
+from draft_assist.console import plain_output, say  # noqa: E402
+from draft_assist.data import opendota, store  # noqa: E402
 from draft_assist.vision import library  # noqa: E402
 
 # Heroes known to have an alternative top-bar portrait — personas, arcanas
@@ -69,6 +86,35 @@ CATEGORY = "Category:Custom_hero_icons"
 # category is a few hundred files at most.
 HEADERS = {"User-Agent": "DotaDraftAssist/1.0 (personal tool; batch fetch)"}
 PAGE = 200
+
+
+def hero_names() -> dict[int, str]:
+    """Hero id -> name, WITHOUT needing a Stratz key.
+
+    All this tool wants is the list of hero names, to find one inside a
+    filename. It used to take them from `store.load()` — the statistics
+    dataset — which is built by `pull_data.py` and needs a Stratz key, so
+    on a machine that had skipped the key at setup this step raised
+
+        FileNotFoundError: No dataset cache at ...\data_cache\dataset.npz
+
+    and told the user to go and pull statistics they had deliberately not
+    asked for. The other two artwork steps beside it need no key at all,
+    had already succeeded, and this one took the whole run down with it.
+
+    Hero names are not statistics. `build_library` — the step that
+    downloads the base portraits this one supplements — gets them from
+    OpenDota's public `constants/heroes`, no account of any kind. So:
+    the dataset if it happens to be there (free, offline, already
+    parsed), and otherwise the same public constants, which this tool is
+    on the network for anyway.
+    """
+    try:
+        ds = store.load()
+        return {hid: ds.name(hid) for hid in ds.hero_ids}
+    except FileNotFoundError:
+        pass                    # no statistics on this machine: fine
+    return {hid: h["name"] for hid, h in opendota.fetch_heroes().items()}
 
 
 def _norm(text: str) -> str:
@@ -126,6 +172,22 @@ def image_urls(session, titles: list[str]) -> dict[str, str]:
     return out
 
 
+def report_missing(got: set[str]) -> None:
+    """Say which of `EXPECTED` came back with nothing.
+
+    On a REAL run as well as a dry one. It used to be inside the dry-run
+    branch, which is the check nobody runs — and the point of the list is
+    to notice that the category or the matcher has drifted, which shows up
+    on whichever run somebody happens to do. Silence here is the good
+    answer and the first real run gave it: all 23 covered.
+    """
+    missing = [name for name in EXPECTED if name not in got]
+    if missing:
+        say("\nExpected an alternative portrait for these and found none - "
+            "the mapping or the category has missed them:\n  "
+            + ", ".join(missing))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
@@ -134,8 +196,9 @@ def main() -> None:
                         help="stop after this many downloads (0 = all)")
     args = parser.parse_args()
 
-    ds = store.load()
-    match = hero_matcher({hid: ds.name(hid) for hid in ds.hero_ids})
+    plain_output()
+    names = hero_names()
+    match = hero_matcher(names)
 
     session = requests.Session()
     session.headers.update(HEADERS)
@@ -151,15 +214,10 @@ def main() -> None:
     print(f"mapped {len(mapped)}, could not place {len(unmapped)}")
     for _hid, stem, _t in unmapped:
         print(f"  unmapped: {stem}")
+    report_missing({names[hid] for hid, _s, _t in mapped})
     if args.dry_run:
         for hid, stem, _t in mapped:
-            print(f"  {ds.name(hid):22s} <- {stem}")
-        got = {ds.name(hid) for hid, _s, _t in mapped}
-        missing = [name for name in EXPECTED if name not in got]
-        if missing:
-            print("\nExpected an alternative portrait for these and found "
-                  f"none — the mapping or the category has missed them:\n  "
-                  + ", ".join(missing))
+            print(f"  {names[hid]:22s} <- {stem}")
         print("\nDry run: nothing downloaded. Check those mappings, then "
               "run again without --dry-run.")
         return
@@ -182,7 +240,7 @@ def main() -> None:
         resp.raise_for_status()
         dest.write_bytes(resp.content)
         written += 1
-        print(f"  {ds.name(hid):22s} <- {stem}")
+        print(f"  {names[hid]:22s} <- {stem}")
         if args.limit and written >= args.limit:
             break
 

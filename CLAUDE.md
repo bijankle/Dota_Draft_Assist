@@ -1596,9 +1596,65 @@ credentials, and put the account at risk. Do not go there.
   Knight" on Dragon Knight; all 24 real filenames map. To the user's disk
   at runtime, never committed — the same rule `build_library` follows for
   the base portraits, and the reason is that these are Valve's artwork.
-  It has never been run against the real API: the network policy where it
-  was written blocks the site, so `--dry-run` prints the whole mapping and
-  names any hero in `EXPECTED` that came back with nothing.
+  **IT HAS NOW RUN AGAINST THE REAL API, and the mapping is confirmed**,
+  which reverses the warning that stood here. It was written where the
+  network policy blocks the site, so for a long time only `--dry-run` had
+  ever been read. The first live run, on the user's own machine: **32
+  files in the category, 32 mapped, 0 unplaced, and every one of the 23
+  heroes in `EXPECTED` covered.** The cases the matcher exists for came
+  out right — "Crown of the One True King Wraith King" on Wraith King and
+  not Monkey King, "Davion of Dragon Hold Dragon Knight" on Dragon Knight
+  — and several heroes correctly took more than one file (Pudge three,
+  and each "Alt" style beside its base arcana). What is still unverified
+  is only what a future patch adds to the category, which is what
+  `EXPECTED` is for — and that check now runs on a REAL run as well as a
+  dry one (`report_missing`), because a dry run is the check nobody
+  remembers to do.
+  **AND IT NEEDS NO STRATZ KEY, which it used to and should never have**
+  (`fetch_custom_portraits.hero_names`). All it wants from the dataset is
+  hero NAMES, to find one inside a filename — and it took them from
+  `store.load()`, the STATISTICS cache, which `pull_data.py` builds and
+  which needs a key. So on a fresh install where the user skipped the key
+  at setup (which the wizard explicitly offers), this step raised
+  `FileNotFoundError: No dataset cache at ...\data_cache\dataset.npz` and
+  told them to go and pull statistics they had deliberately not asked
+  for. The two steps beside it — 127 portraits and 484 item icons — need
+  no account of any kind, had already succeeded, and this one failed the
+  whole run. Hero names are not statistics: `build_library`, the step
+  that downloads the base portraits this one supplements, has always
+  taken them from OpenDota's public `constants/heroes`. So the layering
+  is the dataset if it happens to be on disk (free, offline, already
+  parsed) and those public constants otherwise, which this tool is on the
+  network for anyway. `fetch_assets.py`'s docstring has said "NEEDS NO
+  API KEY" throughout; one of its three steps did not, and nothing
+  checked.
+  **AND A REPORT OF A FAILURE MUST NOT ITSELF FAIL** (`draft_assist/
+  console.py`, `fetch_assets.run`, `ui/tasks.py`). This is the worse half
+  of that same install, because it hid the first: `run` caught the
+  FileNotFoundError exactly as designed — one part failing must never
+  take the others down — and then **died inside its own `except`**
+  printing the message, which contained a U+25B8 arrow. A Windows console
+  is cp1252 and cp1252 cannot encode it. What the user saw was a
+  `UnicodeEncodeError` raised from the error handler; the cause it had
+  successfully caught was never printed at all. Three things hold it
+  shut, at three different levels. `console.plain_output()` puts the
+  streams on `errors="replace"`, so an unprintable character degrades to
+  `?` and the sentence around it still arrives; `console.say` is the last
+  resort for the one line that must land, since an exception's message
+  carries paths and other libraries' wording that is not ours to keep
+  printable; and `ui/tasks.py` — which is how these tools are actually
+  run, as a subprocess behind a progress dialog — now **declares one
+  encoding at BOTH ends**, `PYTHONIOENCODING=utf-8:replace` into the child
+  and `encoding="utf-8", errors="replace"` on the pipe. `text=True` alone
+  means the machine's locale, which is the cp1252 that caused this.
+  Console text is therefore ASCII: a menu trail is spelled "Settings >
+  Downloads" in a tool and with the arrow in the Qt widgets, where Qt
+  draws it properly. That covers DOCSTRINGS too — argparse prints
+  `__doc__` for `--help` — which is why the paragraph in `fetch_assets`
+  describing this bug names the character rather than containing one, and
+  why `tests/test_asset_tools.py` scans the whole file rather than only
+  the calls to `print`. It also catches the STALE TRAIL that message
+  carried: it named "Setup ▸ Download", two menus that no longer exist.
   **Everything filed under a hero goes in `assets/portraits/variants/<HERO
   ID>/`** — the numeric id, not the name, and the same folder the app's own
   learned crops go to. So `variants/` itself looks empty when it is full,
