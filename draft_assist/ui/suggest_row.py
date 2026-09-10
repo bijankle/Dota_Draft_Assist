@@ -1,6 +1,6 @@
 """The suggested picks: the ranked list, as a strip, above the items.
 
-The Analysis tab already ranks every hero the draft has not taken by draft
+The History tab already ranks every hero the draft has not taken by draft
 fit. That answer belongs on the Draft tab too — it is the question a draft
 screen is actually asking — but 120 rows of it is a table, and a table
 beside the ten picks makes the ten harder to read. So the top handful come

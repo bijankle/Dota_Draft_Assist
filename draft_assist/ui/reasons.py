@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 from . import theme
 
 # How many terms are worth reading at a glance. Past this it is a table,
-# and the Analysis tab already has the table.
+# and the History tab already has the table.
 TOP_TERMS = 6
 
 

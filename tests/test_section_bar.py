@@ -248,7 +248,7 @@ def test_the_separators_in_the_list_are_actually_drawn(tab):
 def test_the_page_never_scrolls_sideways_at_the_windows_own_floor(tab):
     """The floor is 940 and the sidebar takes 178 of it.
 
-    Laid across one line the "Matches to measure" row asked for 925px,
+    Laid across one line the "Filter" row asked for 925px,
     so the sidebar put a horizontal scrollbar under the whole report and
     clipped the remembered-accounts dropdown off the right edge. Every
     test passed; it was caught by rendering the tab and looking at it.

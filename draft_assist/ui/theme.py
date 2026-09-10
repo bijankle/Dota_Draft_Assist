@@ -430,6 +430,12 @@ QLabel[eyebrow="true"] {{
     letter-spacing: 1px;
 }}
 QLabel[dim="true"] {{ color: {TEXT_DIM}; }}
+/* PROSE IS THE ONE PLACE THIS APP IS NOT BOLD. Everything else here is
+   read at a glance over a running game, where weight IS legibility — but
+   the user manual is read at LENGTH, and a page of 18px bold is a wall
+   whatever it says, which is the fault the manual exists to fix rather
+   than to repeat. */
+QLabel[prose="true"] {{ font-weight: 400; line-height: 140%; }}
 /* Amber, and declared AFTER dim so it wins the cascade on a label that
    carries both: a note the user has to act on must not be the colour of
    one they can ignore. */

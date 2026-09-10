@@ -1,4 +1,4 @@
-"""The Analysis tab's sidebar: what is on the page, and what to measure.
+"""The History tab's sidebar: what is on the page, and what to measure.
 
 A run is thirteen cards long and the only way to reach the ninth was to
 scroll past eight. So the sections are listed down the left, the list

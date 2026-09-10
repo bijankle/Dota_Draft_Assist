@@ -63,7 +63,7 @@ class Finding:
     """One bucket that stood out, said twice and measured once.
 
     `text` is the sentence the workbook carries. `short` is what the
-    summary cards on the Analysis tab print — "Tuesday win rate 65%" —
+    summary cards on the History tab print — "Tuesday win rate 65%" —
     and `value` is the figure inside it, so the bar drawn beside it can
     put a marker where this bucket sits among its neighbours without
     parsing the words back out of a sentence. Both are built HERE, next
@@ -511,7 +511,7 @@ METRICS = {
 
 
 # THE ORDER A REPORT IS READ IN, AND THERE IS ONLY ONE OF IT.
-# `build_blocks` walks this and so does the Analysis tab's sidebar, which
+# `build_blocks` walks this and so does the History tab's sidebar, which
 # lists the same eleven sections down the left of the page they are on. It
 # used to be a tuple inlined in the loop below plus the order of `METRICS`
 # plus wherever `items` happened to be appended — three places, agreeing by

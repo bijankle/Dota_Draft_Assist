@@ -1355,7 +1355,7 @@ def test_the_draft_tab_carries_the_teams_and_both_matrices(window):
     """The matrices moved onto the draft screen: the grid explaining the
     ten picks belongs beside the ten picks, not behind a tab."""
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "Analysis"]
+    assert titles == ["Draft", "History"]
     draft_tab = window.tabs.widget(0)
     for widget in (window.matchup_matrix, window.synergy_matrix,
                    window.team_panels["ally"], window.team_panels["enemy"]):
@@ -3563,7 +3563,7 @@ def test_one_missing_portrait_is_not_described_in_the_plural(
         said = win.banner_label.text()
         assert "1 hero picture is missing" in said, said
         assert "pictures are" not in said
-        assert "That tile draws blank" in said, said
+        assert "Those tiles" not in said
     finally:
         win.close()
 

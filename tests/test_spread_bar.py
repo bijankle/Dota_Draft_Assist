@@ -340,3 +340,125 @@ def test_the_end_labels_are_sized_in_pixels(styled):
     room = QFontMetrics(font).horizontalAdvance(WIDEST_LABEL)
     for label in ("43%", "100%", "704", "3.56"):
         assert QFontMetrics(font).horizontalAdvance(label) <= room, label
+
+
+# ---- both names on one line ----------------------------------------------
+
+def _places(bar, spread):
+    """Where the bar would print its two names, worst first."""
+    return bar._label_places(_x_of(bar, spread, spread.worst),
+                             _x_of(bar, spread, spread.best),
+                             _x_of(bar, spread, spread.datum),
+                             QFontMetrics(bar._font()))
+
+
+def a_bar(spread, best_text, worst_text, width=760, datum_text="50%"):
+    bar = SpreadBar()
+    bar.ensurePolished()
+    bar.set_spread(spread, "0%", "100%", datum_text,
+                   best_text=best_text, worst_text=worst_text)
+    bar.resize(width, bar.height())
+    return bar
+
+
+def test_both_names_sit_on_one_line(styled):
+    """"The green should not be floating high — it should be the same
+    level as the red." They were two rows, best above worst, which is
+    what stopped two centred names printing over each other."""
+    spread, *_ = analyse.section_spread(a_block((0.39, 0.50, 0.71)), 0.50)
+    bar = a_bar(spread, "71% Axe", "39% Crystal Maiden")
+    (worst, _, _), _, (best, _, _) = _places(bar, spread)
+    assert worst.top() == best.top()
+    assert worst.height() == best.height()
+
+
+def test_each_name_runs_away_from_its_own_dot(styled):
+    """Anchoring each name to the inside edge of its own mark is what
+    lets them share a line: the worst is always the left-hand dot, so the
+    two texts point in opposite directions and can only draw apart."""
+    spread, *_ = analyse.section_spread(a_block((0.39, 0.50, 0.71)), 0.50)
+    bar = a_bar(spread, "71% Axe", "39% Crystal Maiden")
+    (worst, _, _), _, (best, _, _) = _places(bar, spread)
+    assert worst.right() <= _x_of(bar, spread, spread.worst)
+    assert best.left() >= _x_of(bar, spread, spread.best)
+    assert worst.right() <= best.left(), "the two names would touch"
+
+
+def test_a_name_with_no_room_outward_turns_inward(styled):
+    """Every contribution section has both dots ON the ends, because the
+    scale there IS worst-to-best — "so it doesn't make sense to align
+    them as I said before". A name that ran outward would fall off the
+    widget, so it turns round."""
+    spread, *_ = analyse.section_spread(
+        a_block((0.30, 0.50, 0.90), kind="metric", ident="herodmg"), 0.50)
+    assert (spread.worst, spread.best) == (spread.low, spread.high)
+    bar = a_bar(spread, "90 Sniper", "30 Axe")
+    (worst, _, _), _, (best, _, _) = _places(bar, spread)
+    assert worst.left() >= _x_of(bar, spread, spread.worst)
+    assert best.right() <= _x_of(bar, spread, spread.best)
+    assert worst.left() >= 0 and best.right() <= bar.width()
+
+
+def test_a_name_that_fits_is_never_cut(styled):
+    """The regression that elided every label on the card.
+
+    `elidedText` cuts a string measuring exactly its own width, so a
+    rectangle sized from `horizontalAdvance` came back as "39% Crystal
+    Maid..." with three hundred empty pixels beside it. Nothing may be
+    cut while it fits.
+    """
+    spread, *_ = analyse.section_spread(a_block((0.39, 0.50, 0.71)), 0.50)
+    bar = a_bar(spread, "71% Axe", "39% Crystal Maiden")
+    worst, _, best = _places(bar, spread)
+    assert [worst[1], best[1]] == ["39% Crystal Maiden", "71% Axe"]
+
+
+def test_two_close_figures_still_do_not_print_over_each_other(styled):
+    """Radiant 49% against Dire 52% is a few pixels apart on a fixed
+    scale. The names are held apart at the midpoint between them."""
+    spread, *_ = analyse.section_spread(a_block((0.49, 0.50, 0.52)), 0.50)
+    bar = a_bar(spread, "52% Radiant", "49% Dire", width=340)
+    (worst, _, _), _, (best, _, _) = _places(bar, spread)
+    assert worst.right() <= best.left()
+
+
+def test_the_bar_is_one_label_line_tall(styled):
+    """A row that is sometimes one line high and sometimes two makes the
+    bars beside it stop lining up, so the height is fixed either way —
+    and with one row it is a line shorter than it was."""
+    from draft_assist.ui.spread_bar import CAP, ROWS
+    bar = SpreadBar()
+    bar.ensurePolished()
+    line = QFontMetrics(bar._font()).height()
+    assert ROWS == 1
+    assert bar.height() == line + 2 * (CAP + 2)
+
+
+def test_your_own_figure_is_a_grey_dot_that_says_what_it_is(styled):
+    """"A grey dot at the middle point that just has the average number
+    in grey text" — replacing a dashed tick whose figure was only ever in
+    the tooltip."""
+    from draft_assist.ui import theme
+    spread, *_ = analyse.section_spread(a_block((0.39, 0.51, 0.71)), 0.51)
+    bar = a_bar(spread, "71% Axe", "39% Crystal Maiden", datum_text="51%")
+    bar.name_the_datum(True)
+    _, (rect, text, _), _ = _places(bar, spread)
+    assert text == "51%"
+    assert rect.left() >= 0 and rect.right() <= bar.width()
+
+    image = bar.grab().toImage()
+    middle = round(_x_of(bar, spread, spread.datum))
+    column = {image.pixelColor(middle, y).name()
+              for y in range(image.height())}
+    assert theme.TEXT_DIM in column, "the grey dot never drew"
+
+
+def test_the_grey_figure_is_not_printed_twice_down_a_card(styled):
+    """Every win-rate section shares one datum on one scale, so the grey
+    dot lands at the same x on all eight rows and reads as a line. The
+    card names it where it CHANGES — which on the contribution card is
+    every row, since each metric has an average of its own."""
+    spread, *_ = analyse.section_spread(a_block((0.39, 0.51, 0.71)), 0.51)
+    quiet = a_bar(spread, "71% Axe", "39% Crystal Maiden")
+    quiet.name_the_datum(False)
+    assert _places(quiet, spread)[1][1] == ""

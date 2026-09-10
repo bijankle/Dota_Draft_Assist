@@ -1,4 +1,4 @@
-"""The Analysis tab: one account's match history, measured.
+"""The History tab: one account's match history, measured.
 
 It replaced the ranked list of every hero not in the game, at the user's
 request. That list answered "what should I pick", which the Draft tab now
@@ -506,10 +506,10 @@ class HistoryTab(QWidget):
         moment somebody needs to see what this tab can measure.
         """
         self.sections.add("account", "Account")
-        self.sections.add("sample", "Matches to measure")
+        self.sections.add("sample", "Filter")
         self.sections.separator()
-        self.sections.add("winning", "What wins games")
-        self.sections.add("contrib", "Game impact metrics")
+        self.sections.add("winning", "Win rate")
+        self.sections.add("contrib", "Impact")
         self.sections.separator()
         for key in analyse.BLOCK_ORDER:
             row = self.sections.add(key, analyse.NAMES[key], tick=True)
@@ -667,7 +667,7 @@ class HistoryTab(QWidget):
             label.style().polish(label)
 
     def _build_options_card(self) -> QFrame:
-        frame, lay = card("Matches to measure")
+        frame, lay = card("Filter")
         # IT WRAPS, for the reason the suggestion strips do: a row of
         # fixed controls that cannot wrap sets a MINIMUM WIDTH, and a
         # widget's minimum is the window's. Laid out across one line this
@@ -1046,7 +1046,7 @@ class HistoryTab(QWidget):
         # but damage rows with every behavioural finding buried under it.
         names: list = []
         winning = self._findings_card(
-            "What wins games", rates,
+            "Win rate", rates,
             "Nothing to compare yet — every split needs at least two "
             "buckets with enough games behind them.",
             names=names)
@@ -1054,7 +1054,7 @@ class HistoryTab(QWidget):
         self._anchors["winning"] = winning
         if contributions:
             contrib = self._findings_card(
-                "Game impact metrics", contributions, "", names=names)
+                "Impact", contributions, "", names=names)
             self.results.addWidget(contrib)
             self._anchors["contrib"] = contrib
         # After BOTH cards exist, so the two agree with each other.
@@ -1130,6 +1130,7 @@ class HistoryTab(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(4)
         grid.setContentsMargins(0, 0, 0, 0)
+        said = ""       # the last grey figure printed, so it is not repeated
         for line, (block, spread, best, worst) in enumerate(rows):
             name = QLabel(block.name)
             name.setProperty("dim", True)
@@ -1161,6 +1162,19 @@ class HistoryTab(QWidget):
                 worst_text=f"{analyse.format_figure(block, spread.worst)} "
                            f"{worst.key}",
                 note=f"{best.key} {best.n} games, {worst.key} {worst.n} games")
+            # THE GREY DOT IS NAMED WHEN IT IS NOT A REPEAT. Every
+            # win-rate section is measured against the same datum — your
+            # own overall rate — on the same 0 to 100 scale, so its dot
+            # lands at the same x on all eight rows and the column reads
+            # as one line: "most of them will just be my average win rate
+            # of 49% or whatever", and printing it against each row is
+            # the same number eight times. Each CONTRIBUTION section has
+            # a datum of its own, though, so those are all named — which
+            # is why this asks what was last said rather than counting
+            # rows.
+            datum_says = analyse.format_figure(block, spread.datum)
+            bar.name_the_datum(datum_says != said)
+            said = datum_says
             grid.addWidget(bar, line, 2)
         # A RULE DOWN THE WHOLE CARD, at the user's request — "maybe even
         # have a vertical line that runs down in between section and

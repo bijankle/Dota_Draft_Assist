@@ -120,11 +120,13 @@ class SetupWizard(QDialog):
         heading.setProperty("heading", True)
         lay.addWidget(heading)
 
+        # ONE LINE. It was four, explaining where the numbers come from
+        # and why each of the two things below is being asked for — all
+        # true, all read once, and all of it between somebody and the
+        # only two controls on the screen. It is the manual's first page
+        # now (Help ▸ User manual).
         blurb = paragraph(
-            "Every number this app shows comes from real match statistics, "
-            "which are downloaded to your own machine. That needs a free "
-            "API key, and it needs to know which ranks you want the "
-            "numbers to describe.")
+            "Both are stored on this machine and can be changed later.")
         blurb.setProperty("dim", True)
         lay.addWidget(blurb)
 
@@ -139,9 +141,7 @@ class SetupWizard(QDialog):
 
         buttons = QHBoxLayout()
         self.skip = QPushButton("Skip for now")
-        self.skip.setToolTip(
-            "The app opens with empty tiles and a banner at the top to "
-            "come back to this.")
+        self.skip.setToolTip("The banner at the top is the way back.")
         self.skip.clicked.connect(self.reject)
         buttons.addWidget(self.skip)
         buttons.addStretch(1)
@@ -162,11 +162,8 @@ class SetupWizard(QDialog):
         title = QLabel("1 · Your Stratz API key")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = paragraph(
-            "Free, and it takes a minute: sign in at stratz.com/api and "
-            "copy the key. It is stored in a file called .env beside this "
-            "app, it never leaves your machine, and an update never "
-            "replaces it.")
+        why = paragraph("Free, and it takes a minute. Skip it and the "
+                        "app still opens.")
         why.setProperty("dim", True)
         lay.addWidget(why)
 
@@ -199,11 +196,8 @@ class SetupWizard(QDialog):
         title = QLabel("2 · Which ranks")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = paragraph(
-            "Hero win rates and matchups differ by rank. Pulling from about "
-            "one bracket above where you play tilts the advice toward the "
-            "games you are trying to win. You can change this later in "
-            "Settings ▸ Downloads ▸ Statistics bracket.")
+        why = paragraph("Rates differ by rank. One bracket above where "
+                        "you play is the usual choice.")
         why.setProperty("dim", True)
         lay.addWidget(why)
 

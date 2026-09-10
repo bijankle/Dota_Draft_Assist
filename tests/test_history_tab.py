@@ -252,7 +252,7 @@ def test_the_ranked_list_of_every_hero_is_gone(window):
     assert not hasattr(window, "detail")
     assert not hasattr(window, "counters")
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "Analysis"]
+    assert titles == ["Draft", "History"]
     assert window.history_tab is window.tabs.widget(1)
 
 
@@ -731,7 +731,7 @@ def test_a_block_card_is_its_heading_and_its_table(qapp):
 
 
 def test_the_summary_cards_get_no_blurb(qapp):
-    """"I don't want blurbs below What wins games and Game impact
+    """"I don't want blurbs below Win rate and Game impact
     metrics." Those name a question rather than a measurement, and there
     is nothing to describe that the rows below do not already say."""
     from PyQt6.QtWidgets import QLabel

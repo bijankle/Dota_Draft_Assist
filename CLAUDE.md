@@ -507,7 +507,7 @@ credentials, and put the account at risk. Do not go there.
 - **The Draft tab reads top to bottom as one argument**: the board, then
   which hero to take, then what to build. The ten picks are at the very
   top because they are the subject; **Suggested picks** (`ui/suggest_row.
-  py`) is the Analysis tab's ranked list cut to its head — best draft fit
+  py`) is the History tab's ranked list cut to its head — best draft fit
   on the left, descending right, the same order and the same numbers,
   because it IS that list rather than a second opinion; the item strip
   follows, and the two grids sit at the bottom under the sides they
@@ -528,7 +528,7 @@ credentials, and put the account at risk. Do not go there.
   from where" lives. Note for tests: a widget on a tab that is not current
   is hidden BY THE TAB WIDGET, so `isVisibleTo(window)` there answers "is
   this the open tab", not "did the app hide this" — ask `isHidden()`.
-- **THE ANALYSIS TAB IS THE MATCH HISTORY ANALYSER** (`draft_assist/
+- **THE HISTORY TAB IS THE MATCH HISTORY ANALYSER** (`draft_assist/
   history/`, `ui/history_tab.py`). It was the ranked list of every hero NOT
   in this game, with "Why this score" and a counters list beside it; all
   three are GONE at the user's request. That list answered "what should I
@@ -616,7 +616,7 @@ credentials, and put the account at risk. Do not go there.
   still computed and still go to the workbook, where a caveat can be read
   at leisure rather than sat over the table every time.
   **ONLY ON THESE CARDS.** The two summary cards get none — "I don't
-  want blurbs below What wins games and Game impact metrics" — since
+  want blurbs below Win rate and Impact" — since
   those name a QUESTION rather than a measurement.
   **THE ITEM BLOCK IS ONE HERO AT A TIME, from a dropdown ordered most
   played first** (`_item_block`). It was fixed at your three most played
@@ -667,9 +667,14 @@ credentials, and put the account at risk. Do not go there.
   The line is the section's NAME, a rule, and the bar — which carries
   both figures itself, each above its own dot. The sample sizes are in
   the bar's tooltip, since naming two buckets would otherwise print two
-  counts on every line. The two cards are **What wins games** and **Game
-  impact metrics**, both renamed at the user's request from sentences
-  that described the reader rather than the measurement.
+  counts on every line. The two cards are **Win rate** and **Game
+  **Win rate** and **Impact**, renamed twice at the user's request —
+  from sentences describing the reader ("What goes with winning", "What
+  you do on each hero") to short statements of the measurement, and then
+  to one word each. The options card above them went the same way, "What
+  to measure" to "Filter", and the tab itself is **History** rather than
+  Analysis: it measures your match history, and the word it was called
+  before named a shape rather than a subject.
   **A WIN RATE IS DRAWN 0 TO 100%, and that fixes the bar's real
   problem**, at the user's request. Scaled to its own section the bar
   made every section look equally spread — Radiant 55% against Dire 44%
@@ -689,9 +694,29 @@ credentials, and put the account at risk. Do not go there.
   "61% Rubick" over the green, sketched by hand — and the middle column
   that printed those same two figures is GONE, because with the label on
   the mark it belongs to that column said everything twice on one line.
-  Two label rows ALWAYS, best above worst: two close figures would
-  otherwise print over each other, and a row that is sometimes one line
-  high and sometimes two makes the bars beside them stop lining up.
+  **BOTH NAMES SHARE ONE LINE, AND EACH RUNS AWAY FROM ITS OWN DOT** —
+  the red ending just left of the red mark, the green starting just
+  right of the green. This REVERSES the two rows, best above worst, that
+  stood here: "I don't like that the green is not on the same level as
+  the red". The rows existed to stop two close names printing over each
+  other while both were centred on their marks, and anchoring each name
+  to the INSIDE edge of its own dot does that job without the step,
+  because the worst is always the left-hand mark — so the two texts
+  point in opposite directions and the gap between them can only widen.
+  **A DOT ALREADY ON THE END TURNS AND RUNS INWARD**, which is every
+  contribution section, since the scale there IS worst-to-best: "the red
+  and green are on either side of the min/max extremes, so it doesn't
+  make sense to align them as I said before". One rule covers both — a
+  name runs whichever way it has room, preferring outward — and the
+  ellipsis is left for the one case it is for, two dots close enough
+  that their names would otherwise meet.
+  **AND `elidedText` CUTS A STRING THAT MEASURES EXACTLY ITS OWN
+  WIDTH.** It lays text out rather than summing advances, so a rectangle
+  sized from `horizontalAdvance` came back elided: every label on the
+  card read "39% Crystal Maid..." with three hundred empty pixels beside
+  it. Ask whether it fits FIRST (`spread_bar._fit`) — the same family as
+  the even-width pen and the header's own portrait box, where a number
+  that looks like the right one is a pixel out.
   **AND THE PER-BUCKET TICKS ARE GONE**, which REVERSES what stood here
   — "get rid of all those small dashes in between, no one knows what
   they mean". They earned their place under the old scale and only
@@ -699,9 +724,21 @@ credentials, and put the account at risk. Do not go there.
   bounds, so those two dots sat on the two ends for ever and the ticks
   between them were the only thing carrying information. A fixed scale
   removes that at the root, because the dots move when the scale does
-  not. One tick survives — your own usual figure, kept deliberately,
-  since a dot at 55% says nothing about whether it is good until you
-  know whether your rate is 45% or 65%.
+  not. Your own usual figure survives, kept deliberately, since a dot at
+  55% says nothing about whether it is good until you know whether your
+  rate is 45% or 65% — and it is now **A GREY DOT WITH ITS FIGURE OVER
+  IT** rather than a dashed tick, at the user's request. It was the one
+  mark on the bar that said nothing about itself: its number lived in
+  the tooltip.
+  **NAMED WHERE IT CHANGES, which is not every row.** Every win-rate
+  section is measured against the same datum on the same 0-to-100 scale,
+  so its dot lands at the same x on all eight rows and the column reads
+  as one line down the card — "most of them will just be my average win
+  rate of 49% or whatever", and printing it against each is the same
+  number eight times, which is what the middle column was removed for.
+  Each contribution section has an average of its own, so those are all
+  named. The card therefore asks what it last said (`name_the_datum`)
+  rather than counting rows.
   **AND A BOUND IS NEVER PRINTED TWICE.** On a contribution section the
   scale runs worst-to-best, so the two dots stand exactly on the ends and
   the end labels repeat what the dots' own names say one line above them;
@@ -790,7 +827,7 @@ credentials, and put the account at risk. Do not go there.
   stale. The row IS the control now: tick it and the section appears
   below, untick it and the section goes and the row dims. What is left
   on that card is which MATCHES to measure, which is why it is called
-  "Matches to measure" rather than "What to measure".
+  "Filter" rather than "What to measure".
   Four rules, each of them a fault avoided:
   **THE LIST IS FIXED AND ALWAYS COMPLETE.** Every analysis has a row
   whether it is ticked or not, always in the same order — listing only
@@ -1068,6 +1105,56 @@ credentials, and put the account at risk. Do not go there.
   wrote one sheet per analysis plus a summary, and thirteen tabs is a
   worse way to read the same thing than one you can scroll. openpyxl is in
   `requirements.txt` for it — a CSV pair cannot carry an autofilter.
+- **THE APP EXPLAINED ITSELF IN PLACE, AND NOW IT DOES NOT**
+  (`ui/handbook.py`, Help ▸ User manual, F1). Four paragraphs in the
+  first-run wizard, three under every download button, a banner that ran
+  to four lines and an About box describing the product — all true, all
+  read once, and all of it standing between somebody and the control
+  they had come to that screen for. It is the History tab's block cards,
+  the "this run" card and the empty-grid captions again, spread across
+  the whole app: "there is a lot of fluff sprinkled around... make it
+  all much more concise and instead have a detailed outline of all the
+  features in Help ▸ User manual".
+  **THE RULE FOR WHAT GOES WHERE: a screen says what a control will DO,
+  the manual says how the thing WORKS and what to do when it does not.**
+  So every task blurb is one or two sentences, the wizard's paragraphs
+  are one line each, and the banners state the fault and stop. Two tests
+  hold it — no blurb over 200 characters or carrying a paragraph break,
+  no wizard paragraph over 120 — because prose grows back.
+  **AND CUTTING IS ONLY HALF A FIX IF THE FACTS GO WITH IT.** Everything
+  removed is in the manual, and a test names the ones somebody can be
+  stuck on: where the key lives and that it never leaves the machine,
+  the `-gamestateintegration` launch option, that variant portraits are
+  filed under a NUMERIC hero id, that a download skips what is on disk.
+  Ten sections, listed down the left in `SectionBar` — the History tab's
+  own sidebar, because two implementations of "anchors that scroll the
+  page beside them" would drift.
+  **IT IS TEXT IN THE APP RATHER THAN A PAGE ON THE WEB**, at the user's
+  request: it answers questions about an app whose commonest fault is
+  having no connection, and a manual you need a connection to open is
+  missing exactly when it is wanted. **AND IT IS THE ONE PLACE THIS APP
+  IS NOT BOLD** (`QLabel[prose="true"]`): everything else here is read
+  at a glance over a running game, where weight is legibility, but a
+  manual is read at length and a page of 18px bold is a wall whatever it
+  says — which is the fault it exists to fix rather than repeat.
+  Named `handbook` because `ui/manual.py` was taken years earlier by
+  `ManualDraft`, the hand-entered picks.
+- **ABOUT IS WHICH ONE YOU HAVE GOT, NOT WHAT IT DOES** (`_about`,
+  `draft_assist/version.py`). It carried three paragraphs on what the app
+  reads, where the numbers come from and what it will not touch — the
+  manual's first page — and answered none of the question somebody opens
+  an About box with. It is the name, the version, the build, the Python
+  and Qt it is running on, the trademark line, and a button to the
+  manual.
+  **A VERSION AND A BUILD ARE TWO DIFFERENT ANSWERS.** `VERSION` is what
+  a person says out loud, spelled in one place and raised by hand. The
+  BUILD is what identifies the code, and it is read from wherever this
+  copy came from, because the two kinds of install know different
+  things: a clone asks git, a copy unzipped from GitHub reads the sha
+  out of `installed_version.json`, which the updater wrote. A first
+  unzip has neither and says "unknown" — nothing in that module may
+  raise, since it is read by a dialog and by the diagnostic paste and
+  neither is worth an exception.
 - **The Draft tab is the whole board and nothing else.** Your five on the
   left, theirs on the right (`ui/teams.py`), because that is where they sit
   on the pick bar, with the two grids directly under the sides they
@@ -1294,7 +1381,7 @@ credentials, and put the account at risk. Do not go there.
   constant, so the shape does not change when the first hero arrives.
   Everything that ranked heroes NOT in the game — the list, the filter,
   "Why this score" and the counters list — is GONE rather than moved: it
-  went to the Analysis tab when it left the draft screen, and the Analysis
+  went to the History tab when it left the draft screen, and the Analysis
   tab is now the match history analyser. The item advice stayed, as the
   strip under the picks.
 - **Every tile in the app is the same tile** (`ui/tilekit.py`). There are
@@ -2918,7 +3005,7 @@ credentials, and put the account at risk. Do not go there.
   default". Every value in that dict was read off their own
   `ui_settings.json` rather than picked, so a fresh install (or a second
   machine) opens on the arrangement they settled on: a 940x998 window,
-  fully opaque, 20 suggested picks and 7 items, the Analysis tab over six
+  fully opaque, 20 suggested picks and 7 items, the History tab over six
   months and 5000 matches with every split ticked and each table's own
   top-N and sort. Their own file still wins on their own machine — it is
   gitignored and survives every update — so this only ever decides what a
@@ -2994,6 +3081,6 @@ listener itself is testable by POSTing payloads to it, which the tests do.
 Ban-phase handling. Don't preclude it architecturally; don't build it.
 
 The personal match-history review tool WAS on this list and is now built —
-see the Analysis tab above. It arrived as a whole separate repository
+see the History tab above. It arrived as a whole separate repository
 (`bijankle/DotaGameHistoryAnalyser`, a single-file browser page) and was
 folded in at the user's request; that repository is theirs to archive.

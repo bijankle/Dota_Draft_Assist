@@ -27,13 +27,15 @@ Run modes (everything but live capture works with no game and no Windows):
 
 import argparse
 import os
+import platform
 import random
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
+from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QSize, QT_VERSION_STR,
+                          Qt, QTimer)
 from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                              QDialog, QFrame,
@@ -376,6 +378,13 @@ class MainWindow(QMainWindow):
         self._act(help_menu, "&Search…", self._open_search, "Ctrl+K",
                   "Find any setting or action by what you call it")
         help_menu.addSeparator()
+        # EVERY EXPLANATION IN THE APP ENDS UP HERE. The screens carry one
+        # line each now, so this is where "how does it actually work" is
+        # answered — see `ui/manual.py`.
+        self._act(help_menu, "&User manual", self._open_manual, "F1",
+                  "How every part of the app works")
+        self._act(help_menu, "Update &application…", self._update_app)
+        help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
 
     # ---- what the app can be asked to do -------------------------------
@@ -483,9 +492,7 @@ class MainWindow(QMainWindow):
         ]
         return [
             ("Downloads",
-             "Everything the app needs off the internet. Each of these "
-             "skips what is already on disk, so running one again costs "
-             "only what is missing.", downloads),
+             "Each of these skips what is already on disk.", downloads),
             ("Game data", "How the app hears from Dota itself.", game),
             ("Appearance", "", appearance),
             ("Advanced",
@@ -525,8 +532,12 @@ class MainWindow(QMainWindow):
                     "sessions recorded.",
                     ("log", "live", "recordings", "frame", "timings"),
                     lambda: self._open_settings("Debug")),
+            Command("User manual", "Help",
+                    "How every part of the app works, in one place.",
+                    ("manual", "help", "guide", "docs", "instructions",
+                     "how", "explain"), self._open_manual),
             Command("About", "Help", "Which version this is.",
-                    ("version",), self._about),
+                    ("version", "build", "licence"), self._about),
         ]
         return found
 
@@ -806,7 +817,7 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(draft_widget, "Draft")
 
-        # ----- Analysis tab: one account's match history, measured.
+        # ----- History tab: one account's match history, measured.
         # It used to be the ranked list of every hero NOT in this game,
         # with a breakdown and a counters list beside it. That answered
         # "what should I pick", which the Draft tab answers in the one
@@ -817,7 +828,7 @@ class MainWindow(QMainWindow):
         # `ui/history_tab.py`; nothing in the live loop touches it.
         analysis = HistoryTab(say=self._say, settings=self.settings)
         self.history_tab = analysis
-        tabs.addTab(analysis, "Analysis")
+        tabs.addTab(analysis, "History")
 
         # ----- Debug tab: the picture answers what a log never will
         dbg = QWidget()
@@ -928,11 +939,8 @@ class MainWindow(QMainWindow):
         cal_card, callay = card("Crop boxes")
         cal_note = QLabel(
             "Press <b>Drag the boxes</b> and draw a rectangle round each "
-            "bank of five in the picture above — the app measures the rest "
-            "off the borders it can see. "
-            "The numbers below are fractions of Dota's 16:9 HUD area, so "
-            "they hold across resolutions; nudge them if a box is a few "
-            "pixels out.")
+            "bank of five above. The numbers are fractions of Dota's 16:9 "
+            "HUD area; nudge one if a box is a few pixels out.")
         cal_note.setWordWrap(True)
         cal_note.setProperty("dim", True)
         callay.addWidget(cal_note)
@@ -1112,7 +1120,7 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
         # Debug is a tab of the SETTINGS window now, so the way to it is
         # to open that on Debug rather than to index into the main tabs —
-        # where index 1 is the Analysis tab and used to be this.
+        # where index 1 is the History tab and used to be this.
         self._open_settings("Debug")
         self.debug_tabs.setCurrentIndex(1)
         if not self.sessions:
@@ -1128,11 +1136,8 @@ class MainWindow(QMainWindow):
             self.session_list.setCurrentRow(0)
         else:
             self.session_report.setPlainText(
-                "No recordings yet.\n\nPress Record before a game and Stop "
-                "after the draft. Each press makes its own folder holding "
-                "the data Dota sent, the draft on screen, and what the app "
-                "made of both — plus a report scoring the screen reading "
-                "against what the game reported afterwards.")
+                "No recordings yet. Press Record before a game and Stop "
+                "after the draft.")
 
     def _show_session(self, row: int) -> None:
         if not (0 <= row < len(self.sessions)):
@@ -1367,9 +1372,7 @@ class MainWindow(QMainWindow):
         if snap is not None and getattr(snap, "gsi_setup_broken", False):
             reason = snap.warning.split("—", 1)[-1].strip()
             self._show_banner(
-                f"<b>Dota is not sending game data.</b> {reason}<br>"
-                "Without it the app cannot tell when a draft starts or "
-                "which side is yours.",
+                f"<b>Dota is not sending game data.</b> {reason}",
                 "Check game data", self._diagnose_gsi)
             return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
@@ -1379,17 +1382,14 @@ class MainWindow(QMainWindow):
         # they sign up for something. The pictures need no account at all.
         if not portraits.any_downloaded():
             self._show_banner(
-                "<b>No hero pictures yet.</b> They are Valve's artwork, so "
-                "this app does not carry them — they download to your own "
-                "machine, and until they do every tile here is blank. It "
-                "needs no account and takes about a minute.",
+                "<b>No hero pictures yet.</b> They download to this "
+                "machine and need no account.",
                 "Get the artwork", lambda: self.run_task("fetch_assets"))
             return
         if self.ds.is_empty:
             self._show_banner(
-                "<b>No statistics downloaded yet.</b> Every number in the "
-                "app comes from these, so the tiles stay blank until they "
-                "are pulled.",
+                "<b>No statistics downloaded yet.</b> Every number in "
+                "the app comes from these.",
                 "Set up now", self._run_setup)
             return
 
@@ -1402,8 +1402,7 @@ class MainWindow(QMainWindow):
             cached, wanted = mismatch
             self._show_banner(
                 f"<b>Rank bracket changed to {wanted}.</b> The numbers "
-                f"below are still {cached} until the statistics are pulled "
-                "again.",
+                f"below are still {cached}.",
                 "Update now", self._update_everything)
             return
 
@@ -1413,8 +1412,7 @@ class MainWindow(QMainWindow):
         if stale:
             self._show_banner(
                 f"<b>Statistics were updated {stale:.0f} days ago.</b> "
-                "Recommendations still work — the numbers just stop "
-                "tracking the current patch.",
+                "They stop tracking the current patch.",
                 "Update now", self._update_everything)
             return
 
@@ -1436,11 +1434,7 @@ class MainWindow(QMainWindow):
             many = len(absent) != 1
             self._show_banner(
                 f"<b>{len(absent)} hero picture{'s are' if many else ' is'} "
-                "missing.</b> Usually a hero added in a patch. "
-                f"{'Those tiles' if many else 'That tile'} draw"
-                f"{'' if many else 's'} blank until the artwork is "
-                "fetched; it needs no account and only gets what is "
-                "missing.",
+                "missing.</b> Usually a hero added in a patch.",
                 "Get the artwork", lambda: self.run_task("fetch_assets"))
             return
         self.banner.setVisible(False)
@@ -1461,15 +1455,64 @@ class MainWindow(QMainWindow):
         self._refresh_views()
         self._say(f"Loaded {len(self.rules)} item rules", 5000)
 
+    def _open_manual(self, section: str | bool = "") -> None:
+        """The manual, built once and kept.
+
+        `section` takes a bool as well as a name because QAction.triggered
+        hands its slot a `checked` flag — a menu item wired straight to a
+        method that takes an argument is a trap this app has fallen into
+        before.
+
+        Built once for the reason the settings window is: a second copy
+        of a window is a second entry in the taskbar and a second thing
+        to keep in step, and this one is opened and closed all day.
+        """
+        from .handbook import ManualWindow
+
+        if getattr(self, "manual_window", None) is None:
+            self.manual_window = ManualWindow(self)
+        if section and isinstance(section, str):
+            self.manual_window.show_section(section)
+        else:
+            self.manual_window.show()
+            self.manual_window.raise_()
+            self.manual_window.activateWindow()
+
     def _about(self) -> None:
-        QMessageBox.information(
-            self, "About Dota Draft Assist",
-            "Reads the Ranked All Pick draft from the Dota 2 window and "
-            "suggests heroes and counter-items.\n\n"
-            "Hero scores are measured from Ancient+Divine match statistics. "
-            "Item flags are hand-authored rules.\n\n"
-            "It never injects code, reads game memory, or sends input to "
-            "Dota — it only reads pixels from a window already on screen.")
+        """WHAT THIS IS, not what it does.
+
+        It used to be three paragraphs describing the product — what it
+        reads, where the numbers come from, what it will not touch — all
+        of which is the first page of the manual now. An About box
+        answers "which one have I got, and who is it by", because that
+        is the question somebody has when they open one.
+        """
+        from .. import version
+        from . import appicon
+
+        box = QMessageBox(self)
+        box.setWindowTitle("About Dota Draft Assist")
+        box.setIconPixmap(appicon.pixmap(64))
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(
+            "<b style='font-size: 15px'>Dota Draft Assist</b><br>"
+            f"Version {version.VERSION}<br>"
+            f"<span style='color: {theme.TEXT_DIM}'>Build "
+            f"{version.build()}</span>")
+        box.setInformativeText(
+            f"Python {platform.python_version()} · PyQt "
+            f"{PYQT_VERSION_STR} · Qt {QT_VERSION_STR}<br>"
+            f"{platform.system()} {platform.release()}<br><br>"
+            "Personal-use software. Dota 2 is a trademark of Valve "
+            "Corporation, which does not endorse this and has nothing to "
+            "do with it.<br><br>"
+            "Help ▸ User manual explains how it all works.")
+        manual = box.addButton("User manual",
+                               QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is manual:
+            self._open_manual()
 
     # ---- the window IS the overlay --------------------------------------
     def _set_see_through(self, opacity: float) -> None:
@@ -3118,7 +3161,7 @@ class MainWindow(QMainWindow):
             return
         # Clicking the focused hero again clears the view, so the way out
         # is the same gesture as the way in. The counters list that used to
-        # open beside it went with the Analysis tab: what beats this hero
+        # open beside it went with the History tab: what beats this hero
         # is a question about heroes NOT in the game, and the click view
         # answers the one about the ten that are.
         self.focus = None if self.focus == (side, hid) else (side, hid)
@@ -3370,7 +3413,7 @@ class MainWindow(QMainWindow):
     def _update_suggestions(self, draft: scoring.DraftState) -> None:
         """The top of the ranked list, as a strip above the items.
 
-        Same numbers as the Analysis tab, same order — this is that list's
+        Same numbers as the History tab, same order — this is that list's
         head, not a second opinion. It stays quiet until at least one hero
         is on the board: with an empty draft every fit is zero, so a strip
         of "+0.0" would be ranking nothing and inviting the user to read it

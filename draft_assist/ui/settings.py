@@ -57,7 +57,7 @@ DEFAULTS = {
     # ones that were already worth showing.
     "suggested_picks": 20,
     "suggested_items": 7,
-    # THE ANALYSIS TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
+    # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather
     # than beside the remembered accounts, where they would be one
@@ -144,7 +144,7 @@ def load(path: Path | None = None) -> dict:
     path = path or SETTINGS_FILE
     # A COPY PER VALUE, not just a copy of the dict. `dict(DEFAULTS)` is
     # shallow, so the two dict-valued preferences would be the SAME object
-    # every caller shares — the Analysis tab writing a table's sort order
+    # every caller shares — the History tab writing a table's sort order
     # would edit DEFAULTS itself, and the next fresh load would come back
     # carrying it as though it had always been the default.
     settings = {k: (dict(v) if isinstance(v, dict) else v)

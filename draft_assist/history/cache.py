@@ -1,6 +1,6 @@
 """The last run for each account, kept on disk so opening the tab is free.
 
-**THE ANALYSIS TAB USED TO COST A FETCH EVERY TIME YOU LOOKED AT IT.** The
+**THE HISTORY TAB USED TO COST A FETCH EVERY TIME YOU LOOKED AT IT.** The
 run is a few hundred matches over a free API, so seeing last week's answer
 again meant waiting for it to be measured again — and the tab opened blank
 until you did. At the user's request the whole run is now kept, and it is
