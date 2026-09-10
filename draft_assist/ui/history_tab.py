@@ -508,8 +508,8 @@ class HistoryTab(QWidget):
         self.sections.add("account", "Account")
         self.sections.add("sample", "Matches to measure")
         self.sections.separator()
-        self.sections.add("winning", "What goes with winning")
-        self.sections.add("contrib", "What you do on each hero")
+        self.sections.add("winning", "What wins games")
+        self.sections.add("contrib", "Game impact metrics")
         self.sections.separator()
         for key in analyse.BLOCK_ORDER:
             row = self.sections.add(key, analyse.NAMES[key], tick=True)
@@ -1046,7 +1046,7 @@ class HistoryTab(QWidget):
         # but damage rows with every behavioural finding buried under it.
         names: list = []
         winning = self._findings_card(
-            "What goes with winning", rates,
+            "What wins games", rates,
             "Nothing to compare yet — every split needs at least two "
             "buckets with enough games behind them.",
             names=names)
@@ -1054,7 +1054,7 @@ class HistoryTab(QWidget):
         self._anchors["winning"] = winning
         if contributions:
             contrib = self._findings_card(
-                "What you do on each hero", contributions, "", names=names)
+                "Game impact metrics", contributions, "", names=names)
             self.results.addWidget(contrib)
             self._anchors["contrib"] = contrib
         # After BOTH cards exist, so the two agree with each other.
@@ -1140,33 +1140,28 @@ class HistoryTab(QWidget):
             if names is not None:
                 names.append(name)
             grid.addWidget(name, line, 0,
-                           Qt.AlignmentFlag.AlignTop
+                           Qt.AlignmentFlag.AlignVCenter
                            | Qt.AlignmentFlag.AlignLeft)
 
-            # BEST THEN WORST, and the colours are the bar's own: green
-            # is the mark on the right of the strip, red the one on the
-            # left, so the words and the picture are read as one thing.
-            # "Make it super shorthand, short if need be" — so the
-            # bucket and its figure and nothing else, with the sample
-            # sizes in the bar's tooltip where they can be had without
-            # doubling the length of every line.
-            text = QLabel(
-                f'<span style="color:{theme.GOOD}">'
-                f'{best.key} {analyse.format_figure(block, spread.best)}</span>'
-                f'<span style="color:{theme.TEXT_DIM}">  ·  </span>'
-                f'<span style="color:{theme.BAD}">'
-                f'{worst.key} {analyse.format_figure(block, spread.worst)}'
-                f'</span>')
-            grid.addWidget(text, line, 2)
-
+            # NO MIDDLE COLUMN OF FIGURES. It printed "Rubick 61% ·
+            # Mirana 25%" beside a bar carrying the same two facts, and
+            # once the names moved onto their own dots — at the user's
+            # request, sketched by hand — that column was saying
+            # everything twice on one line. The bar takes the width it
+            # gave up, which is what lets two close figures separate on
+            # a fixed 0-100 scale.
             bar = SpreadBar()
             bar.set_spread(
                 spread,
                 analyse.format_figure(block, spread.low),
                 analyse.format_figure(block, spread.high),
                 analyse.format_figure(block, spread.datum),
+                best_text=f"{analyse.format_figure(block, spread.best)} "
+                          f"{best.key}",
+                worst_text=f"{analyse.format_figure(block, spread.worst)} "
+                           f"{worst.key}",
                 note=f"{best.key} {best.n} games, {worst.key} {worst.n} games")
-            grid.addWidget(bar, line, 3)
+            grid.addWidget(bar, line, 2)
         # A RULE DOWN THE WHOLE CARD, at the user's request — "maybe even
         # have a vertical line that runs down in between section and
         # result so it's nice and tidy". One widget spanning every row
@@ -1176,9 +1171,8 @@ class HistoryTab(QWidget):
         rule.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Expanding)
         grid.addWidget(rule, 0, 1, len(rows), 1)
-        # The bar takes the slack: the two text columns are as wide as
-        # their own longest line and no wider.
-        grid.setColumnStretch(3, 1)
+        # The bar takes every pixel the name column does not.
+        grid.setColumnStretch(2, 1)
         lay.addLayout(grid)
         return frame
 
@@ -1237,17 +1231,33 @@ class HistoryTab(QWidget):
         return table
 
     def _block_card(self, block, report) -> QFrame:
-        # THE HEADING AND THE TABLE, and nothing else, at the user's
-        # request — "just the header is fine". Each card carried three
-        # paragraphs of prose: what the split measures, how many
-        # single-game buckets were left out, and a caveat about reading
-        # the figures. All three are true, all three are read once and
-        # skipped for ever after, and between them they pushed the table
-        # — the thing the card exists for — most of a screen down. The
-        # `desc` survives as the tick box's TOOLTIP in "What to measure",
-        # which is where somebody deciding whether to run a split is
-        # actually standing.
+        # THE HEADING, ONE LINE SAYING WHAT THE METRIC IS, AND THE TABLE.
+        # The card once carried THREE paragraphs — what the split
+        # measures, how many single-game buckets were left out, and a
+        # caveat about reading the figures — and between them they pushed
+        # the table most of a screen down, so all three were cut. The
+        # user has since changed their mind about the first: "make it a
+        # slightly smaller text and italics, and make sure it's not super
+        # fluffy — still concise, but describes what the metric is."
+        # So `desc` is back, one line, and it was REWRITTEN to earn the
+        # space: every one of them now says what is being measured and
+        # stops, where they used to add how the floors work and how to
+        # read the result. It is the same string the tick box shows as
+        # its tooltip, because two spellings of what a section measures
+        # is one of them going stale.
+        # ONLY ON THESE CARDS. The two summary cards above get none —
+        # "I don't want blurbs below What goes with winning and What you
+        # do on each hero" — since those name a question rather than a
+        # measurement.
         frame, lay = card(block.name)
+        if block.desc:
+            blurb = QLabel(block.desc)
+            blurb.setWordWrap(True)
+            blurb.setProperty("dim", True)
+            blurb.setStyleSheet(
+                f"font-size: {round(theme.BODY_PX * 0.82)}px; "
+                f"font-style: italic; background: transparent;")
+            lay.addWidget(blurb)
         if block.kind == "items":
             self._item_block(block, lay)
             return frame

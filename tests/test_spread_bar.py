@@ -74,33 +74,66 @@ def a_report(blocks):
 
 # ---- the scale ---------------------------------------------------------
 
-def test_only_buckets_with_enough_games_set_the_bounds():
+def test_only_buckets_with_enough_games_are_the_best_and_the_worst():
     """A two-game bucket at 100% would be the "best" of every section it
-    appeared in and would stretch the bar to its edge — the same reason
-    those rows are muted and sink to the bottom of the tables."""
+    appeared in — the same reason those rows are muted and sink to the
+    bottom of the tables."""
     spread, best, worst = analyse.section_spread(
         a_block(rates=(0.40, 0.70), thin=(0.00, 1.00)), 0.55)
-    assert (spread.low, spread.high) == (0.40, 0.70)
     assert (best.n, worst.n) == (40, 40)
+    assert (spread.best, spread.worst) == (0.70, 0.40)
     assert spread.points == [0.40, 0.70]
 
 
-def test_the_scale_contains_your_usual_figure():
+def test_a_win_rate_is_drawn_nought_to_a_hundred():
+    """At the user's request. Scaled to its own buckets, every section
+    looked equally spread — Radiant 55% against Dire 44% filled the same
+    track as a hero list running 25% to 61%, so the picture said nothing
+    about how much was actually at stake."""
+    spread, _, _ = analyse.section_spread(a_block((0.44, 0.55)), 0.50)
+    assert (spread.low, spread.high) == (0.0, 1.0)
+    wide, _, _ = analyse.section_spread(a_block((0.25, 0.61)), 0.50)
+    assert (wide.low, wide.high) == (0.0, 1.0)
+    # And the DISTANCE between the dots is now the size of the effect.
+    assert (wide.at(wide.best) - wide.at(wide.worst)) > \
+        (spread.at(spread.best) - spread.at(spread.worst))
+
+
+def test_a_contribution_section_keeps_its_own_range():
+    """"Damage per minute is an average, so it should be somewhere in the
+    middle." There is no 100 to scale it against, and inventing a ceiling
+    would be a number nobody measured with a real game able to run off
+    the end of it."""
+    spread, _, _ = analyse.section_spread(
+        a_block(rates=(0.40, 0.70), kind="metric", ident="herodmg"), 0.55)
+    assert (spread.low, spread.high) == (40.0, 70.0)
+
+
+def test_a_metric_scale_still_contains_your_usual_figure():
     """The datum can sit outside the eligible range, because the thin
     buckets left out still counted towards it. A tick painted off the end
-    of its own bar is worse than a slightly wider bar."""
-    below, _, _ = analyse.section_spread(a_block((0.60, 0.70)), 0.30)
-    assert (below.low, below.high) == (0.30, 0.70)
-    above, _, _ = analyse.section_spread(a_block((0.30, 0.40)), 0.90)
-    assert (above.low, above.high) == (0.30, 0.90)
+    of its own bar is worse than a slightly wider bar. Win rates need no
+    such care any more — 0 to 100 contains everything."""
+    low = a_block(rates=(0.60, 0.70), kind="metric", ident="herodmg")
+    low.datum = 30.0
+    spread, _, _ = analyse.section_spread(low, 0.0)
+    assert (spread.low, spread.high) == (30.0, 70.0)
 
 
-def test_there_is_no_row_when_there_is_nothing_to_compare():
-    """A bar with no width says "this is the extreme" about a section
-    that has no extremes, which the reader cannot see through."""
+def test_there_is_no_row_without_two_buckets_to_compare():
+    """A section with one bucket has no best and no worst, only a
+    figure."""
     assert analyse.section_spread(a_block((0.5,)), 0.5) is None
     assert analyse.section_spread(a_block(()), 0.5) is None
-    assert analyse.section_spread(a_block((0.55, 0.55, 0.55)), 0.55) is None
+
+
+def test_a_flat_win_rate_section_still_draws():
+    """It used to be refused, because the bar spanned the buckets and a
+    zero-width bar is a lie. On a fixed 0-100 scale two equal figures are
+    simply two dots in the same place, which is the truth about them."""
+    spread, _, _ = analyse.section_spread(a_block((0.55, 0.55)), 0.55)
+    assert spread is not None and spread.at(spread.best) == spread.at(
+        spread.worst)
 
 
 def test_the_best_and_worst_are_the_extremes_and_are_named():
@@ -112,9 +145,9 @@ def test_the_best_and_worst_are_the_extremes_and_are_named():
 
 def test_a_position_is_a_fraction_of_the_range():
     spread, _, _ = analyse.section_spread(a_block((0.40, 0.80)), 0.60)
-    assert spread.at(0.40) == pytest.approx(0.0)
-    assert spread.at(0.80) == pytest.approx(1.0)
-    assert spread.at(0.60) == pytest.approx(0.5)
+    assert spread.at(0.0) == pytest.approx(0.0)
+    assert spread.at(1.0) == pytest.approx(1.0)
+    assert spread.at(0.5) == pytest.approx(0.5)
 
 
 def test_a_metric_section_is_measured_on_its_own_figures():
@@ -132,8 +165,8 @@ def test_every_section_appears_once_in_section_order():
     the best and worst mentality for all headers seen in the left
     sidebar". Four Hero win rate lines crowding out Party size was the
     complaint; so was Hero win rates being absent altogether."""
-    blocks = [a_block(ident=key,
-                      kind="metric" if key in ("herodmg", "herokda") else "cat")
+    metrics = ("herodmg", "herokda", "towerdmg")
+    blocks = [a_block(ident=key, kind="metric" if key in metrics else "cat")
               for key in analyse.BLOCK_ORDER if key != "items"]
     rates, contributions = a_report(blocks).summary_rows()
     # In BLOCK_ORDER, which is ordered by what you can act on: the side
@@ -141,7 +174,7 @@ def test_every_section_appears_once_in_section_order():
     assert [block.id for block, _s, _b, _w in rates] == [
         "hero", "tod", "session", "tilt", "dow", "party", "length", "side"]
     assert [block.id for block, _s, _b, _w in contributions] == [
-        "herodmg", "herokda"]
+        "herodmg", "herokda", "towerdmg"]
 
 
 def test_a_section_with_nothing_significant_still_gets_its_row():
@@ -179,25 +212,41 @@ def test_one_bar_per_section_and_no_sentences(qapp):
         tab.close()
 
 
-def test_the_bar_draws_every_bucket_not_just_the_two_named(styled):
-    """Best and worst are the extremes of the very set that sets the
-    bounds, so those two marks sit on the two ends for ever. Without the
-    rest of the buckets between them the bar carries nothing at all."""
+def test_the_bar_names_its_two_dots_and_draws_no_others(styled):
+    """"Get rid of all those small dashes in between — no one knows what
+    they mean." The faint per-bucket ticks existed because the old scale
+    pinned both dots to the ends for ever; a fixed 0-100 scale removes
+    that at the root, so they stop paying for themselves."""
     from draft_assist.ui import theme
-    spread, _, _ = analyse.section_spread(
+    spread, best, worst = analyse.section_spread(
         a_block((0.10, 0.45, 0.50, 0.55, 0.90)), 0.50)
     bar = SpreadBar()
     bar.ensurePolished()
-    bar.set_spread(spread, "10%", "90%", "50%")
-    bar.resize(300, bar.height())
+    bar.set_spread(spread, "0%", "100%", "50%",
+                   best_text="90% k4", worst_text="10% k0")
+    bar.resize(320, bar.height())
     image = bar.grab().toImage()
-    middle = image.height() // 2
-    marked = {x for x in range(image.width())
-              if image.pixelColor(x, middle - 3).name() != image.pixelColor(
-                  2, 2).name()}
-    # Five buckets, a datum and two coloured dots: far more than the two
-    # ends' worth of ink.
-    assert len(marked) > 12, sorted(marked)
+    seen = {image.pixelColor(x, y).name()
+            for x in range(image.width()) for y in range(image.height())}
+    assert theme.GOOD in seen and theme.BAD in seen, "the dots never drew"
+
+    # The per-bucket ticks were drawn in TEXT_DIM. Nothing in that colour
+    # may stand where the three unnamed buckets fall.
+    for figure in (0.45, 0.55):
+        x = round(_x_of(bar, spread, figure))
+        column = {image.pixelColor(x, y).name()
+                  for y in range(image.height())}
+        assert theme.TEXT_DIM not in column, \
+            f"a bucket tick still stands at {figure}"
+
+
+def _x_of(bar, spread, figure):
+    """Where a figure falls across the bar's own track."""
+    from PyQt6.QtGui import QFontMetrics
+    from draft_assist.ui.spread_bar import LABEL_GAP, WIDEST_LABEL
+    width = QFontMetrics(bar._font()).horizontalAdvance(WIDEST_LABEL)
+    left = width + LABEL_GAP
+    return left + (bar.width() - 2 * (width + LABEL_GAP)) * spread.at(figure)
 
 
 def test_the_baseline_comes_from_the_report_being_drawn(qapp):
@@ -222,8 +271,11 @@ def test_the_baseline_comes_from_the_report_being_drawn(qapp):
         tab.render(report)
         bar = tab.results.parentWidget().findChildren(SpreadBar)[0]
         assert bar.spread.datum == 0.55, "the datum did not come from it"
-        assert bar.spread.low > 0.0, "the scale collapsed to zero again"
-        assert bar.low_text != "0%"
+        # The scale is fixed at 0-100 for a win rate now, so the old
+        # symptom (every bound collapsing to zero) shows up on the TICK
+        # rather than on the bounds: a datum of 0.0 would sit hard
+        # against the left cap.
+        assert bar.spread.at(bar.spread.datum) > 0.1
     finally:
         tab.close()
 

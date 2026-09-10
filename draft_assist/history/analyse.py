@@ -123,38 +123,34 @@ class ItemGroup:
 # tooltip and in the workbook, so nothing was lost by shortening them.
 ANALYSES = [
     ("hero", "Hero win rates", True,
-     "Win rate by hero played. Heroes under {min} games are muted and "
-     "excluded from findings."),
+     "Your win rate on each hero you played."),
     ("length", "Match length", True,
-     "Duration bands. Reads as a proxy for whether you close games out or "
-     "get dragged long."),
+     "Your win rate by how long the game ran."),
     ("tod", "Time of day", True,
-     "Three hour bands on this machine's local clock, from each match's "
-     "start time."),
-    ("dow", "Day of week", True, "Local calendar day of the match start."),
+     "Your win rate by three-hour band, on this machine's local clock."),
+    ("dow", "Day of week", True,
+     "Your win rate by the local day the match started."),
     ("session", "Game in session", True,
-     "A gap of more than three hours between the end of one match and the "
-     "start of the next opens a new session."),
+     "Your win rate by how many games into a session you were. A gap of "
+     "over three hours starts a new one."),
     ("tilt", "Previous result", True,
-     "The tilt check. The previous result only counts inside the same "
-     "session, so a loss you slept on is not charged against the next "
-     "morning."),
+     "Your win rate by what the previous game in the same session did."),
     ("side", "Radiant or Dire", True,
-     "Side is assigned by the matchmaker, so a real deviation here is "
-     "either map preference or a very lucky sample."),
+     "Your win rate on Radiant against Dire."),
     ("party", "Party size", True,
-     "Party size as reported. OpenDota leaves this null on many matches, so "
-     "those sit in an explicit unknown bucket and never produce a finding."),
-    ("herodmg", "Hero damage", True,
-     "Mean hero damage per minute on each hero, against your own overall "
-     "rate."),
+     "Your win rate by how many of you queued together."),
+    ("herodmg", "Hero dmg/min", True,
+     "Mean hero damage per minute on each hero, against your own average "
+     "across every hero."),
     ("herokda", "Weighted KDA", True,
-     "Kills plus three tenths of assists over deaths, averaged across your "
-     "games on each hero."),
+     "Kills plus three tenths of assists over deaths, averaged across "
+     "your games on each hero."),
+    ("towerdmg", "Building dmg", True,
+     "Mean damage to buildings per minute on each hero, against your own "
+     "average across every hero."),
     ("items", "Items by hero", True,
-     "One hero at a time, chosen on the card: the win rate in games that "
-     "ended with each item in your inventory, against that hero's own "
-     "win rate."),
+     "Win rate in games that ended with each item in your inventory, "
+     "against that hero's own win rate."),
 ]
 NAMES = {key: name for key, name, _, _ in ANALYSES}
 DESCS = {key: desc.replace("{min}", str(MIN_BUCKET))
@@ -331,30 +327,37 @@ def format_figure(block: "Block", value: float) -> str:
 def section_spread(block: "Block", baseline: float):
     """(spread, best bucket, worst bucket) for a whole section, or None.
 
-    **ONLY BUCKETS WITH ENOUGH GAMES**, at the user's request —
-    `MIN_BUCKET`, the same floor that decides whether a bucket may
-    produce a finding at all. A two-game bucket at 100% would be the
-    "best" of every section it appeared in and would stretch the bar to
-    its edge, which is the same reason those rows are muted and sink to
-    the bottom of the tables.
+    **A WIN RATE IS SCALED 0 TO 100%**, at the user's request, rather than
+    to its own section's range. A bar that spanned only the buckets it
+    drew made every section look equally spread — Radiant 55% against
+    Dire 44% filled the same track as a hero list running 25% to 61%, so
+    the picture said nothing about how much was actually at stake. On a
+    fixed scale the DISTANCE between the two dots is the size of the
+    effect, and it means the same thing on every row and in every run.
+    The cost is real and is the trade that was chosen: most win rates
+    live between 30% and 70%, so the dots sit in the middle third and the
+    ends are usually empty.
 
-    **EVERY SECTION GETS ONE, significant or not**, which reverses what
-    the summary used to do: "include the best and worst mentality for all
-    headers seen in the left sidebar, even if they seem insignificant,
-    like Radiant/Dire win rate or whatever". So nothing here consults
-    the sigma. A section with a real deviation and one with none now
-    look the same on the page except for where the marks fall, which is
-    the honest picture — and it is why the card no longer calls these
-    findings.
+    **A CONTRIBUTION SECTION KEEPS ITS OWN RANGE**, also at the user's
+    request — "damage per minute is an average, so it should be somewhere
+    in the middle". There is no 100 to scale it against: damage runs in
+    the hundreds and weighted KDA in single figures, and inventing a
+    ceiling for either would be a number nobody measured with a real
+    game able to run off the end of it.
 
-    **AND THE SCALE CONTAINS EVERYTHING IT DRAWS.** Your usual figure can
-    sit outside the eligible buckets' range, because the thin buckets
-    left out still counted towards it, and a tick painted off the end of
-    its own bar is worse than a slightly wider bar.
+    **ONLY BUCKETS WITH ENOUGH GAMES** either way — `MIN_BUCKET`, the
+    same floor that decides whether a bucket may produce a finding at
+    all. A two-game bucket at 100% would be the "best" of every section
+    it appeared in, which is the same reason those rows are muted and
+    sink to the bottom of the tables.
 
-    None when fewer than two eligible buckets survive, or when they all
-    landed on one figure: a bar with no width says "this is the extreme"
-    about a section that has no extremes.
+    **EVERY SECTION GETS ONE, significant or not**: "include the best and
+    worst mentality for all headers seen in the left sidebar, even if
+    they seem insignificant, like Radiant/Dire win rate or whatever". So
+    nothing here consults the sigma.
+
+    None when fewer than two eligible buckets survive. A section with one
+    bucket has no best and no worst — only a figure.
     """
     figure = (lambda row: row.rate) if block.kind == "cat" else (
         lambda row: row.mean)
@@ -363,12 +366,19 @@ def section_spread(block: "Block", baseline: float):
     if len(rows) < 2:
         return None
     points = sorted(figure(row) for row in rows)
-    if points[-1] - points[0] <= 0:
-        return None
     best = max(rows, key=figure)
     worst = min(rows, key=figure)
-    spread = Spread(low=min(points[0], datum), high=max(points[-1], datum),
-                    datum=datum, points=points,
+    if block.kind == "cat":
+        low, high = 0.0, 1.0
+    else:
+        # The scale still has to CONTAIN the datum: your usual figure can
+        # sit outside the eligible buckets' range, because the thin ones
+        # left out still counted towards it, and a tick painted off the
+        # end of its own bar is worse than a slightly wider bar.
+        low, high = min(points[0], datum), max(points[-1], datum)
+        if high - low <= 0:
+            return None
+    spread = Spread(low=low, high=high, datum=datum, points=points,
                     best=figure(best), worst=figure(worst))
     return spread, best, worst
 
@@ -488,6 +498,15 @@ METRICS = {
                "own kill contribution rather than infinity, which flatters "
                "low-death games slightly. And this is the mean of each "
                "game's ratio, not the ratio of your totals."),
+    "towerdmg": dict(
+        field="tower_per_min", unit="building damage per minute",
+        short="bldg dmg/min", dp=0,
+        more="More pushing", less="Less pushing",
+        caveat="This ranks heroes at least as much as your play, the way "
+               "hero damage does: a pusher and a support are not doing the "
+               "same job. It also rises with a game going WELL — you cannot "
+               "hit a building you never reach — so read a high figure as "
+               "partly a consequence rather than only a cause."),
 }
 
 
@@ -526,7 +545,7 @@ METRICS = {
 # This is the one list, so the sidebar, the summary's rows and the cards
 # down the page all take this order together — "they should all agree".
 BLOCK_ORDER = ("hero", "items", "tod", "session", "tilt", "dow", "party",
-               "length", "side", "herodmg", "herokda")
+               "length", "side", "herodmg", "herokda", "towerdmg")
 
 
 def build_blocks(matches, baseline: float, picked: dict,

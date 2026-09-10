@@ -600,16 +600,24 @@ credentials, and put the account at risk. Do not go there.
   from the top of the viewport is measured, the change is made, the
   layout is FORCED to run (Qt defers it, so measuring straight after
   reads the old geometry) and the scrollbar is moved by the difference.
-  **A BLOCK CARD IS ITS HEADING AND ITS TABLE**, also at the user's
-  request — "just the header is fine". Each carried three paragraphs:
-  what the split measures, how many single-game buckets were left out,
-  and a caveat about reading the figures. All true, all read once and
-  skipped for ever after, and between them they pushed the table most of
-  a screen down. `desc` survives as the TICK BOX's tooltip in "What to
-  measure", which is where somebody deciding whether to run a split is
-  standing; `hidden` and `caveat` are still computed and still go to the
-  workbook, where a caveat can be read at leisure rather than sat over
-  the table every time.
+  **A BLOCK CARD IS ITS HEADING, ONE LINE, AND ITS TABLE.** It carried
+  three paragraphs — what the split measures, how many single-game
+  buckets were left out, and a caveat about reading the figures — and
+  between them they pushed the table most of a screen down, so all three
+  were cut at the user's request ("just the header is fine"). They have
+  since changed their mind about the FIRST: "make it a slightly smaller
+  text and italics, and make sure it's not super fluffy — still concise,
+  but describes what the metric is." So one line is back, at 82% of the
+  body size, italic and dim — and every `desc` was REWRITTEN to earn the
+  space: they now say what is measured and stop, where they used to add
+  how the floors work and how to read the result. It is the same string
+  the tick box shows as its tooltip, because two spellings of what a
+  section measures is one of them going stale. `hidden` and `caveat` are
+  still computed and still go to the workbook, where a caveat can be read
+  at leisure rather than sat over the table every time.
+  **ONLY ON THESE CARDS.** The two summary cards get none — "I don't
+  want blurbs below What wins games and Game impact metrics" — since
+  those name a QUESTION rather than a measurement.
   **THE ITEM BLOCK IS ONE HERO AT A TIME, from a dropdown ordered most
   played first** (`_item_block`). It was fixed at your three most played
   and called itself "top 3 heroes", then briefly a count of how many to
@@ -656,34 +664,57 @@ credentials, and put the account at risk. Do not go there.
   honest picture and is why the card no longer calls these findings. It
   also reads the same on every run, which is what makes two runs
   comparable.
-  The line is the section's NAME, then its two extremes in the bar's own
-  colours — green for the best, red for the worst, so the words and the
-  picture are one thing — then the bar. "Make it super shorthand, short
-  if need be", so the bucket and its figure and nothing else; the sample
-  sizes moved into the bar's tooltip, since naming two buckets would
-  otherwise print two counts on every line.
-  **AND THE BAR HAD TO BECOME A DISTRIBUTION, which is a consequence
-  rather than a choice.** Best and worst are the two extremes of the very
-  set that sets the bar's bounds — so marking only those two puts one
-  hard against each end FOR EVER, and a bar whose marks cannot move
-  carries nothing at all. So `points` is every eligible bucket, drawn as
-  a faint tick, with the two picked out in colour and the datum dashed
-  among them. Four days bunched with one outlier now reads differently
-  from four evenly spread, which is the whole reason a picture is here
-  instead of two more numbers. It is still NOT a box plot: the quartiles
-  were asked about and turned down — "it's just about where the data sits
-  relative to the others" — and half these sections have four to seven
-  buckets, where an interquartile box is drawn from two numbers and reads
-  as precision nobody has.
-  **ONLY BUCKETS WITH ENOUGH GAMES** (`MIN_BUCKET`): a two-game bucket at
-  100% would be the "best" of every section it appeared in and would
-  stretch the bar to its edge, which is why those rows are muted and sink
-  in the tables. **The scale contains everything it draws** — the datum
-  can fall outside the eligible range, since the thin buckets left out
-  still counted towards it, and a tick painted off the end of its own bar
-  is worse than a slightly wider bar. Fewer than two eligible buckets, or
-  all of them on one figure, draws NO row: a bar with no width says "this
-  is the extreme" about a section that has no extremes.
+  The line is the section's NAME, a rule, and the bar — which carries
+  both figures itself, each above its own dot. The sample sizes are in
+  the bar's tooltip, since naming two buckets would otherwise print two
+  counts on every line. The two cards are **What wins games** and **Game
+  impact metrics**, both renamed at the user's request from sentences
+  that described the reader rather than the measurement.
+  **A WIN RATE IS DRAWN 0 TO 100%, and that fixes the bar's real
+  problem**, at the user's request. Scaled to its own section the bar
+  made every section look equally spread — Radiant 55% against Dire 44%
+  filled the same track as a hero list running 25% to 61% — so the
+  picture said nothing about how much was at stake. On a fixed scale the
+  DISTANCE between the two dots IS the size of the effect and it means
+  the same thing on every row and in every run. The cost is real and was
+  the trade chosen: most win rates live between 30% and 70%, so the dots
+  sit in the middle third and the ends are usually empty.
+  A CONTRIBUTION SECTION KEEPS ITS OWN RANGE, also at the user's request
+  — "damage per minute is an average, so it should be somewhere in the
+  middle". There is no 100 to scale it against, and inventing a ceiling
+  would be a number nobody measured with a real game able to run off the
+  end of it. Its scale must still CONTAIN the datum, since the thin
+  buckets left out still counted towards it.
+  **THE NAME SITS ABOVE ITS OWN DOT** — "25% Mirana" over the red one,
+  "61% Rubick" over the green, sketched by hand — and the middle column
+  that printed those same two figures is GONE, because with the label on
+  the mark it belongs to that column said everything twice on one line.
+  Two label rows ALWAYS, best above worst: two close figures would
+  otherwise print over each other, and a row that is sometimes one line
+  high and sometimes two makes the bars beside them stop lining up.
+  **AND THE PER-BUCKET TICKS ARE GONE**, which REVERSES what stood here
+  — "get rid of all those small dashes in between, no one knows what
+  they mean". They earned their place under the old scale and only
+  there: best and worst were the extremes of the very set that SET the
+  bounds, so those two dots sat on the two ends for ever and the ticks
+  between them were the only thing carrying information. A fixed scale
+  removes that at the root, because the dots move when the scale does
+  not. One tick survives — your own usual figure, kept deliberately,
+  since a dot at 55% says nothing about whether it is good until you
+  know whether your rate is 45% or 65%.
+  **AND A BOUND IS NEVER PRINTED TWICE.** On a contribution section the
+  scale runs worst-to-best, so the two dots stand exactly on the ends and
+  the end labels repeat what the dots' own names say one line above them;
+  they are dropped there and kept for win rates, whose 0% and 100% no dot
+  is ever on.
+  **ONLY BUCKETS WITH ENOUGH GAMES** (`MIN_BUCKET`) are eligible to be
+  the best or the worst: a two-game bucket at 100% would be the "best" of
+  every section it appeared in, which is why those rows are muted and
+  sink in the tables. Fewer than two eligible buckets draws NO row — a
+  section with one bucket has no best and no worst, only a figure. A flat
+  win-rate section DOES draw now, where it used to be refused: on a fixed
+  scale two equal figures are two dots in the same place, which is the
+  truth about them rather than a zero-width bar pretending to be a range.
   **ITEMS STAY OUT, and that one is statistics rather than taste.** Every
   item bucket is measured against THAT HERO'S own win rate, so the best
   item on one hero and the worst on another are figures against two
@@ -809,10 +840,17 @@ credentials, and put the account at risk. Do not go there.
   queue, when to stop, whether to re-queue after a loss, which day, who
   with. Then the two that are not choices — match length is a
   CONSEQUENCE of how a game went rather than something you set, and the
-  side is assigned by the matchmaker. The two contribution rankings sit
+  side is assigned by the matchmaker. The THREE contribution rankings sit
   last because they are the most caveated in the tab: damage per minute
   is set mostly by what a hero DOES, so they rank heroes as much as they
-  rank your play. `_spy` nonetheless ranks by
+  rank your play.
+  **BUILDING DAMAGE IS THE THIRD OF THEM** (`towerdmg`,
+  `Match.tower_per_min`), added at the user's request. `tower_damage` had
+  been fetched from OpenDota and stored on every match from the
+  beginning — nothing had ever measured it. Read it with the same
+  suspicion as the other two and one more besides: it rises with a game
+  going WELL, because you cannot hit a building you never reach, so a
+  high figure is partly a consequence rather than only a cause. `_spy` nonetheless ranks by
   measured POSITION rather than by list order: the two agree today, and a
   highlight that silently lies the day they stop agreeing is worse than
   one that costs a sort.

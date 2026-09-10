@@ -698,23 +698,56 @@ def test_a_block_card_is_its_heading_and_its_table(qapp):
 
     Each card carried three paragraphs: what the split measures, how many
     single-game buckets were left out, and a caveat about reading the
-    figures. All true, all read once, and between them they pushed the
-    table — the thing the card exists for — most of a screen down.
+    figures. Between them they pushed the table — the thing the card
+    exists for — most of a screen down, so all three were cut.
+
+    The user has since changed their mind about the FIRST of the three:
+    "make it a slightly smaller text and italics, and make sure it's not
+    super fluffy — still concise, but describes what the metric is." So
+    one line comes back and the other two stay gone, and every `desc`
+    was rewritten to earn the space: they say what is measured and stop.
     """
     from PyQt6.QtWidgets import QLabel
     from draft_assist.history.analyse import Block
 
     block = Block(id="hero", name="Hero win rates",
-                  desc="Win rate by hero played.", kind="cat",
+                  desc="Your win rate on each hero you played.", kind="cat",
                   rows=list(ROWS), shown=list(ROWS), hidden=4,
                   caveat="This ranks heroes, not your play.")
     tab = HistoryTab()
     tab.render(_report([block]))
-    said = " ".join(w.text() for w in
-                    tab.results.parentWidget().findChildren(QLabel))
-    assert "Hero win rates" in said, "the heading is the one thing kept"
-    for fluff in (block.desc, block.caveat, "bucket(s)", "workbook"):
+    labels = tab.results.parentWidget().findChildren(QLabel)
+    said = " ".join(w.text() for w in labels)
+    assert "Hero win rates" in said, "the heading"
+    assert block.desc in said, "the one line saying what is measured"
+    for fluff in (block.caveat, "bucket(s)", "workbook"):
         assert fluff not in said, fluff
+
+    # SMALLER AND ITALIC, as asked, and dim like every other aside.
+    blurb = next(w for w in labels if w.text() == block.desc)
+    assert "italic" in blurb.styleSheet()
+    assert blurb.property("dim") is True
+    tab.deleteLater()
+
+
+def test_the_summary_cards_get_no_blurb(qapp):
+    """"I don't want blurbs below What wins games and Game impact
+    metrics." Those name a question rather than a measurement, and there
+    is nothing to describe that the rows below do not already say."""
+    from PyQt6.QtWidgets import QLabel
+    from draft_assist.history.analyse import Block
+
+    block = Block(id="hero", name="Hero win rates",
+                  desc="Your win rate on each hero you played.", kind="cat",
+                  rows=list(ROWS), shown=list(ROWS))
+    tab = HistoryTab()
+    tab.render(_report([block]))
+    for ident in ("winning", "contrib"):
+        card_widget = tab._anchors.get(ident)
+        if card_widget is None:
+            continue
+        said = " ".join(w.text() for w in card_widget.findChildren(QLabel))
+        assert block.desc not in said, ident
     tab.deleteLater()
 
 

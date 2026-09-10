@@ -74,6 +74,13 @@ class Match:
         return None if self.hero_damage is None else self.hero_damage / self.minutes
 
     @property
+    def tower_per_min(self):
+        """Damage to buildings, per minute. `tower_damage` has always been
+        fetched and stored; nothing measured it until now."""
+        return (None if self.tower_damage is None
+                else self.tower_damage / self.minutes)
+
+    @property
     def kda(self):
         """Kills plus three tenths of assists, over deaths.
 
