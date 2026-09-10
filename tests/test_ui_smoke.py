@@ -34,6 +34,24 @@ def qapp():
 
 
 @pytest.fixture()
+def styled(qapp):
+    """The app under its OWN stylesheet, restored afterwards.
+
+    A few tests here read colours and font sizes that only exist once
+    the theme is applied, and they used to get it by accident: another
+    test earlier in the file set it on the shared QApplication and never
+    put it back. That is order-dependence — run one of them alone and it
+    fails — and `conftest.py` now resets the stylesheet either side of
+    every test, so the accident is gone and the need has to be stated.
+    """
+    from draft_assist.ui import theme
+    was = qapp.styleSheet()
+    qapp.setStyleSheet(theme.STYLESHEET)
+    yield qapp
+    qapp.setStyleSheet(was)
+
+
+@pytest.fixture()
 def window(qapp):
     ds = demo_dataset()
     provider = DemoProvider(ds)
@@ -3027,7 +3045,7 @@ def test_a_message_the_user_asked_for_is_not_stamped_on_by_the_next_tick(
     assert "Dota window" in window.status.currentMessage()
 
 
-def test_the_row_controls_are_tab_labels_not_buttons(window, qapp):
+def test_the_row_controls_are_tab_labels_not_buttons(window, qapp, styled):
     """Clear all and Detect all sit on the tab bar's own line, so they read
     as one series with Draft / Analysis / Debug. A raised plate with a
     radius round it was a second kind of object on a row that has one."""
@@ -3049,7 +3067,7 @@ def test_the_row_controls_are_tab_labels_not_buttons(window, qapp):
         assert abs(button.height() - window.tabs.bar.height()) <= 2
 
 
-def test_the_auto_box_reads_like_the_rest_of_the_row(window, qapp):
+def test_the_auto_box_reads_like_the_rest_of_the_row(window, qapp, styled):
     """It painted its own label in `theme.TEXT`, so the `color:` rule that
     dims every other label on the row never reached it and "Auto" sat
     brighter than the tabs and buttons beside it."""
@@ -3078,7 +3096,7 @@ def test_the_count_box_number_starts_at_the_left(qapp):
     assert not (box.alignment() & Qt.AlignmentFlag.AlignRight)
 
 
-def test_the_status_line_is_a_footnote(window, qapp):
+def test_the_status_line_is_a_footnote(window, qapp, styled):
     """It is read when something is wrong and ignored the rest of the
     time, so at the body size it competed with the draft above it."""
     window.show()

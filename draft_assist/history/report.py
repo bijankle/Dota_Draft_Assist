@@ -8,6 +8,8 @@ week if each computed its own.
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from . import analyse
+
 # What the window control offers. `days` is what OpenDota's `date`
 # parameter takes; None asks for everything it will give.
 WINDOWS = [("1m", "Last 1 month", 30), ("3m", "Last 3 months", 91),
@@ -136,6 +138,52 @@ class Report:
         contributions = [pair for pair in self.findings
                          if pair[0].kind == "metric"]
         return rates, self._per_metric(contributions)
+
+    def summary_rows(self) -> tuple:
+        """(win-rate sections, contribution sections) — ONE row each.
+
+        At the user's request the summary is no longer a ranked list of
+        whatever cleared the significance floor: "I don't need so many
+        results for day of the week, or time of day — just put the most
+        significant, and make sure there is 1 key result from each
+        section", and then "include the best and worst mentality for all
+        headers seen in the left sidebar, even if they seem
+        insignificant". Four Hero win rate lines pushing Party size off
+        the card entirely was the complaint, and "where is hero win
+        rate??" was the other half of it — a section with a real story
+        could be absent because a different section had four louder ones.
+
+        So the shape is fixed: every section that has buckets to compare
+        gets exactly one line, IN SECTION ORDER, carrying that section's
+        best and worst. The card reads the same on every run, which is
+        what makes two runs comparable, and no section can crowd out
+        another.
+
+        **IN `BLOCK_ORDER`, not by sigma**, also at the user's request.
+        A ranked list needs a top row that means something; a fixed list
+        of ten sections is read by finding the section you want, and
+        that is the order the sidebar and the page below already use.
+
+        **ITEMS ARE STILL OUT, and this one is statistics rather than
+        taste.** Every item bucket is measured against THAT HERO'S own
+        win rate, so the best item on Pudge and the worst on Lion are
+        figures against two different datums — putting them on one scale
+        would draw a comparison that is not there. The block keeps its
+        card further down, where each hero is read against its own rate.
+        """
+        rates, contributions = [], []
+        by_id = {block.id: block for block in self.blocks}
+        for block_id in analyse.BLOCK_ORDER:
+            block = by_id.get(block_id)
+            if block is None or block.kind == "items":
+                continue
+            found = analyse.section_spread(block, self.baseline)
+            if found is None:
+                continue
+            spread, best, worst = found
+            row = (block, spread, best, worst)
+            (contributions if block.kind == "metric" else rates).append(row)
+        return rates, contributions
 
     @classmethod
     def _per_metric(cls, pairs: list) -> list:

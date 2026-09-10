@@ -54,6 +54,31 @@ def _sizes_start_at_one():
 
 
 @pytest.fixture(autouse=True)
+def _the_stylesheet_does_not_leak_between_tests():
+    """A QApplication is shared by the whole run, and so is its style.
+
+    Several tests need the real theme because they check PIXELS, and
+    setting it on the way past leaves every test after them rendering in
+    a different font — this app's is 18px bold against Qt's default, so
+    every measured width changes. That is a leak with a very long reach:
+    a width assertion in `test_section_bar.py` passed on its own and
+    failed in the full suite because a file loaded earlier had restyled
+    the application and walked away.
+
+    Same rule as the size multipliers and the portrait cache below:
+    reset either side, so the leak cannot happen at all rather than
+    being tidied up by whichever test remembers.
+    """
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance()
+    was = app.styleSheet() if app is not None else ""
+    yield
+    app = QApplication.instance()
+    if app is not None and app.styleSheet() != was:
+        app.setStyleSheet(was)
+
+
+@pytest.fixture(autouse=True)
 def _portrait_caches_start_empty():
     """The portrait index is MODULE state too, and it caches ABSENCE.
 

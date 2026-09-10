@@ -1038,7 +1038,7 @@ class HistoryTab(QWidget):
         # blocks themselves: each table's third column is headed
         # "Against 54%".
         self._clear_results()
-        rates, contributions = report.split_findings()
+        rates, contributions = report.summary_rows()
         # THE TWO FAMILIES ARE HEADLINED APART. Contribution metrics
         # separate far harder than win-rate splits because they are partly
         # structural — a mid laner out-damages a hard support by
@@ -1047,15 +1047,14 @@ class HistoryTab(QWidget):
         names: list = []
         winning = self._findings_card(
             "What goes with winning", rates,
-            "Nothing clears the significance floor. On this sample the "
-            "variation between your buckets is noise.",
-            names=names, baseline=report.baseline)
+            "Nothing to compare yet — every split needs at least two "
+            "buckets with enough games behind them.",
+            names=names)
         self.results.addWidget(winning)
         self._anchors["winning"] = winning
         if contributions:
             contrib = self._findings_card(
-                "What you do on each hero", contributions, "", metric=True,
-                names=names, baseline=report.baseline)
+                "What you do on each hero", contributions, "", names=names)
             self.results.addWidget(contrib)
             self._anchors["contrib"] = contrib
         # After BOTH cards exist, so the two agree with each other.
@@ -1093,38 +1092,34 @@ class HistoryTab(QWidget):
         for label in labels:
             label.setFixedWidth(widest)
 
-    def _findings_card(self, title: str, pairs: list, empty: str,
-                       metric: bool = False, names: list | None = None,
-                       baseline: float = 0.0) -> QFrame:
-        """The headline findings, three aligned columns and no sentences.
+    def _findings_card(self, title: str, rows: list, empty: str,
+                       names: list | None = None) -> QFrame:
+        """One line per SECTION: its name, its two extremes, its spread.
 
-        At the user's request: "I want these summaries to be much shorter
-        form text — the title of the summary on the left, then a real
-        short form 'Tuesday win rate = XXX%', with a horizontal bar with
-        a symbol showing where this data sits relative to the whole data
-        set." Seven full sentences is a paragraph, and a paragraph is the
-        shape this tab has been trimmed out of everywhere else.
+        At the user's request the summary stopped being a ranked list of
+        whatever cleared the significance floor — "I don't need so many
+        results for day of the week, or time of day; just put the most
+        significant, and make sure there is 1 key result from each
+        section" — and then stopped consulting significance at all:
+        "include the best and worst mentality for all headers seen in
+        the left sidebar, even if they seem insignificant". So the card
+        is a fixed list in section order, every section once.
 
-        A GRID rather than a row of layouts, so the block names, the
-        figures and the bars each line up down the card. Bars that start
-        at a different x on every row cannot be compared at a glance,
-        which is the only thing they are for.
+        A GRID rather than a row of layouts, so the names, the figures
+        and the bars each line up down the card. Bars that start at a
+        different x on every row cannot be compared at a glance, which
+        is the only thing they are for.
 
         AND THE NAME COLUMN IS ONE WIDTH ACROSS BOTH CARDS
-        (`_name_column`), at the user's request: "where the result starts
-        — just after the section ends — is all aligned for each metric".
-        A grid already aligns its own rows; what it cannot do is agree
-        with the OTHER card's grid, and the two sit one above the other,
-        so left to themselves they would reproduce exactly the
-        raggedness being complained about one level up.
-
-        THE ARROW IS GONE. It carried the direction, which the marker now
-        carries twice over — by where it sits against your usual figure
-        and by its colour — so keeping it would be saying one thing three
-        times in a row built for shortness.
+        (`_align_names`), also at the user's request: "where the result
+        starts — just after the section ends — is all aligned for each
+        metric". A grid already aligns its own rows; what it cannot do
+        is agree with the OTHER card's grid, and the two sit one above
+        the other, so left to themselves they would reproduce exactly
+        the raggedness being complained about one level up.
         """
         frame, lay = card(title)
-        if not pairs:
+        if not rows:
             note = QLabel(empty)
             note.setWordWrap(True)
             note.setProperty("dim", True)
@@ -1135,7 +1130,7 @@ class HistoryTab(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(4)
         grid.setContentsMargins(0, 0, 0, 0)
-        for line, (block, finding) in enumerate(pairs):
+        for line, (block, spread, best, worst) in enumerate(rows):
             name = QLabel(block.name)
             name.setProperty("dim", True)
             # NOT WRAPPED: a wrapped label negotiates its width with the
@@ -1148,34 +1143,29 @@ class HistoryTab(QWidget):
                            Qt.AlignmentFlag.AlignTop
                            | Qt.AlignmentFlag.AlignLeft)
 
-            # THE COUNT STAYS AND THE WORD GOES, at the user's request.
-            # A rate from eight games and one from a hundred and fifty
-            # look identical without it, and never letting a figure stand
-            # next to an invisible sample size is what this whole tab is
-            # built on.
-            # NOT WRAPPED EITHER. The whole point of the short form is
-            # that it fits on one line; wrapped, the rows came out
-            # different heights and the bars beside them stopped sitting
-            # on one grid.
-            text = QLabel(f"{finding.short}  ·  {finding.n}")
+            # BEST THEN WORST, and the colours are the bar's own: green
+            # is the mark on the right of the strip, red the one on the
+            # left, so the words and the picture are read as one thing.
+            # "Make it super shorthand, short if need be" — so the
+            # bucket and its figure and nothing else, with the sample
+            # sizes in the bar's tooltip where they can be had without
+            # doubling the length of every line.
+            text = QLabel(
+                f'<span style="color:{theme.GOOD}">'
+                f'{best.key} {analyse.format_figure(block, spread.best)}</span>'
+                f'<span style="color:{theme.TEXT_DIM}">  ·  </span>'
+                f'<span style="color:{theme.BAD}">'
+                f'{worst.key} {analyse.format_figure(block, spread.worst)}'
+                f'</span>')
             grid.addWidget(text, line, 2)
 
             bar = SpreadBar()
-            # THE BASELINE COMES FROM THE REPORT BEING DRAWN, never from
-            # `self.report`. It read the latter first, and on a tab told
-            # to `render` a report it had not also been given (which is
-            # every direct call, and every test) that is None — so the
-            # datum arrived as 0.0 and dragged the bottom of every bar
-            # down to 0%, since the scale is stretched to contain the
-            # datum. Seven bars all labelled "0%" was the tell. A method
-            # drawing a report must use the report it was handed.
-            spread = analyse.spread_for(block, finding, baseline)
-            if spread is not None:
-                bar.set_spread(
-                    spread, finding.sigma > 0,
-                    analyse.format_figure(block, spread.low),
-                    analyse.format_figure(block, spread.high),
-                    analyse.format_figure(block, spread.datum))
+            bar.set_spread(
+                spread,
+                analyse.format_figure(block, spread.low),
+                analyse.format_figure(block, spread.high),
+                analyse.format_figure(block, spread.datum),
+                note=f"{best.key} {best.n} games, {worst.key} {worst.n} games")
             grid.addWidget(bar, line, 3)
         # A RULE DOWN THE WHOLE CARD, at the user's request — "maybe even
         # have a vertical line that runs down in between section and
@@ -1185,7 +1175,7 @@ class HistoryTab(QWidget):
         rule = edge()
         rule.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Expanding)
-        grid.addWidget(rule, 0, 1, len(pairs), 1)
+        grid.addWidget(rule, 0, 1, len(rows), 1)
         # The bar takes the slack: the two text columns are as wide as
         # their own longest line and no wider.
         grid.setColumnStretch(3, 1)

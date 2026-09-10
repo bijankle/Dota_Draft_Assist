@@ -636,73 +636,87 @@ credentials, and put the account at risk. Do not go there.
   The caret is drawn INTO the heading text rather than through Qt's sort
   indicator — the scrollbars' lesson, that a sub-control the stylesheet
   does not name is handed to the native style.
-  **A SUMMARY LINE IS THREE COLUMNS, NOT A SENTENCE** (`ui/spread_bar.
-  py`, `analyse.spread_for` / `Finding.short`, `_findings_card`). Each
-  finding read "More likely to win on Tuesdays: 65% from 49 games" with
-  the block's name in dim text off to the right, and seven of those is a
-  paragraph — the shape this tab has been trimmed out of everywhere
-  else. At the user's request it is now the block's NAME on the left, a
-  SHORT form of the fact ("Tuesday win rate 65% · 49"), and a BAR
-  showing where that bucket sits among its neighbours.
-  **THE BAR IS A RANGE AND A REFERENCE, DELIBERATELY NOT A BOX PLOT.**
-  A box and whisker was the shape asked about and the quartiles were
-  turned down: "it's just about where the data sits relative to the
-  others, min/max creates the bounds and it sits on that range". Which
-  is right for this data — half these blocks have four to seven
-  buckets, where an interquartile box is drawn from two numbers and
-  reads as precision nobody has. Three marks: the track from low to
-  high, a tick at YOUR OWN usual figure (a marker high on the range
-  says nothing about whether it is GOOD until you know where neutral
-  falls, and whole blocks sit above or below the line), and the marker,
-  green or red by direction. **The arrow is gone** — position and
-  colour now say the direction twice, so a third telling is noise.
-  **ONLY BUCKETS WITH ENOUGH GAMES SET THE BOUNDS** (`MIN_BUCKET`), at
-  the user's request: a two-game bucket at 100% would stretch every bar
-  in the card to its edge and squash the real ones into the middle,
-  which is why those rows are muted and sink in the tables. **And the
-  scale contains everything it draws** — the datum can fall outside the
-  eligible range, since the thin buckets left out still counted towards
-  it, and a tick painted off the end of its own bar is worse than a
-  slightly wider bar. Fewer than two eligible buckets, or all of them
-  on one figure, draws NO bar: a bar with no width says "this bucket is
-  at the extreme" about a block that has no extremes.
-  **THE COUNT STAYS AND THE WORD GOES** ("· 49"), also at the user's
-  request. A rate from eight games and one from a hundred and fifty look
-  identical without it, and never letting a figure stand beside an
-  invisible sample size is what this whole tab is built on. The long
-  SENTENCE still exists and still goes to the workbook, built in the
-  same place as the short form so the two cannot drift.
-  **THE NAME COLUMN IS ONE WIDTH ACROSS BOTH CARDS, WITH A RULE DOWN
-  IT** (`_align_names`), at the user's request — "where the result
-  starts is all aligned for each metric", and "maybe even have a
-  vertical line that runs down in between section and result". A grid
-  aligns its own rows; what it cannot do is agree with the OTHER card's
-  grid, and the two sit one above the other, so left alone they
-  reproduce the same raggedness one level up. The rule is ONE widget
-  spanning every row — a stack of short ones with the row spacing
-  showing between them is a dashed line — and it is `section_bar.edge`,
-  the same implementation the sidebar uses, because two would be two
-  chances to draw a different grey.
-  **AND THE BLOCK NAMES ARE SHORT AND OF A LENGTH** (`ANALYSES`), the
+  **THE SUMMARY IS ONE LINE PER SECTION, AND IT IS A FIXED LIST**
+  (`report.summary_rows`, `analyse.section_spread`, `ui/spread_bar.py`,
+  `_findings_card`). It began as sentences — "More likely to win on
+  Tuesdays: 65% from 49 games" — and seven of those is a paragraph, the
+  shape this tab has been trimmed out of everywhere else. It then became
+  a ranked list of whatever cleared the significance floor, which was
+  worse in a way that took a screenshot to see: four Hero win rate lines
+  could push Party size off the card entirely, and a section with a real
+  story could be ABSENT because another had louder ones. "Where is hero
+  win rate??" was exactly that.
+  So at the user's request it is a fixed list: **every section once, in
+  section order, carrying its best and its worst** — "make sure there is
+  1 key result from each section", then "include the best and worst
+  mentality for all headers seen in the left sidebar, even if they seem
+  insignificant, like Radiant/Dire win rate or whatever". Nothing in it
+  consults the sigma any more. A section with a real deviation and one
+  with none look the same except for where the marks fall, which is the
+  honest picture and is why the card no longer calls these findings. It
+  also reads the same on every run, which is what makes two runs
+  comparable.
+  The line is the section's NAME, then its two extremes in the bar's own
+  colours — green for the best, red for the worst, so the words and the
+  picture are one thing — then the bar. "Make it super shorthand, short
+  if need be", so the bucket and its figure and nothing else; the sample
+  sizes moved into the bar's tooltip, since naming two buckets would
+  otherwise print two counts on every line.
+  **AND THE BAR HAD TO BECOME A DISTRIBUTION, which is a consequence
+  rather than a choice.** Best and worst are the two extremes of the very
+  set that sets the bar's bounds — so marking only those two puts one
+  hard against each end FOR EVER, and a bar whose marks cannot move
+  carries nothing at all. So `points` is every eligible bucket, drawn as
+  a faint tick, with the two picked out in colour and the datum dashed
+  among them. Four days bunched with one outlier now reads differently
+  from four evenly spread, which is the whole reason a picture is here
+  instead of two more numbers. It is still NOT a box plot: the quartiles
+  were asked about and turned down — "it's just about where the data sits
+  relative to the others" — and half these sections have four to seven
+  buckets, where an interquartile box is drawn from two numbers and reads
+  as precision nobody has.
+  **ONLY BUCKETS WITH ENOUGH GAMES** (`MIN_BUCKET`): a two-game bucket at
+  100% would be the "best" of every section it appeared in and would
+  stretch the bar to its edge, which is why those rows are muted and sink
+  in the tables. **The scale contains everything it draws** — the datum
+  can fall outside the eligible range, since the thin buckets left out
+  still counted towards it, and a tick painted off the end of its own bar
+  is worse than a slightly wider bar. Fewer than two eligible buckets, or
+  all of them on one figure, draws NO row: a bar with no width says "this
+  is the extreme" about a section that has no extremes.
+  **ITEMS STAY OUT, and that one is statistics rather than taste.** Every
+  item bucket is measured against THAT HERO'S own win rate, so the best
+  item on one hero and the worst on another are figures against two
+  different datums; one scale would draw a comparison that is not there.
+  The block keeps its own card further down, where each hero is read
+  against its own rate.
+  **THE NAME COLUMN IS ONE WIDTH ACROSS BOTH CARDS, WITH A RULE DOWN IT**
+  (`_align_names`), at the user's request — "where the result starts is
+  all aligned for each metric", and "maybe even have a vertical line that
+  runs down in between section and result". A grid aligns its own rows;
+  what it cannot do is agree with the OTHER card's grid, and the two sit
+  one above the other, so left alone they reproduce the same raggedness
+  one level up. The rule is ONE widget spanning every row — a stack of
+  short ones with the row spacing showing between them is a dashed line —
+  and it is `section_bar.edge`, the same implementation the sidebar uses,
+  because two would be two chances to draw a different grey.
+  **AND THE SECTION NAMES ARE SHORT AND OF A LENGTH** (`ANALYSES`), the
   same request: "make them concise as possible, and similar character
-  length so it looks proportionally right". They ran 11 to 30
-  characters, and since the longest one sets that column's width for
-  the whole card, "Hero damage per minute by hero" pushed every bar
-  right while "Day of week" left two thirds of the column empty. They
-  are 10 to 15 now — Game in session, Previous result, Radiant or Dire,
-  Party size, Hero damage, Weighted KDA, Items by hero. `NAMES` is one
-  list, so the sidebar, each card's heading and this column change
-  together and cannot disagree; `DESCS` still carries the full
-  explanation as the tick box's tooltip, so shortening cost nothing.
+  length so it looks proportionally right". They ran 11 to 30 characters,
+  and since the longest sets that column's width for the whole card,
+  "Hero damage per minute by hero" pushed every bar right while "Day of
+  week" left two thirds of the column empty. They are 10 to 15 now.
+  `NAMES` is one list, so the sidebar, each card's heading and this
+  column change together and cannot disagree; `DESCS` still carries the
+  full explanation as the tick box's tooltip, so shortening cost nothing.
   **FOUR FAULTS HERE WERE INVISIBLE TO TESTS AND OBVIOUS ON SCREEN.**
   Worth listing, because three are the same shape:
   1. `_findings_card` read `self.report` for the baseline while `render`
      had been HANDED the report — and a tab told to render a report it
      was not also given has `self.report is None`, so the datum arrived
      as 0.0 and, because the scale is stretched to contain the datum,
-     the bottom of every bar collapsed. Seven bars all labelled "0%"
-     was the tell. **A method drawing a report uses the report it was
-     handed.**
+     the bottom of every bar collapsed. Bars all labelled "0%" was the
+     tell. **A method drawing a report uses the report it was handed.**
   2. `_font` scaled `pointSizeF()`, and this app sets `font-size` in
      PIXELS — so a widget's font answers `pointSizeF() == -1` and the
      end labels fell to the 6px floor, at which the reserved label
@@ -718,6 +732,17 @@ credentials, and put the account at risk. Do not go there.
      milder. There is no probe now: the real labels are built first and
      then given a common width, since they are the only things that
      know their own size for certain.
+  **AND A FIFTH THAT WAS INVISIBLE UNTIL THE WHOLE SUITE RAN.** A
+  QApplication is shared by every test in a run and so is its STYLE, and
+  five test files set the real stylesheet on the way past without putting
+  it back — so everything after them rendered in this app's 18px bold
+  rather than Qt's default, and every measured width changed. It had been
+  latent for a long time; the first assertion sensitive to it was a page
+  width, which passed alone and failed in the full suite. `conftest.py`
+  resets the stylesheet either side of every test now, the same way it
+  resets the size multipliers and the portrait cache, and the tests that
+  were quietly relying on somebody else having set it ask for it
+  themselves through a `styled` fixture.
   **THE SECTIONS ARE LISTED DOWN THE LEFT, AND THE LIST IS THE
   SWITCHBOARD** (`ui/section_bar.py`, `HistoryTab._build_sections` /
   `_jump_to` / `_spy` / `_picked`). A report is thirteen cards long and
@@ -766,14 +791,28 @@ credentials, and put the account at risk. Do not go there.
   control to what it was always going to be is not the user picking it —
   wired first, every box fired during construction, before the card
   holding the rest of the options existed to be asked.
-  **THE ORDER IS STATED ONCE** (`analyse.BLOCK_ORDER`). It was a tuple
-  inlined in `build_blocks`, plus the order of `METRICS`, plus wherever
-  `items` happened to be appended — three places agreeing by luck, and
-  they did NOT agree with `ANALYSES`, which has the item block last where
-  the page puts it before the two metric blocks. A bookmark list in a
-  different order from the page it maps is a bookmark list that lies, so
-  `build_blocks` and the sidebar both read one tuple and a test holds it
-  to the same set of keys as `ANALYSES`. `_spy` nonetheless ranks by
+  **THE ORDER IS STATED ONCE, AND IT RANKS BY WHAT YOU CAN ACT ON**
+  (`analyse.BLOCK_ORDER`). It was a tuple inlined in `build_blocks`, plus
+  the order of `METRICS`, plus wherever `items` happened to be appended —
+  three places agreeing by luck, and they did NOT agree with `ANALYSES`.
+  A bookmark list in a different order from the page it maps is a
+  bookmark list that lies, so `build_blocks`, the sidebar and the
+  summary's rows all read one tuple and a test holds it to the same set
+  of keys as `ANALYSES`.
+  What that one order IS was then decided at the user's request — "show
+  the most important sections at the top" — on whether a section names a
+  DECISION or an OUTCOME, with two worked examples of their own:
+  "Radiant and Dire is silly because it's random, I can't choose the
+  side", and "hero win rate means a lot because I can choose the heroes
+  that I do better at more often". So: which hero, and what to build on
+  it, are the two biggest levers anybody has and they lead; then when to
+  queue, when to stop, whether to re-queue after a loss, which day, who
+  with. Then the two that are not choices — match length is a
+  CONSEQUENCE of how a game went rather than something you set, and the
+  side is assigned by the matchmaker. The two contribution rankings sit
+  last because they are the most caveated in the tab: damage per minute
+  is set mostly by what a hero DOES, so they rank heroes as much as they
+  rank your play. `_spy` nonetheless ranks by
   measured POSITION rather than by list order: the two agree today, and a
   highlight that silently lies the day they stop agreeing is worse than
   one that costs a sort.

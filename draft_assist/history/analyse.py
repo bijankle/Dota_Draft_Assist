@@ -282,19 +282,32 @@ def metric_findings(rows, datum, more, less, dp, short="") -> list:
 
 @dataclass
 class Spread:
-    """Where one bucket sits among the others, on one scale.
+    """A whole section's buckets on one scale, with its two extremes named.
 
-    The summary lines print a bar: the whole range this block's buckets
-    covered, a tick at your own usual figure, and a marker for the bucket
-    the finding is about. `low`/`high`/`datum`/`value` are all in the
-    block's own units, so the widget drawing it needs to know nothing
-    about win rates or damage.
+    The summary prints ONE line per section now, at the user's request —
+    "I don't need so many results for day of the week, or time of day;
+    just put the most significant, and make sure there is 1 key result
+    from each section", then "include the best and worst mentality for
+    all headers in the left sidebar, even if they seem insignificant".
+
+    Which changes what the bar has to be. Marking only the best and the
+    worst against a range those same two define puts one marker hard
+    against each end for ever, and a bar whose marks never move carries
+    nothing. So `points` is EVERY eligible bucket, drawn as a faint tick,
+    with `best` and `worst` picked out in colour and the datum where it
+    falls among them. That is the distribution the bar was always meant
+    to show, now for a section at a time rather than for one bucket.
+
+    Every figure is in the block's own units, so the widget drawing it
+    needs to know nothing about win rates or damage per minute.
     """
 
     low: float
     high: float
     datum: float
-    value: float
+    points: list
+    best: float
+    worst: float
 
     def at(self, figure: float) -> float:
         """`figure` as a fraction from 0 (low) to 1 (high)."""
@@ -315,39 +328,49 @@ def format_figure(block: "Block", value: float) -> str:
     return f"{value:.{block.dp}f}"
 
 
-def spread_for(block: "Block", finding: "Finding",
-               baseline: float) -> "Spread | None":
-    """The bar's numbers, or None when there is no range to draw.
+def section_spread(block: "Block", baseline: float):
+    """(spread, best bucket, worst bucket) for a whole section, or None.
 
-    **ONLY BUCKETS WITH ENOUGH GAMES SET THE BOUNDS**, at the user's
-    request — `MIN_BUCKET`, the same floor that decides whether a bucket
-    may produce a finding at all. A two-game bucket at 100% would stretch
-    every bar in the card to its edge and squash all the real ones into
-    the middle, which is the same reason those rows are muted and sink to
+    **ONLY BUCKETS WITH ENOUGH GAMES**, at the user's request —
+    `MIN_BUCKET`, the same floor that decides whether a bucket may
+    produce a finding at all. A two-game bucket at 100% would be the
+    "best" of every section it appeared in and would stretch the bar to
+    its edge, which is the same reason those rows are muted and sink to
     the bottom of the tables.
 
+    **EVERY SECTION GETS ONE, significant or not**, which reverses what
+    the summary used to do: "include the best and worst mentality for all
+    headers seen in the left sidebar, even if they seem insignificant,
+    like Radiant/Dire win rate or whatever". So nothing here consults
+    the sigma. A section with a real deviation and one with none now
+    look the same on the page except for where the marks fall, which is
+    the honest picture — and it is why the card no longer calls these
+    findings.
+
     **AND THE SCALE CONTAINS EVERYTHING IT DRAWS.** Your usual figure can
-    sit outside the eligible buckets' range — the thin buckets left out
-    above still counted towards it — and a tick painted off the end of
-    its own bar is worse than a slightly wider bar. So the bounds are
-    stretched to hold the datum when they have to.
+    sit outside the eligible buckets' range, because the thin buckets
+    left out still counted towards it, and a tick painted off the end of
+    its own bar is worse than a slightly wider bar.
 
     None when fewer than two eligible buckets survive, or when they all
-    landed on one figure: a bar with no width says "this bucket is at the
-    extreme" about a block that has no extremes, which is a lie the
-    reader cannot see through.
+    landed on one figure: a bar with no width says "this is the extreme"
+    about a section that has no extremes.
     """
     figure = (lambda row: row.rate) if block.kind == "cat" else (
         lambda row: row.mean)
     datum = baseline if block.kind == "cat" else (block.datum or 0.0)
-    values = [figure(row) for row in block.rows if row.eligible]
-    if len(values) < 2:
+    rows = [row for row in block.rows if row.eligible]
+    if len(rows) < 2:
         return None
-    low, high = min(values), max(values)
-    if high - low <= 0:
+    points = sorted(figure(row) for row in rows)
+    if points[-1] - points[0] <= 0:
         return None
-    return Spread(low=min(low, datum), high=max(high, datum),
-                  datum=datum, value=finding.value)
+    best = max(rows, key=figure)
+    worst = min(rows, key=figure)
+    spread = Spread(low=min(points[0], datum), high=max(points[-1], datum),
+                    datum=datum, points=points,
+                    best=figure(best), worst=figure(worst))
+    return spread, best, worst
 
 
 def item_analysis(matches, item_names: dict) -> Block:
@@ -480,8 +503,30 @@ METRICS = {
 # `ANALYSES` still decides what each is CALLED and whether it starts
 # ticked; this decides only where it sits. A test holds the two to the
 # same set of keys.
-BLOCK_ORDER = ("hero", "length", "tod", "dow", "session", "tilt", "side",
-               "party", "items", "herodmg", "herokda")
+# ORDERED BY WHAT YOU CAN ACT ON, at the user's request — "if you think
+# certain sections are more insightful than others, re-order to show the
+# most essential at the top", with two worked examples: "Radiant and Dire
+# is silly because it's random, I can't choose the side, so it should be
+# somewhere at the bottom", and "hero win rate means a lot because I can
+# choose the heroes that I do better at more often and that will improve
+# my overall win rate".
+#
+# So the rule is whether a section names a DECISION or an OUTCOME. Which
+# hero and what to build on it are the two biggest levers anybody has, so
+# they lead. When to queue, when to stop, whether to re-queue after a
+# loss, which day, who with — all things you choose, in roughly the order
+# they change a session. Then the two that are not choices at all: match
+# length is a CONSEQUENCE of how a game went rather than something you
+# set, and the side is assigned by the matchmaker, so a deviation there
+# is a coincidence you cannot use. The two contribution rankings sit last
+# because they are the most caveated in the whole tab: damage per minute
+# is set mostly by what a hero DOES, so they rank heroes as much as they
+# rank your play.
+#
+# This is the one list, so the sidebar, the summary's rows and the cards
+# down the page all take this order together — "they should all agree".
+BLOCK_ORDER = ("hero", "items", "tod", "session", "tilt", "dow", "party",
+               "length", "side", "herodmg", "herokda")
 
 
 def build_blocks(matches, baseline: float, picked: dict,
