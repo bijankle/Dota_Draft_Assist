@@ -161,10 +161,16 @@ SECTIONS: tuple = (
         "Diagnose game data names the one link that is broken rather than "
         "handing you the whole checklist.",
         "Recognition needs to know where the portraits are on your "
-        "screen. It measures that itself during a match and remembers it. "
-        "If it is wrong, Settings ▸ Debug ▸ Live lets you drag one box "
-        "around each bank — either order — and works out the rest, on a "
-        "live game or on a saved picture.",
+        "screen, and that is the one thing it cannot work out alone. "
+        "File ▸ Calibrate pick boxes puts two red boxes over the running "
+        "game: drag one over each bank of five portraits, resize by the "
+        "corner, press Confirm. It snaps them onto the portrait edges it "
+        "can see, so they only have to be close.",
+        "Dota has to be open for it — the boxes go on the game — and the "
+        "app says so rather than opening two rectangles over your "
+        "desktop. It measures the boxes itself during a match too, but "
+        "only on a machine that has never been calibrated: what you set "
+        "by hand is an answer and is never overwritten by a guess.",
     )),
     ("analysis", "The History tab", (
         "This is about your own match history rather than the game on "
@@ -249,8 +255,9 @@ SECTIONS: tuple = (
             ("The board is wrong or empty mid-draft",
              "Press Detect all to read the screen again. If the tiles "
              "are on the wrong side, drag one across — it exchanges. If "
-             "recognition is finding nothing at all, the crop boxes may "
-             "be off: Settings ▸ Debug ▸ Live."),
+             "recognition is finding nothing at all, the pick boxes are "
+             "probably off the portraits: File ▸ Calibrate pick boxes, "
+             "with Dota open."),
             ("Blank tiles or item names instead of pictures",
              "The artwork is not downloaded. Settings ▸ Downloads ▸ All "
              "artwork; it skips what is already there. An item that "

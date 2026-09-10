@@ -70,14 +70,59 @@ credentials, and put the account at risk. Do not go there.
    the top edge. Calibration nudges are fractional too, and are edited live
    in Debug ▸ Live with the boxes drawn on the picture.
 
-   **When measuring fails, the user DRAWS it** (`ui/framebox.py`,
-   `autocal.measure_bank` / `layout_from_banks`). Six numbers, each a
-   fraction of the HUD box rather than of the window, is not something
-   anyone can convert "the boxes are 135 pixels left of the portraits"
-   into — the user could see exactly what was wrong and had no way to say
-   it, which is where "how the fuck do I calibrate these boxes" came from.
-   Debug ▸ Live takes ONE BOX ROUND EACH BANK, either order, and measures
-   the rest.
+   **When measuring fails, the user DRAWS it** (`ui/calibrate.py`,
+   `ui/framebox.py`, `autocal.measure_bank` / `layout_from_banks`). Six
+   numbers, each a fraction of the HUD box rather than of the window, is
+   not something anyone can convert "the boxes are 135 pixels left of the
+   portraits" into — the user could see exactly what was wrong and had no
+   way to say it, which is where "how the fuck do I calibrate these
+   boxes" came from. ONE BOX ROUND EACH BANK, either order, and the rest
+   is measured.
+
+   **AND IT IS AN ACTION ON THE GAME, NOT A DRAG IN A DEBUG PANEL**
+   (`ui/calibrate.py`, File ▸ Calibrate pick boxes, the banner's last
+   rung). It was a drag on a small picture of the frame inside Debug ▸
+   Live — "it should not be done in this silly debugging menu" — six
+   clicks deep, for the setup step the entire draft reading depends on.
+   Now two frameless always-on-top rectangles sit over the real Dota
+   client, dragged and resized by hand, with a Confirm.
+   **TWO BOXES, NOT TEN.** Ten labelled boxes were offered and turned
+   down — "just 2 big rectangles that go over all the portraits for
+   Radiant and all the portraits for Dire" — and the simpler answer is
+   also the only representable one: a `DraftLayout` is seven numbers, so
+   ten hand-placed rectangles could describe a pick bar that cannot
+   exist.
+   **THEY ARE `Qt.Tool` AND THEY EXIST ONLY WHILE CALIBRATING**, because
+   two more entries in the taskbar and Alt-Tab is what got the floating
+   overlay toggle deleted from this app.
+   **OPEN DOTA FIRST**, at the user's request: the boxes go ON the
+   client, so with no window there they are two rectangles being dragged
+   over the desktop onto nothing. `dota_client_rect` answers None both
+   when the game is shut and when this is not Windows, and the sentence
+   is the same either way.
+   **THE STRIP WITH THE NAME IN IT IS NOT PART OF THE MEASUREMENT**, and
+   it flips UNDER the rectangle when there is no room above — which is
+   the normal case rather than an edge one, since the pick bar hugs the
+   top of the screen and a label at a negative y is clipped off the
+   display. `screen_rect` returns the rectangle alone; handing the
+   widget's own geometry to the measurer would put every box a label's
+   height out.
+   **TWO FAULTS HERE WERE INVISIBLE TO THE TESTS AND OBVIOUS ON SCREEN**,
+   which is this app's oldest lesson repeating. The opening geometry
+   multiplied the WINDOW width by the layout's fractions — they are
+   fractions of the 16:9 HUD BOX, which is the mistake that once put the
+   crop boxes 440px left of the portraits, and the fix is to go through
+   `SlotRect.to_pixels` like everything else. And a bank spans four
+   PITCHES plus ONE portrait: `4 * slot_w + 4 * pitch` hung the Dire box
+   a hundred pixels off the right edge of the screen, where it could not
+   be dragged at all.
+   **AND A PANEL'S STYLESHEET CASCADES INTO ITS BUTTONS.** The control
+   panel set a background and border on itself unscoped, so each button
+   needed `border: none` to undo it — and that beat
+   `QPushButton[accent="true"]`, which drew Confirm, the one action the
+   window exists for, as a plain button. Naming the rule
+   (`QWidget#calPanel`) is the fix; the accent-ordering trap in the
+   stylesheet is the same family.
 
    A box round five portraits spans four pitches plus one portrait, which
    is one equation for two unknowns — so a first attempt asked for three

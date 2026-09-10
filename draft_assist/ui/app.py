@@ -336,6 +336,10 @@ class MainWindow(QMainWindow):
         file_menu = bar.addMenu("&File")
         self._act(file_menu, "S&ettings…", self._open_settings, "Ctrl+,",
                   "Everything the app reads, downloads and diagnoses")
+        # THE ONE SETUP STEP THE WHOLE DRAFT READING DEPENDS ON, and it
+        # was six clicks deep in the debug panel until the user said so.
+        self._act(file_menu, "&Calibrate pick boxes…", self._calibrate,
+                  None, "Put two boxes over the pick bar, on the game")
         self._act(file_menu, "&Update application…", self._update_app,
                   None, "Pull the latest code, then reopen the app")
         # NO QUIT, at the user's request: the window's own close button is
@@ -532,6 +536,10 @@ class MainWindow(QMainWindow):
                     "sessions recorded.",
                     ("log", "live", "recordings", "frame", "timings"),
                     lambda: self._open_settings("Debug")),
+            Command("Calibrate pick boxes…", "File",
+                    "Drag two boxes over the pick bar, on the game.",
+                    ("calibrate", "boxes", "crop", "portraits", "picks",
+                     "recognition", "setup", "align"), self._calibrate),
             Command("User manual", "Help",
                     "How every part of the app works, in one place.",
                     ("manual", "help", "guide", "docs", "instructions",
@@ -1388,7 +1396,7 @@ class MainWindow(QMainWindow):
                 "<b>The app cannot find the pick portraits on your "
                 "screen.</b> Picks will be read late or not at all until "
                 "the crop boxes are calibrated.",
-                "Fix the crop boxes", self._open_calibration)
+                "Fix the crop boxes", self._calibrate)
             return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
         # works. A fresh install has neither, and the statistics need a
@@ -1452,6 +1460,18 @@ class MainWindow(QMainWindow):
                 "missing.</b> Usually a hero added in a patch.",
                 "Get the artwork", lambda: self.run_task("fetch_assets"))
             return
+        # THE LAST RUNG: the pick boxes have never been set up. It is the
+        # first-run task the user asked to have flagged, and it is last
+        # because it is the only one that cannot be done alone — it needs
+        # Dota open AND the portraits downloaded, since recognition
+        # matches the boxes against that library. Flagging it above them
+        # would be asking for something that cannot work yet.
+        if not CALIBRATION_FILE.exists():
+            self._show_banner(
+                "<b>The pick boxes have not been set up.</b> Open Dota "
+                "and drag the two boxes over the pick bar.",
+                "Calibrate", self._calibrate)
+            return
         self.banner.setVisible(False)
 
     def _edit_rules(self) -> None:
@@ -1469,6 +1489,41 @@ class MainWindow(QMainWindow):
             return
         self._refresh_views()
         self._say(f"Loaded {len(self.rules)} item rules", 5000)
+
+    def _calibrate(self, *_ignored) -> None:
+        """Two red boxes over the live game, dragged onto the pick bar.
+
+        **OPEN DOTA FIRST**, at the user's request and because there is
+        nothing to put them on otherwise: the boxes go ON the client, so
+        with no window there they would be two rectangles over the
+        desktop being dragged onto nothing. `dota_client_rect` answers
+        None both when the game is closed and when this is not Windows,
+        and the sentence is the same either way — there is no pick bar to
+        calibrate against.
+        """
+        from .calibrate import Calibrator, dota_client_rect
+
+        client = dota_client_rect()
+        if client is None:
+            QMessageBox.information(
+                self, "Calibrate pick boxes",
+                "Open Dota 2 first. The boxes are dragged onto the pick "
+                "bar in the game, so the game has to be on screen.")
+            return
+        if getattr(self, "calibrator", None) is not None:
+            return                          # already up; one at a time
+        self.calibrator = Calibrator(client, self)
+        self.calibrator.frame_of = lambda: getattr(
+            getattr(self.provider, "vision", None), "last_frame", None)
+        self.calibrator.finished.connect(self._calibrated)
+        self.calibrator.show()
+
+    def _calibrated(self, saved: bool, note: str) -> None:
+        self.calibrator = None
+        if saved:
+            self._say(note, 8000)
+            self.reload_backend()
+            self._update_first_run_banner()
 
     def _open_calibration(self) -> None:
         """Settings > Debug > Live, where the boxes are drawn on the frame.

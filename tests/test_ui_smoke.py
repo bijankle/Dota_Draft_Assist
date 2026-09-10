@@ -3683,3 +3683,61 @@ def test_the_crop_box_banner_opens_the_one_place_they_are_drawn(qapp,
         assert opened == ["Debug"]
     finally:
         win.close()
+
+
+def test_calibrating_with_dota_shut_says_to_open_it(qapp, monkeypatch):
+    """The boxes go ON the client, so with no window there they would be
+    two red rectangles over the desktop being dragged onto nothing."""
+    from PyQt6.QtWidgets import QMessageBox
+    from draft_assist.ui import calibrate
+
+    monkeypatch.setattr(calibrate, "dota_client_rect", lambda: None)
+    said = []
+    monkeypatch.setattr(QMessageBox, "information",
+                        lambda *args, **kw: said.append(args[2]))
+    win = make_window(qapp, demo_dataset())
+    try:
+        win._calibrate()
+        assert said and "Open Dota 2 first" in said[0]
+        assert getattr(win, "calibrator", None) is None
+    finally:
+        win.close()
+
+
+def test_calibrating_opens_the_boxes_when_dota_is_there(qapp, monkeypatch):
+    from draft_assist.ui import calibrate
+
+    monkeypatch.setattr(calibrate, "dota_client_rect",
+                        lambda: (0, 0, 1920, 1080))
+    win = make_window(qapp, demo_dataset())
+    try:
+        win._calibrate()
+        assert win.calibrator is not None
+        assert [b.name for b in win.calibrator.boxes] == ["Radiant", "Dire"]
+        win.calibrator.panel.cancelled.emit()
+        qapp.processEvents()
+        assert win.calibrator is None, "it did not clean up after itself"
+    finally:
+        win.close()
+
+
+def test_never_calibrated_is_the_last_rung(qapp, monkeypatch, tmp_path):
+    """The first-run task the user asked to have flagged. It is LAST
+    because it is the only one that cannot be done alone: it needs Dota
+    open and the portraits downloaded, since recognition matches the
+    boxes against that library."""
+    from draft_assist.ui import app as app_mod
+    from draft_assist.ui import portraits
+
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+    monkeypatch.setattr(portraits, "missing_for", lambda ids: set())
+    monkeypatch.setattr(app_mod, "CALIBRATION_FILE", tmp_path / "none.json")
+    win = make_window(qapp, demo_dataset())
+    try:
+        monkeypatch.setattr(win, "_bracket_mismatch", lambda: None)
+        monkeypatch.setattr(win, "_stale_days", lambda: 0)
+        win._update_first_run_banner()
+        assert "pick boxes have not been set up" in win.banner_label.text()
+        assert win.banner_button.text() == "Calibrate"
+    finally:
+        win.close()
