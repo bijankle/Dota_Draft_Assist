@@ -2302,6 +2302,104 @@ credentials, and put the account at risk. Do not go there.
   two picks nobody has made. **The strip never re-orders either**, also
   asked for: only the numbers on the tiles change, so a hero stays where
   it was last seen instead of the whole strip reshuffling on every click.
+- **A STAR IS WHERE THE TWO TABS MEET** (`history/stars.py`,
+  `SuggestTile.set_star`, `tilekit.paint_star`,
+  `MainWindow._history_run_changed`), at the user's request. The
+  suggestion strip ranks by DRAFT FIT — what the ten heroes on the board
+  do to this hero — and that number knows nothing about you; the History
+  tab knows a great deal about you and nothing about the board. The star
+  says "and this is a hero you play a lot and win on", drawn on the tile
+  the fit is already on, which is the one place the two answers can be
+  read together.
+  **ONLY ON THE SUGGESTIONS**, also asked for: "no need to show it on
+  the portrait if the hero ends up being picked". That falls out for
+  free — a picked hero leaves the strip, since the strip ranks heroes
+  NOT in the draft — and the ten picks were never given one.
+  **TWO PERCENTILE FLOORS, BOTH THE USER'S TO SET** (`star_pick_pct`,
+  `star_win_pct`, Settings ▸ General). The rule is theirs verbatim:
+  "rank all the hero picks for that period — only the heroes that rank
+  in the top 30% pick rate would be a candidate for the star, same goes
+  for win rate, and if both are satisfied they get a star".
+  **PERCENTILES RATHER THAN COUNTS** because the History tab's window is
+  a DROPDOWN: "8 games" means something quite different over six months
+  than over two years, and a bar that moves with the window is a bar
+  that stops meaning what it did. A percentile is read against whatever
+  was actually measured.
+  **THE BOX SAYS "TOP 30%" WHERE THE SETTING STORES 70.** A percentile
+  floor is what the rule needs and "top 30%" is what a person means, so
+  the conversion happens once, at the control — the alternative is a
+  number that goes the opposite way to the words beside it.
+  **STRICTLY ABOVE THE FLOOR.** Standing AT the 70th percentile means
+  70% are at or below you, which puts you at the top of the bottom 70%
+  rather than in the top 30% — with ten heroes the fourth best sits
+  exactly on 0.70, so `>=` quietly made "top 30%" four heroes out of
+  ten. Ties still move together, because they share one percentile:
+  two heroes on the same games and the same rate are the same hero as
+  far as this rule can tell, and splitting them by whatever `sorted`
+  did would star one and not the other on identical evidence.
+  **AND THERE IS STILL A GAMES FLOOR** (`stars.MIN_GAMES`, 2, the same
+  number as `analyse.MIN_DISPLAY`). The pick percentile very nearly does
+  this by itself — a one-game hero sinks to the bottom of that ranking —
+  and "nearly" fails in the degenerate case every floor in `analyse`
+  exists for: three games across three heroes and the top third by win
+  rate is a hero you played ONCE, at 100%.
+  **IT FOLLOWS WHICHEVER RUN IS ON THE TAB**, at the user's request
+  rather than being pinned to one account, so looking somebody else up
+  re-stars the strip against their history. `HistoryTab.report` is a
+  PROPERTY that emits `report_changed`: three places assign it today —
+  a run finishing, a cached run loading, and a load that came back
+  empty — and the fourth is the one that would forget to announce
+  itself, leaving the Draft tab starring the heroes of an account
+  nobody is looking at.
+  **MEASURED ONCE PER RUN, NOT PER TILE.** It is one pass over a few
+  hundred matches and two rankings; the strip is rebuilt on every pick,
+  so doing it there would rank the same run again for every hero of
+  every draft. And `set_stars` runs AFTER `show_heroes`, which destroys
+  every tile — a star applied before that is a star on a widget that no
+  longer exists. Moving either bar RE-MEASURES rather than re-filtering:
+  the setting is an input to the ranking, not a filter over its result.
+  **KEYED BY HERO ID, NEVER BY NAME.** The hero block's buckets are
+  keyed by the DISPLAY NAME OpenDota gave the match and the Draft tab
+  knows its candidates by the numeric id from its own dataset; matching
+  those two strings would be one rename away from a strip with no stars
+  on it and nothing anywhere saying why. `stars.measure` walks the raw
+  matches, which carry `hero_id`.
+  **THE STAR IS THE FRAME'S GOLD**, the third thing in this app wearing
+  it beside the window's border and the focus ring — and all three mean
+  "this one" rather than "this is good" or "this is wrong". Green and
+  red are spoken for by every signed number in the app, so a star in
+  either would read as a judgement about the fit beside it. TOP-RIGHT,
+  the one corner of a tile with nothing in it: the bottom right is the
+  number's and the whole border is the ring's. PAINTED and STROKED like
+  every other mark here — a glyph would resize with whatever font the
+  tile carries and could not be coloured apart from it, and an unstroked
+  mark on a portrait disappears into whatever is behind it. Drawn UNDER
+  the focus ring, since the ring is the one line saying what the whole
+  board is measured against.
+  **AND THE REASON IS A TOOLTIP.** The star's job is to be seen without
+  being read; a figure beside it would be a third number in a corner
+  that already has the fit in it. `Stars.why` names THE BARS IT CLEARED
+  rather than the hero's own percentile — "top 0% by picks" is what the
+  most-played hero's own figure reads as, which is both wrong-sounding
+  and a number nobody set.
+- **A COUNT BOX IS NOT WIDE ENOUGH FOR A SUFFIX IT WAS GIVEN LATER**
+  (`chrome.CountBox._fit_width`). `QSpinBox.minimumSizeHint` IS CACHED
+  and `setSuffix` does not invalidate it: it answered 75px both before
+  and after `setSuffix(" days")`, while the text needs 78, so the
+  statistics reminder printed **"14 day"** — a number clipped by its own
+  units. Re-asking Qt is not enough; the widest value the range can hold
+  has to be MEASURED with its prefix and suffix. It is still a FLOOR
+  RAISED rather than a replacement, which is the rule this width has
+  always had — arithmetic alone once came out narrower than the widget's
+  own minimum and clipped the number to its left half — so the chrome
+  the font metrics cannot see (the stylesheet's padding and border) is
+  recovered as the difference between Qt's hint and the bare digits it
+  measured. `ensurePolished` first, or the font is not the stylesheet's.
+  This surfaced by moving that box off a bare `QSpinBox` onto `CountBox`
+  for the WHEEL: the settings page scrolls, and Qt steps a spin box on
+  every notch — the same trap the History tab's controls were all
+  converted for, left standing two menus deep where a silently changed
+  reminder interval would never be noticed.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   At most `suggested_items` items above a severity floor. Silence in many games is correct

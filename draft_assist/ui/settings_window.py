@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QFrame,
 
 from ..config import DEFAULT_PAIR_SOURCE
 from . import settings as ui_settings
+from .chrome import CountBox
 from .settings_dialog import PAIR_SOURCES, SWITCHES
 
 
@@ -122,11 +123,16 @@ class GeneralPage(QWidget):
         layout.addWidget(_heading("When to remind you to update"))
         remind = QHBoxLayout()
         remind.addWidget(QLabel("Ask me when the statistics are older than"))
-        self.reminder_days = QSpinBox()
-        self.reminder_days.setRange(0, ui_settings.MAX_REMINDER_DAYS)
+        # A `CountBox` rather than a bare QSpinBox: this page SCROLLS, and
+        # Qt steps a spin box on every wheel notch — the trap the History
+        # tab's controls were all converted for. One that was missed is
+        # one trap left, and this one sat two menus deep where a silently
+        # changed reminder interval would never be noticed.
+        self.reminder_days = CountBox(
+            int(settings.get("data_reminder_days",
+                             ui_settings.DATA_REMINDER_DAYS)),
+            0, ui_settings.MAX_REMINDER_DAYS)
         self.reminder_days.setSuffix(" days")
-        self.reminder_days.setValue(int(settings.get(
-            "data_reminder_days", ui_settings.DATA_REMINDER_DAYS)))
         self.reminder_days.valueChanged.connect(self.changed)
         remind.addWidget(self.reminder_days)
         remind.addStretch(1)
@@ -134,6 +140,36 @@ class GeneralPage(QWidget):
         layout.addWidget(_note("One dialog when the app opens, and nothing "
                                "on screen in between. Set it to 0 to never "
                                "be asked."))
+
+        layout.addWidget(_rule())
+        layout.addWidget(_heading("Stars on the suggested picks"))
+        stars = QHBoxLayout()
+        stars.addWidget(QLabel("Star a hero in my top"))
+        self.star_pick = CountBox(
+            100 - ui_settings.clamp_pct(
+                settings.get("star_pick_pct", 70), 70), 1, 100)
+        self.star_pick.setSuffix("%")
+        self.star_pick.valueChanged.connect(self.changed)
+        stars.addWidget(self.star_pick)
+        stars.addWidget(QLabel("by picks and top"))
+        self.star_win = CountBox(
+            100 - ui_settings.clamp_pct(
+                settings.get("star_win_pct", 50), 50), 1, 100)
+        self.star_win.setSuffix("%")
+        self.star_win.valueChanged.connect(self.changed)
+        stars.addWidget(self.star_win)
+        stars.addWidget(QLabel("by win rate"))
+        stars.addStretch(1)
+        layout.addLayout(stars)
+        # THE BOX SAYS "TOP 30%" WHERE THE SETTING STORES 70. A percentile
+        # floor is what the rule needs and "top 30%" is what a person
+        # means, so the conversion happens here, once, at the edge — the
+        # alternative is a control whose number goes the opposite way to
+        # the words beside it.
+        layout.addWidget(_note(
+            "Ranked against the heroes in the last History run, so it "
+            "follows whichever account is loaded there. Both bars have to "
+            "be cleared. 100% is no bar on that axis."))
         layout.addStretch(1)
 
     def values(self) -> dict:
@@ -141,6 +177,10 @@ class GeneralPage(QWidget):
         out["pair_source"] = self.pair_source()
         out["data_reminder_days"] = ui_settings.clamp_days(
             self.reminder_days.value(), ui_settings.DATA_REMINDER_DAYS)
+        out["star_pick_pct"] = ui_settings.clamp_pct(
+            100 - self.star_pick.value(), 70)
+        out["star_win_pct"] = ui_settings.clamp_pct(
+            100 - self.star_win.value(), 50)
         return out
 
     def pair_source(self) -> str:

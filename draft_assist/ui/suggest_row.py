@@ -69,7 +69,9 @@ class SuggestTile(QWidget):
         self._delta: str = ""
         self._delta_colour: str = theme.GOOD
         self._focused = False
+        self._starred = False
         self._tip = tooltip or name
+        self._why_star = ""
         self.setFixedSize(*(size or (WIDTH, ART_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setToolTip(self._tip)
@@ -91,12 +93,12 @@ class SuggestTile(QWidget):
         """
         self._delta = tilekit.delta_text(delta, kind)
         self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
-        self.setToolTip(f"{self._tip}\n{self._delta} against the clicked hero")
+        self._refresh_tip()
         self.update()
 
     def clear_delta(self) -> None:
         self._delta = ""
-        self.setToolTip(self._tip)
+        self._refresh_tip()
         self.update()
 
     def delta_text(self) -> str:
@@ -105,6 +107,30 @@ class SuggestTile(QWidget):
     def set_focused(self, on: bool) -> None:
         self._focused = bool(on)
         self.update()
+
+    def set_star(self, on: bool, why: str = "") -> None:
+        """Mark this as a hero the last History run says you are good on.
+
+        The reason rides along and goes in the TOOLTIP rather than on the
+        tile: the star's job is to be seen without being read, and a
+        figure beside it would be a third number in a corner that already
+        has the fit in it.
+        """
+        self._starred, self._why_star = bool(on), why
+        self._refresh_tip()
+        self.update()
+
+    @property
+    def starred(self) -> bool:
+        return self._starred
+
+    def _refresh_tip(self) -> None:
+        lines = [self._tip]
+        if self._delta:
+            lines.append(f"{self._delta} against the clicked hero")
+        if self._starred and self._why_star:
+            lines.append(self._why_star)
+        self.setToolTip("\n".join(part for part in lines if part))
 
     @property
     def focused(self) -> bool:
@@ -140,6 +166,12 @@ class SuggestTile(QWidget):
                                 f"{self.fit * 100:+.1f}",
                                 theme.GOOD if self.fit >= 0 else theme.BAD,
                                 self.font())
+        if self._starred:
+            # UNDER the ring, not over it: the ring is the window's frame
+            # and runs round the tile's edge, so a star drawn afterwards
+            # would sit on top of the one line that says what the whole
+            # board is being measured against.
+            tilekit.paint_star(painter, box)
         if self._focused:
             tilekit.paint_focus_ring(painter, box)
         painter.end()
@@ -273,3 +305,17 @@ class SuggestRow(QWidget):
         for tile in self._tiles:
             tile.clear_delta()
             tile.set_focused(False)
+
+    def set_stars(self, stars) -> None:
+        """Star the heroes the last History run says you are good on.
+
+        Takes the whole `Stars` rather than a set of ids, because the
+        tile wants the SENTENCE for its tooltip too, and handing the set
+        one way and the reasons another is two things to keep in step.
+        None clears every star — no run loaded is not the same claim as
+        a run that starred nobody, but it draws the same, and there is
+        nothing honest to put on a tile either way.
+        """
+        for tile in self._tiles:
+            on = bool(stars is not None and tile.hero_id in stars)
+            tile.set_star(on, stars.why(tile.hero_id) if on else "")

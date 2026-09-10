@@ -57,6 +57,18 @@ DEFAULTS = {
     # ones that were already worth showing.
     "suggested_picks": 20,
     "suggested_items": 7,
+    # WHEN A SUGGESTION GETS A STAR: the two percentile floors a hero has
+    # to clear in the last History run, at the user's request. 70 and 50
+    # are their own worked example — "if you rank all the hero picks for
+    # that period, only the heroes that rank in the top 30% pick rate
+    # would be a candidate for the star, same goes for win rate, and if
+    # both are satisfied they get a star".
+    # PERCENTILES RATHER THAN COUNTS because the History tab's window is
+    # a dropdown: "8 games" means something quite different over six
+    # months than over two years, and these have to keep meaning the same
+    # thing when it moves. Nought is no bar on that axis.
+    "star_pick_pct": 70,
+    "star_win_pct": 50,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather
@@ -136,6 +148,23 @@ def clamp_days(value, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return max(0, min(MAX_REMINDER_DAYS, number))
+
+
+def clamp_pct(value, fallback: int) -> int:
+    """A percentile floor, 0 to 99.
+
+    NOT 100. At 100 a hero would have to stand above every hero
+    including itself, so nothing could ever qualify and the strip would
+    lose its stars with nothing on screen saying why — a setting whose
+    top end silently turns the feature off is one somebody reaches by
+    dragging rather than by deciding. 99 is "the very top", 0 is "no bar
+    on this axis".
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(0, min(99, number))
 
 
 def load(path: Path | None = None) -> dict:

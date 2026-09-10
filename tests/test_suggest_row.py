@@ -216,3 +216,77 @@ def test_the_row_hands_the_numbers_round_and_takes_them_back(qapp):
     row.clear_deltas()
     assert not any(t.delta_text() for t in row.tiles)
     assert not any(t.focused for t in row.tiles)
+
+
+def test_a_starred_suggestion_wears_the_frames_gold(qapp):
+    """The third thing in this app in that colour, beside the window's
+    border and the focus ring — all three mean "this one" rather than
+    "this is good", which green and red are already spoken for."""
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import tilekit
+    tile = SuggestTile(1, "Anti-Mage", 0.05)
+    tile.resize(120, 68)
+
+    def gold() -> int:
+        image = tile.grab().toImage()
+        want = QColor(tilekit.FOCUS_COLOUR)
+        return sum(QColor(image.pixel(x, y)) == want
+                   for y in range(image.height())
+                   for x in range(image.width()))
+
+    assert gold() == 0
+    tile.set_star(True, "40 games at 65%")
+    assert gold() > 0
+    assert tile.starred
+    tile.set_star(False)
+    assert gold() == 0
+
+
+def test_the_star_keeps_out_of_the_numbers_corner(qapp):
+    """The bottom-right is the fit's and the whole border is the focus
+    ring's, so the top right is the one corner with nothing in it."""
+    from PyQt6.QtCore import QRect
+    from draft_assist.ui import tilekit
+    box = QRect(0, 0, 120, 68)
+    star = tilekit.star_box(box)
+    assert star.right() < box.right() and star.top() > box.top()
+    assert star.bottom() < box.height() // 2, "top half, clear of the badge"
+    # It scales with the tile and stops scaling before it eats one.
+    small = tilekit.star_box(QRect(0, 0, 48, 27)).width()
+    huge = tilekit.star_box(QRect(0, 0, 600, 338)).width()
+    assert tilekit.STAR_MIN_PX <= small < huge == tilekit.STAR_MAX_PX
+
+
+def test_the_reason_rides_in_the_tooltip_beside_the_rest(qapp):
+    """Not on the tile: the star's job is to be seen without being read,
+    and a figure beside it would be a third number in a corner that
+    already has the fit in it."""
+    tile = SuggestTile(1, "Anti-Mage", 0.05, "Anti-Mage\nfit +5.00")
+    tile.set_star(True, "40 games at 65%, inside the top 30% by picks.")
+    assert "fit +5.00" in tile.toolTip()
+    assert "40 games at 65%" in tile.toolTip()
+    tile.show_delta(0.02, "with")
+    assert "with +2.0" in tile.toolTip(), "the relation is still there"
+    assert "40 games at 65%" in tile.toolTip(), "and so is the star's"
+
+
+def test_the_row_stars_from_a_measurement(qapp):
+    from draft_assist.history import stars as stars_mod
+    from dataclasses import dataclass
+
+    @dataclass
+    class Played:
+        hero_id: int
+        win: bool
+
+    matches = ([Played(1, True)] * 20 + [Played(1, False)] * 10
+               + [Played(2, False)] * 20 + [Played(3, True)] * 2)
+    row = SuggestRow()
+    row.show_heroes([(1, "Anti-Mage", 0.05, ""), (2, "Axe", 0.04, ""),
+                     (3, "Bane", 0.03, "")])
+    row.set_stars(stars_mod.measure(matches, 50, 50))
+    assert [t.starred for t in row.tiles] == [True, False, False]
+    # No run loaded draws the same as a run that starred nobody, because
+    # there is nothing honest to put on a tile either way.
+    row.set_stars(None)
+    assert not any(t.starred for t in row.tiles)

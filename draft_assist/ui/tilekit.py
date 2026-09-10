@@ -313,6 +313,75 @@ def paint_focus_ring(painter: QPainter, box: QRect,
     painter.drawRoundedRect(ring, corner, corner)
 
 
+# THE STAR IS THE FRAME'S GOLD TOO, and deliberately: it is the third
+# thing in this app wearing that colour, beside the window's own border
+# and the focus ring, and all three mean "this one" rather than "this is
+# good" or "this is wrong". Green and red are spoken for — every signed
+# number in the app uses them — so a star in either would read as a
+# judgement about the fit beside it rather than about the hero.
+STAR_POINTS = 5
+# A share of the tile's SHORT side, so it is the same size on a wide
+# strip tile and a narrow one, and capped so full-screening the window
+# does not put a badge the size of the portrait on it.
+STAR_OF_TILE = 0.30
+STAR_MIN_PX = 9
+STAR_MAX_PX = 22
+STAR_INSET = 3
+
+
+def star_box(box: QRect) -> QRect:
+    """Where the star goes: the TOP-RIGHT corner, inset off both edges.
+
+    The bottom-right is the number's (`paint_badge`) and the whole border
+    is the focus ring's, so the top right is the one corner of a tile
+    with nothing already in it.
+    """
+    side = min(box.width(), box.height())
+    size = max(STAR_MIN_PX, min(STAR_MAX_PX, round(side * STAR_OF_TILE)))
+    return QRect(box.right() - STAR_INSET - size,
+                 box.top() + STAR_INSET, size, size)
+
+
+def paint_star(painter: QPainter, box: QRect) -> None:
+    """A five-pointed star, PAINTED like every other mark in this app.
+
+    A glyph would resize with whatever font the tile happens to carry and
+    could not be coloured apart from it — the same reason the tick box,
+    the window buttons and the count box's arrows are all drawn rather
+    than typed. It is STROKED in black first, exactly as a number is:
+    the mark sits on a portrait, so without an outline it disappears
+    into whatever is behind it, and it has to read as the same KIND of
+    object as the figure in the corner below it.
+    """
+    from math import cos, pi, sin
+
+    where = star_box(box)
+    outer = where.width() / 2.0
+    inner = outer * 0.42
+    middle = QPointF(where.center()) + QPointF(0.5, 0.5)
+    path = QPainterPath()
+    for step in range(STAR_POINTS * 2):
+        radius = outer if step % 2 == 0 else inner
+        # Start at the top: -90 degrees, then round the points.
+        angle = -pi / 2 + step * pi / STAR_POINTS
+        point = QPointF(middle.x() + radius * cos(angle),
+                        middle.y() + radius * sin(angle))
+        path.lineTo(point) if step else path.moveTo(point)
+    path.closeSubpath()
+
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(QPen(STROKE, max(1.0, outer * 0.34),
+                        Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPath(path)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(FOCUS_COLOUR))
+    painter.drawPath(path)
+    painter.restore()
+
+
 def delta_text(delta: float, kind: str | None = None) -> str:
     """"with +5.2" — the badge on any tile showing a RELATION.
 

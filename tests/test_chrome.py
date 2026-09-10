@@ -29,6 +29,18 @@ def qapp():
 
 
 @pytest.fixture()
+def styled(qapp):
+    """This box measures itself against the stylesheet's font, and
+    `conftest.py` resets the stylesheet either side of every test — so a
+    test that reads a width has to ask for it."""
+    from draft_assist.ui import theme
+    was = qapp.styleSheet()
+    qapp.setStyleSheet(theme.STYLESHEET)
+    yield qapp
+    qapp.setStyleSheet(was)
+
+
+@pytest.fixture()
 def assets(tmp_path, monkeypatch):
     """An empty assets folder, and no portraits behind it."""
     monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
@@ -273,3 +285,26 @@ def test_close_is_the_one_that_goes_red(qapp):
     assert theme.BAD != theme.BG_HOVER
     assert not button.grab().isNull()
     assert button.kind == "close"
+
+
+def test_a_count_box_is_wide_enough_for_its_own_units(qapp, styled):
+    """`minimumSizeHint` IS CACHED and a suffix does not invalidate it —
+    it answered the same width before and after `setSuffix(" days")`,
+    while the text needs more, so the reminder box printed "14 day"."""
+    from PyQt6.QtGui import QFontMetrics
+    box = chrome.CountBox(14, 0, 365)
+    bare = box.width()
+    box.setSuffix(" days")
+    assert box.width() > bare
+    metrics = QFontMetrics(box.font())
+    assert box.width() >= metrics.horizontalAdvance("365 days")
+
+
+def test_the_measured_width_is_never_narrower_than_qts_own(qapp, styled):
+    """Arithmetic alone once came out UNDER the widget's own minimum and
+    clipped the number to its left half, so the measurement is a floor
+    raised, never a replacement."""
+    from PyQt6.QtWidgets import QSpinBox
+    box = chrome.CountBox(5, 0, 20)
+    assert box.width() >= (QSpinBox.minimumSizeHint(box).width()
+                           + chrome.CountBox.ARROWS_W)

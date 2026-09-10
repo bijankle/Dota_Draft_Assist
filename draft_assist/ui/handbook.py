@@ -107,9 +107,16 @@ SECTIONS: tuple = (
             ("Suggested picks",
              "The ranked list cut to its head: best draft fit on the "
              "left. It stays blank until a hero is on the board, "
-             "because with an empty draft every fit is zero. Clicking a "
-             "suggestion shows the terms behind its number; it does not "
+             "because with an empty draft every fit is zero. Clicking "
+             "one measures the whole board against it; it does not "
              "enter it."),
+            ("A gold star on a suggestion",
+             "A hero the last History run says you play a lot and win "
+             "on. It follows whichever account is loaded on that tab, "
+             "and the two bars it has to clear are yours to set in "
+             "Settings \u25b8 General \u2014 top X% by picks and top Y% by "
+             "win rate, ranked against the heroes in that run. Hover it "
+             "for the games and the rate behind it."),
             ("Items",
              "Hand-authored rules against what the enemy has taken, "
              "ordered by severity. Silence is a real answer — many "

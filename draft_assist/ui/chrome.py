@@ -14,7 +14,8 @@ press, a move, a release.
 
 from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
                           Qt, pyqtSignal)
-from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPen,
+                         QPolygonF)
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QLabel, QMenuBar, QPushButton,
                              QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
@@ -446,10 +447,50 @@ class CountBox(QSpinBox):
         # real font and the real chrome — the only thing it does not know
         # about is our arrow strip, because we draw that ourselves.
         self.setStyleSheet(f"padding-right: {self.ARROWS_W}px;")
-        self.setFixedWidth(
-            QSpinBox.minimumSizeHint(self).width() + self.ARROWS_W)
+        self._fit_width()
         self.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Fixed)
+
+    def _fit_width(self) -> None:
+        """Qt's own minimum, widened for a prefix or suffix it forgot.
+
+        **`minimumSizeHint` IS CACHED AND A SUFFIX DOES NOT INVALIDATE
+        IT.** It answered 75 for this box before and after `setSuffix("
+        days")`, while "14 days" measures 78 — so the field was two
+        characters short of its own units and printed "14 day". Re-asking
+        Qt is not enough; it has to be measured.
+        It is still a FLOOR rather than a replacement, which is the rule
+        this width has always had: arithmetic alone once came out
+        NARROWER than the widget's own minimum and clipped the number to
+        its left half. The chrome — the stylesheet's padding and border,
+        which no font metric knows about — is recovered as the difference
+        between Qt's hint and the bare digits it measured, so the sum can
+        only ever be wider than the hint, never narrower.
+        """
+        self.ensurePolished()       # or the font is not the stylesheet's
+        hint = QSpinBox.minimumSizeHint(self).width()
+        metrics = QFontMetrics(self.font())
+        bare = max((str(self.minimum()), str(self.maximum())),
+                   key=lambda text: metrics.horizontalAdvance(text))
+        chrome = max(0, hint - metrics.horizontalAdvance(bare))
+        full = f"{self.prefix()}{bare}{self.suffix()}"
+        self.setFixedWidth(
+            max(hint, metrics.horizontalAdvance(full) + chrome)
+            + self.ARROWS_W)
+
+    # A SUFFIX IS PART OF THE WIDTH, and it is set AFTER construction —
+    # which is where the box got its fixed width from Qt's minimum. So a
+    # box asked for " days" came out measured for the bare digits and
+    # printed "14 day", the number clipped by its own units. Re-fitting
+    # here keeps the one rule the width has ever had: ask Qt, then add
+    # the strip we took for the arrows.
+    def setSuffix(self, text: str) -> None:         # noqa: N802 - Qt naming
+        super().setSuffix(text)
+        self._fit_width()
+
+    def setPrefix(self, text: str) -> None:         # noqa: N802 - Qt naming
+        super().setPrefix(text)
+        self._fit_width()
 
     def _arrow_boxes(self) -> tuple[QRect, QRect]:
         """Up and down, stacked in the strip at the right-hand end."""

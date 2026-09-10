@@ -432,10 +432,14 @@ class Worker(QThread):
 class HistoryTab(QWidget):
     """The whole tab: who, what to measure, and what came back."""
 
+    # WHICH RUN IS ON THE TAB, so the Draft tab can star the heroes this
+    # account is good on. Carries the Report, or None.
+    report_changed = pyqtSignal(object)
+
     def __init__(self, say=None, parent=None, settings=None):
         super().__init__(parent)
         self.say = say or (lambda text, millis=4000: None)
-        self.report = None
+        self._report = None
         self.worker = None
         self._account = None
         # THE WINDOW'S OWN DICT when there is one, so the two do not write
@@ -829,6 +833,21 @@ class HistoryTab(QWidget):
             self.export_button.setEnabled(True)
             self.render(report)
         self._name_the_button()
+
+    # A PROPERTY RATHER THAN A SIGNAL AT EACH ASSIGNMENT. Three places
+    # set this today — a run finishing, a cached run loading, and a load
+    # that came back empty — and the one that gets added next is the one
+    # that forgets to announce itself, which would leave the Draft tab
+    # starring the heroes of an account nobody is looking at any more.
+    # Same reason the block order is stated once.
+    @property
+    def report(self):
+        return self._report
+
+    @report.setter
+    def report(self, value) -> None:
+        self._report = value
+        self.report_changed.emit(value)
 
     def _name_the_button(self) -> None:
         """Run, or Update when there is already a run on screen."""

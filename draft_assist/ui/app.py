@@ -228,6 +228,9 @@ class MainWindow(QMainWindow):
         # from, and the gold ring is the single answer to "measured
         # against what".
         self.focus: tuple[str, int] | None = None
+        # Which heroes the History tab's current run says you are good
+        # on, or None for "no run loaded" — see `_history_run_changed`.
+        self.stars = None
         # Rectangles drawn on the debug picture during drag calibration.
         self._drag_rects: list[tuple[int, int, int, int]] = []
         # Heroes whose alternative portrait has been learned this session,
@@ -855,6 +858,13 @@ class MainWindow(QMainWindow):
         # `ui/history_tab.py`; nothing in the live loop touches it.
         analysis = HistoryTab(say=self._say, settings=self.settings)
         self.history_tab = analysis
+        # THE ONE PLACE THE TWO TABS MEET. The suggestion strip ranks by
+        # draft fit, which knows nothing about you; the History tab knows
+        # a great deal about you and nothing about the board. A star says
+        # "and this is a hero you play a lot and win on", on the tile the
+        # fit is already on. It follows whichever run is LOADED there, at
+        # the user's request, rather than being pinned to one account.
+        analysis.report_changed.connect(self._history_run_changed)
         tabs.addTab(analysis, "History")
 
         # ----- Debug tab: the picture answers what a log never will
@@ -2886,6 +2896,14 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
+        if (self.settings.get("star_pick_pct"),
+                self.settings.get("star_win_pct")) != (
+                    before.get("star_pick_pct"), before.get("star_win_pct")):
+            # `_refresh_views` above re-applied the stars, but it applied
+            # the ones MEASURED WITH THE OLD FLOORS — the setting is an
+            # input to the ranking, not a filter over its result, so the
+            # run has to be read again.
+            self._history_run_changed(self.history_tab.report)
         chosen = self.settings.get("pair_source", pair_source())
         if chosen != pair_source():
             # Written to preferences.json, not just the UI settings: the
@@ -3682,6 +3700,29 @@ class MainWindow(QMainWindow):
             for s in self.scored[:self._how_many("suggested_picks")]
         ]
         self.suggest_row.show_heroes(rows)
+        # AFTER `show_heroes`, always: it destroys every tile and builds
+        # new ones, so a star applied before this is a star on a widget
+        # that no longer exists.
+        self.suggest_row.set_stars(self.stars)
+
+    def _history_run_changed(self, report) -> None:
+        """The History tab loaded, ran or cleared a run.
+
+        Recomputed HERE rather than read per tile: it is one pass over a
+        few hundred matches and two rankings, and the suggestion strip is
+        rebuilt on every pick — doing it there would rank the same run
+        again for every hero of every draft.
+        """
+        from ..history import stars as stars_mod
+
+        matches = getattr(report, "matches", None)
+        self.stars = None if not matches else stars_mod.measure(
+            matches,
+            ui_settings.clamp_pct(self.settings.get("star_pick_pct", 70), 70),
+            ui_settings.clamp_pct(self.settings.get("star_win_pct", 50), 50))
+        # The tiles are already on screen, so this is the whole update —
+        # no pick changed and nothing needs re-scoring.
+        self.suggest_row.set_stars(self.stars)
 
     def _update_items(self, draft: scoring.DraftState) -> None:
         """The strip is live from the first enemy pick.

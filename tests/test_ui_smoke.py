@@ -2374,6 +2374,104 @@ def test_a_grid_click_on_a_hero_that_left_the_draft_does_nothing(window,
     assert window.focus is None
 
 
+def _fake_run(spec: dict):
+    """A History run carrying just what the star rule reads."""
+    from dataclasses import dataclass
+    from datetime import datetime
+    from draft_assist.history.report import Options, Report
+
+    @dataclass
+    class Played:
+        hero_id: int
+        win: bool
+
+    matches = []
+    for hero_id, (games, wins) in spec.items():
+        matches += [Played(hero_id, True)] * wins
+        matches += [Played(hero_id, False)] * (games - wins)
+    return Report(options=Options(account_id=1), how="", name="",
+                  matches=matches, blocks=[], dropped={}, sessions=1,
+                  returned=0, ran_at=datetime.now())
+
+
+def test_the_history_run_stars_the_suggestions(window, qapp):
+    """The one place the two tabs meet: the strip ranks by draft fit,
+    which knows nothing about you, and the star says "and this is a hero
+    you play a lot and win on"."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    shown = [t.hero_id for t in window.suggest_row.tiles]
+    assert len(shown) >= 4, "the fixture should have suggestions"
+    good, bad, thin = shown[0], shown[1], shown[2]
+
+    window.history_tab.report = _fake_run(
+        {good: (40, 26), bad: (30, 9), thin: (2, 2)})
+    _settle(qapp)
+    starred = [t.hero_id for t in window.suggest_row.tiles if t.starred]
+    assert starred == [good], starred
+
+    # AND IT FOLLOWS THE TAB. Clearing the run clears the stars rather
+    # than leaving the last account's answer on a strip nobody ran.
+    window.history_tab.report = None
+    _settle(qapp)
+    assert not any(t.starred for t in window.suggest_row.tiles)
+
+
+def test_the_stars_survive_the_strip_being_rebuilt(window, qapp):
+    """`show_heroes` destroys every tile and builds new ones, so a star
+    applied before a pick lands is a star on a widget that is gone."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    shown = [t.hero_id for t in window.suggest_row.tiles]
+    window.history_tab.report = _fake_run({shown[0]: (40, 26),
+                                           shown[1]: (30, 9)})
+    _settle(qapp)
+    assert any(t.starred for t in window.suggest_row.tiles)
+    window._refresh_views()
+    _settle(qapp)
+    assert any(t.starred for t in window.suggest_row.tiles)
+
+
+def test_moving_the_bars_re_measures_rather_than_re_filtering(window, qapp):
+    """The setting is an INPUT to the ranking, not a filter over its
+    result, so a redraw with the old measurement would show the old
+    stars under the new numbers."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    shown = [t.hero_id for t in window.suggest_row.tiles]
+    window.history_tab.report = _fake_run(
+        {shown[0]: (40, 26), shown[1]: (30, 9), shown[2]: (20, 14)})
+    _settle(qapp)
+    before = {t.hero_id for t in window.suggest_row.tiles if t.starred}
+
+    window._apply_settings({"star_pick_pct": 0, "star_win_pct": 0})
+    _settle(qapp)
+    after = {t.hero_id for t in window.suggest_row.tiles if t.starred}
+    assert after > before, (before, after)
+    assert window.settings["star_pick_pct"] == 0
+
+
+def test_a_picked_hero_carries_no_star(window, qapp):
+    """"No need to show it on the portrait if the hero ends up being
+    picked — just the suggested heroes section." It falls out of the
+    strip when it is picked, and the ten picks were never given one."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    window.history_tab.report = _fake_run(
+        {h: (40, 26) for h in window.ds.hero_ids[:20]})
+    _settle(qapp)
+    on_board = [t.property("hero_id") for t in window.team_panels["ally"].slots
+                if t.property("hero_id") is not None]
+    assert on_board, "the fixture should have picks"
+    assert not any(t.hero_id in on_board for t in window.suggest_row.tiles)
+    assert not any(hasattr(t, "starred")
+                   for t in window.team_panels["ally"].slots)
+
+
 def test_the_tab_row_is_one_unbroken_band(window, qapp):
     """The tabs paint their own strip, the corner widget paints its own,
     and between them — and inside a QSlider left to the base QWidget rule —
