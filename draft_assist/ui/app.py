@@ -740,7 +740,9 @@ class MainWindow(QMainWindow):
         # looking at is arranged, so the panels are re-ordered rather than
         # re-labelled when the player turns out to be Dire (see
         # `_order_panels`). The dict keys stay ally/enemy — everything else
-        # in the app reasons in those terms — and only the seating changes.
+        # in the app reasons in those terms — and only the PANELS' seating
+        # changes: the two grid cards below them are pinned, synergies
+        # left and counters right, whichever side the user is on.
         # The ad slot sits ABOVE the two team panels, at the top of the
         # content: on, it pushes nothing sideways; off, it is a strip of
         # nothing rather than a gap that opens and closes under the cursor
@@ -830,9 +832,9 @@ class MainWindow(QMainWindow):
         self.matchup_matrix.set_margins(False)
         vslay.addWidget(self.matchup_matrix)
         grids.addWidget(vs_card, 1)
-        # Each grid is under the team whose heroes head it, so when the
-        # panels swap sides these swap with them.
-        self.grid_cards = {"ally": with_card, "enemy": vs_card}
+        # SYNERGIES LEFT, COUNTERS RIGHT, ALWAYS — they are never
+        # re-seated. See `_order_panels`.
+        self.synergy_card, self.matchup_card = with_card, vs_card
         outer.addLayout(grids)
         # The stretch goes at the BOTTOM, not into the grids. Giving it to
         # them left half the window blank and, worse, meant the window had
@@ -3043,18 +3045,39 @@ class MainWindow(QMainWindow):
         self._order_panels("enemy" if mine == "Dire" else "ally")
 
     def _order_panels(self, radiant: str) -> None:
-        """Seat the Radiant panel on the left, and its grid under it."""
+        """Seat the Radiant panel on the left. THE GRIDS DO NOT MOVE.
+
+        **THE TWO CARDS ARE NEVER RE-SEATED, and that REVERSES what stood
+        here**, at the user's request: "it should never swap because both
+        synergies and counters has both radiant and dire on it anyway —
+        synergies left, counters right."
+
+        Each grid used to move with "the team whose heroes head it", and
+        that reasoning expired when the cards did. Synergy became TWO
+        TRIANGLES carrying both line-ups, and counters is your five
+        against theirs with a coloured box round each axis — so neither
+        card belongs to a side any more, and there is nothing for the
+        seating to follow. What it produced instead was a Draft tab whose
+        bottom half changed places depending on which team the matchmaker
+        put you on: "the counters matrix switched position to the
+        synergies matrix... it used to be synergies on the left".
+
+        The PANELS still swap, because that rule is untouched: Radiant is
+        the left bank of Dota's own pick bar, and a panel on the left
+        labelled Dire is the one arrangement that disagrees with the
+        screen it is read beside. Which triangle is whose is also
+        untouched — yours is the lower left, in your team's own colour,
+        wherever you are playing.
+        """
         want = [radiant, "enemy" if radiant == "ally" else "ally"]
         if want == self._panel_order:
             return
         self._panel_order = want
-        for row, widgets in ((self.teams_row, self.team_panels),
-                             (self.grids_row, self.grid_cards)):
-            for side in want:
-                row.removeWidget(widgets[side])
-            for side in want:
-                row.addWidget(widgets[side], 1)
-                widgets[side].show()
+        for side in want:
+            self.teams_row.removeWidget(self.team_panels[side])
+        for side in want:
+            self.teams_row.addWidget(self.team_panels[side], 1)
+            self.team_panels[side].show()
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —

@@ -1820,12 +1820,26 @@ credentials, and put the account at risk. Do not go there.
   narrow columns and a height fitted to the rows are the in-game callout's
   layout alone — applying them in the main window shrank the grid to a
   fitted block floating in a half-empty card.
-- **Each grid sits under the team whose heroes head it, and its headers
-  are their portraits.** Synergy is ally-by-ally so it goes under your five
-  on the LEFT; counters are read against theirs, so its columns go under
-  theirs on the RIGHT. A column then reads straight down from the tile it
-  is about — which is the whole reason the headers are the same pictures
-  rather than the names a second time. **Qt will not draw those icons.** A
+- **SYNERGIES LEFT, COUNTERS RIGHT, ALWAYS — the cards are NEVER
+  re-seated**, at the user's request, and this REVERSES the rule that
+  each grid sits under the team whose heroes head it. That held while
+  synergy was ally-by-ally and counters was read against theirs; it
+  expired when the cards changed and nobody noticed. Synergy is TWO
+  TRIANGLES carrying both line-ups, and counters is your five against
+  theirs with a coloured box round each axis — so **both cards carry both
+  teams**, neither belongs to a side, and there is nothing left for the
+  seating to follow. What it produced instead was a Draft tab whose
+  bottom half changed places depending on which team the matchmaker put
+  you on: "the counters matrix switched position to the synergies
+  matrix... it used to be synergies on the left", and "it should never
+  swap because both synergies and counters has both radiant and dire on
+  it anyway". The PANELS still swap (see `_order_panels`) and the
+  COLOURS still follow the teams — on Dire your own triangle is the red
+  one, and counters boxes your axis in red — because those track which
+  team a thing is about rather than where a card sits.
+  **Its headers are their portraits.** A column reads straight down from
+  the tile it is about — which is the whole reason the headers are the
+  same pictures rather than the names a second time. **Qt will not draw those icons.** A
   QHeaderView under a stylesheet ignores `iconSize` and falls back to the
   style's 16px small-icon metric, and no property changes it; `tables.
   PortraitHeader` paints the pixmap in `paintSection` instead, which is a
@@ -2043,8 +2057,9 @@ credentials, and put the account at risk. Do not go there.
   Dota's own pick bar, and a panel on the left labelled Dire is the one
   arrangement that disagrees with the screen it is read beside. The dict
   keys stay ally/enemy, because everything else in the app reasons in
-  those terms; only the seating changes, and each grid moves with the team
-  whose heroes head it. With no side reported the left panel is Radiant.
+  those terms; only the PANELS' seating changes. The two grid cards below
+  them do NOT move — see the pinned-cards note above. With no side
+  reported the left panel is Radiant.
   **Each heading carries that side's total** — "Radiant | +11.2" — the sum
   of what `net_contributions` says its five heroes are worth, which is the
   five tiles' own numbers added up. It is ALWAYS that sum, even while a

@@ -2535,14 +2535,17 @@ def test_radiant_is_always_the_left_panel(window, qapp):
     window._update_team_captions(Snap())
     assert window.team_captions["ally"].text() == "Dire"
     assert window.team_captions["enemy"].text() == "Radiant"
-    # The ENEMY panel (Radiant) is now the left-hand one, and its grid
-    # went with it.
+    # The ENEMY panel (Radiant) is now the left-hand one.
     order = [window.teams_row.itemAt(i).widget()
              for i in range(window.teams_row.count())]
     assert order[0] is window.team_panels["enemy"]
+    # AND THE GRIDS DID NOT GO WITH IT. Both cards carry both teams, so
+    # neither belongs to a side and there is nothing for the seating to
+    # follow — "it should never swap... synergies left, counters right".
     grids = [window.grids_row.itemAt(i).widget()
              for i in range(window.grids_row.count())]
-    assert grids[0] is window.grid_cards["enemy"]
+    assert grids[0] is window.synergy_card
+    assert grids[1] is window.matchup_card
 
     Snap.my_team = "radiant"
     window._update_team_captions(Snap())
@@ -2550,6 +2553,10 @@ def test_radiant_is_always_the_left_panel(window, qapp):
     order = [window.teams_row.itemAt(i).widget()
              for i in range(window.teams_row.count())]
     assert order[0] is window.team_panels["ally"]
+    # Still where they were, having never moved in either direction.
+    grids = [window.grids_row.itemAt(i).widget()
+             for i in range(window.grids_row.count())]
+    assert grids[0] is window.synergy_card
 
 
 def test_the_heading_carries_that_sides_total(window, qapp):
