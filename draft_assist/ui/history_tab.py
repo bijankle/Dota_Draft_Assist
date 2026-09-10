@@ -22,7 +22,7 @@ from datetime import datetime
 
 from PyQt6.QtCore import QPoint, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
+from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QPushButton,
                              QScrollArea, QSizePolicy, QStyledItemDelegate,
                              QTableWidget, QTableWidgetItem, QVBoxLayout,
@@ -31,6 +31,8 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout,
 from . import settings as ui_settings
 from . import theme
 from .chrome import CountBox, TickBox, card
+from .flowlayout import FlowLayout
+from .section_bar import LOOK_AHEAD, SectionBar, edge
 from ..history import analyse, cache, opendota, store, workbook
 from ..history.report import CAPS, WINDOWS, Options
 from ..history.runner import Refused, run as run_analysis
@@ -421,8 +423,20 @@ class HistoryTab(QWidget):
         # results, since the widgets in it are destroyed with them.
         self._tables: dict = {}
 
-        outer = QVBoxLayout(self)
+        # THE ANCHOR FOR EACH SECTION THE SIDEBAR CAN REACH, by the same
+        # ident the sidebar rows carry. The two control cards live here
+        # for the life of the tab; the result cards are replaced with
+        # every render, which is why `_clear_results` drops only those.
+        self._anchors: dict = {}
+        self._shown_account = None
+        # A JUMP HOLDS ITS OWN HIGHLIGHT until the reader actually
+        # scrolls — see `_jump_to`.
+        self._pinned = None
+        self._pinned_at = None
+
+        outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.setContentsMargins(12, 12, 12, 12)
@@ -435,14 +449,34 @@ class HistoryTab(QWidget):
         scroll.setWidget(page)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        outer.addWidget(scroll)
         # KEPT, because `_hold_still` needs it: a table that changes how
         # many rows it draws changes the height of this whole page.
         self.scroll = scroll
         self.page = page
 
-        lay.addWidget(self._build_account_card())
-        lay.addWidget(self._build_options_card())
+        # THE SIDEBAR IS BUILT FIRST because it OWNS the analysis tick
+        # boxes now, and `_build_options_card` wires them up.
+        self.sections = SectionBar()
+        self.sections.jumped.connect(self._jump_to)
+        self._build_sections()
+        # CONNECTED AFTER THE ROWS ARE BUILT. `_build_sections` sets each
+        # box to its default, and setting a control to what it was always
+        # going to be is not the user picking it — wired first, every box
+        # fired `_picked` during construction, before the card holding
+        # the rest of the options existed to be asked. Same rule
+        # `_apply_options` follows when it restores from the settings.
+        self.sections.picked.connect(self._picked)
+        outer.addWidget(self.sections)
+        outer.addWidget(edge())
+        outer.addWidget(scroll, 1)
+        scroll.verticalScrollBar().valueChanged.connect(self._spy)
+
+        account_card = self._build_account_card()
+        options_card = self._build_options_card()
+        self._anchors["account"] = account_card
+        self._anchors["sample"] = options_card
+        lay.addWidget(account_card)
+        lay.addWidget(options_card)
         self.results = QVBoxLayout()
         self.results.setSpacing(10)
         lay.addLayout(self.results)
@@ -458,6 +492,111 @@ class HistoryTab(QWidget):
         if self.report is None:
             self._show_placeholder()
         self._name_the_button()
+
+    # ---- the sidebar ---------------------------------------------------
+    def _build_sections(self) -> None:
+        """Every section of this tab, in the order the page has them.
+
+        ALWAYS ALL OF THEM, ticked or not. Listing only what is switched
+        on would move every row under the cursor as you tick down the
+        list — the fault `_hold_still` exists to stop one axis over — and
+        it would leave the bar empty before a run, which is the one
+        moment somebody needs to see what this tab can measure.
+        """
+        self.sections.add("account", "Account")
+        self.sections.add("sample", "Matches to measure")
+        self.sections.separator()
+        self.sections.add("winning", "What goes with winning")
+        self.sections.add("contrib", "What you do on each hero")
+        self.sections.separator()
+        for key in analyse.BLOCK_ORDER:
+            row = self.sections.add(key, analyse.NAMES[key], tick=True)
+            row.tick.setChecked(analyse.DEFAULT_ON[key])
+            row.tick.setToolTip(analyse.DESCS[key])
+        # The tab goes on asking the ticks what is picked, so `options`,
+        # `_set_options` and `_apply_options` are unchanged by the move.
+        self.analysis_ticks = dict(self.sections.ticks)
+
+    def _sync_sections(self) -> None:
+        """Tell the bar which sections are actually on the page."""
+        self.sections.set_reachable(self._anchors)
+        self._spy()
+
+    def _jump_to(self, ident: str) -> None:
+        widget = self._anchors.get(ident)
+        if widget is None:
+            return
+        # Qt DEFERS layout, so a card added moments ago reports its old
+        # position — the same trap `_hold_still` documents.
+        layout = self.page.layout()
+        if layout is not None:
+            layout.activate()
+        bar = self.scroll.verticalScrollBar()
+        # PINNED, because the last few sections all share the bottom of
+        # the page: clicking one of those scrolls as far as it can go and
+        # then `_spy`'s bottom rule would light the LAST one instead of
+        # the one that was clicked. You asked for this section and it is
+        # on screen, so it stays lit until you scroll away from it. The
+        # pin is set BEFORE the scroll, since `setValue` runs `_spy`
+        # synchronously, and the value it actually reached is recorded
+        # afterwards because the bar clamps.
+        self._pinned, self._pinned_at = ident, None
+        bar.setValue(max(0, widget.mapTo(self.page, QPoint(0, 0)).y() - 8))
+        self._pinned_at = bar.value()
+        self.sections.light(ident)
+
+    def _spy(self) -> None:
+        """Light whichever section the page is showing.
+
+        By measured POSITION rather than by list order: the two agree
+        today (`BLOCK_ORDER` is what builds both) and a highlight that
+        silently lies the day they stop agreeing is worse than one that
+        costs a sort.
+        """
+        if not self._anchors:
+            return
+        bar = self.scroll.verticalScrollBar()
+        if self._pinned is not None:
+            if self._pinned_at in (None, bar.value()):
+                self.sections.light(self._pinned)
+                return
+            self._pinned = None         # the reader has moved; let go
+        tops = sorted((widget.mapTo(self.page, QPoint(0, 0)).y(), ident)
+                      for ident, widget in self._anchors.items())
+        if bar.maximum() > 0 and bar.value() >= bar.maximum() - 2:
+            # AT THE VERY BOTTOM the last section can be far too short to
+            # reach the top of the viewport, so the rule below would
+            # never light it however far you scrolled.
+            self.sections.light(tops[-1][1])
+            return
+        line = bar.value() + LOOK_AHEAD
+        reached = [ident for top, ident in tops if top <= line]
+        self.sections.light(reached[-1] if reached else tops[0][1])
+
+    def _picked(self, _ident: str, _on: bool) -> None:
+        """A tick on the sidebar: remember it, and REDRAW.
+
+        Ticking one used to write the setting and change nothing on
+        screen — which analyses are drawn follows what is ticked NOW, but
+        that was only ever re-read when an account was loaded. That was
+        survivable while the boxes sat on a card of their own; with the
+        box ON the bookmark it would be unbearable, since the row would
+        light up next to a section that never appeared.
+        """
+        self._remember_options()
+        if self.report is None or self._shown_account is None:
+            return
+        # The page is about to be rebuilt under whatever you were
+        # reading, so put the scroll back where it was rather than
+        # throwing the reader to the top of a thirteen-block report.
+        bar = self.scroll.verticalScrollBar()
+        where = bar.value()
+        self._load_cached(self._shown_account)
+        layout = self.page.layout()
+        if layout is not None:
+            layout.activate()
+        self.page.adjustSize()
+        bar.setValue(min(where, bar.maximum()))
 
     # ---- the controls --------------------------------------------------
     def _build_account_card(self) -> QFrame:
@@ -526,9 +665,17 @@ class HistoryTab(QWidget):
             label.style().polish(label)
 
     def _build_options_card(self) -> QFrame:
-        frame, lay = card("What to measure")
-        row = QHBoxLayout()
-        row.setSpacing(10)
+        frame, lay = card("Matches to measure")
+        # IT WRAPS, for the reason the suggestion strips do: a row of
+        # fixed controls that cannot wrap sets a MINIMUM WIDTH, and a
+        # widget's minimum is the window's. Laid out across one line this
+        # card asked for 925px, which fitted a 940px window with nothing
+        # to spare — so the sidebar taking 178 down the left put a
+        # HORIZONTAL scrollbar under the whole report and clipped the
+        # remembered-accounts dropdown off the right edge. Wrapping drops
+        # the card's minimum to its widest single control. Caught by
+        # rendering the tab and looking at it; every test passed.
+        row = FlowLayout(spacing=10)
         row.addWidget(QLabel("Window"))
         self.window_box = QComboBox()
         for key, label, _days in WINDOWS:
@@ -552,7 +699,6 @@ class HistoryTab(QWidget):
         # cannot disagree about it.
         self.ranked_tick.setChecked(True)
         row.addWidget(self.ranked_tick)
-        row.addStretch(1)
         self.export_button = QPushButton("Export workbook…")
         # THE SAME BUTTON AS RUN, at the user's request — accent red once
         # there is a report behind it, and plainly disabled until then.
@@ -565,25 +711,25 @@ class HistoryTab(QWidget):
         row.addWidget(self.export_button)
         lay.addLayout(row)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(4)
-        self.analysis_ticks = {}
-        for index, (key, name, default, _desc) in enumerate(analyse.ANALYSES):
-            tick = TickBox(name)
-            tick.setChecked(default)
-            tick.setToolTip(analyse.DESCS[key])
-            self.analysis_ticks[key] = tick
-            grid.addWidget(tick, index // 3, index % 3)
-        lay.addLayout(grid)
+        # THE ELEVEN ANALYSIS TICK BOXES USED TO BE A GRID HERE, and at
+        # the user's request they are on the SIDEBAR now, one per
+        # bookmark: "if you can have the tick boxes on the actual
+        # bookmarks as well that would be nice... don't show tick boxes
+        # on the main menu in that case, duplication will be confusing".
+        # Naming the same eleven analyses twice is two places to read one
+        # thing, and the row that jumps to a section is the right place
+        # to switch it on. What is left on this card is the SAMPLE —
+        # which matches are measured — which is why it is no longer
+        # called "What to measure".
         # REMEMBERED AS THEY ARE CHANGED, rather than on Run: the point of
         # keeping them is that the next account opens with what was last
         # set, and a setting that is only written when something is
         # measured is one lost by closing the app without measuring.
         for box in (self.window_box, self.cap_box):
             box.currentIndexChanged.connect(self._remember_options)
-        for tick in (self.turbo_tick, self.ranked_tick,
-                     *self.analysis_ticks.values()):
+        # The analysis ticks are NOT in this list: they go through
+        # `_picked`, which has to redraw the page as well as remember.
+        for tick in (self.turbo_tick, self.ranked_tick):
             tick.toggled.connect(self._remember_options)
         return frame
 
@@ -642,6 +788,10 @@ class HistoryTab(QWidget):
         rather than Run once there is something cached.
         """
         report = cache.load(account_id, self.options().picked)
+        # WHOSE REPORT IS ON SCREEN, so a tick can redraw it — see
+        # `_picked`. Set even when nothing came back, or turning a
+        # section on after an empty load would redraw somebody else.
+        self._shown_account = account_id
         if report is None:
             self._clear_results()
             self.report = None
@@ -820,6 +970,7 @@ class HistoryTab(QWidget):
         # here at all. So the lookup wins and that is the fallback.
         report.name = report.name or ((parsed.name or "") if parsed else "")
         self.report = report
+        self._shown_account = report.options.account_id
         self.export_button.setEnabled(True)
         self._note(self.status, "")
         rows = store.remember(
@@ -841,6 +992,12 @@ class HistoryTab(QWidget):
         # a Python wrapper that has not noticed, which raises the moment
         # a sibling is told to move with it.
         self._tables = {}
+        # The two control cards outlive a render; every result card does
+        # not, and an anchor pointing at a destroyed widget is the same
+        # stale-C++-object trap as the table register above.
+        for ident in [i for i in self._anchors
+                      if i not in ("account", "sample")]:
+            del self._anchors[ident]
         while self.results.count():
             item = self.results.takeAt(0)
             widget = item.widget()
@@ -868,6 +1025,7 @@ class HistoryTab(QWidget):
         text.setProperty("dim", True)
         lay.addWidget(text)
         self.results.addWidget(frame)
+        self._sync_sections()
 
     def render(self, report) -> None:
         # NO "THIS RUN" CARD, at the user's request. It counted the
@@ -884,16 +1042,22 @@ class HistoryTab(QWidget):
         # structural — a mid laner out-damages a hard support by
         # construction — so one merged ranking by sigma would be nothing
         # but damage rows with every behavioural finding buried under it.
-        self.results.addWidget(self._findings_card(
+        winning = self._findings_card(
             "What goes with winning", rates,
             "Nothing clears the significance floor. On this sample the "
-            "variation between your buckets is noise."))
+            "variation between your buckets is noise.")
+        self.results.addWidget(winning)
+        self._anchors["winning"] = winning
         if contributions:
-            self.results.addWidget(self._findings_card(
-                "What you do on each hero", contributions,
-                "", metric=True))
+            contrib = self._findings_card(
+                "What you do on each hero", contributions, "", metric=True)
+            self.results.addWidget(contrib)
+            self._anchors["contrib"] = contrib
         for block in report.blocks:
-            self.results.addWidget(self._block_card(block, report))
+            block_card = self._block_card(block, report)
+            self.results.addWidget(block_card)
+            self._anchors[block.id] = block_card
+        self._sync_sections()
 
     def _findings_card(self, title: str, pairs: list, empty: str,
                        metric: bool = False) -> QFrame:

@@ -636,6 +636,94 @@ credentials, and put the account at risk. Do not go there.
   The caret is drawn INTO the heading text rather than through Qt's sort
   indicator — the scrollbars' lesson, that a sub-control the stylesheet
   does not name is handed to the native style.
+  **THE SECTIONS ARE LISTED DOWN THE LEFT, AND THE LIST IS THE
+  SWITCHBOARD** (`ui/section_bar.py`, `HistoryTab._build_sections` /
+  `_jump_to` / `_spy` / `_picked`). A report is thirteen cards long and
+  the only way to reach the ninth was to scroll past eight, so at the
+  user's request the sections are bookmarks in a sidebar that does NOT
+  scroll with the page: click one and it jumps, and the row for whatever
+  you are reading is lit from the scroll position.
+  **AND THE ELEVEN ANALYSIS TICK BOXES LIVE ON THOSE ROWS** — "if you
+  can have the tick boxes on the actual bookmarks as well that would be
+  nice... don't show tick boxes on the main menu in that case,
+  duplication will be confusing". They were a three-column grid on the
+  options card naming the same eleven analyses the list already names,
+  which is two places to read one thing and two places for it to go
+  stale. The row IS the control now: tick it and the section appears
+  below, untick it and the section goes and the row dims. What is left
+  on that card is which MATCHES to measure, which is why it is called
+  "Matches to measure" rather than "What to measure".
+  Four rules, each of them a fault avoided:
+  **THE LIST IS FIXED AND ALWAYS COMPLETE.** Every analysis has a row
+  whether it is ticked or not, always in the same order — listing only
+  what is ticked would move every row under the cursor as you tick down
+  it, which is the fault `_hold_still` exists to prevent one axis over,
+  and it would leave the bar empty before a run, which is the one moment
+  somebody wants to see what this tab can measure.
+  **A ROW IS DIM WHEN THERE IS NOTHING TO JUMP TO**, and that one rule
+  covers every case: an unticked analysis, a findings card with no
+  findings in it, and the whole list before a run. Its tick still works,
+  since ticking is how the section is turned on.
+  **A JUMP HOLDS ITS OWN HIGHLIGHT** until the reader scrolls. The last
+  few sections share the bottom of the page, so clicking any of them
+  scrolls as far as it will go — and the bottom-of-page rule (which
+  exists because a short last section can never reach the top of the
+  viewport, so nothing would ever light it) then lit the LAST one
+  whichever was clicked. The pin is set BEFORE the scroll, since
+  `setValue` runs the spy synchronously, and the value it actually
+  reached is recorded afterwards because the bar clamps.
+  **TICKING REDRAWS.** Which analyses are drawn has always followed what
+  is ticked NOW, but that was only re-read when an ACCOUNT was loaded —
+  so ticking wrote the setting and changed nothing on screen. Survivable
+  while the boxes sat on a card of their own; unbearable with the box ON
+  the bookmark, where the row would light up beside a section that never
+  appeared. `_picked` reloads from the cache and puts the scroll back
+  where it was, since the page is being rebuilt under whatever you were
+  reading. And `sections.picked` is connected AFTER the rows are built,
+  because `_build_sections` sets each box to its default and setting a
+  control to what it was always going to be is not the user picking it —
+  wired first, every box fired during construction, before the card
+  holding the rest of the options existed to be asked.
+  **THE ORDER IS STATED ONCE** (`analyse.BLOCK_ORDER`). It was a tuple
+  inlined in `build_blocks`, plus the order of `METRICS`, plus wherever
+  `items` happened to be appended — three places agreeing by luck, and
+  they did NOT agree with `ANALYSES`, which has the item block last where
+  the page puts it before the two metric blocks. A bookmark list in a
+  different order from the page it maps is a bookmark list that lies, so
+  `build_blocks` and the sidebar both read one tuple and a test holds it
+  to the same set of keys as `ANALYSES`. `_spy` nonetheless ranks by
+  measured POSITION rather than by list order: the two agree today, and a
+  highlight that silently lies the day they stop agreeing is worse than
+  one that costs a sort.
+  **THE OPTIONS ROW WRAPS, and that is the sidebar's real cost**
+  (`flowlayout.FlowLayout`, the same tool the suggestion strips use).
+  A row of fixed controls that cannot wrap sets a MINIMUM WIDTH, and a
+  widget's minimum is the window's: laid across one line "Matches to
+  measure" asked for 925px, which fitted the derived 940px floor with
+  nothing to spare. The sidebar taking 178px down the left therefore put
+  a HORIZONTAL SCROLLBAR under the whole report and clipped the
+  remembered-accounts dropdown off the right edge. Wrapping drops the
+  card's minimum to its widest single control — 949px to 464px. **Caught
+  by rendering the tab and looking at it; all 747 tests passed**, which
+  is the setup wizard's lesson repeating exactly.
+  **AND THE TWO RULES ARE DRAWN, NOT DECLARED.** The edge between the
+  sidebar and the page began as `border-right` on the SectionBar, which
+  is a QScrollArea with `NoFrame` — frame width nought, so the border had
+  nothing to paint into and drew absolutely nothing while reading
+  perfectly in the source; it is a 1px widget in the layout now
+  (`section_bar.edge`). The separators inside the list began as
+  `QFrame.Shape.HLine`, where the shape is drawn BY the frame and the
+  `border: none` needed to stop the stylesheet drawing a second one takes
+  the first away with it. Both are checked against PIXELS in
+  `tests/test_section_bar.py`, because "it is in the stylesheet" has now
+  twice not meant "it is on the screen" — the same family as
+  `WA_StyledBackground`, the painted tick box and the painted window
+  buttons.
+  **THE SIDEBAR SCROLLS ITSELF IF IT HAS TO.** Fifteen rows is taller
+  than a short window, and a tall child sets the whole WINDOW's floor
+  whether or not anybody is looking at it — the Debug tab did exactly
+  that and took the entire desktop height with it. Inside its own scroll
+  area it asks for nothing.
   **THE VIEW IS REMEMBERED PER BLOCK AND ACROSS ACCOUNTS**
   (`ui_settings.history_tables` / `history_options`), also at the user's
   request: "if I look up someone else's account, the sorts and filters

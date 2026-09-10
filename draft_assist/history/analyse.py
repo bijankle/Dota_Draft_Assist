@@ -365,6 +365,22 @@ METRICS = {
 }
 
 
+# THE ORDER A REPORT IS READ IN, AND THERE IS ONLY ONE OF IT.
+# `build_blocks` walks this and so does the Analysis tab's sidebar, which
+# lists the same eleven sections down the left of the page they are on. It
+# used to be a tuple inlined in the loop below plus the order of `METRICS`
+# plus wherever `items` happened to be appended — three places, agreeing by
+# luck, and they did NOT agree with `ANALYSES` (which has items last, where
+# the page puts it before the two metric blocks). A bookmark list in a
+# different order from the page it maps to is a bookmark list that lies, so
+# the order is stated once and read from here.
+# `ANALYSES` still decides what each is CALLED and whether it starts
+# ticked; this decides only where it sits. A test holds the two to the
+# same set of keys.
+BLOCK_ORDER = ("hero", "length", "tod", "dow", "session", "tilt", "side",
+               "party", "items", "herodmg", "herokda")
+
+
 def build_blocks(matches, baseline: float, picked: dict,
                  item_names: dict | None = None) -> list:
     """Every analysis the user asked for, in the order they are read in."""
@@ -382,17 +398,8 @@ def build_blocks(matches, baseline: float, picked: dict,
             no_finding=list(no_finding),
             findings=cat_findings(rows, block_id, no_finding)))
 
-    for block_id in ("hero", "length", "tod", "dow", "session", "tilt",
-                     "side", "party"):
-        if picked.get(block_id):
-            add_cat(block_id)
-
-    if picked.get("items"):
-        blocks.append(item_analysis(matches, item_names or {}))
-
-    for block_id, spec in METRICS.items():
-        if not picked.get(block_id):
-            continue
+    def add_metric(block_id):
+        spec = METRICS[block_id]
         datum, _spread, rows, covered, total = metric_split(
             matches, lambda m: m.hero,
             lambda m, f=spec["field"]: getattr(m, f))
@@ -406,5 +413,15 @@ def build_blocks(matches, baseline: float, picked: dict,
             caveat=spec["caveat"], covered=covered, total=total,
             findings=([] if datum is None else metric_findings(
                 rows, datum, spec["more"], spec["less"], spec["dp"]))))
+
+    for block_id in BLOCK_ORDER:
+        if not picked.get(block_id):
+            continue
+        if block_id == "items":
+            blocks.append(item_analysis(matches, item_names or {}))
+        elif block_id in METRICS:
+            add_metric(block_id)
+        else:
+            add_cat(block_id)
 
     return blocks
