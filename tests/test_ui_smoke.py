@@ -3643,3 +3643,43 @@ def test_settings_apply_as_you_go(window, qapp, tmp_path, monkeypatch):
     _settle(qapp)
     assert window.settings["auto_record"] is (not before)
     assert window.auto_record_check.isChecked() is (not before)
+
+
+def test_bad_crop_boxes_are_a_banner_not_a_note_in_a_recording(qapp,
+                                                               monkeypatch):
+    """A real draft was read two slots out of ten for eighty seconds and
+    the app said so only in the recording's notes, which is after the game.
+
+    It is not a guess: the game named the ten heroes on the screen and the
+    calibrated boxes matched none of them, so the boxes are not on the
+    portraits — a fault the user can fix, which is what a banner is for.
+    """
+    from draft_assist.ui import portraits
+    monkeypatch.setattr(portraits, "any_downloaded", lambda: True)
+    monkeypatch.setattr(portraits, "missing_for", lambda ids: set())
+    win = make_window(qapp, demo_dataset())
+    try:
+        monkeypatch.setattr(win, "_bracket_mismatch", lambda: None)
+        monkeypatch.setattr(win, "_stale_days", lambda: 0)
+        snap = win.provider.poll()
+        snap.crop_boxes_wrong = True
+        win._update_first_run_banner(snap)
+        said = win.banner_label.text()
+        assert "pick portraits" in said, said
+        assert win.banner_button.text() == "Fix the crop boxes"
+    finally:
+        win.close()
+
+
+def test_the_crop_box_banner_opens_the_one_place_they_are_drawn(qapp,
+                                                                monkeypatch):
+    """Six clicks deep from a banner that exists to send you there."""
+    win = make_window(qapp, demo_dataset())
+    opened = []
+    try:
+        monkeypatch.setattr(win, "_open_settings",
+                            lambda tab=None: opened.append(tab))
+        win._open_calibration()
+        assert opened == ["Debug"]
+    finally:
+        win.close()

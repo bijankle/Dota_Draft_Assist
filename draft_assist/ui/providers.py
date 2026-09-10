@@ -66,6 +66,11 @@ class Snapshot:
     sides_certain: bool = True
     match_id: str = ""
     needs_manual: bool = False
+    # The calibrated crop boxes are demonstrably NOT on the portraits: the
+    # game named the ten heroes and the boxes could not be matched to any
+    # of them. A fault the user can fix, so the banner says so — see
+    # `_resolve_sides_by_sight`.
+    crop_boxes_wrong: bool = False
 
 
 class DemoProvider:
@@ -573,6 +578,17 @@ class HybridProvider:
         if placed.ok:
             self._sight[key] = placed
             return placed
+        # A DEFINITE VERDICT ON THE CALIBRATION, and the only one this app
+        # ever gets. Everywhere else the boxes being wrong looks like
+        # recognition being unlucky — but here the GAME has just named the
+        # ten heroes that are on the screen, so a box that matches none of
+        # them is not on a portrait. The whole draft is read through those
+        # boxes, so this is raised where the user will see it rather than
+        # left in the recording's notes, which is where it sat while a
+        # real draft read two of ten slots for eighty seconds.
+        if placed.note and ("not on the portraits" in placed.note
+                            or "outside the frame" in placed.note):
+            snap.crop_boxes_wrong = True
 
         with self._search_lock:
             if self._search_running is not None or key in self._searched:

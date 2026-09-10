@@ -180,3 +180,31 @@ def test_the_strip_says_when_no_icons_have_been_downloaded(qapp):
     assert row.note.isVisible() or row.note.text()
     row.set_note("")
     assert not row.note.text()
+
+
+def test_a_tile_with_no_picture_says_which_of_the_four_causes(qapp,
+                                                              monkeypatch,
+                                                              tmp_path):
+    """"Eul's still doesn't have artwork" cannot be answered from the
+    picture: the download 404'd, the rules name an item OpenDota does not
+    list, the name matches two icons and is refused, or the file will not
+    decode. All four draw the name."""
+    from draft_assist.ui import item_icons
+
+    monkeypatch.setattr(item_icons, "ITEMS_DIR", tmp_path)
+    item_icons.forget()
+    assert "downloaded yet" in item_icons.why_missing("Eul's Scepter")
+
+    (tmp_path / "black_king_bar.png").write_bytes(b"")
+    item_icons.forget()
+    assert "failed for it" in item_icons.why_missing("Eul's Scepter")
+
+    (tmp_path / "eul_s_scepter_of_divinity.png").write_bytes(b"")
+    (tmp_path / "eul_s_scepter_recipe.png").write_bytes(b"")
+    item_icons.forget()
+    assert "refused" in item_icons.why_missing("Eul's Scepter")
+
+    (tmp_path / "eul_s_scepter_recipe.png").unlink()
+    item_icons.forget()
+    assert "will not decode" in item_icons.why_missing("Eul's Scepter")
+    item_icons.forget()

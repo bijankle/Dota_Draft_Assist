@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 from . import theme, tilekit
 from .flowlayout import FlowLayout
-from .item_icons import icon
+from .item_icons import icon, why_missing
 from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 
 # The same box the suggested picks use, and the same name band the ten
@@ -115,6 +115,12 @@ class ItemTile(QWidget):
         if self.advice.any_stale:
             lines.append("<i>unverified this patch</i>")
         lines.append("<i>Hand-authored rule, not measured.</i>")
+        # WHY THIS ONE IS DRAWING ITS NAME. Four causes, one appearance,
+        # and the tool that told them apart lost its menu item — so the
+        # answer belongs on the tile somebody is already looking at.
+        if icon(self.advice.item) is None:
+            lines.append(
+                f"<i>No picture: {why_missing(self.advice.item)}</i>")
         return "<br>".join(lines)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming

@@ -45,6 +45,34 @@ def _resolve(name: str) -> str | None:
     return prefixed[0] if len(prefixed) == 1 else None
 
 
+def why_missing(name: str) -> str:
+    """Which of the four causes it is, for an item drawing its name.
+
+    A MISSING ICON HAS FOUR CAUSES AND ONE APPEARANCE — the download
+    404'd, the rules name an item OpenDota does not list, the name
+    matches two icons and is refused rather than guessed at, or the file
+    will not decode — and the picture cannot say which. That is what
+    `tools/check_item_icons.py` was written for, and it has no menu item
+    any more, so the answer goes where somebody looking at the blank tile
+    already is: its tooltip.
+    """
+    key = slug(name)
+    slugs = _slugs()
+    if not slugs:
+        return "No item icons downloaded yet — Settings > Downloads."
+    matches = [s for s in slugs if s.startswith(key)]
+    if not matches:
+        return ("No icon was downloaded under this name: either the "
+                "download failed for it, or the rules call it something "
+                "OpenDota does not. Settings > Downloads > Item icons "
+                "retries exactly the missing ones.")
+    if len(matches) > 1:
+        return (f"This name matches {len(matches)} icons "
+                f"({', '.join(matches[:3])}) and is refused rather than "
+                "guessed at — drawing the wrong item is worse.")
+    return f"The file will not decode: {matches[0]}.png"
+
+
 def any_downloaded() -> bool:
     """True when the icon pack has been fetched at all.
 

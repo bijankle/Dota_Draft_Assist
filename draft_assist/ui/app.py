@@ -1375,6 +1375,21 @@ class MainWindow(QMainWindow):
                 f"<b>Dota is not sending game data.</b> {reason}",
                 "Check game data", self._diagnose_gsi)
             return
+        # THE CROP BOXES, second only to the feed, because between them
+        # they are the two ways the app goes blind for a whole draft. This
+        # is not a guess about recognition being unlucky: the game named
+        # the ten heroes on screen and the calibrated boxes matched none of
+        # them (`Snapshot.crop_boxes_wrong`). It was reported in the
+        # recording's notes and nowhere else, so a real draft was read two
+        # slots out of ten for eighty seconds with nothing on screen
+        # saying why.
+        if snap is not None and getattr(snap, "crop_boxes_wrong", False):
+            self._show_banner(
+                "<b>The app cannot find the pick portraits on your "
+                "screen.</b> Picks will be read late or not at all until "
+                "the crop boxes are calibrated.",
+                "Fix the crop boxes", self._open_calibration)
+            return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
         # works. A fresh install has neither, and the statistics need a
         # free Stratz key the user has to go and get — so leading with
@@ -1454,6 +1469,14 @@ class MainWindow(QMainWindow):
             return
         self._refresh_views()
         self._say(f"Loaded {len(self.rules)} item rules", 5000)
+
+    def _open_calibration(self) -> None:
+        """Settings > Debug > Live, where the boxes are drawn on the frame.
+
+        The one place the crop boxes can be fixed, and six clicks deep
+        from a banner that exists because somebody has to fix them.
+        """
+        self._open_settings("Debug")
 
     def _open_manual(self, section: str | bool = "") -> None:
         """The manual, built once and kept.
