@@ -185,9 +185,9 @@ SECTIONS: tuple = (
              "the size of the effect and means the same thing on every "
              "row. The grey dot is your own overall rate."),
             ("Impact",
-             "The same shape for damage, KDA and building damage. These "
-             "keep their own range, because there is no 100 to scale an "
-             "average against."),
+             "The same shape for hero damage per minute, KDA and building "
+             "damage per minute. These keep their own range, because "
+             "there is no 100 to scale an average against."),
             ("Each section's table",
              "A cut and a sort, which are two different questions: how "
              "many rows to keep and what ranks them, above the table; "

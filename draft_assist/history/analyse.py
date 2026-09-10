@@ -145,7 +145,11 @@ ANALYSES = [
     ("herokda", "Weighted KDA", True,
      "Kills plus three tenths of assists over deaths, averaged across "
      "your games on each hero."),
-    ("towerdmg", "Building dmg", True,
+    # PER MINUTE, AND THE NAME HAS TO SAY SO. It read "Building dmg"
+    # beside a figure of 116, which invites reading it as a whole game's
+    # damage — "that can't be total building dmg, right?" The field is
+    # `tower_per_min` and always has been; only the label was ambiguous.
+    ("towerdmg", "Building dmg/min", True,
      "Mean damage to buildings per minute on each hero, against your own "
      "average across every hero."),
     ("items", "Items by hero", True,
@@ -500,7 +504,7 @@ METRICS = {
                "game's ratio, not the ratio of your totals."),
     "towerdmg": dict(
         field="tower_per_min", unit="building damage per minute",
-        short="bldg dmg/min", dp=0,
+        short="building dmg/min", dp=0,
         more="More pushing", less="Less pushing",
         caveat="This ranks heroes at least as much as your play, the way "
                "hero damage does: a pusher and a support are not doing the "

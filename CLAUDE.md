@@ -773,7 +773,14 @@ credentials, and put the account at risk. Do not go there.
   length so it looks proportionally right". They ran 11 to 30 characters,
   and since the longest sets that column's width for the whole card,
   "Hero damage per minute by hero" pushed every bar right while "Day of
-  week" left two thirds of the column empty. They are 10 to 15 now.
+  week" left two thirds of the column empty. They are 10 to 16 now.
+  **SHORT STOPS WHERE IT STOPS BEING CLEAR**, though, which is why the
+  longest is "Building dmg/min". It read "Building dmg" beside a figure
+  of 116 — "that can't be total building dmg, right?" — and a name that
+  invites the wrong unit costs more than the fourteen pixels of column
+  it saves. `Match.tower_per_min` was per minute throughout; only the
+  label was ambiguous, and every contribution section now states its
+  unit (Hero dmg/min, Weighted KDA, Building dmg/min).
   `NAMES` is one list, so the sidebar, each card's heading and this
   column change together and cannot disagree; `DESCS` still carries the
   full explanation as the tick box's tooltip, so shortening cost nothing.
