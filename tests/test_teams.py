@@ -228,3 +228,71 @@ def test_a_drop_from_something_else_is_ignored(qapp):
                               Qt.MouseButton.LeftButton,
                               Qt.KeyboardModifier.NoModifier))
     assert seen == []
+
+
+# ---- the focus ring -----------------------------------------------------
+
+def ring_pixels(widget) -> int:
+    """How many pixels of the window's own gold the widget painted."""
+    from draft_assist.ui import tilekit
+    want = QColor(tilekit.FOCUS_COLOUR)
+    image = widget.grab().toImage()
+    seen = 0
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if QColor(image.pixel(x, y)) == want:
+                seen += 1
+    return seen
+
+
+def test_the_focused_pick_wears_the_windows_own_frame(qapp):
+    """It was `theme.ACCENT` at 2px — the deep red this app uses for the
+    one ACTION a screen wants — sitting on a portrait to mean "this is the
+    hero everything else is measured against", which is not an action.
+    At the user's request it is the gold and the weight of the frame
+    painted round the whole window."""
+    from draft_assist.ui import ornate, theme, tilekit
+    assert tilekit.FOCUS_COLOUR == theme.FRAME_GOLD
+    assert tilekit.FOCUS_WIDTH == ornate.WIDTH
+
+    panel = teams.TeamPanel("ally", "Radiant")
+    tile = panel.slots[0]
+    tile.set_pick("Lion", None, 1)
+    tile.resize(120, 68)
+    assert ring_pixels(tile) == 0, "nothing is focused yet"
+    tile.set_focused(True)
+    assert ring_pixels(tile) > 0
+
+
+def test_the_ring_is_inside_the_tile(qapp):
+    """A 3px pen is CENTRED on its coordinate, so drawn on the tile's own
+    edge a third of it falls outside the widget and is clipped — the ring
+    then reads thinner on the outside edges than on the inside, which is
+    the even-width pen trap one width along."""
+    from draft_assist.ui import tilekit
+    panel = teams.TeamPanel("ally", "Radiant")
+    tile = panel.slots[0]
+    tile.set_pick("Lion", None, 1)
+    tile.resize(120, 68)
+    tile.set_focused(True)
+    image = tile.grab().toImage()
+    want = QColor(tilekit.FOCUS_COLOUR)
+    # Down the middle of the left edge, where no rounded corner reaches.
+    middle = image.height() // 2
+    run = [x for x in range(10)
+           if QColor(image.pixel(x, middle)) == want]
+    assert run == list(range(tilekit.FOCUS_WIDTH)), run
+
+
+def test_a_drop_target_still_reads_as_a_drop_target(qapp):
+    """Dragging a hero onto a tile that happens to be the focused one has
+    to keep saying "drop here" — the amber says what is about to happen,
+    the gold says what is being measured, and the one in progress wins."""
+    from draft_assist.ui import tilekit
+    panel = teams.TeamPanel("ally", "Radiant")
+    tile = panel.slots[0]
+    tile.set_pick("Lion", None, 1)
+    tile.resize(120, 68)
+    tile.set_focused(True)
+    tile.set_drop_target(True)
+    assert ring_pixels(tile) == 0

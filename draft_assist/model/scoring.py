@@ -23,6 +23,7 @@ enemy lists and scoring proceeds on the slots that resolved confidently.
 Sub-millisecond on a ~126x126 float matrix; never called from a network path.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -364,7 +365,33 @@ class Relation:
     kind: str          # "with" (synergy) or "vs" (matchup)
 
 
-def relations_to(ds: Dataset, focus: int, draft: DraftState) -> list[Relation]:
+def pair_delta(ds: Dataset, a: int, a_ally: bool,
+               b: int, b_ally: bool) -> tuple[float, str]:
+    """One cell of the two matrices, read from YOUR team's point of view.
+
+    THE SIGN CONVENTION LIVES HERE AND NOWHERE ELSE. Positive is good for
+    you whichever portrait the figure sits under — without that rule a
+    green number under an enemy would mean the opposite of a green number
+    under an ally, which is the misreading the click view exists to
+    prevent. Two consequences fall out of it and both used to be spelled
+    separately in every caller: a matchup is always read as the ALLY's row
+    against the ENEMY's column, and an ENEMY PAIR'S SYNERGY IS FLIPPED,
+    because a combo that works for them is a problem for us.
+
+    Four cases, and a caller that writes any of them out again is a fifth
+    chance to get one backwards.
+    """
+    i, j = ds.index[a], ds.index[b]
+    if a_ally == b_ally:
+        delta = float(ds.delta_with[i, j])
+        return (delta if a_ally else -delta), "with"
+    if a_ally:
+        return float(ds.delta_vs[i, j]), "vs"
+    return float(ds.delta_vs[j, i]), "vs"
+
+
+def relations_to(ds: Dataset, focus: int, draft: DraftState,
+                 side: str | None = None) -> list[Relation]:
     """Every drafted hero's interaction with `focus`, context-aware.
 
     BOTH sides answer the same two questions. Clicking an ALLY shows its
@@ -377,45 +404,45 @@ def relations_to(ds: Dataset, focus: int, draft: DraftState) -> list[Relation]:
     own matchups say, and the click view was the one place that could show
     it and did not.
 
-    Every number is read from YOUR team's point of view: positive is good for
-    you whichever hero it sits under. Without that rule a green number under
-    an enemy would mean the opposite of a green number under an ally, which
-    is exactly the misreading this view exists to prevent. So an enemy
-    pair's synergy is SIGN-FLIPPED — a combo that works for them is a
-    problem for us, and it prints red — which is the same convention
-    `net_contributions` already applies to the enemy half of the board.
+    `side` names which team the focus is on, and exists for the hero that
+    is on NEITHER — a SUGGESTION, which is a hero you might add to your
+    own five. Left to itself this read "not among my allies" as "one of
+    theirs" and answered the wrong question about every candidate: how
+    your five fare AGAINST the hero you are thinking of picking. Passing
+    "ally" says to read it as the pick it would be.
+    """
+    if focus not in ds.index:
+        return []
+    ally = (focus in draft.allies) if side is None else (side == "ally")
+    out: list[Relation] = []
+    for hid, other_ally in ([(h, True) for h in draft.allies]
+                            + [(h, False) for h in draft.enemies]):
+        if hid == focus or hid not in ds.index:
+            continue
+        delta, kind = pair_delta(ds, focus, ally, hid, other_ally)
+        out.append(Relation(hid, ds.name(hid), delta, kind))
+    return out
+
+
+def relations_from(ds: Dataset, focus: int, ally: bool,
+                   candidates: Iterable[int]) -> list[Relation]:
+    """What each CANDIDATE would be worth beside the focused pick.
+
+    The mirror of `relations_to`: that one asks what the ten on the board
+    say about one hero, this one asks what one hero on the board says
+    about the heroes you might still take. Every candidate is read as a
+    POSSIBLE ALLY, because that is what a suggestion is — so a focused
+    ally answers in synergy and a focused enemy answers in matchup, and
+    both are positive-is-good-for-you like everything else.
     """
     if focus not in ds.index:
         return []
     out: list[Relation] = []
-    if focus in draft.allies:
-        for hid in draft.allies:
-            if hid != focus and hid in ds.index:
-                out.append(Relation(
-                    hid, ds.name(hid),
-                    float(ds.delta_with[ds.index[focus], ds.index[hid]]),
-                    "with"))
-        for hid in draft.enemies:
-            if hid in ds.index:
-                out.append(Relation(
-                    hid, ds.name(hid),
-                    float(ds.delta_vs[ds.index[focus], ds.index[hid]]),
-                    "vs"))
-    else:
-        for hid in draft.allies:
-            if hid in ds.index:
-                out.append(Relation(
-                    hid, ds.name(hid),
-                    float(ds.delta_vs[ds.index[hid], ds.index[focus]]),
-                    "vs"))
-        for hid in draft.enemies:
-            if hid != focus and hid in ds.index:
-                # Sign flipped: their working pair is our problem, and
-                # every figure in this view is read from our side.
-                out.append(Relation(
-                    hid, ds.name(hid),
-                    -float(ds.delta_with[ds.index[focus], ds.index[hid]]),
-                    "with"))
+    for hid in candidates:
+        if hid == focus or hid not in ds.index:
+            continue
+        delta, kind = pair_delta(ds, focus, ally, hid, True)
+        out.append(Relation(hid, ds.name(hid), delta, kind))
     return out
 
 

@@ -1877,6 +1877,78 @@ credentials, and put the account at risk. Do not go there.
   four plus its matchups against their five; an ENEMY's is how your five
   fare against it LESS its synergy with its own four, sign flipped, because
   a hero that combos with their line-up is our problem, not their bonus.
+  **THERE IS ONE SELECTION AND FOUR SURFACES ANSWER IT** (`MainWindow.
+  focus` as `(where, hero id)` with `where` in ally/enemy/suggest,
+  `_update_relations`, `_update_suggestion_relations`,
+  `_update_grid_focus`). A hero can be clicked on a pick tile, on a
+  suggestion, or on either grid's axis, and every one of those is the
+  same question — so a new click REPLACES the old one wherever it came
+  from, and clicking the selected hero again clears it. Two selections
+  living side by side would put two sets of numbers on the board with
+  nothing saying which was which.
+  **THE RING IS THE WINDOW'S OWN FRAME** (`tilekit.paint_focus_ring`,
+  `FOCUS_COLOUR` = `theme.FRAME_GOLD`, `FOCUS_WIDTH` = `ornate.WIDTH`),
+  at the user's request: the same gold and the same three pixels
+  `ornate` paints round the whole app. It was `theme.ACCENT` at 2px —
+  the deep red that means "the one ACTION this screen wants" everywhere
+  else — sitting on a portrait to say "this is the hero everything else
+  is measured against", which is not an action at all. Spelled ONCE, in
+  `tilekit`, because a pick, a suggestion and two grid axes all draw it.
+  **HALF A PEN IN, IN FLOAT.** An odd pen is centred on its coordinate,
+  so a width-3 ring drawn on the widget's edge loses one pixel outside
+  (clipped) and blends the third one inside: two solid pixels and a
+  smudge, visibly thinner than the frame it is matching. Centred at 1.5
+  it covers 0, 1 and 2 exactly. Same family as the even-width pen in the
+  grid borders. And both tiles hand it their FULL rect — one of them was
+  passing the inset box its other pens use, which put the gold a pixel
+  off the edge on two sides and flush on the other two.
+  **A DROP TARGET STILL OUTRANKS IT.** Dragging a hero onto the focused
+  tile has to go on saying "drop here": the amber says what is about to
+  happen, the gold says what is being measured, and the one in progress
+  wins.
+  **AND THE GRID AXES ARE CLICKABLE, showing that hero's row alone**
+  (`MatrixTable.hero_clicked` / `set_focus`, `PortraitHeader.set_focus`,
+  `PairGrid.axis_clicked`, `tables.cell_is_about`), also at the user's
+  request. Counters heads both axes with portraits, so those are
+  `sectionClicked`; synergy's ally axis is an ordinary last ROW — Qt has
+  no bottom header — and every item in that grid carries `NoItemFlags` so
+  nothing is selectable, which means Qt emits no activation for it
+  either and the click is read off the position in `mouseReleaseEvent`.
+  ONLY THE AXES: a body cell is a PAIR, so a click on one names two
+  heroes and could not say which was being asked for.
+  It is a FILTER AND A REPAINT, never a rebuild — the cells already hold
+  every number, so re-running `show_matrix` would rebuild ten portraits
+  and re-measure every column to change what is drawn, and the card would
+  flicker on a click. The grid keeps every row, every column and every
+  portrait; only the numbers that do not answer the question go quiet.
+  **A CELL HAD TO LEARN ITS SECOND HERO** (`PAIR_OTHER`, `CELL_ROW_HERO`,
+  `CELL_COL_HERO`). A synergy cell knew only whose portrait backs it and
+  a counters cell knew neither of its two, so neither could say whether
+  it was one of the ones the clicked hero asked for.
+  **AND THE SIDE COMES FROM THE DRAFT, NOT FROM WHICH AXIS WAS CLICKED.**
+  Counters heads its rows with your five and its columns with theirs, and
+  synergy's triangles are the other way up; asking the draft which team a
+  hero is on is one question with one answer where working it out from
+  the axis is four. A hero in neither team has no side and the click does
+  nothing rather than inventing one.
+  **A FOCUSED SUGGESTION CLEARS THE GRIDS RATHER THAN BLANKING THEM.** It
+  is not on either card — it is not in the draft — so every cell would
+  fail the test and both would go completely empty, which reads as the
+  grids having broken rather than as the hero not being in them.
+  **AND A SELECTION THAT GOES OFF SCREEN IS DROPPED**
+  (`_drop_focus_if_off_screen`). The strip is cut to a count the user
+  sets and re-ranked on every pick, so a focused candidate can fall off
+  the end of it — and numbers all over the board measured against a hero
+  with no ring on it anywhere is worse than no numbers at all. When the
+  focused candidate is PICKED instead, the ring FOLLOWS IT onto the
+  board: it is still the same hero, and dropping the selection at the
+  moment the pick lands would clear the board exactly when the answer
+  became real.
+  **THE SIGN CONVENTION IS NOW IN ONE FUNCTION** (`scoring.pair_delta`).
+  Four cases — ally with ally, ally against enemy, enemy against ally,
+  enemy with enemy — and every caller that wrote them out again was a
+  fresh chance to get one backwards. `relations_to`, `relations_from` and
+  the enemy-pair flip all read it.
 - **The palette is Discord's dark theme, deliberately borrowed**
   (`ui/theme.py`). The app is read at a glance while a draft timer runs, so
   a palette the user already parses fluently every day costs no attention.
@@ -2184,19 +2256,37 @@ credentials, and put the account at risk. Do not go there.
   and below it on all ten picks), and the fallback name is given most of
   the tile rather than a 22px strip — squeezed into a strip it can fail to
   fit at ALL and draw nothing, which is the one outcome worse than a name.
-- **Clicking a suggestion says what is behind its number, and never more**
-  (`ui/reasons.py`, `SuggestTile.asked_why` / `ItemTile.asked_why`). A sum
-  is exactly the thing that can look reasonable for bad reasons: a +5 out
-  of one enormous matchup is a different suggestion from a +5 out of five
-  small ones and the tile cannot say which. **The hero popup must not
-  explain.** The dataset knows this hero wins more than expected against
-  that one; it does not know why, and neither does the app — so it lists
-  the terms that made the number and says outright that the reason is not
-  in the data. An invented sentence about lane pressure would be worse
-  than the blank it replaced. Item rules are the other way round: they are
-  hand-authored, so they carry a reason in words, and it is quoted with
-  "hand-authored, not measured" attached. Clicking a suggestion still does
-  not ENTER it — a pick is entered by clicking a slot.
+- **CLICKING A SUGGESTION MEASURES THE BOARD AGAINST IT, and the hero
+  reasons box is GONE** (`SuggestTile.clicked_hero`,
+  `_on_suggestion_clicked`, `scoring.relations_from`), at the user's
+  request. It used to open a popup listing the six biggest terms behind
+  that tile's own number, on the grounds that a sum can look reasonable
+  for bad reasons — a +5 out of one enormous matchup is a different
+  suggestion from a +5 out of five small ones. That is still true, and
+  those terms ARE these numbers: the synergy with each of your five and
+  the matchup against each of theirs. So they go on the ten portraits the
+  question is about — "with +5.2" under an ally, "vs -1.8" under an
+  enemy — where the eye already is, instead of into a box printed over the
+  strip. "I don't need the reason box, as the synergies/counters should
+  now shift to show on the 5/5 portraits."
+  **A CANDIDATE IS READ AS A POSSIBLE ALLY**, which is the one thing
+  `relations_to` could not be left to infer: a hero that is not among your
+  five looks exactly like one of theirs, so it answered how your team
+  fares AGAINST the hero you are thinking of picking — the opposite of
+  what the strip is for. `side="ally"` says to read it as the pick it
+  would be.
+  Item rules keep their popup, and that is not an inconsistency: a rule is
+  hand-authored PROSE, quoted with "hand-authored, not measured"
+  attached, and no portrait can show a sentence.
+  Clicking a suggestion still does not ENTER it — a pick is entered by
+  clicking a slot.
+  **AND THE OTHER SUGGESTIONS KEEP THEIR OWN FIT.** A focused candidate
+  could show its synergy with every other candidate; it does not, at the
+  user's request — "suggestion versus suggestion is too hypothetical",
+  and it is: neither hero is on the board, so the pair is a guess about
+  two picks nobody has made. **The strip never re-orders either**, also
+  asked for: only the numbers on the tiles change, so a hero stays where
+  it was last seen instead of the whole strip reshuffling on every click.
 - **The item panel is measured vs. asserted**: hero scores come from data; item
   rules are hand-authored in `rules/items.yaml`. The UI labels them as such.
   At most `suggested_items` items above a severity floor. Silence in many games is correct
@@ -2913,6 +3003,35 @@ credentials, and put the account at risk. Do not go there.
   portrait. The floor is whichever needs more, doubled for the two halves.
   Numbers that elide to "..." are a grid that has stopped being a grid,
   and a tile with no room for art is not a picture of a hero.
+- **AN EMPTY GRID IS THE SHAPE THE FILLED ONE WILL BE, and it was not**
+  (`_show_outline(columns)`, `_size_blank`, `_blank_metrics`,
+  `_apply_icon_box`). Reported from a real draft: "the placeholder empty
+  table size was not accurate to what is shown once the heroes are
+  selected". The whole argument for drawing an outline is that it is the
+  shape of the answer standing where the answer will appear, so a
+  placeholder of the wrong size is worse than none — the card changes
+  size under the reader the moment the first pick lands.
+  TWO CAUSES, both of them "the empty state was written once and the
+  filled state moved".
+  **SIX SECTIONS, NOT FIVE.** Both cards are six across once they hold
+  something — counters is five columns plus the portrait column down its
+  side, synergy is five plus the gap between its triangles and has no
+  side column at all — and the outline was five columns for both. So the
+  empty synergy card was a section narrower than the grid replacing it,
+  and worse, `sections()` answered 5, `_portrait_room` divided the card
+  into five, and its placeholder portraits came out visibly BIGGER than
+  the real ones. `_show_outline` takes the count from its caller, which
+  is the only place that knows which grid this is.
+  **AND `_apply_icon_box` UNDID THE REST.** It runs after `_show_outline`,
+  from the window's own resize path, and read "no heroes in the headers"
+  as "the portraits are not downloaded" — where falling back to names is
+  right, since a 68px row header elides "Tidehunter" for nothing. An
+  EMPTY grid has no heroes either, and there the names fallback collapsed
+  every placeholder row to the height of a line of digits a moment after
+  it had been sized correctly. Two different states wearing one test;
+  `_outline` tells them apart. `_blank_metrics` now also spells the same
+  `size` line the filled path uses, floor included, because two spellings
+  of one measurement is one of them drifting.
 - **An empty panel shows the SHAPE of its answer, not a sentence about
   it.** The item strip draws five blank plates (`item_row.PlaceholderTile`)
   and both grids draw a 5x5 outline (`tables._show_outline`) before there

@@ -215,9 +215,18 @@ class MainWindow(QMainWindow):
         # Until when the status line belongs to something the user did
         # rather than to the state (see `_say`).
         self._quiet_until = 0.0
-        # The hero whose relations the other nine slots are showing, as
-        # (side, hero id). Clicking it again clears it; it survives a
-        # refresh but not the hero leaving the draft.
+        # THE ONE SELECTION, and everything on the Draft tab answers to
+        # it: (where, hero id), where `where` is "ally", "enemy" or
+        # "suggest". Clicking it again clears it; it survives a refresh
+        # but not the hero going off screen.
+        #
+        # ONE, because there is only one question at a time. A hero can
+        # be clicked on a pick tile, on a suggestion, or on either grid's
+        # axis, and a second selection living beside the first would put
+        # two sets of numbers on the board with nothing saying which is
+        # which — so a new click REPLACES the old one wherever it came
+        # from, and the gold ring is the single answer to "measured
+        # against what".
         self.focus: tuple[str, int] | None = None
         # Rectangles drawn on the debug picture during drag calibration.
         self._drag_rects: list[tuple[int, int, int, int]] = []
@@ -776,7 +785,8 @@ class MainWindow(QMainWindow):
         picks_card, playy = card(
             "Suggested picks", self._count_box("suggested_picks"))
         self.suggest_row = SuggestRow()
-        self.suggest_row.asked_why.connect(self._why_this_hero)
+        self.suggest_row.clicked_hero.connect(
+            self._on_suggestion_clicked)
         playy.addWidget(self.suggest_row)
         outer.addWidget(picks_card)
 
@@ -808,6 +818,13 @@ class MainWindow(QMainWindow):
         grids.addWidget(with_card, 1)
         vs_card, vslay = card("Counters")
         self.matchup_matrix = MatrixTable()
+        # BOTH GRIDS FEED THE ONE SELECTION. Clicking an axis face is the
+        # same gesture as clicking a pick or a suggestion, so it goes to
+        # the same handler and lands in the same `self.focus`; the grids
+        # are told what to draw rather than deciding it, which is what
+        # keeps one hero lit across all four surfaces.
+        self.synergy_matrix.hero_clicked.connect(self._on_grid_hero_clicked)
+        self.matchup_matrix.hero_clicked.connect(self._on_grid_hero_clicked)
         self.matchup_matrix.set_compact(True, short_names=False)
         self.matchup_matrix.set_icon_headers(True)
         self.matchup_matrix.set_margins(False)
@@ -3208,10 +3225,23 @@ class MainWindow(QMainWindow):
                 tile.set_pick(self.ds.name(hid) if hid is not None else None,
                               self.slot_roles[side][i], hid)
         # A hero that left the draft cannot be the one everything else is
-        # measured against.
-        if self.focus is not None and self.focus[1] not in (
-                set(allies) | set(enemies)):
-            self.focus = None
+        # measured against — but a focused SUGGESTION was never in it, so
+        # the same test would clear it on the very next payload. It is
+        # kept while it is still on the strip (`_drop_focus_if_off_screen`
+        # decides that, since only the strip knows what it is showing),
+        # and when the hero is actually PICKED the ring FOLLOWS IT onto
+        # the board: you clicked that hero, it is still that hero, and
+        # dropping the selection at the moment the pick lands would clear
+        # the board exactly when the answer became real.
+        if self.focus is not None:
+            where, hid = self.focus
+            picked = ("ally" if hid in allies else
+                      "enemy" if hid in enemies else None)
+            if where == "suggest":
+                if picked is not None:
+                    self.focus = (picked, hid)
+            elif picked is None:
+                self.focus = None
         set_label(self.unknown_label, 
             f"{unknown} slot(s) unresolved — scoring uses only confident "
             "slots" if unknown else "")
@@ -3278,26 +3308,88 @@ class MainWindow(QMainWindow):
         self.focus = None if self.focus == (side, hid) else (side, hid)
         self._update_relations()
 
+    def _on_grid_hero_clicked(self, hero_id: int) -> None:
+        """An axis portrait in either matrix, at the user's request.
+
+        The grids name the same ten heroes the board does, so clicking a
+        face here asks the same question a pick tile does and gets the
+        same answer everywhere — and clicking it again clears it, which is
+        the rule the board has always followed.
+
+        The SIDE comes from the draft rather than from the grid. Counters
+        heads its rows with your five and its columns with theirs, and
+        synergy's two triangles are the other way up; asking the draft
+        which team a hero is on is one question with one answer, where
+        working it out from which axis was clicked is four.
+        """
+        draft = self._current_draft()
+        side = ("ally" if hero_id in draft.allies else
+                "enemy" if hero_id in draft.enemies else None)
+        if side is None:
+            return
+        self.focus = None if self.focus == (side, hero_id) else (side, hero_id)
+        self._update_relations()
+
+    def _update_grid_focus(self) -> None:
+        """Read both cards against the focused hero, or against none.
+
+        A focused SUGGESTION clears them instead of blanking them. It is
+        not on either grid — it is not in the draft — so every cell would
+        fail the "is this about that hero" test and both cards would go
+        silently, completely empty, which reads as the grids having
+        broken rather than as the hero not being in them.
+        """
+        hero = None
+        if self.focus is not None and self.focus[0] != "suggest":
+            hero = self.focus[1]
+        for grid in (self.synergy_matrix, self.matchup_matrix):
+            grid.set_focus(hero)
+
+    def _on_suggestion_clicked(self, hero_id: int) -> None:
+        """A candidate becomes the hero everything else is measured against.
+
+        It used to open a box listing the terms behind that tile's own
+        number. Those terms ARE these numbers — the synergy with each of
+        your five and the matchup against each of theirs — so they now go
+        on the ten portraits the question is about, where the eye already
+        is, instead of into a popup over the strip.
+
+        The same selection as a pick, so clicking here CLEARS a pick that
+        was focused: one hero at a time, whichever strip it came from.
+        """
+        self.focus = (None if self.focus == ("suggest", hero_id)
+                      else ("suggest", hero_id))
+        self._update_relations()
+
     def _update_relations(self) -> None:
-        """Write the signed numbers above the other nine slots.
+        """Write the signed numbers on everything the focus can speak to.
 
         This is the matrix read one row at a time, which is how the
         question actually arrives mid-draft: not "show me the grid" but
         "what does THIS hero do to everything else".
+
+        THREE SURFACES ANSWER ONE SELECTION — the ten picks, the
+        suggestion strip and both grids — because the hero can be clicked
+        on any of them and a click that lit up only the strip it came
+        from would make the board mean different things depending on
+        where the cursor had been.
         """
         for panel in self.team_panels.values():
             panel.clear_deltas()
-        values: dict[int, float] = {}
+        self.suggest_row.clear_deltas()
         draft = self._current_draft()
         # The heading totals are ALWAYS the net contributions, whether or
         # not a hero is clicked: a number beside "Radiant" that changed
         # every time a portrait was clicked would be a number you had to
         # stop and re-read before it meant anything.
         self._update_team_totals(draft)
+        self._drop_focus_if_off_screen(draft)
+        self._update_grid_focus()
         if self.focus is None:
             # Nothing clicked, so every tile says what that pick is worth
             # overall rather than nothing at all — the tile has a line for
-            # a number either way, and an empty one wastes it.
+            # a number either way, and an empty one wastes it. The
+            # suggestions go back to draft fit, which is their own answer.
             net = scoring.net_contributions(self.ds, draft)
             for panel in self.team_panels.values():
                 for tile in panel.slots:
@@ -3305,15 +3397,23 @@ class MainWindow(QMainWindow):
                     if value is not None:
                         tile.show_delta(value)
             return
-        side, hid = self.focus
-        relations = {r.hero_id: r for r in
-                     scoring.relations_to(self.ds, hid, draft)}
+        where, hid = self.focus
+        # A SUGGESTION IS READ AS A POSSIBLE ALLY. Left to infer it,
+        # `relations_to` sees a hero that is not among your five and
+        # treats it as one of theirs — which answers how your team fares
+        # AGAINST the hero you are thinking of picking, the opposite of
+        # the question the strip exists for.
+        ally = where != "enemy"
+        relations = {
+            r.hero_id: r for r in
+            scoring.relations_to(self.ds, hid, draft,
+                                 side="ally" if ally else "enemy")}
         for panel in self.team_panels.values():
             for tile in panel.slots:
                 other = tile.property("hero_id")
                 if other is None:
                     continue
-                if other == hid and panel.side == side:
+                if other == hid and panel.side == where:
                     tile.set_focused(True)
                     continue
                 rel = relations.get(other)
@@ -3322,7 +3422,43 @@ class MainWindow(QMainWindow):
                     # itself, or a hero the dataset does not carry.
                     continue
                 tile.show_delta(rel.delta, rel.kind)
-                values[other] = rel.delta
+        self._update_suggestion_relations(hid, ally, where)
+
+    def _update_suggestion_relations(self, hid: int, ally: bool,
+                                     where: str) -> None:
+        """What each candidate would be worth beside the focused hero.
+
+        Instead of its draft fit, at the user's request: with a pick
+        clicked, the whole board is answering one question and a strip
+        still ranking by overall fit is the one row on screen answering a
+        different one.
+
+        A focused SUGGESTION gets the ring and keeps every other
+        candidate on its own fit — "suggestion versus suggestion is too
+        hypothetical", and it is: neither hero is on the board, so the
+        pair is a guess about two picks nobody has made.
+        """
+        self.suggest_row.set_focus(hid)
+        if where == "suggest":
+            return
+        values = {
+            r.hero_id: (r.delta, r.kind) for r in
+            scoring.relations_from(self.ds, hid, ally,
+                                   self.suggest_row.hero_ids)}
+        self.suggest_row.show_deltas(values)
+
+    def _drop_focus_if_off_screen(self, draft: scoring.DraftState) -> None:
+        """A hero nobody can see cannot be what the numbers are about.
+
+        The strip is cut to a count the user sets and re-ranked on every
+        pick, so a focused candidate can fall off the end of it — and
+        numbers all over the board measured against a hero with no ring
+        on it anywhere is worse than no numbers at all.
+        """
+        if self.focus is None or self.focus[0] != "suggest":
+            return
+        if self.focus[1] not in self.suggest_row.hero_ids:
+            self.focus = None
 
     def _update_team_totals(self, draft: scoring.DraftState) -> None:
         """The signed figure beside each side's name.
@@ -3344,23 +3480,6 @@ class MainWindow(QMainWindow):
                        (tile.property("hero_id") for tile in panel.slots)
                        if hid is not None and hid in net]
             panel.set_total(sum(figures) if figures else None)
-
-    def _why_this_hero(self, hero_id: int) -> None:
-        """The terms behind a suggestion's number — never a story about it.
-
-        The dataset knows this hero wins more than expected against that
-        one. It does not know WHY, so neither does the app, and a sentence
-        about lane pressure would be invented. The terms are the evidence;
-        the reading is the user's.
-        """
-        draft = self._current_draft()
-        if hero_id not in self.ds.index:
-            return
-        fit = next((s.score for s in self.scored if s.hero_id == hero_id), 0.0)
-        heading, lines, note = reasons.hero_reasons(
-            self.ds.name(hero_id), fit,
-            scoring.breakdown(self.ds, hero_id, draft))
-        self._pop_reasons(heading, lines, note, self.suggest_row)
 
     def _why_this_item(self, item: str) -> None:
         """Item rules ARE written in words, so this one has a real answer."""

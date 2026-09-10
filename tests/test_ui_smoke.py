@@ -2221,28 +2221,79 @@ def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
     assert "not the pick screen" not in window.debug_text.toPlainText()
 
 
-def test_clicking_a_suggested_hero_shows_the_terms_behind_its_number(
-        window, qapp):
-    """A sum is exactly the thing that can look reasonable for bad reasons:
-    a +5 built out of one enormous matchup is a different suggestion from a
-    +5 built out of five small ones, and the tile cannot say which."""
+def test_clicking_a_suggestion_measures_the_board_against_it(window, qapp):
+    """The terms behind a suggestion's number, written on the ten heroes
+    the question is about — instead of a popup listing them over the
+    strip. A candidate is read as a POSSIBLE ALLY: synergy with your five,
+    matchup against theirs."""
     window.show()
     window.refresh()
     _settle(qapp)
     assert window.suggest_row.heroes, "the fixture should have suggestions"
-    tile = window.suggest_row._tiles[0]
-    tile.asked_why.emit(tile.hero_id)
-    popup = window._reason_popup
-    try:
-        assert popup is not None
-        from PyQt6.QtWidgets import QLabel
-        text = " ".join(lbl.text() for lbl in popup.findChildren(QLabel))
-        assert window.ds.name(tile.hero_id) in text
-        assert "fit " in text
-        # And it must NOT invent an explanation.
-        assert "not why" in text, "the honesty line is the point of it"
-    finally:
-        popup.close()
+    tile = window.suggest_row.tiles[0]
+    window.suggest_row.clicked_hero.emit(tile.hero_id)
+    _settle(qapp)
+
+    assert window.focus == ("suggest", tile.hero_id)
+    assert tile.focused, "the clicked candidate wears the ring"
+    said = [t.delta_text() for t in window.team_panels["ally"].slots
+            if t.property("hero_id") is not None]
+    assert said and all(t.startswith("with") for t in said), said
+    against = [t.delta_text() for t in window.team_panels["enemy"].slots
+               if t.property("hero_id") is not None]
+    assert against and all(t.startswith("vs") for t in against), against
+    # The other candidates keep their own fit: "suggestion versus
+    # suggestion is too hypothetical" — neither hero is on the board.
+    assert all(not other.delta_text() for other in window.suggest_row.tiles
+               if other is not tile)
+
+    # Clicking it again is the way out, exactly as it is on the board.
+    window.suggest_row.clicked_hero.emit(tile.hero_id)
+    _settle(qapp)
+    assert window.focus is None
+    assert not tile.focused
+
+
+def test_clicking_a_pick_renumbers_the_suggestions(window, qapp):
+    """With a hero clicked the whole board answers one question, so a
+    strip still ranking by overall fit would be the one row on screen
+    answering a different one."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    fits = [t.delta_text() for t in window.suggest_row.tiles]
+    assert fits and not any(fits), "they start on their own fit"
+
+    tile = next(t for t in window.team_panels["ally"].slots
+                if t.property("hero_id") is not None)
+    order = [t.hero_id for t in window.suggest_row.tiles]
+    tile.clicked.emit()
+    _settle(qapp)
+
+    said = [t.delta_text() for t in window.suggest_row.tiles]
+    assert all(t.startswith("with") for t in said), said
+    # THE ORDER NEVER MOVES: only the numbers on the tiles change, so a
+    # hero stays where it was last seen.
+    assert [t.hero_id for t in window.suggest_row.tiles] == order
+
+
+def test_one_selection_at_a_time(window, qapp):
+    """A pick, a suggestion and a grid face are one question, so a new
+    click REPLACES the old one wherever it came from."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    pick = next(t for t in window.team_panels["ally"].slots
+                if t.property("hero_id") is not None)
+    pick.clicked.emit()
+    _settle(qapp)
+    assert pick.focused
+
+    candidate = window.suggest_row.tiles[0]
+    window.suggest_row.clicked_hero.emit(candidate.hero_id)
+    _settle(qapp)
+    assert candidate.focused
+    assert not pick.focused, "two rings would be two questions"
 
 
 def test_clicking_a_suggested_item_quotes_its_hand_authored_rule(window,
@@ -2267,12 +2318,60 @@ def test_clicking_a_suggested_item_quotes_its_hand_authored_rule(window,
         popup.close()
 
 
-def test_a_hero_with_nothing_on_the_board_says_so_rather_than_nothing(qapp):
-    """Blank beats invented, and "nothing moves this yet" is not blank."""
-    from draft_assist.ui import reasons
-    heading, lines, note = reasons.hero_reasons("Lion", 0.0, [])
-    assert lines == []
-    assert "Nothing on the board" in note
+def test_clicking_a_grid_face_drives_the_whole_board(window, qapp):
+    """The grids name the same ten heroes the board does, so a click on an
+    axis portrait is the same gesture as a click on a pick — same
+    selection, same ring, same numbers everywhere."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    pick = next(t for t in window.team_panels["ally"].slots
+                if t.property("hero_id") is not None)
+    hero = pick.property("hero_id")
+
+    window.matchup_matrix.hero_clicked.emit(hero)
+    _settle(qapp)
+    assert window.focus == ("ally", hero)
+    assert pick.focused, "the pick tile lights up too"
+    assert window.matchup_matrix._focus_hero == hero
+    assert window.synergy_matrix._focus_hero == hero
+    assert any(t.delta_text() for t in window.suggest_row.tiles)
+
+    # Clicking it again is the way out, the same as everywhere else.
+    window.matchup_matrix.hero_clicked.emit(hero)
+    _settle(qapp)
+    assert window.focus is None
+    assert window.matchup_matrix._focus_hero is None
+
+
+def test_a_focused_suggestion_leaves_the_grids_alone(window, qapp):
+    """It is not on either card — it is not in the draft — so every cell
+    would fail the "is this about that hero" test and both grids would go
+    completely empty, which reads as the grids having broken."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    candidate = window.suggest_row.tiles[0]
+    window.suggest_row.clicked_hero.emit(candidate.hero_id)
+    _settle(qapp)
+    assert window.focus[0] == "suggest"
+    assert window.matchup_matrix._focus_hero is None
+    assert window.synergy_matrix._focus_hero is None
+
+
+def test_a_grid_click_on_a_hero_that_left_the_draft_does_nothing(window,
+                                                                 qapp):
+    """The side comes from the draft, and a hero that is in neither team
+    has no side — so there is nothing to measure the board against."""
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    absent = next(h for h in window.ds.hero_ids
+                  if h not in window._current_draft().allies
+                  and h not in window._current_draft().enemies)
+    window.matchup_matrix.hero_clicked.emit(absent)
+    _settle(qapp)
+    assert window.focus is None
 
 
 def test_the_tab_row_is_one_unbroken_band(window, qapp):

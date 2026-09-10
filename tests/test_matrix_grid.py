@@ -723,3 +723,206 @@ def test_the_border_runs_on_the_portrait_edge_and_never_across_it(art, qapp):
                 f"{picture.pixelColor(*out).name()}")
             checked += 1
     assert checked >= 4, f"only {checked} boundaries were checked"
+
+
+# ---- one selection, read across both cards ------------------------------
+
+# Five more, so a synergy card has two full teams to draw. `art10`
+# writes portraits for all ten: the filled grid measures its cell off a
+# REAL scaled portrait (16:9), so a hero without one falls back to a
+# square and the empty outline it is being compared with does not.
+FOES = [(6, "Drow Ranger"), (7, "Earthshaker"), (8, "Juggernaut"),
+        (9, "Mirana"), (10, "Morphling")]
+
+
+@pytest.fixture()
+def art10(tmp_path, monkeypatch):
+    for hero_id, name in HEROES + FOES:
+        pixmap = QPixmap(256, 144)
+        pixmap.fill(QColor("#3050a0"))
+        pixmap.save(str(tmp_path / f"{hero_id}_{name.lower()}.png"))
+    monkeypatch.setattr(portraits, "BASE_DIR", tmp_path)
+    portraits.forget()
+    yield tmp_path
+    portraits.forget()
+
+
+def pairs_table(qapp, width=700) -> MatrixTable:
+    """The synergy card, filled — the other shape a focus has to work on."""
+    from draft_assist.model.scoring import PairCell, SynergyGrid
+    ally_ids = [h for h, _n in HEROES]
+    foe_ids = [h for h, _n in FOES]
+    cells = []
+    for row in range(len(ally_ids) - 1):
+        line = []
+        for col in range(len(ally_ids) + 1):
+            if col <= row:
+                line.append(PairCell(ally_ids[row + 1], ally_ids[col],
+                                     0.01 * (row + col), "ally"))
+            elif col >= row + 2:
+                line.append(PairCell(foe_ids[row], foe_ids[col - 1],
+                                     -0.01 * (row + col), "enemy"))
+            else:
+                line.append(None)
+        cells.append(line)
+    made = SynergyGrid(allies=list(HEROES), enemies=list(FOES), cells=cells)
+    table = MatrixTable()
+    table.set_compact(True, short_names=False)
+    table.set_icon_headers(True)
+    table.set_margins(False)
+    table.resize(width, 400)
+    table.show()
+    QApplication.processEvents()
+    table.show_pairs(made)
+    QApplication.processEvents()
+    return table
+
+
+def test_clicking_an_axis_face_asks_for_that_hero(art, qapp):
+    """The faces down the side and across the top are controls now: one
+    click names the hero the whole card is read against."""
+    table = built(qapp)
+    heard = []
+    table.hero_clicked.connect(heard.append)
+    down = table.table.verticalHeader()
+    down.sectionClicked.emit(0)
+    assert heard == [HEROES[0][0]]
+    table.table.horizontalHeader().sectionClicked.emit(2)
+    assert heard[-1] == HEROES[2][0]
+
+
+def test_a_section_naming_no_hero_asks_for_nothing(qapp):
+    """The gap column of the synergy grid, and the spare column of a 5v4.
+    A click there must not clear the selection or invent one."""
+    table = MatrixTable()
+    table.set_icon_headers(True)
+    table.show_matrix(Matrix(rows=[], cols=[], cells=[]))
+    heard = []
+    table.hero_clicked.connect(heard.append)
+    table.table.horizontalHeader().sectionClicked.emit(0)
+    assert heard == []
+
+
+def test_only_the_focused_heros_numbers_are_drawn(art, qapp):
+    """"Show only the counter / synergy score relevant to that hero" — the
+    grid keeps every row, every column and every portrait, and the numbers
+    that do not answer the question go quiet."""
+    from draft_assist.ui.tables import (CELL_COL_HERO, CELL_ROW_HERO,
+                                        cell_is_about)
+    table = built(qapp)
+    table.set_focus(HEROES[1][0])
+    inner = table.table
+    lit = [(r, c) for r in range(inner.rowCount())
+           for c in range(inner.columnCount())
+           if cell_is_about(inner.model().index(r, c), HEROES[1][0],
+                            CELL_ROW_HERO, CELL_COL_HERO)]
+    # Its whole row, and its own column against the other side.
+    assert set(r for r, _c in lit) == {1} | set(range(5))
+    assert all(r == 1 or c == 1 for r, c in lit), lit
+    # And the shape is untouched: this is a filter, not a rebuild.
+    assert inner.rowCount() == 5 and inner.columnCount() == 5
+
+    table.set_focus(None)
+    assert cell_is_about(inner.model().index(3, 4), None,
+                         CELL_ROW_HERO, CELL_COL_HERO)
+
+
+def test_the_focus_reaches_the_headers_and_the_delegates(art, qapp):
+    """One call, every drawer — a ring the header knows about and a filter
+    the cells know about, or the card contradicts itself."""
+    table = built(qapp)
+    hero = HEROES[2][0]
+    table.set_focus(hero)
+    assert table.table.horizontalHeader().focus_hero == hero
+    assert table.table.verticalHeader().focus_hero == hero
+    assert table._deltas.focus_hero == hero
+
+
+def test_a_synergy_cell_knows_both_of_its_heroes(art10, qapp):
+    """A pair is two heroes and the cell only ever carried one — whose
+    portrait backs it. Without the other half it cannot say whether it is
+    one of the ones the clicked hero asked for."""
+    from draft_assist.ui.tables import PAIR_HERO, PAIR_OTHER
+    table = pairs_table(qapp)
+    inner = table.table
+    found = 0
+    for row in range(inner.rowCount() - 1):
+        for col in range(inner.columnCount()):
+            item = inner.item(row, col)
+            if item is None or item.data(PAIR_HERO) is None:
+                continue
+            found += 1
+            assert item.data(PAIR_OTHER) is not None
+            assert item.data(PAIR_OTHER) != item.data(PAIR_HERO)
+    assert found, "the fixture should have pairs in it"
+
+
+def test_clicking_the_synergy_axis_row_asks_for_that_hero(art10, qapp):
+    """Its ally axis is an ordinary last ROW rather than a header — Qt has
+    no bottom header — so the click cannot come through `sectionClicked`.
+    And every item in this grid carries NoItemFlags, so Qt emits no
+    activation for it either."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+    from draft_assist.ui.tables import PAIR_HEADER, PAIR_HERO
+    table = pairs_table(qapp)
+    inner = table.table
+    axis = inner.rowCount() - 1
+    item = inner.item(axis, 0)
+    assert item.data(PAIR_HEADER), "the last row is the ally axis"
+    heard = []
+    table.hero_clicked.connect(heard.append)
+    where = inner.visualRect(inner.model().index(axis, 0)).center()
+    inner.mouseReleaseEvent(QMouseEvent(
+        QEvent.Type.MouseButtonRelease, QPointF(where),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier))
+    assert heard == [item.data(PAIR_HERO)]
+
+
+def test_the_empty_outline_is_the_shape_the_filled_grid_will_have(art10, qapp):
+    """It switched size under the user when the picks arrived. Both cards
+    are SIX sections across once they hold something — counters is five
+    columns plus its portrait column, synergy is five plus the gap between
+    its triangles — and the placeholder was drawn five wide for both, so
+    the synergy card was a section narrower than the grid replacing it and
+    its placeholder portraits came out bigger than the real ones."""
+    from draft_assist.model.scoring import SynergyGrid
+    empty_pairs = MatrixTable()
+    empty_pairs.set_compact(True, short_names=False)
+    empty_pairs.set_icon_headers(True)
+    empty_pairs.set_margins(False)
+    empty_pairs.resize(700, 400)
+    empty_pairs.show()
+    QApplication.processEvents()
+    empty_pairs.show_pairs(SynergyGrid(allies=[], enemies=[], cells=[]))
+    QApplication.processEvents()
+
+    full = pairs_table(qapp)
+    assert empty_pairs.sections() == full.sections() == 6
+    assert (empty_pairs.table.columnWidth(0)
+            == full.table.columnWidth(0))
+    assert empty_pairs.table.rowHeight(0) == full.table.rowHeight(0)
+    assert empty_pairs.table.width() == full.table.width()
+
+
+def test_the_outline_keeps_its_size_through_a_relayout(art10, qapp):
+    """`_apply_icon_box` runs after `_show_outline`, from the window's own
+    resize path, and read "no heroes in the headers" as "the portraits are
+    not downloaded" — so the names fallback collapsed every placeholder row
+    to the height of a line of digits, a moment after it had been sized."""
+    from draft_assist.model.scoring import SynergyGrid
+    table = MatrixTable()
+    table.set_compact(True, short_names=False)
+    table.set_icon_headers(True)
+    table.set_margins(False)
+    table.resize(700, 400)
+    table.show()
+    QApplication.processEvents()
+    table.show_pairs(SynergyGrid(allies=[], enemies=[], cells=[]))
+    QApplication.processEvents()
+    tall = table.table.rowHeight(0)
+    table._apply_icon_box()
+    QApplication.processEvents()
+    assert table.table.rowHeight(0) == tall
+    assert tall > 40, "a placeholder row is a portrait tall, not a line tall"

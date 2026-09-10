@@ -12,9 +12,17 @@ each carries its fit in the same bottom-right badge the ten picks use — the
 same number, in the same place, in the same colours, so a suggestion and a
 pick can be compared without translating between two layouts.
 
-Nothing here is clickable. A pick is entered by clicking a SLOT, and a
-strip that also entered picks would be a second way to do it that behaves
-differently.
+CLICKING ONE FOCUSES IT, at the user's request: the ten picks then show
+what that candidate would be worth beside each of them — "with +5.2"
+under an ally, "vs -1.8" under an enemy — and the tile wears the gold
+ring. It used to open a box listing the terms behind its own number, and
+that box is gone: the numbers it summarised are now written on the ten
+portraits the question is actually about, which is a better answer in the
+place the eye already is.
+
+Clicking one still does NOT enter it. A pick is entered by clicking a
+SLOT, and a strip that also entered picks would be a second way to do it
+that behaves differently.
 """
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
@@ -42,14 +50,14 @@ PLACEHOLDERS = 5
 
 
 class SuggestTile(QWidget):
-    """One candidate: the portrait, with its fit in the corner.
+    """One candidate: the portrait, with a number in the corner.
 
-    Clicking it ASKS WHY, and nothing more. It does not enter the pick —
-    a pick is entered by clicking a slot, and a second way to do it that
-    behaved differently would be worse than no way.
+    The number is its DRAFT FIT normally and its relation to the focused
+    hero while one is clicked, in the same badge either way — the tile
+    answers whatever question the board is currently asking.
     """
 
-    asked_why = pyqtSignal(int)
+    clicked_hero = pyqtSignal(int)
 
     def __init__(self, hero_id: int, name: str, fit_value: float,
                  tooltip: str = "", parent=None,
@@ -58,15 +66,49 @@ class SuggestTile(QWidget):
         self.hero_id = hero_id
         self.hero_name = name
         self.fit = float(fit_value)
+        self._delta: str = ""
+        self._delta_colour: str = theme.GOOD
+        self._focused = False
+        self._tip = tooltip or name
         self.setFixedSize(*(size or (WIDTH, ART_H)))
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.setToolTip(tooltip or name)
+        self.setToolTip(self._tip)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if (event.button() == Qt.MouseButton.LeftButton
                 and self.rect().contains(event.position().toPoint())):
-            self.asked_why.emit(self.hero_id)
+            self.clicked_hero.emit(self.hero_id)
         super().mouseReleaseEvent(event)
+
+    # ---- what the badge says --------------------------------------------
+    def show_delta(self, delta: float, kind: str | None = None) -> None:
+        """Its relation to the focused hero, INSTEAD of its own fit.
+
+        Instead rather than beside: two numbers in one corner is two
+        numbers to tell apart at a glance, which is why neither grid draws
+        a total any more.
+        """
+        self._delta = tilekit.delta_text(delta, kind)
+        self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
+        self.setToolTip(f"{self._tip}\n{self._delta} against the clicked hero")
+        self.update()
+
+    def clear_delta(self) -> None:
+        self._delta = ""
+        self.setToolTip(self._tip)
+        self.update()
+
+    def delta_text(self) -> str:
+        return self._delta
+
+    def set_focused(self, on: bool) -> None:
+        self._focused = bool(on)
+        self.update()
+
+    @property
+    def focused(self) -> bool:
+        return self._focused
 
     def paintEvent(self, event) -> None:        # noqa: N802 - Qt naming
         painter = QPainter(self)
@@ -90,10 +132,16 @@ class SuggestTile(QWidget):
                                self.hero_name, self.font())
         # Same figure, same corner, same colours as a drafted tile: a
         # suggestion and a pick have to be comparable at a glance.
-        tilekit.paint_badge(painter, box,
-                            f"{self.fit * 100:+.1f}",
-                            theme.GOOD if self.fit >= 0 else theme.BAD,
-                            self.font())
+        if self._delta:
+            tilekit.paint_badge(painter, box, self._delta,
+                                self._delta_colour, self.font())
+        else:
+            tilekit.paint_badge(painter, box,
+                                f"{self.fit * 100:+.1f}",
+                                theme.GOOD if self.fit >= 0 else theme.BAD,
+                                self.font())
+        if self._focused:
+            tilekit.paint_focus_ring(painter, box)
         painter.end()
 
     def sizeHint(self) -> QSize:                # noqa: N802
@@ -125,7 +173,7 @@ class PlaceholderTile(QWidget):
 class SuggestRow(QWidget):
     """A line of suggestion tiles, best first."""
 
-    asked_why = pyqtSignal(int)
+    clicked_hero = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -177,10 +225,51 @@ class SuggestRow(QWidget):
         for hero_id, name, fit_value, tip in rows:
             tile = SuggestTile(hero_id, name, fit_value, tip, self,
                                self._tile_size)
-            tile.asked_why.connect(self.asked_why)
+            tile.clicked_hero.connect(self.clicked_hero)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)
 
     @property
     def heroes(self) -> list[str]:
         return [tile.hero_name for tile in self._tiles]
+
+    @property
+    def hero_ids(self) -> list[int]:
+        """Which candidates are actually on screen.
+
+        The strip is cut to a count the user sets, so a hero can be
+        focused and then fall off the end of it as the draft fills in —
+        and numbers on the board measured against a hero nobody can see
+        is worse than no numbers at all. The caller drops the focus.
+        """
+        return [tile.hero_id for tile in self._tiles]
+
+    @property
+    def tiles(self) -> list["SuggestTile"]:
+        return list(self._tiles)
+
+    # ---- what the strip is measuring against ----------------------------
+    def set_focus(self, hero_id: int | None) -> None:
+        """The gold ring goes on one tile, or on none of them."""
+        for tile in self._tiles:
+            tile.set_focused(tile.hero_id == hero_id)
+
+    def show_deltas(self, values: dict[int, tuple[float, str]]) -> None:
+        """Relations to the focused hero, one per candidate.
+
+        A candidate with nothing to say — no row in the dataset — keeps
+        its fit rather than going blank: a hole in the strip reads as the
+        tile being broken.
+        """
+        for tile in self._tiles:
+            found = values.get(tile.hero_id)
+            if found is None:
+                tile.clear_delta()
+            else:
+                tile.show_delta(found[0], found[1])
+
+    def clear_deltas(self) -> None:
+        """Back to draft fit, which is what the strip says on its own."""
+        for tile in self._tiles:
+            tile.clear_delta()
+            tile.set_focused(False)

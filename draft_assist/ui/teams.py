@@ -40,8 +40,6 @@ from .tilekit import (BADGE_PAD_X, BADGE_PAD_Y, CHROME,  # noqa: F401
 # "with" and "vs" are different questions and the eye should not have to
 # read a legend to tell which it is looking at. Words rather than glyphs:
 # a symbol that falls back to a box on the user's font would say nothing.
-KIND_MARK = {"with": "with", "vs": "vs"}
-
 # Dragging a pick onto the other panel is how a wrong team split is fixed by
 # hand. Our own mime type, so nothing else on the desktop can drop into it
 # and the tiles ignore anything that is not one of their own.
@@ -255,8 +253,7 @@ class HeroTile(QAbstractButton):
 
     # ---- the relation line ---------------------------------------------
     def show_delta(self, delta: float, kind: str | None = None) -> None:
-        mark = KIND_MARK.get(kind or "", "")
-        self._delta = f"{mark} {delta * 100:+.1f}".strip()
+        self._delta = tilekit.delta_text(delta, kind)
         self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
         self.update()
 
@@ -348,10 +345,20 @@ class HeroTile(QAbstractButton):
                             self.font())
 
     def _paint_border(self, painter: QPainter, box: QRect) -> None:
+        if self._focused and not self._drop_target:
+            # The window's own frame, in the window's own gold. One ring,
+            # drawn by `tilekit`, so a focused pick and a focused
+            # suggestion cannot end up wearing two different boxes.
+            # THE WIDGET'S OWN RECT, not the inset `box` the other pens
+            # use. The ring places itself half a pen inside whatever it is
+            # given, so handing it a rect already a pixel short would put
+            # the gold a pixel off the tile edge on two sides and flush on
+            # the other two — and a suggestion tile, which passes its full
+            # rect, would wear a different ring from a pick.
+            tilekit.paint_focus_ring(painter, self.rect())
+            return
         if self._drop_target:
             pen = QPen(QColor(theme.WARN), 2)
-        elif self._focused:
-            pen = QPen(QColor(theme.ACCENT), 2)
         elif self.hasFocus() or self.underMouse():
             pen = QPen(QColor(theme.TEXT_DIM), 1)
         elif self.filled:

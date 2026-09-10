@@ -1,21 +1,17 @@
-"""Why a suggestion is on the strip — clicked, not hovered.
+"""Why an ITEM is on the strip — clicked, not hovered.
 
-The strip shows a number and a picture. The number is a SUM, and a sum is
-exactly the thing that can look reasonable for bad reasons: a +5 built out
-of one enormous matchup is a different suggestion from a +5 built out of
-five small ones, and nothing on the tile says which it is.
+An item rule is hand-authored, so it DOES carry a reason in words, and
+that reason is quoted here with its authorship attached. The label
+matters — "hand-authored, not measured" is the difference between a rule
+and a finding, and it is the whole reason this popup still exists when
+the hero one does not.
 
-**What this must never do is explain.** The dataset knows that this hero
-wins more than expected against that one; it does not know why, and
-neither does the app. So the hero popup lists the terms that made the
-number and says outright that the reason is not in the data — the terms
-are evidence and the interpretation is the reader's. An invented sentence
-about lane pressure would be worse than the blank it replaces.
-
-Item rules are the other way round: they are hand-authored, so they DO
-carry a reason in words, and that reason is quoted with its authorship
-attached. The label matters — "hand-authored, not measured" is the
-difference between a rule and a finding.
+**What this must never do is explain a MEASUREMENT.** The dataset knows
+that this hero wins more than expected against that one; it does not know
+why, and neither does the app. That is why the hero popup listed terms
+and never prose — and why, once those terms could be written on the ten
+portraits themselves, the popup had nothing left that the board was not
+already saying better.
 """
 
 from PyQt6.QtCore import Qt
@@ -23,33 +19,13 @@ from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 from . import theme
 
-# How many terms are worth reading at a glance. Past this it is a table,
-# and the History tab already has the table.
-TOP_TERMS = 6
-
-
-def hero_reasons(name: str, fit: float, terms) -> tuple[str, list[str], str]:
-    """(heading, lines, footnote) for a suggested hero.
-
-    `terms` are `scoring.BreakdownTerm`s, already sorted by size. Only the
-    ones that moved the number are worth printing, so a term of zero is
-    dropped rather than listed as a reason for nothing.
-    """
-    heading = f"{name} · fit {fit * 100:+.2f}"
-    lines = []
-    for term in terms[:TOP_TERMS]:
-        if abs(term.delta) < 0.0005:
-            continue
-        verb = "against" if term.kind == "vs" else "alongside"
-        lines.append(f"{term.delta * 100:+.2f}   {verb} {term.other_name}")
-    if not lines:
-        return heading, [], (
-            "Nothing on the board moves this hero either way yet.")
-    return heading, lines, (
-        "Measured win-rate deltas against the heroes already picked, "
-        "biggest first. The data says THAT these pairings go this way, "
-        "not why — that part is yours.")
-
+# HERO REASONS ARE GONE, and their terms are on the board instead.
+# Clicking a suggestion used to open a box listing the six biggest terms
+# behind its number. Those terms ARE the numbers now written on the ten
+# portraits — "with +5.2" under each ally, "vs -1.8" under each enemy —
+# so the popup was a second, smaller, worse copy of the answer, printed
+# over the strip instead of on the heroes it was about. Items keep theirs
+# below: an item rule is hand-authored PROSE, which no portrait can show.
 
 def item_reasons(item: str, triggers, stale: bool) -> tuple[str, list[str], str]:
     """(heading, lines, footnote) for a suggested item."""

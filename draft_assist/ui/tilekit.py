@@ -34,7 +34,7 @@ from PyQt6.QtCore import QPointF, QRect, QRectF, Qt
 from PyQt6.QtGui import (QColor, QFont, QFontMetricsF, QPainter,
                          QPainterPath, QPen)
 
-from . import theme
+from . import ornate, theme
 from .textfit import fit
 
 # The name never grows past this and never shrinks below it; between them
@@ -272,6 +272,59 @@ def paint_art(painter: QPainter, box: QRect, art) -> bool:
 # and an empty plate in a strip are the same object seen twice: the picks
 # rounded their corners and the strips squared theirs, so on a freshly
 # opened app the two rows of identical boxes did not look identical.
+# THE FOCUS RING IS THE WINDOW'S OWN FRAME, at the user's request:
+# the same gold and the same three pixels `ornate` paints round the whole
+# app. It was `theme.ACCENT` at 2px — the deep red that means "the one
+# action this screen wants" everywhere else in the app, sitting on a
+# portrait to mean "this is the hero everything else is measured
+# against", which is not an action at all.
+#
+# ONE SELECTION, ONE RING, SPELLED ONCE. A pick, a suggestion and an axis
+# portrait in either grid can each be the focused hero, and three
+# implementations of "draw the gold box" is three chances for the ring to
+# differ depending on where you clicked.
+FOCUS_COLOUR = theme.FRAME_GOLD
+FOCUS_WIDTH = ornate.WIDTH
+
+
+def paint_focus_ring(painter: QPainter, box: QRect,
+                     radius: int | None = None) -> None:
+    """The gold box round the hero everything else is measured against.
+
+    INSET BY HALF THE PEN, because a 3px pen is centred on its
+    coordinate: drawn on the tile's own edge a third of it falls outside
+    the widget and is clipped, so the ring reads thinner on the outside
+    edges than on the inside — the even-width pen lesson from the grid
+    borders, one width along.
+    """
+    # HALF A PEN IN, IN FLOAT. An odd pen is centred on its coordinate, so
+    # a width-3 line drawn on an integer edge covers one pixel outside the
+    # widget (clipped away) and half of the third one inside (drawn as a
+    # blend) — the ring comes out two solid pixels and a smudge, thinner
+    # than the frame it is meant to match. Centred at 1.5 it covers pixels
+    # 0, 1 and 2 exactly. Same family as the even-width pen in the grid
+    # borders, which paints x-1 and x rather than straddling x.
+    half = FOCUS_WIDTH / 2.0
+    ring = QRectF(box.x() + half, box.y() + half,
+                  box.width() - FOCUS_WIDTH, box.height() - FOCUS_WIDTH)
+    painter.setPen(QPen(QColor(FOCUS_COLOUR), FOCUS_WIDTH))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    corner = PLATE_RADIUS if radius is None else radius
+    painter.drawRoundedRect(ring, corner, corner)
+
+
+def delta_text(delta: float, kind: str | None = None) -> str:
+    """"with +5.2" — the badge on any tile showing a RELATION.
+
+    Spelled here because the ten picks and the suggestion strip both draw
+    it and two spellings of one badge is one of them going stale. The
+    figures are stored as fractions of a win rate and read as percentage
+    points, which is the only place that conversion happens.
+    """
+    mark = {"with": "with", "vs": "vs"}.get(kind or "", "")
+    return f"{mark} {delta * 100:+.1f}".strip()
+
+
 PLATE_RADIUS = 6
 
 

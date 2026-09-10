@@ -265,6 +265,11 @@ class PortraitHeader(QHeaderView):
         self.sides: dict[int, str] = {}
         self.open_edges: set[int] = set()
         self.box = HEADER_ICON
+        # The hero the whole card is being read against, or None. Clicking
+        # a face here is how it is set — see `MatrixTable.hero_clicked`.
+        self.focus_hero: int | None = None
+        # A face is a control now, so it has to behave like one.
+        self.setSectionsClickable(True)
 
     def set_box(self, size: int) -> None:
         """The square every portrait is drawn inside, both headers alike.
@@ -286,6 +291,17 @@ class PortraitHeader(QHeaderView):
         self.heroes = heroes
         self.updateGeometries()
         self.viewport().update()
+
+    def set_focus(self, hero_id: int | None) -> None:
+        """Ring the face of the hero everything else is measured against."""
+        if hero_id == self.focus_hero:
+            return
+        self.focus_hero = hero_id
+        self.viewport().update()
+
+    def hero_at(self, index: int) -> int | None:
+        """Which hero that section names, if it names one at all."""
+        return self.heroes.get(index)
 
     def set_outline(self, colour: str = "", open_edges=(),
                     side: str = "") -> None:
@@ -424,6 +440,14 @@ class PortraitHeader(QHeaderView):
                                 self.font())
         painter.restore()
         self._paint_outline(painter, rect, index, box)
+        # AFTER the team outline, not before it. Both lines are placed
+        # flush against the same picture, so they sit at the same
+        # coordinates — drawn first, the gold is simply painted over by
+        # the green or red box and the selected face looks unselected.
+        # Last wins, and being selected is the more specific thing to say.
+        if hero_id is not None and hero_id == self.focus_hero:
+            from . import tilekit
+            tilekit.paint_focus_ring(painter, box, radius=0)
 
 
 # The roles a paired-triangle cell carries: whose portrait backs it, the
@@ -432,6 +456,14 @@ PAIR_HERO = int(Qt.ItemDataRole.UserRole) + 10
 PAIR_VALUE = PAIR_HERO + 1
 PAIR_HEADER = PAIR_HERO + 2
 PAIR_SIDE = PAIR_HERO + 3
+# The COLUMN hero of a pair. The cell already knew whose portrait backs
+# it; clicking an axis to read one hero's row needs the other half too,
+# or a cell cannot answer whether it is one of the ones being asked for.
+PAIR_OTHER = PAIR_HERO + 4
+# The same question on the counters grid, where a cell is (ally, enemy)
+# and neither is drawn on it.
+CELL_ROW_HERO = PAIR_HERO + 5
+CELL_COL_HERO = PAIR_HERO + 6
 # How far the portrait behind a number is knocked back. It is a backdrop,
 # not the subject: at full strength the artwork competes with the figure it
 # is meant to be labelling. THE TWO HEADER ROWS ARE NOT VEILED: they are
@@ -484,6 +516,23 @@ class PairGrid(QTableWidget):
     # background between them — visible, but only just, which is what
     # was asked for.
     GAP = GRID_GAP
+
+    # The AXIS faces are controls. Clicking one reads the card against
+    # that hero — see `MatrixTable.hero_clicked`. Only the axes: a BODY
+    # cell is a PAIR, so a click on one names two heroes and could not
+    # say which of them was being asked for.
+    axis_clicked = pyqtSignal(int)
+
+    def mouseReleaseEvent(self, event) -> None:     # noqa: N802 - Qt naming
+        # `clicked` is no use here: every item in this grid carries
+        # NoItemFlags so that nothing is selectable, and Qt does not emit
+        # activation for a disabled index. The position is all we need.
+        index = self.indexAt(event.position().toPoint())
+        if index.isValid() and index.data(PAIR_HEADER):
+            hero = index.data(PAIR_HERO)
+            if hero is not None:
+                self.axis_clicked.emit(int(hero))
+        super().mouseReleaseEvent(event)
 
     def _side(self, row: int, col: int) -> str | None:
         item = self.item(row, col)
@@ -621,6 +670,24 @@ class PairGrid(QTableWidget):
         return _reach(_ring(turn), OPPOSITE[step])
 
 
+def cell_is_about(index, focus: int | None, first: int, second: int) -> bool:
+    """Does this cell carry one of the pairs the reader asked for?
+
+    With no hero clicked every cell answers. With one clicked only the
+    cells it is half of do — its row and its column in counters, its own
+    triangle's row and column in synergy — which is what "show only the
+    score relevant to that hero" means, one predicate for both grids so
+    the two cards cannot disagree about which cells count.
+
+    An AXIS cell is always about its own hero, so the faces stay lit; a
+    cell that names no hero at all (the gap column, a 5v4's spare) is
+    about nothing and goes quiet with the rest.
+    """
+    if focus is None:
+        return True
+    return focus in (index.data(first), index.data(second))
+
+
 class DeltaCellDelegate(QStyledItemDelegate):
     """A grid cell's number, with the same black halo the tiles' numbers have.
 
@@ -633,10 +700,23 @@ class DeltaCellDelegate(QStyledItemDelegate):
     colour rule, same centred position.
     """
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # The hero the card is being read against, or None for all of it.
+        self.focus_hero: int | None = None
+
     def paint(self, painter, option, index):        # noqa: N802 - Qt naming
         from . import tilekit
         text = index.data(Qt.ItemDataRole.DisplayRole)
         if not text:
+            return
+        if not cell_is_about(index, self.focus_hero,
+                             CELL_ROW_HERO, CELL_COL_HERO):
+            # ONLY THE CLICKED HERO'S ROW AND COLUMN, at the user's
+            # request. The grid keeps its shape — same rows, same columns,
+            # same portraits down the axes — and only the numbers that do
+            # not answer the question go quiet, because a card that
+            # changed size on a click would move everything under it.
             return
         # The colour the item was given, which is the sign's colour; a
         # cell of exactly zero is given none and takes the body colour.
@@ -683,6 +763,8 @@ class PairCellDelegate(QStyledItemDelegate):
         # cell has been painted, so the border traces the real picture
         # rather than a prediction of it.
         self.drawn: dict[tuple[int, int], QRect] = {}
+        # The hero the card is being read against, or None for all of it.
+        self.focus_hero: int | None = None
 
     def paint(self, painter, option, index):        # noqa: N802 - Qt naming
         from .portraits import scaled
@@ -709,8 +791,14 @@ class PairCellDelegate(QStyledItemDelegate):
                 # Knocked back, so the figure over it stays the subject.
                 # Not the axis rows: those ARE the subject.
                 painter.fillRect(box, QColor(0, 0, 0, PAIR_VEIL))
+        if index.data(PAIR_HEADER) and hero == self.focus_hero:
+            # The axis face that was clicked. Its ring goes on the
+            # picture, not the cell: the two differ by CELL_PAD and a
+            # gold box floating off the portrait reads as a stray line.
+            tilekit.paint_focus_ring(painter, box, radius=0)
         value = index.data(PAIR_VALUE)
-        if value is not None:
+        if value is not None and cell_is_about(index, self.focus_hero,
+                                               PAIR_HERO, PAIR_OTHER):
             # THE TILE'S OWN BADGE: same font, same size, same corner as
             # the figure on a pick up at the top of the window, so the two
             # are read the same way rather than as two conventions. The
@@ -733,7 +821,17 @@ class MatrixTable(QWidget):
     Reading a total tells you the draft is fine; reading the grid tells you
     which lane is not. Cells are coloured by sign and blank where a pair has
     no meaning (the diagonal, and the half a symmetric matrix would repeat).
+
+    THE AXIS FACES ARE CLICKABLE, at the user's request, and a click here
+    is the same selection a click on a pick tile or a suggestion makes:
+    the hero gets the window's gold ring and every cell that is not about
+    it goes quiet, so the card shows one hero's row instead of twenty-five
+    numbers. `hero_clicked` carries it out to the window, which owns the
+    selection — a grid that focused itself would be a second answer to
+    "measured against what" sitting beside the board's.
     """
+
+    hero_clicked = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -751,6 +849,15 @@ class MatrixTable(QWidget):
             PortraitHeader(Qt.Orientation.Horizontal, self.table))
         self.table.setVerticalHeader(
             PortraitHeader(Qt.Orientation.Vertical, self.table))
+        self._focus_hero: int | None = None
+        # Three ways in, one signal out: either header's faces (counters
+        # has both axes in headers, synergy has its enemies along the top)
+        # and the synergy grid's bottom row, which is an ordinary table
+        # row because Qt has no bottom header.
+        for head in (self.table.horizontalHeader(),
+                     self.table.verticalHeader()):
+            head.sectionClicked.connect(self._section_clicked)
+        self.table.axis_clicked.connect(self.hero_clicked)
         # NEITHER BAR, EVER. The grid is five rows and it is sized to fit
         # them, so a scrollbar can only mean the fit was wrong — and it
         # hides part of the answer while making the widget look correct.
@@ -774,6 +881,32 @@ class MatrixTable(QWidget):
         self.empty_note.setWordWrap(True)
         self.empty_note.setProperty("dim", True)
         layout.addWidget(self.empty_note)
+
+    def _section_clicked(self, index: int) -> None:
+        head = self.sender()
+        hero = head.hero_at(index) if isinstance(head, PortraitHeader) else None
+        if hero is not None:
+            self.hero_clicked.emit(int(hero))
+
+    def set_focus(self, hero_id: int | None) -> None:
+        """Read the whole card against one hero, or against none.
+
+        REPAINT, NEVER REBUILD. The cells already hold every number; what
+        changes is which of them are drawn, so re-running `show_matrix`
+        here would rebuild ten portraits and re-measure every column to
+        change what is essentially a filter — and the grid would flicker
+        on a click.
+        """
+        self._focus_hero = hero_id
+        for head in (self.table.horizontalHeader(),
+                     self.table.verticalHeader()):
+            if isinstance(head, PortraitHeader):
+                head.set_focus(hero_id)
+        for delegate in (getattr(self, "_deltas", None),
+                         getattr(self, "_pairs", None)):
+            if delegate is not None:
+                delegate.focus_hero = hero_id
+        self.table.viewport().update()
 
     def _fit_width(self) -> None:
         """As wide as its columns, and no wider.
@@ -900,12 +1033,15 @@ class MatrixTable(QWidget):
         self.empty_note.setVisible(bool(matrix.empty and empty_text))
         self.table.setVisible(True)
         if matrix.empty:
+            # Five columns, and the portrait column down the side makes
+            # the sixth section.
             # The grid stays on screen as an outline. A card that vanishes
             # until the draft fills in leaves the tab collapsing and
             # re-expanding under the reader; the shape of the answer is
             # itself information, and it is where the answer will appear.
-            self._show_outline()
+            self._show_outline(BLANK_SIDE)
             return
+        self._outline = False
         self.table.setStyleSheet("")            # back to the app's own
         self.table.setItemDelegate(self._delta_delegate())
 
@@ -918,6 +1054,8 @@ class MatrixTable(QWidget):
         self.table.setColumnCount(len(matrix.cols) + extra)
         self._set_headers(matrix, margins)
 
+        row_ids = [i for i, _n in matrix.rows]
+        col_ids = [i for i, _n in matrix.cols]
         for row, line in enumerate(matrix.cells):
             for col, value in enumerate(line):
                 if value is None:
@@ -925,6 +1063,14 @@ class MatrixTable(QWidget):
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                 else:
                     item = delta_item(value)
+                # WHICH TWO HEROES THIS IS. Neither is drawn on a counters
+                # cell — the faces are out on the axes — so without this
+                # the cell cannot say whether it is one of the ones the
+                # clicked hero asked for.
+                if row < len(row_ids):
+                    item.setData(CELL_ROW_HERO, row_ids[row])
+                if col < len(col_ids):
+                    item.setData(CELL_COL_HERO, col_ids[col])
                 self.table.setItem(row, col, item)
         if margins:
             last_col, last_row = len(matrix.cols), len(matrix.rows)
@@ -993,8 +1139,13 @@ class MatrixTable(QWidget):
         # that the filled one does not have.
         self.table.verticalHeader().setVisible(False)
         if grid.empty:
-            self._show_outline()
+            # SIX COLUMNS, because that is what the filled card is: five a
+            # side plus the empty one walking down the diagonal between
+            # the two triangles. There is no side header here to make up
+            # the difference the way counters has.
+            self._show_outline(BLANK_SIDE + ENEMY_SHIFT)
             return
+        self._outline = False
         columns = grid.columns
         rows = len(grid.cells)
         self.table.setColumnCount(columns)
@@ -1010,6 +1161,7 @@ class MatrixTable(QWidget):
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if cell is not None:
                     item.setData(PAIR_HERO, cell.hero_id)
+                    item.setData(PAIR_OTHER, cell.other_id)
                     item.setData(PAIR_VALUE, cell.delta)
                     item.setData(PAIR_SIDE, cell.side)
                     item.setData(SORT_ROLE, cell.delta)
@@ -1020,6 +1172,9 @@ class MatrixTable(QWidget):
             item = QTableWidgetItem()
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setData(PAIR_HERO, hero_id)
+            # An axis face is its own pair, so it stays lit when it is the
+            # hero being read and goes quiet when another one is.
+            item.setData(PAIR_OTHER, hero_id)
             item.setData(PAIR_HEADER, True)
             # IN the triangle, not beside it: the bottom row is Radiant's
             # own axis and it sits against Radiant's triangle, so giving it
@@ -1103,10 +1258,25 @@ class MatrixTable(QWidget):
             head.set_heroes(by_index)
             head.set_values({})
 
-    def _show_outline(self) -> None:
-        """Five by five of nothing — the shape the grid will have."""
+    def _show_outline(self, columns: int = BLANK_SIDE) -> None:
+        """The shape the grid will have — and it has to be the RIGHT shape.
+
+        `columns` is how many the FILLED grid will be, which is not the
+        same for the two cards and cannot be guessed from in here. Both
+        are SIX SECTIONS across once they hold something: counters is
+        five columns plus the portrait column down its side, synergy is
+        five plus the gap between its triangles and has no side column at
+        all. Drawn five wide for both, the empty synergy card was a
+        section narrower than the one that replaced it — and worse, it
+        was a section narrower than it should have been while EMPTY, so
+        `sections()` reported 5, `_portrait_room` divided the card into
+        five, and the placeholder portraits came out visibly bigger than
+        the real ones: "the placeholder empty table size was not accurate
+        to what is shown once the heroes are selected".
+        """
+        self._outline = True
         self.table.setRowCount(BLANK_SIDE)
-        self.table.setColumnCount(BLANK_SIDE)
+        self.table.setColumnCount(columns)
         for header, setter in ((self.table.horizontalHeader(),
                                 self.table.setHorizontalHeaderItem),
                                (self.table.verticalHeader(),
@@ -1114,21 +1284,37 @@ class MatrixTable(QWidget):
             if isinstance(header, PortraitHeader):
                 header.set_heroes({})
                 header.set_values({})
-            for index in range(BLANK_SIDE):
+            for index in range(columns):
                 setter(index, QTableWidgetItem(""))
         self._apply_team_boxes()
         for row in range(BLANK_SIDE):
-            for col in range(BLANK_SIDE):
+            for col in range(columns):
                 cell = QTableWidgetItem("")
                 cell.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.table.setItem(row, col, cell)
         # Grid lines are on everywhere now (the numbers alone were not
         # enough structure to keep a column straight across five), so
         # nothing extra is needed here — an empty grid draws as a grid.
+        self._size_blank()
+
+    def _size_blank(self) -> None:
+        """Give the outline the cell a FILLED grid would have.
+
+        Split out of `_show_outline` because `_apply_icon_box` runs AFTER
+        it — from the window's resize path — and was undoing all of it:
+        an empty grid has no heroes in its headers, that function reads
+        "no heroes" as "the portraits are not downloaded", and the names
+        fallback resizes every row to the height of a line of digits. So
+        the outline was drawn at the right size and then collapsed to 30px
+        rows a moment later, which is the other half of "the placeholder
+        empty table size was not accurate to what is shown once the heroes
+        are selected".
+        """
+        columns = self.table.columnCount()
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
         width, height = self._blank_metrics()
-        for col in range(BLANK_SIDE):
+        for col in range(columns):
             if width is None:
                 head.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
             else:
@@ -1139,9 +1325,14 @@ class MatrixTable(QWidget):
         side = self.table.verticalHeader()
         side.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         side.setDefaultSectionSize(height)
-        for row in range(BLANK_SIDE):
+        for row in range(self.table.rowCount()):
             self.table.setRowHeight(row, height)
         if width is not None:
+            # The header strips are part of the shape too: a filled grid
+            # gives its top header the portrait's height and its side
+            # header the portrait's width, so an outline that leaves them
+            # at the text default is a card that jumps twice.
+            head.setFixedHeight(height)
             if isinstance(side, PortraitHeader) and not side.isHidden():
                 side.setFixedWidth(width)
             self._fit_width()
@@ -1162,7 +1353,12 @@ class MatrixTable(QWidget):
         if not getattr(self, "_icon_headers", False):
             return None, BLANK_ROW
         digits = self.table.fontMetrics().horizontalAdvance(WIDEST_CELL) + 10
-        size = max(min(self._portrait_want(), self._portrait_room()),
+        # THE SAME `size` LINE `_apply_icon_box` USES, floor included.
+        # Two spellings of one measurement is one of them drifting, and
+        # the whole point of the outline is that it is the shape the
+        # answer will have.
+        size = max(getattr(self, "_icon_size", HEADER_ICON),
+                   min(self._portrait_want(), self._portrait_room()),
                    digits - 2 * CELL_PAD)
         return size + 2 * CELL_PAD, round(size * 9 / 16) + 2 * CELL_PAD
 
@@ -1265,6 +1461,18 @@ class MatrixTable(QWidget):
         self._apply_team_boxes()
         if not heroes:
             self._icon_box = None
+            # TWO DIFFERENT STATES WORE ONE TEST. "No heroes in the
+            # headers" is true both when the portraits have not been
+            # downloaded — where falling back to names is right, and a
+            # 68px row header elides "Tidehunter" for nothing — and when
+            # the grid is simply EMPTY and drawing its outline, where the
+            # whole job is to stand at the size the filled grid will be.
+            # Read as the first, the second collapsed every placeholder
+            # row to the height of a line of digits.
+            from .portraits import any_downloaded
+            if getattr(self, "_outline", False) and any_downloaded():
+                self._size_blank()
+                return
             across.setFixedHeight(floor + 4)
             down.setFixedWidth(ROW_HEADER)
             down.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)

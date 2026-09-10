@@ -164,3 +164,55 @@ def test_without_a_portrait_the_name_comes_back(qapp, monkeypatch):
         strip.QPainter = keep
     assert "Anti-Mage" in drawn
     assert "Anti-Mage" in tile.toolTip()
+
+
+def test_a_focused_suggestion_wears_the_same_ring_as_a_pick(qapp):
+    """One selection, one ring. A suggestion and a pick can each be the
+    hero the board is measured against, and two implementations of "draw
+    the gold box" is two rings that drift apart."""
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import tilekit
+    tile = SuggestTile(1, "Anti-Mage", 0.05)
+    tile.resize(120, 68)
+
+    def gold() -> int:
+        image = tile.grab().toImage()
+        want = QColor(tilekit.FOCUS_COLOUR)
+        return sum(QColor(image.pixel(x, y)) == want
+                   for y in range(image.height())
+                   for x in range(image.width()))
+
+    assert gold() == 0
+    tile.set_focused(True)
+    assert gold() > 0
+
+
+def test_a_suggestion_shows_a_relation_instead_of_its_fit(qapp):
+    """Instead, not beside: two numbers in one corner is two numbers to
+    tell apart at a glance, which is what both grids dropped their totals
+    for."""
+    tile = SuggestTile(1, "Anti-Mage", 0.05)
+    assert tile.delta_text() == ""
+    tile.show_delta(0.052, "with")
+    assert tile.delta_text() == "with +5.2"
+    tile.show_delta(-0.018, "vs")
+    assert tile.delta_text() == "vs -1.8"
+    tile.clear_delta()
+    assert tile.delta_text() == ""
+
+
+def test_the_row_hands_the_numbers_round_and_takes_them_back(qapp):
+    """And a candidate the dataset has nothing to say about keeps its own
+    fit rather than going blank — a hole in the strip reads as the tile
+    being broken."""
+    row = SuggestRow()
+    row.show_heroes([(1, "Anti-Mage", 0.05, ""), (2, "Axe", 0.04, ""),
+                     (3, "Bane", 0.03, "")])
+    assert row.hero_ids == [1, 2, 3]
+    row.show_deltas({1: (0.02, "with"), 3: (-0.01, "vs")})
+    assert [t.delta_text() for t in row.tiles] == ["with +2.0", "", "vs -1.0"]
+    row.set_focus(2)
+    assert [t.focused for t in row.tiles] == [False, True, False]
+    row.clear_deltas()
+    assert not any(t.delta_text() for t in row.tiles)
+    assert not any(t.focused for t in row.tiles)
