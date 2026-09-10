@@ -453,6 +453,19 @@ credentials, and put the account at risk. Do not go there.
   `providers.NOT_A_FAULT`). Dota not being open is silence too, and so is
   a match not having started; a banner that is up all evening is one
   nobody reads on the night it matters.
+  **AND THE CROP BOXES ARE THE SECOND RUNG** (`Snapshot.
+  crop_boxes_wrong`, `_open_calibration`), because between them these two
+  are the ways the app goes blind for a whole draft. A real ranked game
+  read **two of the ten slots** for eighty seconds — the picks trickled
+  in from the screen late and one was never read at all — and the app
+  said so ONLY in the recording's notes, which is after the game is over.
+  It is not a guess about recognition being unlucky, which is why it can
+  be a banner at all: at strategy time the GAME names the ten heroes that
+  are on the screen, `lineup.read_placed` scores the calibrated boxes
+  against exactly those ten, and boxes that match none of them are not on
+  portraits. The button goes to Settings > Debug > Live, where they are
+  drawn on the picture and can be dragged — six clicks deep from a
+  banner that exists to send you there.
 
   **"No data from Dota" names the ONE broken link** (`gsi/diagnose.
   run_checks`, `GsiProvider._why_silent`). GSI has several independent
@@ -1651,6 +1664,13 @@ credentials, and put the account at risk. Do not go there.
   of Travel. A file that was never written is fixed by re-running the
   download, which skips what is already there and so retries exactly the
   ones that failed.
+  **AND THE TILE ITSELF NOW SAYS WHICH CAUSE IT IS** (`item_icons.
+  why_missing`, in the tooltip). The tool that tells them apart lost its
+  menu item on the grounds that "the strip already draws the name and the
+  download reports what failed" — and neither of those answers "Eul's
+  still doesn't have artwork" for somebody looking at the tile. The
+  answer is four lines of set arithmetic against what is on disk, so it
+  goes where that person already is.
   Role and own-hero filtering still apply once known — they
   just no longer gate the panel.
 - **DEMO fills the board in one press, and the two "Simulate a draft" menu
