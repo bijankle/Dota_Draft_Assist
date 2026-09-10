@@ -102,17 +102,38 @@ def test_a_match_with_no_hero_is_skipped():
     assert sorted(marked.heroes) == [1]
 
 
-def test_the_reason_names_the_bars_it_cleared():
-    """"Top 0% by picks" is what the most-played hero's OWN percentile
-    reads as — wrong-sounding, and a number nobody set. The floors are
-    the two the user typed."""
+def test_each_figure_carries_its_own_standing():
+    """"After 17 games say (top XXX%), and after the win rate say (top
+    XXX%)." It used to name the two FLOORS and say the hero was inside
+    them, which is what the star already says."""
     marked = stars.measure(run(TEN), 70, 50)
-    why = marked.why(1)
-    assert "40 games" in why and "65%" in why
-    assert "top 30% by picks" in why and "top 50% by win rate" in why
+    # Hero 1 is the most played of ten, and its 65% is the fourth best.
+    assert marked.why(1) == "40 games (top 10%) at 65% (top 40%)"
     assert marked.why(4) == "", "an unstarred tile explains nothing"
-    plain = stars.measure(run(TEN), 0, 0).why(1)
-    assert "top 100%" not in plain, "no bar is not a bar of 100%"
+    assert "inside" not in marked.why(3), "the star is that evidence"
+
+
+def test_in_the_top_x_percent_is_not_one_minus_the_percentile():
+    """The top hero of ten has every hero at or below it, so its
+    percentile is 1.0 and the naive complement reads "top 0%" — a claim
+    about nobody. It is in the top ONE of ten."""
+    marked = stars.measure(run(TEN), 0, 0)
+    assert marked.form[1].pick_pct == 1.0
+    assert marked.form[1].pick_top == pytest.approx(0.1)
+    # Third by games is in the top three of ten.
+    assert marked.form[3].pick_top == pytest.approx(0.3)
+    # And the least played is in the top all-of-them, never over it.
+    assert marked.form[10].pick_top == pytest.approx(1.0)
+    assert all(0 < row.pick_top <= 1.0 and 0 < row.win_top <= 1.0
+               for row in marked.form.values())
+
+
+def test_tied_heroes_read_the_same_standing():
+    """They share one percentile because the rule treats them as one
+    hero, so the number printed at them has to agree with that."""
+    marked = stars.measure(run({1: (10, 5), 2: (10, 5), 3: (2, 0)}), 0, 0)
+    assert marked.form[1].pick_top == marked.form[2].pick_top
+    assert marked.why(1) == marked.why(2)
 
 
 def test_rank_fraction_runs_one_to_a_fraction():

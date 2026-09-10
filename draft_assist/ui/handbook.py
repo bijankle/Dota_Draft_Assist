@@ -116,7 +116,8 @@ SECTIONS: tuple = (
              "and the two bars it has to clear are yours to set in "
              "Settings \u25b8 General \u2014 top X% by picks and top Y% by "
              "win rate, ranked against the heroes in that run. Hover it "
-             "for the games and the rate behind it."),
+             "for the games and the rate behind it, each with where it "
+             "stands among the heroes you played."),
             ("Items",
              "Hand-authored rules against what the enemy has taken, "
              "ordered by severity. Silence is a real answer — many "

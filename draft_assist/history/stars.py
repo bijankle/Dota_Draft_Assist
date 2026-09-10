@@ -46,8 +46,15 @@ class HeroForm:
     games: int
     wins: int
     rate: float
-    pick_pct: float = 0.0       # 0.0-1.0, its rank among all heroes played
+    # WHERE IT STANDS, and the two are not the same number. `_pct` is
+    # "the fraction of heroes at or below this one", which is what the
+    # star rule compares against a floor — the top hero scores 1.0.
+    # `_top` is "you are in the top this much of them", which is what a
+    # person reads — the top hero of ten is in the top 10%.
+    pick_pct: float = 0.0
     win_pct: float = 0.0
+    pick_top: float = 1.0
+    win_top: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -62,22 +69,24 @@ class Stars:
         return hero_id in self.heroes
 
     def why(self, hero_id) -> str:
-        """The sentence the tile puts in its tooltip. Empty when unstarred
-        — a tooltip explaining why something is NOT marked is noise."""
+        """The line the tile puts in its tooltip. Empty when unstarred —
+        a tooltip explaining why something is NOT marked is noise.
+
+        EACH FIGURE CARRIES ITS OWN STANDING, at the user's request:
+        "after 17 games say (top XXX%), and after the win rate say (top
+        XXX%)". It used to name the two FLOORS instead and say the hero
+        was inside them, which the STAR already says — "having the star
+        is evidence of this already" — so the sentence was spending its
+        words repeating the mark it was attached to. What it could not
+        say before is the one thing a number in brackets is for: how far
+        inside.
+        """
         row = self.form.get(hero_id)
         if row is None or hero_id not in self.heroes:
             return ""
-        # THE BARS IT CLEARED, not its own percentile. "Top 0% by picks"
-        # is what the most-played hero's own figure reads as, which is
-        # both wrong-sounding and a number nobody set; the floors are the
-        # two the user typed, and being inside them is the whole claim.
-        bars = [f"the top {100 - self.pick_floor}% by picks"
-                if self.pick_floor else "",
-                f"the top {100 - self.win_floor}% by win rate"
-                if self.win_floor else ""]
-        said = " and ".join(bar for bar in bars if bar)
-        line = f"{row.games} games at {row.rate * 100:.0f}%"
-        return f"{line}, inside {said}." if said else f"{line}."
+        return (f"{row.games} games (top {round(row.pick_top * 100)}%) "
+                f"at {row.rate * 100:.0f}% "
+                f"(top {round(row.win_top * 100)}%)")
 
 
 def rank_fraction(values: dict) -> dict:
@@ -127,10 +136,19 @@ def measure(matches, pick_floor: int = 0, win_floor: int = 0) -> Stars:
                            for h, (n, w) in played.items()})
 
     form, starred = {}, set()
+    # "IN THE TOP X%" IS NOT ONE MINUS THE PERCENTILE. A hero at the top
+    # of ten has every hero at or below it, so its percentile is 1.0 and
+    # the naive complement reads "top 0%" — a claim about nobody. It is
+    # in the top ONE of ten, so the share is 1/N; the hero ranked third
+    # is in the top 3/10. Adding that one step back is the whole
+    # correction, and ties keep the generous answer they already share.
+    step = 1.0 / len(played)
     for hero_id, (games, wins) in played.items():
         row = HeroForm(hero_id=hero_id, games=games, wins=wins,
                        rate=(wins / games if games else 0.0),
-                       pick_pct=picks[hero_id], win_pct=rates[hero_id])
+                       pick_pct=picks[hero_id], win_pct=rates[hero_id],
+                       pick_top=min(1.0, 1.0 - picks[hero_id] + step),
+                       win_top=min(1.0, 1.0 - rates[hero_id] + step))
         form[hero_id] = row
         # STRICTLY ABOVE THE FLOOR. Standing AT the 70th percentile means
         # 70% of the heroes are at or below you — which puts you at the

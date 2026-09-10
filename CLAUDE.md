@@ -2378,10 +2378,26 @@ credentials, and put the account at risk. Do not go there.
   board is measured against.
   **AND THE REASON IS A TOOLTIP.** The star's job is to be seen without
   being read; a figure beside it would be a third number in a corner
-  that already has the fit in it. `Stars.why` names THE BARS IT CLEARED
-  rather than the hero's own percentile — "top 0% by picks" is what the
-  most-played hero's own figure reads as, which is both wrong-sounding
-  and a number nobody set.
+  that already has the fit in it.
+  **EACH FIGURE CARRIES ITS OWN STANDING IN BRACKETS** (`Stars.why`),
+  at the user's request — "after 17 games say (top XXX%), and after the
+  win rate say (top XXX%)". It used to name the two FLOORS and say the
+  hero was inside them, which is exactly what the STAR says: "having
+  the star is evidence of this already". So the line was spending its
+  words repeating the mark it was attached to, and could not say the
+  one thing brackets are for — HOW FAR inside. "17 games (top 32%) at
+  53% (top 50%)" separates a hero you play constantly and win on
+  averagely from one you rarely pick and almost always win.
+  **AND "IN THE TOP X%" IS NOT ONE MINUS THE PERCENTILE**, which is why
+  the floors were named first. `pick_pct` is "the fraction of heroes at
+  or below this one", so the most played scores 1.0 and the naive
+  complement reads **"top 0%"** — a claim about nobody. It is in the top
+  ONE of however many; the share is `1 - pct + 1/N`, so the best of ten
+  is the top 10% and the third is the top 30%. The two live side by side
+  on `HeroForm` as `_pct` and `_top` because they answer different
+  questions: one is compared against a floor, the other is read by a
+  person. Ties keep the generous answer they already share, so two
+  heroes the rule cannot tell apart print the same number.
 - **A COUNT BOX IS NOT WIDE ENOUGH FOR A SUFFIX IT WAS GIVEN LATER**
   (`chrome.CountBox._fit_width`). `QSpinBox.minimumSizeHint` IS CACHED
   and `setSuffix` does not invalidate it: it answered 75px both before
