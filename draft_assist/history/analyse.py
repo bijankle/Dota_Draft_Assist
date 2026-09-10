@@ -60,9 +60,23 @@ class Bucket:
 
 @dataclass
 class Finding:
+    """One bucket that stood out, said twice and measured once.
+
+    `text` is the sentence the workbook carries. `short` is what the
+    summary cards on the Analysis tab print — "Tuesday win rate 65%" —
+    and `value` is the figure inside it, so the bar drawn beside it can
+    put a marker where this bucket sits among its neighbours without
+    parsing the words back out of a sentence. Both are built HERE, next
+    to the long form: two spellings of one fact assembled in two places
+    is how they come to disagree.
+    """
+
     sigma: float
     key: str
     text: str
+    short: str = ""
+    value: float = 0.0
+    n: int = 0
 
 
 @dataclass
@@ -97,6 +111,16 @@ class ItemGroup:
     hidden: int
 
 
+# THE NAMES ARE SHORT AND OF A LENGTH, at the user's request: "make them
+# concise as possible generally, and similar character length so it looks
+# proportionally right". They were 11 to 30 characters, and the summary
+# lines now print the block's name in a column of its own beside every
+# finding — so "Hero damage per minute by hero" set that column's width
+# for the whole card while "Day of week" left two thirds of it blank.
+# They are 10 to 15 now. This ONE list is what the sidebar lists, what
+# each card is headed, and what that column prints, so the three cannot
+# disagree; `DESCS` still carries the full explanation, as the tick box's
+# tooltip and in the workbook, so nothing was lost by shortening them.
 ANALYSES = [
     ("hero", "Hero win rates", True,
      "Win rate by hero played. Heroes under {min} games are muted and "
@@ -108,26 +132,26 @@ ANALYSES = [
      "Three hour bands on this machine's local clock, from each match's "
      "start time."),
     ("dow", "Day of week", True, "Local calendar day of the match start."),
-    ("session", "Position within session", True,
+    ("session", "Game in session", True,
      "A gap of more than three hours between the end of one match and the "
      "start of the next opens a new session."),
-    ("tilt", "Previous game result", True,
+    ("tilt", "Previous result", True,
      "The tilt check. The previous result only counts inside the same "
      "session, so a loss you slept on is not charged against the next "
      "morning."),
-    ("side", "Radiant against Dire", True,
+    ("side", "Radiant or Dire", True,
      "Side is assigned by the matchmaker, so a real deviation here is "
      "either map preference or a very lucky sample."),
-    ("party", "Solo against stack", True,
+    ("party", "Party size", True,
      "Party size as reported. OpenDota leaves this null on many matches, so "
      "those sit in an explicit unknown bucket and never produce a finding."),
-    ("herodmg", "Hero damage per minute by hero", True,
+    ("herodmg", "Hero damage", True,
      "Mean hero damage per minute on each hero, against your own overall "
      "rate."),
-    ("herokda", "Weighted KDA by hero", True,
+    ("herokda", "Weighted KDA", True,
      "Kills plus three tenths of assists over deaths, averaged across your "
      "games on each hero."),
-    ("items", "Items and win rate by hero", True,
+    ("items", "Items by hero", True,
      "One hero at a time, chosen on the card: the win rate in games that "
      "ended with each item in your inventory, against that hero's own "
      "win rate."),
@@ -238,18 +262,92 @@ def cat_findings(rows, block_id: str, no_finding=()) -> list:
     return [Finding(r.sigma, r.key,
                     ("More likely to win " if r.sigma > 0
                      else "Less likely to win ")
-                    + say(r.key) + f": {_pct(r.rate)} from {r.n} games")
+                    + say(r.key) + f": {_pct(r.rate)} from {r.n} games",
+                    short=f"{r.key} win rate {_pct(r.rate)}",
+                    value=r.rate, n=r.n)
             for r in hits]
 
 
-def metric_findings(rows, datum, more, less, dp) -> list:
+def metric_findings(rows, datum, more, less, dp, short="") -> list:
     hits = [r for r in rows if r.eligible and abs(r.sigma) >= SIGMA_CAT]
     hits.sort(key=lambda r: -abs(r.sigma))
     return [Finding(r.sigma, r.key,
                     f"{more if r.sigma > 0 else less} on {r.key}: "
                     f"{r.mean:.{dp}f} against your usual {datum:.{dp}f}, "
-                    f"from {r.n} games")
+                    f"from {r.n} games",
+                    short=f"{r.key} {short} {r.mean:.{dp}f}".replace("  ", " "),
+                    value=r.mean, n=r.n)
             for r in hits]
+
+
+@dataclass
+class Spread:
+    """Where one bucket sits among the others, on one scale.
+
+    The summary lines print a bar: the whole range this block's buckets
+    covered, a tick at your own usual figure, and a marker for the bucket
+    the finding is about. `low`/`high`/`datum`/`value` are all in the
+    block's own units, so the widget drawing it needs to know nothing
+    about win rates or damage.
+    """
+
+    low: float
+    high: float
+    datum: float
+    value: float
+
+    def at(self, figure: float) -> float:
+        """`figure` as a fraction from 0 (low) to 1 (high)."""
+        span = self.high - self.low
+        return 0.5 if span <= 0 else (figure - self.low) / span
+
+
+def format_figure(block: "Block", value: float) -> str:
+    """One figure, written the way its own block writes them.
+
+    A win-rate block prints "65%" and a contribution block prints the
+    mean at its own precision. The bar's end labels go through this so
+    they cannot disagree with the finding's own text about what a number
+    in this block looks like.
+    """
+    if block.kind == "cat":
+        return _pct(value)
+    return f"{value:.{block.dp}f}"
+
+
+def spread_for(block: "Block", finding: "Finding",
+               baseline: float) -> "Spread | None":
+    """The bar's numbers, or None when there is no range to draw.
+
+    **ONLY BUCKETS WITH ENOUGH GAMES SET THE BOUNDS**, at the user's
+    request — `MIN_BUCKET`, the same floor that decides whether a bucket
+    may produce a finding at all. A two-game bucket at 100% would stretch
+    every bar in the card to its edge and squash all the real ones into
+    the middle, which is the same reason those rows are muted and sink to
+    the bottom of the tables.
+
+    **AND THE SCALE CONTAINS EVERYTHING IT DRAWS.** Your usual figure can
+    sit outside the eligible buckets' range — the thin buckets left out
+    above still counted towards it — and a tick painted off the end of
+    its own bar is worse than a slightly wider bar. So the bounds are
+    stretched to hold the datum when they have to.
+
+    None when fewer than two eligible buckets survive, or when they all
+    landed on one figure: a bar with no width says "this bucket is at the
+    extreme" about a block that has no extremes, which is a lie the
+    reader cannot see through.
+    """
+    figure = (lambda row: row.rate) if block.kind == "cat" else (
+        lambda row: row.mean)
+    datum = baseline if block.kind == "cat" else (block.datum or 0.0)
+    values = [figure(row) for row in block.rows if row.eligible]
+    if len(values) < 2:
+        return None
+    low, high = min(values), max(values)
+    if high - low <= 0:
+        return None
+    return Spread(low=min(low, datum), high=max(high, datum),
+                  datum=datum, value=finding.value)
 
 
 def item_analysis(matches, item_names: dict) -> Block:
@@ -301,7 +399,9 @@ def item_analysis(matches, item_names: dict) -> Block:
                 row.sigma, row.key,
                 ("Better" if row.sigma > 0 else "Worse")
                 + f" with {row.key} on {hero}: {_pct(row.rate)} against "
-                f"{_pct(baseline)} on that hero, from {row.n} games"))
+                f"{_pct(baseline)} on that hero, from {row.n} games",
+                short=f"{row.key} on {hero} win rate {_pct(row.rate)}",
+                value=row.rate, n=row.n))
         groups.append(ItemGroup(hero=hero, games=len(games),
                                 measured=len(measured), baseline=baseline,
                                 rows=rows, shown=shown,
@@ -348,7 +448,10 @@ SPLITS = {
 
 METRICS = {
     "herodmg": dict(
-        field="damage_per_min", unit="hero damage per minute", dp=0,
+        field="damage_per_min", unit="hero damage per minute",
+        # SHORT enough for a summary line, where the block's own name is
+        # already printed in the column to the left of it.
+        short="damage/min", dp=0,
         more="More damage", less="Less damage",
         caveat="This ranks heroes, not your play. Damage per minute is set "
                "mostly by what a hero does: a mid laner out-damages a hard "
@@ -356,7 +459,7 @@ METRICS = {
                "buildings. It is worth reading when a hero sits far from "
                "where its role would put it."),
     "herokda": dict(
-        field="kda", unit="weighted KDA", dp=2,
+        field="kda", unit="weighted KDA", short="KDA", dp=2,
         more="Better trades", less="Worse trades",
         caveat="Deaths are floored at one, so a deathless game reads as its "
                "own kill contribution rather than infinity, which flatters "
@@ -412,7 +515,8 @@ def build_blocks(matches, baseline: float, picked: dict,
             datum=datum, unit=spec["unit"], dp=spec["dp"],
             caveat=spec["caveat"], covered=covered, total=total,
             findings=([] if datum is None else metric_findings(
-                rows, datum, spec["more"], spec["less"], spec["dp"]))))
+                rows, datum, spec["more"], spec["less"], spec["dp"],
+                spec["short"]))))
 
     for block_id in BLOCK_ORDER:
         if not picked.get(block_id):

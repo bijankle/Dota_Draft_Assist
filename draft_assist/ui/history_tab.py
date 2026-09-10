@@ -22,7 +22,8 @@ from datetime import datetime
 
 from PyQt6.QtCore import QPoint, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout,
+from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
+                             QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QPushButton,
                              QScrollArea, QSizePolicy, QStyledItemDelegate,
                              QTableWidget, QTableWidgetItem, QVBoxLayout,
@@ -33,6 +34,7 @@ from . import theme
 from .chrome import CountBox, TickBox, card
 from .flowlayout import FlowLayout
 from .section_bar import LOOK_AHEAD, SectionBar, edge
+from .spread_bar import SpreadBar
 from ..history import analyse, cache, opendota, store, workbook
 from ..history.report import CAPS, WINDOWS, Options
 from ..history.runner import Refused, run as run_analysis
@@ -1042,25 +1044,85 @@ class HistoryTab(QWidget):
         # structural — a mid laner out-damages a hard support by
         # construction — so one merged ranking by sigma would be nothing
         # but damage rows with every behavioural finding buried under it.
+        names: list = []
         winning = self._findings_card(
             "What goes with winning", rates,
             "Nothing clears the significance floor. On this sample the "
-            "variation between your buckets is noise.")
+            "variation between your buckets is noise.",
+            names=names, baseline=report.baseline)
         self.results.addWidget(winning)
         self._anchors["winning"] = winning
         if contributions:
             contrib = self._findings_card(
-                "What you do on each hero", contributions, "", metric=True)
+                "What you do on each hero", contributions, "", metric=True,
+                names=names, baseline=report.baseline)
             self.results.addWidget(contrib)
             self._anchors["contrib"] = contrib
+        # After BOTH cards exist, so the two agree with each other.
+        self._align_names(names)
         for block in report.blocks:
             block_card = self._block_card(block, report)
             self.results.addWidget(block_card)
             self._anchors[block.id] = block_card
         self._sync_sections()
 
+    @staticmethod
+    def _align_names(labels: list) -> None:
+        """One width for the block-name column, across BOTH summary cards.
+
+        At the user's request: "where the result starts — just after the
+        section ends — is all aligned for each metric". A grid already
+        aligns its own rows; what it cannot do is agree with the OTHER
+        card's grid, and the two sit one above the other, so left alone
+        they reproduce exactly the raggedness being complained about one
+        level up.
+
+        MEASURED OFF THE LABELS THEMSELVES, once they exist. Two earlier
+        attempts measured something else and both were wrong: a bare
+        `QFontMetrics(self.font())` answered 200px where the label wanted
+        245, because the app's font comes from the stylesheet, and it
+        sliced the longest block name off mid-word at the rule; and a
+        throwaway QLabel created to measure with was still a CHILD of the
+        tab after `deleteLater`, drawing at (0, 0) over the top of the
+        sidebar until the event loop got round to it. The labels being
+        laid out are the only thing that knows its own width for certain.
+        """
+        if not labels:
+            return
+        widest = max(label.sizeHint().width() for label in labels)
+        for label in labels:
+            label.setFixedWidth(widest)
+
     def _findings_card(self, title: str, pairs: list, empty: str,
-                       metric: bool = False) -> QFrame:
+                       metric: bool = False, names: list | None = None,
+                       baseline: float = 0.0) -> QFrame:
+        """The headline findings, three aligned columns and no sentences.
+
+        At the user's request: "I want these summaries to be much shorter
+        form text — the title of the summary on the left, then a real
+        short form 'Tuesday win rate = XXX%', with a horizontal bar with
+        a symbol showing where this data sits relative to the whole data
+        set." Seven full sentences is a paragraph, and a paragraph is the
+        shape this tab has been trimmed out of everywhere else.
+
+        A GRID rather than a row of layouts, so the block names, the
+        figures and the bars each line up down the card. Bars that start
+        at a different x on every row cannot be compared at a glance,
+        which is the only thing they are for.
+
+        AND THE NAME COLUMN IS ONE WIDTH ACROSS BOTH CARDS
+        (`_name_column`), at the user's request: "where the result starts
+        — just after the section ends — is all aligned for each metric".
+        A grid already aligns its own rows; what it cannot do is agree
+        with the OTHER card's grid, and the two sit one above the other,
+        so left to themselves they would reproduce exactly the
+        raggedness being complained about one level up.
+
+        THE ARROW IS GONE. It carried the direction, which the marker now
+        carries twice over — by where it sits against your usual figure
+        and by its colour — so keeping it would be saying one thing three
+        times in a row built for shortness.
+        """
         frame, lay = card(title)
         if not pairs:
             note = QLabel(empty)
@@ -1068,32 +1130,66 @@ class HistoryTab(QWidget):
             note.setProperty("dim", True)
             lay.addWidget(note)
             return frame
-        for block, finding in pairs:
-            row = QHBoxLayout()
-            row.setSpacing(10)
-            # NO SIGMA ON SCREEN, at the user's request: "it means nothing
-            # to people". A count of standard errors is what DECIDES which
-            # findings appear and in what order — that is what it is for —
-            # but as a figure beside a sentence it is a number the reader
-            # cannot act on, in the column their eye lands on first.
-            # An ARROW, not a coloured sentence. Colouring the words was
-            # the first try and it made a card of five findings a wall of
-            # red text, which reads as five errors rather than as five
-            # measurements. The direction is the only part of the sigma
-            # worth showing, and it belongs in the narrow column the
-            # figure used to sit in.
-            mark = QLabel("▲" if finding.sigma > 0 else "▼")
-            mark.setMinimumWidth(20)
-            mark.setStyleSheet(
-                f"color: {theme.GOOD if finding.sigma > 0 else theme.BAD};")
-            row.addWidget(mark)
-            text = QLabel(finding.text)
-            text.setWordWrap(True)
-            row.addWidget(text, 1)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(4)
+        grid.setContentsMargins(0, 0, 0, 0)
+        for line, (block, finding) in enumerate(pairs):
             name = QLabel(block.name)
             name.setProperty("dim", True)
-            row.addWidget(name)
-            lay.addLayout(row)
+            # NOT WRAPPED: a wrapped label negotiates its width with the
+            # layout, and a column whose width is negotiated is a column
+            # that lands somewhere different on each card. `_align_names`
+            # gives every one of these the same fixed width afterwards.
+            if names is not None:
+                names.append(name)
+            grid.addWidget(name, line, 0,
+                           Qt.AlignmentFlag.AlignTop
+                           | Qt.AlignmentFlag.AlignLeft)
+
+            # THE COUNT STAYS AND THE WORD GOES, at the user's request.
+            # A rate from eight games and one from a hundred and fifty
+            # look identical without it, and never letting a figure stand
+            # next to an invisible sample size is what this whole tab is
+            # built on.
+            # NOT WRAPPED EITHER. The whole point of the short form is
+            # that it fits on one line; wrapped, the rows came out
+            # different heights and the bars beside them stopped sitting
+            # on one grid.
+            text = QLabel(f"{finding.short}  ·  {finding.n}")
+            grid.addWidget(text, line, 2)
+
+            bar = SpreadBar()
+            # THE BASELINE COMES FROM THE REPORT BEING DRAWN, never from
+            # `self.report`. It read the latter first, and on a tab told
+            # to `render` a report it had not also been given (which is
+            # every direct call, and every test) that is None — so the
+            # datum arrived as 0.0 and dragged the bottom of every bar
+            # down to 0%, since the scale is stretched to contain the
+            # datum. Seven bars all labelled "0%" was the tell. A method
+            # drawing a report must use the report it was handed.
+            spread = analyse.spread_for(block, finding, baseline)
+            if spread is not None:
+                bar.set_spread(
+                    spread, finding.sigma > 0,
+                    analyse.format_figure(block, spread.low),
+                    analyse.format_figure(block, spread.high),
+                    analyse.format_figure(block, spread.datum))
+            grid.addWidget(bar, line, 3)
+        # A RULE DOWN THE WHOLE CARD, at the user's request — "maybe even
+        # have a vertical line that runs down in between section and
+        # result so it's nice and tidy". One widget spanning every row
+        # rather than one per line: a stack of short rules with the row
+        # spacing showing between them is a dashed line, not a rule.
+        rule = edge()
+        rule.setSizePolicy(QSizePolicy.Policy.Fixed,
+                           QSizePolicy.Policy.Expanding)
+        grid.addWidget(rule, 0, 1, len(pairs), 1)
+        # The bar takes the slack: the two text columns are as wide as
+        # their own longest line and no wider.
+        grid.setColumnStretch(3, 1)
+        lay.addLayout(grid)
         return frame
 
     def _table(self, ident, headers, rows, figure, scale, no_finding,

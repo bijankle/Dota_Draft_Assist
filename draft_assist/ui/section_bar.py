@@ -189,7 +189,11 @@ class SectionBar(QScrollArea):
 
 
 def edge() -> QWidget:
-    """The rule between the sidebar and the page it maps.
+    """A one-pixel vertical rule.
+
+    Used twice: between the sidebar and the page it maps, and between the
+    block name and the figure on every summary line. ONE implementation,
+    because two would be two chances to draw a different grey.
 
     A WIDGET OF ITS OWN, not a `border-right` on the SectionBar. This is
     a QScrollArea with `NoFrame`, so its frame width is nought and a

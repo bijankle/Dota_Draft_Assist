@@ -311,10 +311,26 @@ def _report(blocks):
 
 
 def _block(kind, sigmas, ident="b"):
-    from draft_assist.history.analyse import Block, Finding
-    return Block(id=ident, name=ident, desc="", kind=kind,
-                 findings=[Finding(sigma=s, key=f"{ident}{i}", text="")
-                           for i, s in enumerate(sigmas)])
+    """A block with real BUCKETS behind its findings.
+
+    The summary draws a bar showing where each finding sits in its
+    block's range, and a block with no rows has no range — so a fixture
+    without them silently exercises the "nothing to draw" path instead of
+    the one under test.
+    """
+    from draft_assist.history.analyse import Block, Bucket, Finding
+    rows = [Bucket(key=f"{ident}{i}", n=40, rate=rate, mean=rate * 100,
+                   sigma=0.0, eligible=True)
+            for i, rate in enumerate((0.40, 0.50, 0.60, 0.70))]
+    findings = []
+    for i, s in enumerate(sigmas):
+        rate = 0.70 if s > 0 else 0.40
+        findings.append(Finding(sigma=s, key=f"{ident}{i}", text="",
+                                short=f"{ident}{i} win rate",
+                                value=rate if kind == "cat" else rate * 100,
+                                n=40))
+    return Block(id=ident, name=ident, desc="", kind=kind, rows=rows,
+                 datum=50.0, findings=findings)
 
 
 def test_item_findings_stay_out_of_the_summary(qapp):
@@ -372,21 +388,33 @@ def test_the_sigma_figure_is_never_drawn(qapp):
     A count of standard errors is what DECIDES which findings appear and
     in what order, and as a figure beside a sentence it is a number the
     reader cannot act on sitting in the column their eye lands on first.
-    What it was carrying that does read is the DIRECTION, and that is on
-    the words now, in colour.
+    What it was carrying that does read is the DIRECTION — and that is on
+    the BAR now rather than on an arrow, said twice over: by where the
+    marker sits against your usual figure, and by its colour.
     """
     from draft_assist.ui import theme
+    from draft_assist.ui.spread_bar import SpreadBar
 
     tab = HistoryTab()
     report = _report([_block("cat", [4.0, -3.0], "split")])
     tab.render(report)
     labels = [w.text() for w in tab.results.parentWidget().findChildren(QLabel)]
-    assert not any("σ" in text for text in labels), \
-        [t for t in labels if "σ" in t]
-    colours = [w.styleSheet() for w in
-               tab.results.parentWidget().findChildren(QLabel)]
-    assert any(theme.GOOD in css for css in colours), "no direction shown"
-    assert any(theme.BAD in css for css in colours)
+    assert not any("\u03c3" in text for text in labels), \
+        [t for t in labels if "\u03c3" in t]
+
+    bars = tab.results.parentWidget().findChildren(SpreadBar)
+    assert len(bars) == 2, "every finding gets a bar"
+    assert [bar.positive for bar in bars] == [True, False]
+    # CHECKED AGAINST THE PIXELS, because the marker is painted: a
+    # `positive` flag that never reaches the screen would pass a test
+    # about the flag and show the reader nothing.
+    for bar, colour in zip(bars, (theme.GOOD, theme.BAD)):
+        bar.resize(240, bar.height())
+        image = bar.grab().toImage()
+        found = {image.pixelColor(x, y).name()
+                 for x in range(image.width())
+                 for y in range(image.height())}
+        assert colour in found, f"the marker never drew in {colour}"
     tab.deleteLater()
 
 
