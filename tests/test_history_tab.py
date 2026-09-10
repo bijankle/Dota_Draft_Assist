@@ -780,3 +780,84 @@ def test_stepping_the_count_keeps_the_page_where_it_was(qapp):
                     lambda: table.set_view(top=2))
     assert where() == before, "the control moved under the cursor"
     tab.deleteLater()
+
+
+# ---- the page scrolls, never a table inside it ---------------------------
+
+def test_no_table_scrolls_inside_itself(qapp):
+    """"There is the slightest little scroll happening" inside the section
+    tables. Every one is sized to hold all of its rows, so anything left
+    to scroll is the fit being a few pixels out — and with both scrollbars
+    off that is invisible except as a page that will not move."""
+    tab = HistoryTab()
+    tab.resize(1200, 900)
+    tab.show()
+    tab.render(a_report())
+    for _ in range(4):
+        qapp.processEvents()
+    tables = tab.findChildren(BucketTable)
+    assert tables, "no tables were drawn at all"
+    for table in tables:
+        assert table.verticalScrollBar().maximum() == 0, \
+            f"a table can still scroll by {table.verticalScrollBar().maximum()}"
+    tab.close()
+
+
+def test_the_wheel_over_a_table_belongs_to_the_page(qapp):
+    """The half of that fix which cannot be a pixel out.
+
+    A table as tall as every row it holds has nothing of its own to
+    scroll, so an ignored wheel event goes to the scroll area under it.
+    """
+    from PyQt6.QtCore import QPoint, QPointF, Qt
+    from PyQt6.QtGui import QWheelEvent
+    tab = HistoryTab()
+    tab.resize(1200, 900)
+    tab.show()
+    tab.render(a_report())
+    for _ in range(4):
+        qapp.processEvents()
+    table = tab.findChildren(BucketTable)[0]
+    event = QWheelEvent(
+        QPointF(10, 10), QPointF(table.mapToGlobal(QPoint(10, 10))),
+        QPoint(0, -40), QPoint(0, -120), Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
+    table.wheelEvent(event)
+    assert not event.isAccepted(), "the table swallowed the wheel"
+    tab.close()
+
+
+def test_the_wheel_never_changes_a_control_it_rolls_over(qapp):
+    """"I keep accidentally scrolling and changing them by accident."
+
+    Qt steps a dropdown and a spin box on every wheel notch, which makes
+    each one a trap in a page that scrolls. Click, scroll, click: the
+    wheel is the page's.
+    """
+    from PyQt6.QtCore import QPoint, QPointF, Qt
+    from PyQt6.QtGui import QWheelEvent
+    from draft_assist.ui.chrome import CountBox, Dropdown
+
+    tab = HistoryTab()
+    tab.resize(1200, 900)
+    tab.show()
+    tab.render(a_report())
+    for _ in range(4):
+        qapp.processEvents()
+
+    controls = tab.findChildren(Dropdown) + tab.findChildren(CountBox)
+    assert controls, "no dropdowns or count boxes were built"
+    for control in controls:
+        was = (control.currentIndex() if isinstance(control, Dropdown)
+               else control.value())
+        event = QWheelEvent(
+            QPointF(4, 4), QPointF(control.mapToGlobal(QPoint(4, 4))),
+            QPoint(0, -40), QPoint(0, -120), Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase,
+            False)
+        control.wheelEvent(event)
+        now = (control.currentIndex() if isinstance(control, Dropdown)
+               else control.value())
+        assert now == was, f"{type(control).__name__} changed under the wheel"
+        assert not event.isAccepted(), "the page never gets the wheel"
+    tab.close()

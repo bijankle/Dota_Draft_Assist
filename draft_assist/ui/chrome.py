@@ -15,9 +15,9 @@ press, a move, a release.
 from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
                           Qt, pyqtSignal)
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
-from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QFrame, QHBoxLayout,
-                             QLabel, QMenuBar, QPushButton, QSizeGrip,
-                             QSizePolicy, QSpinBox, QTabBar,
+from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
+                             QHBoxLayout, QLabel, QMenuBar, QPushButton,
+                             QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
                              QTabWidget, QVBoxLayout, QWidget)
 
 from . import appicon, theme
@@ -372,6 +372,25 @@ class RecordButton(QAbstractButton):
         super().leaveEvent(event)
 
 
+class Dropdown(QComboBox):
+    """A dropdown that does NOT change when the wheel rolls over it.
+
+    Qt's default is to step the value on every wheel notch, which makes
+    every dropdown in a scrolling page a trap: the page moves, a control
+    passes under the cursor, and the setting silently changes — "I keep
+    accidentally scrolling and changing them by accident". The value is
+    somebody's deliberate choice and the wheel is almost never how they
+    mean to change it.
+    **CLICK, SCROLL, CLICK**, as the user put it: the wheel is ignored so
+    the page beneath scrolls instead, and the popup list — a separate
+    widget, opened deliberately — still scrolls with the wheel like any
+    other list.
+    """
+
+    def wheelEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        event.ignore()
+
+
 class CountBox(QSpinBox):
     """The "how many to show" control, ON the thing it controls.
 
@@ -385,6 +404,16 @@ class CountBox(QSpinBox):
     # are. Both are drawn, never styled — see the class docstring.
     ARROWS_W = 18
     ARROW_W = 9
+
+    def wheelEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        """The wheel belongs to the page — `Dropdown`'s reason exactly.
+
+        This one sits on the same rows as those dropdowns and steps a
+        number the same way, so scrolling past a card would quietly
+        re-cut its table. The painted arrows and typing are how it is
+        set.
+        """
+        event.ignore()
     ARROW_H = 5
 
     def __init__(self, value: int, low: int, high: int, parent=None):

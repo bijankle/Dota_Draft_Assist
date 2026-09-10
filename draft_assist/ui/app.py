@@ -37,7 +37,7 @@ from pathlib import Path
 from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QSize, QT_VERSION_STR,
                           Qt, QTimer)
 from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox,
+from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QDialog, QFrame,
                              QHBoxLayout, QLabel,
                              QFileDialog,
@@ -71,7 +71,7 @@ from . import reasons
 from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
-from .chrome import ResizeGrip, TitleBar, card
+from .chrome import Dropdown, ResizeGrip, TitleBar, card
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
@@ -838,7 +838,7 @@ class MainWindow(QMainWindow):
 
         src_card, slay = card("Capture source")
         src_row = QHBoxLayout()
-        self.source_combo = QComboBox()
+        self.source_combo = Dropdown()
         self.source_combo.setMinimumWidth(300)
         src_row.addWidget(self.source_combo, 1)
         self.refresh_sources_button = QPushButton("Refresh")
@@ -885,7 +885,7 @@ class MainWindow(QMainWindow):
         side_row = QHBoxLayout()
         self.side_label = QLabel("My team:")
         side_row.addWidget(self.side_label)
-        self.side_combo = QComboBox()
+        self.side_combo = Dropdown()
         self.side_combo.addItems(["left bank", "right bank"])
         self.side_combo.currentIndexChanged.connect(self._force_redraw)
         side_row.addWidget(self.side_combo)

@@ -140,18 +140,18 @@ ANALYSES = [
     ("party", "Party size", True,
      "Your win rate by how many of you queued together."),
     ("herodmg", "Hero dmg/min", True,
-     "Mean hero damage per minute on each hero, against your own average "
-     "across every hero."),
+     "Hero dmg/min on each hero, relative to the average."),
     ("herokda", "Weighted KDA", True,
-     "Kills plus three tenths of assists over deaths, averaged across "
-     "your games on each hero."),
+     "Kills plus three tenths of assists over deaths, relative to the "
+     "average."),
     # PER MINUTE, AND THE NAME HAS TO SAY SO. It read "Building dmg"
     # beside a figure of 116, which invites reading it as a whole game's
     # damage — "that can't be total building dmg, right?" The field is
     # `tower_per_min` and always has been; only the label was ambiguous.
-    ("towerdmg", "Building dmg/min", True,
-     "Mean damage to buildings per minute on each hero, against your own "
-     "average across every hero."),
+    # SIEGE rather than BUILDING because it is a syllable shorter and
+    # fits the column on one line, which "Building dmg/min" did not.
+    ("towerdmg", "Siege dmg/min", True,
+     "Siege dmg/min on each hero, relative to the average."),
     ("items", "Items by hero", True,
      "Win rate in games that ended with each item in your inventory, "
      "against that hero's own win rate."),
@@ -504,7 +504,7 @@ METRICS = {
                "game's ratio, not the ratio of your totals."),
     "towerdmg": dict(
         field="tower_per_min", unit="building damage per minute",
-        short="building dmg/min", dp=0,
+        short="siege dmg/min", dp=0,
         more="More pushing", less="Less pushing",
         caveat="This ranks heroes at least as much as your play, the way "
                "hero damage does: a pusher and a support are not doing the "

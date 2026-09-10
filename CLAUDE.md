@@ -591,6 +591,27 @@ credentials, and put the account at risk. Do not go there.
   applied after the sort rather than a second sort key — folding "muted"
   into the key would flip with the direction and put them back on top
   the other way round.
+  **THE PAGE SCROLLS, AND NOTHING INSIDE IT DOES** (`BucketTable.
+  wheelEvent` / `showEvent`, `chrome.Dropdown`, `CountBox.wheelEvent`).
+  Two faults with one cause: a control that answers the wheel while the
+  reader is scrolling PAST it.
+  A section table is sized to hold every row it has, so it should have
+  nothing of its own to scroll — but `_fit_height` runs while the rows
+  are being filled and a header that has not been shown yet reports a
+  stale height, which leaves the fit a few pixels short. With both
+  scrollbars off that is invisible except as a page that will not move:
+  "there is the slightest little scroll happening". It re-fits on
+  `showEvent`, when the header knows its own height — and it IGNORES the
+  wheel outright, which is the half that cannot be a pixel out.
+  **AND A DROPDOWN NEVER CHANGES UNDER THE WHEEL.** Qt steps a combo box
+  and a spin box on every notch, so every one of them is a trap in a
+  page that scrolls — "I keep accidentally scrolling and changing them by
+  accident", which silently re-cuts a table or re-runs a filter. **Click,
+  scroll, click**: `chrome.Dropdown` and `CountBox` ignore the wheel so
+  the page beneath takes it, and a popup list that was OPENED
+  deliberately still scrolls like any other list. Every combo box in the
+  app is a `Dropdown` for that reason — one that was missed is one trap
+  left.
   **AND THE PAGE HOLDS STILL WHILE THE COUNT IS STEPPED**
   (`_hold_still`). Removing a row shortens the table, which shortens the
   whole page, and the scroll area then re-clamps — so the arrow moved
@@ -710,6 +731,17 @@ credentials, and put the account at risk. Do not go there.
   name runs whichever way it has room, preferring outward — and the
   ellipsis is left for the one case it is for, two dots close enough
   that their names would otherwise meet.
+  **AND EVERY WORD ON THE BAR IS 20% BIGGER AND HALOED**
+  (`SMALL` 0.78 to 0.94, `SpreadBar._write` through `tilekit.stroked`),
+  at the user's request. It was sized like the status line — a footnote,
+  read when something is wrong — and on this card the labels ARE the
+  answer, with a track, three dots and a rule for thin text to get lost
+  among. The halo is the app's own rule catching up with the last place
+  that skipped it: it is what makes a figure read as the same KIND of
+  object wherever it appears, and there is exactly one implementation so
+  the badge on a pick and the label on a bar cannot drift apart. Drawing
+  through it means resolving the ALIGNMENT here, since `stroked` takes a
+  baseline-left origin and `drawText` was doing that invisibly.
   **AND `elidedText` CUTS A STRING THAT MEASURES EXACTLY ITS OWN
   WIDTH.** It lays text out rather than summing advances, so a rectangle
   sized from `horizontalAdvance` came back elided: every label on the
@@ -774,13 +806,24 @@ credentials, and put the account at risk. Do not go there.
   and since the longest sets that column's width for the whole card,
   "Hero damage per minute by hero" pushed every bar right while "Day of
   week" left two thirds of the column empty. They are 10 to 16 now.
-  **SHORT STOPS WHERE IT STOPS BEING CLEAR**, though, which is why the
-  longest is "Building dmg/min". It read "Building dmg" beside a figure
-  of 116 — "that can't be total building dmg, right?" — and a name that
-  invites the wrong unit costs more than the fourteen pixels of column
-  it saves. `Match.tower_per_min` was per minute throughout; only the
-  label was ambiguous, and every contribution section now states its
-  unit (Hero dmg/min, Weighted KDA, Building dmg/min).
+  **SHORT STOPS WHERE IT STOPS BEING CLEAR**, though, and the building
+  metric took two goes to land. It read "Building dmg" beside a figure
+  of 116 — "that can't be total building dmg, right?" — so a name that
+  invites the wrong unit is worse than a longer one; but "Building
+  dmg/min" then wrapped, and it is **Siege dmg/min**, a syllable shorter
+  and one line. `Match.tower_per_min` was per minute throughout; only
+  the label was ever ambiguous, and every contribution section now
+  states its unit: Hero dmg/min, Weighted KDA, Siege dmg/min.
+  **AND A DESC SAYS WHAT IS MEASURED IN THE FEWEST WORDS THAT SAY IT.**
+  The three contribution lines each ended "against your own average
+  across every hero", which is the datum spelled out where the phrase
+  "relative to the average" carries it — so all three read that way now,
+  and the metric names itself rather than being described a second time
+  ("Siege dmg/min on each hero", not "Mean damage to buildings per
+  minute on each hero"). The ITEM block keeps its own wording, "against
+  that hero's own win rate", because that one is not the average: it is
+  a different datum per hero and the whole reason that block is read
+  apart from the rest.
   `NAMES` is one list, so the sidebar, each card's heading and this
   column change together and cannot disagree; `DESCS` still carries the
   full explanation as the tick box's tooltip, so shortening cost nothing.

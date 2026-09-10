@@ -22,7 +22,7 @@ from datetime import datetime
 
 from PyQt6.QtCore import QPoint, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
+from PyQt6.QtWidgets import (QFrame, QGridLayout,
                              QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QPushButton,
                              QScrollArea, QSizePolicy, QStyledItemDelegate,
@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QGridLayout,
 
 from . import settings as ui_settings
 from . import theme
-from .chrome import CountBox, TickBox, card
+from .chrome import CountBox, Dropdown, TickBox, card
 from .flowlayout import FlowLayout
 from .section_bar import LOOK_AHEAD, SectionBar, edge
 from .spread_bar import SpreadBar
@@ -142,7 +142,7 @@ class TableControls(QWidget):
         self.count.valueChanged.connect(self.changed)
         row.addWidget(self.count)
         row.addWidget(QLabel("by"))
-        self.by = QComboBox()
+        self.by = Dropdown()
         for key, label in FILTER_BY:
             self.by.addItem(label if key != "value" else value_label, key)
         self.by.setToolTip(
@@ -368,6 +368,31 @@ class BucketTable(QTableWidget):
         header_h = max(head.height(), head.sizeHint().height())
         self.setFixedHeight(header_h + self.verticalHeader().length()
                             + 2 * self.frameWidth() + 2)
+
+    def showEvent(self, event) -> None:             # noqa: N802 - Qt naming
+        """Fit again once the header knows its own height.
+
+        `_fit_height` runs while the rows are being filled in, and a
+        header that has not been SHOWN yet reports a stale height — the
+        same trap the matrix grids document. A few pixels short is
+        exactly enough for the view to scroll INSIDE itself, which with
+        both scrollbars off is invisible except as a page that does not
+        move when you turn the wheel over a table: "there is the
+        slightest little scroll happening".
+        """
+        super().showEvent(event)
+        self._fit_height()
+
+    def wheelEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        """The PAGE scrolls, never the table. Always.
+
+        Fitting the height exactly is the other half of this and it is
+        the half that can be a pixel out — a stale header, a grid line,
+        a row that grows when the stylesheet resolves. This half cannot:
+        a table sized to every row it holds has nothing of its own to
+        scroll, so the wheel belongs to whatever is underneath it.
+        """
+        event.ignore()
 
 
 class Worker(QThread):
@@ -611,7 +636,7 @@ class HistoryTab(QWidget):
         self.account_box.returnPressed.connect(self.start)
         row.addWidget(self.account_box, 1)
 
-        self.remembered = QComboBox()
+        self.remembered = Dropdown()
         self.remembered.setMinimumWidth(190)
         self.remembered.setToolTip(
             "Accounts this machine has looked at before, each with the "
@@ -679,13 +704,13 @@ class HistoryTab(QWidget):
         # rendering the tab and looking at it; every test passed.
         row = FlowLayout(spacing=10)
         row.addWidget(QLabel("Window"))
-        self.window_box = QComboBox()
+        self.window_box = Dropdown()
         for key, label, _days in WINDOWS:
             self.window_box.addItem(label, key)
         self.window_box.setCurrentIndex(3)          # last 12 months
         row.addWidget(self.window_box)
         row.addWidget(QLabel("At most"))
-        self.cap_box = QComboBox()
+        self.cap_box = Dropdown()
         for cap in CAPS:
             self.cap_box.addItem(f"{cap} matches", cap)
         self.cap_box.setCurrentIndex(CAPS.index(1000))
@@ -1322,7 +1347,7 @@ class HistoryTab(QWidget):
         reading are the ones already at the top of it, and every hero
         with item data is in it rather than an arbitrary few.
         """
-        chooser = QComboBox()
+        chooser = Dropdown()
         chooser.setMinimumWidth(220)
         chooser.setToolTip("Which hero's items to show. Most played "
                            "first — the ones with a sample worth reading.")

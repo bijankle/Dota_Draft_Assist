@@ -64,7 +64,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
-from . import theme
+from . import theme, tilekit
 
 # The end labels sit in a reserved column so that every track in a card
 # starts and ends at the same x — measured against a worst case rather
@@ -75,7 +75,11 @@ LABEL_GAP = 6
 CAP = 6                     # half-height of the end caps and the tick
 DOT = 4.5                   # radius of a marker
 MIN_TRACK = 90
-SMALL = 0.78                # of the body size, as the status bar is
+# 20% BIGGER THAN IT WAS (0.78), at the user's request. This is the one
+# card where the text sits ON a picture rather than beside one, so it was
+# sized like the status line — a footnote — when it is in fact the whole
+# answer the card gives.
+SMALL = 0.94                # of the body size
 ROWS = 1                    # one label line above the track
 DOT_GAP = 5                 # between a marker and its own name
 
@@ -184,17 +188,16 @@ class SpreadBar(QWidget):
         # the dots' own names already say, one line below them. A win
         # rate's ends are 0% and 100%, which no dot is ever on, so there
         # they stay.
-        painter.setPen(QColor(theme.TEXT_DIM))
         if not self._dot_is_on_the_end():
-            painter.drawText(QRectF(0, middle - CAP - 2, width, 2 * CAP + 4),
-                             int(Qt.AlignmentFlag.AlignRight
-                                 | Qt.AlignmentFlag.AlignVCenter),
-                             self.low_text)
-            painter.drawText(
-                QRectF(self.width() - width, middle - CAP - 2, width,
-                       2 * CAP + 4),
-                int(Qt.AlignmentFlag.AlignLeft
-                    | Qt.AlignmentFlag.AlignVCenter), self.high_text)
+            self._write(painter,
+                        QRectF(0, middle - CAP - 2, width, 2 * CAP + 4),
+                        Qt.AlignmentFlag.AlignRight, self.low_text,
+                        theme.TEXT_DIM, small, metrics)
+            self._write(painter,
+                        QRectF(self.width() - width, middle - CAP - 2, width,
+                               2 * CAP + 4),
+                        Qt.AlignmentFlag.AlignLeft, self.high_text,
+                        theme.TEXT_DIM, small, metrics)
 
         left = width + LABEL_GAP
         right = self.width() - width - LABEL_GAP
@@ -229,10 +232,8 @@ class SpreadBar(QWidget):
                  (self.spread.best, self.best_text, theme.GOOD))):
             rect, shown, align = places.pop(0)
             if shown:
-                painter.setPen(QColor(colour))
-                painter.drawText(rect,
-                                 int(align | Qt.AlignmentFlag.AlignVCenter),
-                                 shown)
+                self._write(painter, rect, align, shown, colour, small,
+                            metrics)
             # OUTLINED, the way every other figure in this app is: the
             # track runs under it, and a filled dot alone reads as a
             # break in the line rather than as something sitting on it.
@@ -240,6 +241,34 @@ class SpreadBar(QWidget):
             painter.setBrush(QColor(colour))
             painter.drawEllipse(QPointF(at, middle), DOT, DOT)
         painter.end()
+
+    @staticmethod
+    def _write(painter: QPainter, rect: QRectF, align, text: str,
+               colour: str, font: QFont, metrics: QFontMetrics) -> None:
+        """One label, HALOED — the way every other figure in this app is.
+
+        These sit on a card of their own rather than over a portrait, so
+        they went without for a while — but the halo is what makes a
+        figure read as the same KIND of object wherever it appears, and
+        against a track, a dot and a rule there is plenty here for thin
+        text to get lost in. `tilekit.stroked` is the one place the
+        stroke-then-fill happens, so the badge on a pick and this cannot
+        drift apart.
+
+        It takes a BASELINE-LEFT origin rather than a rectangle and an
+        alignment, so the alignment is resolved here — `drawText` was
+        doing that invisibly and there is nothing else to hand it.
+        """
+        wide = metrics.horizontalAdvance(text)
+        if align == Qt.AlignmentFlag.AlignRight:
+            x = rect.right() - wide
+        elif align == Qt.AlignmentFlag.AlignHCenter:
+            x = rect.center().x() - wide / 2
+        else:
+            x = rect.left()
+        baseline = (rect.top() + (rect.height() - metrics.height()) / 2
+                    + metrics.ascent())
+        tilekit.stroked(painter, QPointF(x, baseline), text, colour, font)
 
     def _dot_is_on_the_end(self) -> bool:
         """Do the two markers already stand on the scale's own bounds?"""
