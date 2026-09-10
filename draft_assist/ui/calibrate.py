@@ -80,7 +80,17 @@ def measure_from_boxes(frame, client, first, second, base=None):
     from ..vision.autocal import layout_from_banks
 
     if frame is None:
-        return None, "there is no picture of the game to measure"
+        # **A REFUSAL NAMES WHAT TO DO ABOUT IT.** This said "there is no
+        # picture of the game to measure", which is true, unanswerable
+        # and — while the frame was never being fetched at all — was
+        # shown to somebody whose boxes were already on the portraits:
+        # "what does this even mean... what do I do next". Capture reads
+        # the WINDOW, so the one thing the user can change is the game's
+        # display mode.
+        return None, ("Could not capture the Dota window. It must be open "
+                      "and set to Borderless or Windowed — an "
+                      "exclusive-fullscreen game cannot be captured. Then "
+                      "press Confirm again.")
     height, width = frame.shape[:2]
     size = (width, height)
     return layout_from_banks(frame,
@@ -244,8 +254,16 @@ class Calibrator(QObject):
         self.panel.raise_()
 
     def _confirm(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
         from ..vision.layout import save_calibration
 
+        # Fetching the frame can mean a one-shot window capture, which
+        # waits up to three seconds. A button that does nothing visible
+        # for three seconds reads as a hung app, so the panel says what
+        # it is doing first and Qt is given the chance to paint it.
+        self.panel.say("Measuring…")
+        QApplication.processEvents()
         frame = self.frame_of() if self.frame_of else None
         layout, note = measure_from_boxes(
             frame, self.client, self.boxes[0].screen_rect(),
@@ -306,8 +324,29 @@ class _Panel(QWidget):
 
     def say(self, note: str) -> None:
         """A refusal, in place. The boxes stay up so it can be tried
-        again — closing on a failure would throw away the drag."""
+        again — closing on a failure would throw away the drag.
+
+        **A WRAPPED QLabel MEASURES ITSELF AS ONE LINE**, and
+        `heightForWidth` does not propagate up through the layouts of a
+        window that has already been shown — so a longer sentence than
+        the one the panel opened with is simply CLIPPED, and the reader
+        gets the first two lines of the answer. Which is the whole point
+        of a refusal that names what to do. Measured here: the reworded
+        message needed 105px in a label that stayed 42px tall. Same trap
+        as the setup wizard's paragraphs drawing over the controls
+        beneath them; the fix is the same, ask the LABEL what it needs at
+        the width it has got.
+        """
+        bottom = self.geometry().bottom()
         self.note.setText(note)
+        margins = self.layout().contentsMargins()
+        room = self.width() - margins.left() - margins.right()
+        self.note.setMinimumHeight(self.note.heightForWidth(room))
+        self.adjustSize()
+        # It GROWS UPWARDS. The panel sits near the bottom of the screen,
+        # so a taller one anchored by its top would push Confirm and
+        # Cancel — the two things the window exists for — off the display.
+        self.move(self.x(), bottom - self.height() + 1)
 
 
 def _ratio() -> float:

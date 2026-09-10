@@ -3721,6 +3721,83 @@ def test_calibrating_opens_the_boxes_when_dota_is_there(qapp, monkeypatch):
         win.close()
 
 
+def test_confirm_has_a_picture_to_measure(qapp, monkeypatch):
+    """**THE REGRESSION.** `frame_of` asked the vision provider for a
+    `last_frame` attribute that no provider has ever defined — the frame
+    lives on the capture session's state and reaches the window on the
+    Snapshot — so `getattr(..., None)` answered None on every press and
+    Confirm refused with "there is no picture of the game to measure"
+    while the boxes sat correctly on the portraits.
+    """
+    import numpy as np
+    from types import SimpleNamespace
+    from draft_assist.ui import calibrate
+
+    monkeypatch.setattr(calibrate, "dota_client_rect",
+                        lambda: (0, 0, 1920, 1080))
+    win = make_window(qapp, demo_dataset())
+    try:
+        assert not hasattr(getattr(win.provider, "vision", None),
+                           "last_frame"), "the old lambda's attribute exists"
+        frame = np.zeros((1080, 1920, 3), np.uint8)
+        win.snapshot = SimpleNamespace(frame=frame)
+        win._calibrate()
+        assert win.calibrator.frame_of() is frame
+        win.calibrator.panel.cancelled.emit()
+        qapp.processEvents()
+    finally:
+        win.close()
+
+
+def test_it_grabs_a_frame_when_the_screen_reader_is_off(qapp, monkeypatch):
+    """`use_vision` is a tick box and game-data-only mode has no capture
+    session at all, so with no live Snapshot Confirm takes a one-shot
+    picture of the window. "You cannot calibrate the crop boxes unless
+    the crop boxes are already being used" is a circle."""
+    import numpy as np
+    from draft_assist.ui import calibrate
+
+    monkeypatch.setattr(calibrate, "dota_client_rect",
+                        lambda: (0, 0, 1920, 1080))
+    win = make_window(qapp, demo_dataset())
+    try:
+        grabbed = np.zeros((1080, 1920, 3), np.uint8)
+        win.snapshot = None
+        monkeypatch.setattr(win, "_grab_dota_frame", lambda: grabbed)
+        win._calibrate()
+        assert win.calibrator.frame_of() is grabbed
+        win.calibrator.panel.cancelled.emit()
+        qapp.processEvents()
+    finally:
+        win.close()
+
+
+def test_a_failed_grab_is_not_an_exception(qapp, monkeypatch):
+    """Dota can be closed between opening the boxes and pressing
+    Confirm. That is a refusal with a sentence, never a traceback."""
+    from draft_assist.ui import calibrate
+
+    monkeypatch.setattr(calibrate, "dota_client_rect",
+                        lambda: (0, 0, 1920, 1080))
+    win = make_window(qapp, demo_dataset())
+    try:
+        def gone():
+            raise OSError("no such window")
+
+        win.snapshot = None
+        monkeypatch.setattr(win, "_grab_dota_frame", gone)
+        win._calibrate()
+        assert win.calibrator.frame_of() is None
+        win.calibrator.panel.confirmed.emit()
+        qapp.processEvents()
+        assert win.calibrator is not None, "it closed on a failure"
+        assert "Borderless" in win.calibrator.panel.note.text()
+        win.calibrator.panel.cancelled.emit()
+        qapp.processEvents()
+    finally:
+        win.close()
+
+
 def test_never_calibrated_is_the_last_rung(qapp, monkeypatch, tmp_path):
     """The first-run task the user asked to have flagged. It is LAST
     because it is the only one that cannot be done alone: it needs Dota

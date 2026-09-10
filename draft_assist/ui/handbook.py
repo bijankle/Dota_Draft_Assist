@@ -166,9 +166,11 @@ SECTIONS: tuple = (
         "game: drag one over each bank of five portraits, resize by the "
         "corner, press Confirm. It snaps them onto the portrait edges it "
         "can see, so they only have to be close.",
-        "Dota has to be open for it — the boxes go on the game — and the "
-        "app says so rather than opening two rectangles over your "
-        "desktop. It measures the boxes itself during a match too, but "
+        "Dota has to be open for it — the boxes go on the game — and it "
+        "has to be in Borderless or Windowed, because Confirm takes a "
+        "picture of the window to measure against and an "
+        "exclusive-fullscreen game cannot be captured. It measures the "
+        "boxes itself during a match too, but "
         "only on a machine that has never been calibrated: what you set "
         "by hand is an answer and is never overwritten by a guess.",
     )),

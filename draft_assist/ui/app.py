@@ -1513,10 +1513,43 @@ class MainWindow(QMainWindow):
         if getattr(self, "calibrator", None) is not None:
             return                          # already up; one at a time
         self.calibrator = Calibrator(client, self)
-        self.calibrator.frame_of = lambda: getattr(
-            getattr(self.provider, "vision", None), "last_frame", None)
+        self.calibrator.frame_of = self._frame_to_calibrate_against
         self.calibrator.finished.connect(self._calibrated)
         self.calibrator.show()
+
+    def _frame_to_calibrate_against(self):
+        """The picture Confirm fits the two boxes to.
+
+        **A PROVIDER HAS NO `last_frame`, AND NEVER DID.** This asked the
+        vision provider for that attribute, which does not exist on it:
+        the frame lives on the capture session's state and reaches the
+        window on the Snapshot. `getattr(..., None)` on a name nothing
+        defines is an unconditional None, so Confirm answered "there is
+        no picture of the game to measure" every single time, with the
+        boxes sitting correctly on the portraits and the game on screen —
+        a refusal that could never be satisfied by anything the user did.
+        The same shape as the item icons' four causes: a sentence about
+        the state of the world that was really about our own attribute
+        name.
+
+        Two sources, in order. The live Snapshot, which is free and is
+        already a picture of this frame; and failing that a ONE-SHOT grab
+        of the Dota window, because calibration must work with the screen
+        reader turned off — `use_vision` is a tick box, the game-data-only
+        mode has no capture session at all, and "you cannot calibrate the
+        crop boxes unless the crop boxes are already being used" is a
+        circle. It is the same `_grab_dota_frame` the snapshot key uses.
+        """
+        snap = getattr(self, "snapshot", None)
+        frame = getattr(snap, "frame", None)
+        if frame is not None:
+            return frame
+        try:
+            return self._grab_dota_frame()
+        except Exception:
+            # Dota closed between opening the boxes and pressing Confirm,
+            # or capture is unavailable. Never take the app down for it.
+            return None
 
     def _calibrated(self, saved: bool, note: str) -> None:
         self.calibrator = None

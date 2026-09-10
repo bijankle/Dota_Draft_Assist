@@ -123,6 +123,33 @@ credentials, and put the account at risk. Do not go there.
    window exists for, as a plain button. Naming the rule
    (`QWidget#calPanel`) is the fix; the accent-ordering trap in the
    stylesheet is the same family.
+   **AND CONFIRM COULD NEVER FIND A PICTURE TO MEASURE.** `frame_of`
+   asked the vision provider for a `last_frame` attribute that no
+   provider has ever had — the frame lives on the capture session's
+   state and reaches the window on the SNAPSHOT — and `getattr` on a name
+   nothing defines is an unconditional None. So the
+   first real use of this feature, with both boxes sitting correctly on
+   the portraits and the game on screen, refused with "there is no
+   picture of the game to measure": a sentence about the state of the
+   world that was really about our own attribute name, and one the user
+   could not have satisfied by anything they did. Two sources now, in
+   order — the live Snapshot, which is free, and failing that a ONE-SHOT
+   grab of the Dota window (`_grab_dota_frame`, the snapshot key's own),
+   because `use_vision` is a tick box and game-data-only mode has no
+   capture session at all: "you cannot calibrate the crop boxes unless
+   the crop boxes are already being used" is a circle.
+   **AND A REFUSAL NAMES WHAT TO DO ABOUT IT** — "what does this even
+   mean... what do I do next". Capture reads the WINDOW, so the one
+   thing the user can change is the game's display mode, and the message
+   says so. **Which then hit the wrapped-QLabel trap**: a QLabel
+   measures itself as one line and `heightForWidth` does not propagate
+   up through an already-shown window, so the longer sentence came out
+   in a 42px label needing 105 and the reader got the first two lines of
+   the answer. `_Panel.say` asks the label what it needs at the width it
+   has and grows the panel UPWARDS, since it sits near the bottom of the
+   screen and anchoring the top would push Confirm off the display.
+   Same fault as the setup wizard's paragraphs drawing over their own
+   controls, and caught the same way: by rendering it and looking.
 
    A box round five portraits spans four pitches plus one portrait, which
    is one equation for two unknowns — so a first attempt asked for three

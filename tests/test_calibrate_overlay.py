@@ -27,6 +27,18 @@ def qapp():
     yield QApplication.instance() or QApplication([])
 
 
+@pytest.fixture()
+def styled_app(qapp):
+    """This panel is measured, and a stylesheet decides the font it is
+    measured in — `conftest.py` resets the stylesheet either side of
+    every test, so a test that reads a height has to ask for it."""
+    from draft_assist.ui import theme
+    was = qapp.styleSheet()
+    qapp.setStyleSheet(theme.STYLESHEET)
+    yield qapp
+    qapp.setStyleSheet(was)
+
+
 # ---- screen coordinates to frame pixels ---------------------------------
 
 def test_a_box_on_the_screen_becomes_pixels_in_the_frame():
@@ -65,11 +77,16 @@ def test_the_two_boxes_give_back_the_layout_they_were_drawn_on():
     assert got.slot_w == pytest.approx(want.slot_w, abs=0.002)
 
 
-def test_with_no_picture_it_says_so_rather_than_measuring_nothing():
+def test_with_no_picture_it_says_what_to_do_about_it():
+    """A refusal names the fix. "There is no picture of the game to
+    measure" is true, unanswerable, and was shown to somebody whose
+    boxes were already on the portraits — "what does this even mean...
+    what do I do next". Capture reads the WINDOW, so the display mode is
+    the one thing the user can change."""
     got, note = calibrate.measure_from_boxes(
         None, (0, 0, 100, 100), (0, 0, 10, 10), (20, 0, 10, 10))
     assert got is None
-    assert "picture" in note
+    assert "Borderless" in note and "Confirm again" in note
 
 
 # ---- the boxes themselves -----------------------------------------------
@@ -148,6 +165,29 @@ def test_a_refusal_keeps_the_boxes_up(qapp):
     qapp.processEvents()
     assert ended == [], "it closed on a failure"
     assert all(box.isVisible() for box in worker.boxes)
-    assert "picture" in worker.panel.note.text()
+    assert "Borderless" in worker.panel.note.text()
     worker.panel.cancelled.emit()
     qapp.processEvents()
+
+
+def test_a_long_refusal_is_not_clipped(qapp, styled_app):
+    """A wrapped QLabel measures itself as one line and heightForWidth
+    does not propagate up through an already-shown window, so the
+    reworded refusal came out 42px tall in a label needing 105 — the
+    reader got the first two lines of the sentence that names the fix.
+    The setup wizard's paragraphs drew over their controls the same way.
+    """
+    worker = calibrate.Calibrator((0, 0, 1920, 1080))
+    worker.show()
+    qapp.processEvents()
+    bottom = worker.panel.geometry().bottom()
+    worker.frame_of = lambda: None
+    worker.panel.confirmed.emit()
+    qapp.processEvents()
+
+    label = worker.panel.note
+    assert label.heightForWidth(label.width()) <= label.height()
+    # And it grows UPWARDS: the panel sits near the bottom of the screen,
+    # so anchoring the top would push Confirm off the display.
+    assert worker.panel.geometry().bottom() == pytest.approx(bottom, abs=1)
+    worker._close(False, "")
