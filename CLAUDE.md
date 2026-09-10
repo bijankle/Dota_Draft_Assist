@@ -2685,6 +2685,35 @@ credentials, and put the account at risk. Do not go there.
   **The last control keeps `BandedTabs.EDGE_GAP` clear of the frame.** The
   transparency slider ran its handle into the window's edge, which reads
   as the row having been cut off rather than as it ending.
+  **AND THE GAP EITHER SIDE OF EVERY RULE IS MEASURED FROM THE INK**
+  (`theme.TOOL_GAP`), at the user's request: "the gap between the last
+  character and the |, or the last pixel of the record button and the |
+  — it's the effective spacing to the human eye". The widget
+  RECTANGLES were already evenly spaced, 8px apart to the pixel, which
+  is why nothing in the code looked wrong. What was uneven was the
+  PADDING INSIDE them: the three text buttons carried `QTabBar::tab`'s
+  own `8px 18px`, so their words sat 34px from their rules while the
+  record dot and the tick box — which have no padding at all — sat 10
+  and 15. Twice the distance, from a row whose spacing was identical
+  everywhere.
+  So the buttons keep the VERTICAL padding, which is what puts them on
+  the tabs' line, and give up the horizontal; the gap comes from the
+  row instead, where one number covers every control whatever it is
+  made of. `TOOL_GAP` is read by the toolbar's stylesheet AND by the
+  strip that holds the leading rule — that rule lives outside the
+  toolbar, so at spacing 0 it sat 10px off the record dot while every
+  rule inside sat 22 — and the toolbar's LEFT padding went with it for
+  the same reason. `TickBox` gave up two pixels of trailing slack: its
+  hint reserved three past the end of the label, and a gap measured
+  from ink counts them.
+  Measured 21 to 23 across every rule on the row, where it was 10 to
+  34. `test_every_control_sits_the_same_distance_from_its_rule` SCANS
+  the strip for ink and rules rather than asking the widgets, because a
+  rectangle being in the right place is exactly what this looked like
+  from the code. Its `styled` fixture comes FIRST: pytest builds
+  fixtures in the order they are listed, and a window constructed
+  before the stylesheet is applied measures itself against Qt's default
+  font and lays the strip out to different numbers.
   **THE CONTROLS ON THIS ROW ARE TAB LABELS, not buttons.** They sit on
   the tab bar's own line and read as one series with Draft / Analysis /
   Debug, so a raised plate in `BG_INPUT` with a radius round it was a

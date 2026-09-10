@@ -70,6 +70,18 @@ BODY_FAMILY = "Alegreya"
 FONT_STACK = (f'"{BODY_FAMILY}", "Palatino Linotype", "Book Antiqua", '
               '"Georgia", "Noto Serif", "Segoe UI", system-ui, serif')
 
+# HOW FAR A CONTROL ON THE TAB ROW SITS FROM THE RULE BESIDE IT, as the
+# EYE measures it: from the last pixel of ink to the line, not from the
+# widget's rectangle to it. The two are the same thing only for a widget
+# with no padding — which is why the text buttons, carrying the tab's
+# own 18px, read as twice as far from their rules as the record dot and
+# the tick did. The buttons gave that padding up here, and this is
+# the gap the row uses instead: stated here, read by the toolbar's
+# stylesheet and by the strip that holds the leading rule, so the two
+# cannot drift.
+TOOL_GAP = 14
+
+
 STYLESHEET = f"""
 QWidget {{
     background: {BG};
@@ -111,7 +123,12 @@ QToolBar {{
 }}
 /* On the tab strip it is part of the strip, not a band above it. */
 QToolBar#tabStripTools {{
-    background: {BG_DEEP}; border: none; padding: 0 2px; spacing: 8px;
+    background: {BG_DEEP}; border: none;
+    /* No LEFT padding: the rule before the record dot is the
+       strip's, outside this widget, so 2px here made that one gap
+       two wider than every rule inside the toolbar. */
+    padding: 0 2px 0 0;
+    spacing: {TOOL_GAP}px;
 }}
 /* Every child, not just the labels: a QSlider left to the base
    QWidget rule painted a rectangle of CONTENT colour inside the dark
@@ -129,7 +146,7 @@ QToolBar#tabStripTools QSlider {{ background: {BG_DEEP}; }}
    bold. */
 QToolBar#tabStripTools QPushButton {{
     background: transparent; border: none;
-    padding: 8px 18px; color: {TEXT_DIM}; font-weight: bold;
+    padding: 8px 0; color: {TEXT_DIM}; font-weight: bold;
 }}
 QToolBar#tabStripTools QPushButton:hover {{
     background: transparent; border: none; color: {TEXT};

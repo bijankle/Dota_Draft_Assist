@@ -2472,6 +2472,85 @@ def test_a_picked_hero_carries_no_star(window, qapp):
                    for t in window.team_panels["ally"].slots)
 
 
+def test_every_control_sits_the_same_distance_from_its_rule(styled, window,
+                                                            qapp):
+    """Measured from the last pixel of INK to the line, which is what the
+    eye compares — "the gap between the last character and the |, or the
+    last pixel of the record button and the |".
+
+    The widget RECTANGLES were already evenly spaced; what was uneven was
+    the padding inside them. The three text buttons carried the tab's own
+    18px, so they read as twice as far from their rules as the record dot
+    and the tick box, which have none. Scanned rather than asserted about,
+    because a rectangle being in the right place is exactly what this
+    looked like from the code.
+
+    `styled` comes FIRST: pytest builds fixtures in the order they are
+    listed, and this row's spacing comes out of the stylesheet — a window
+    constructed before it is applied measures itself against Qt's default
+    font and lays the strip out to different numbers.
+    """
+    from PyQt6.QtGui import QColor
+    from draft_assist.ui import theme
+
+    window.show()
+    window.refresh()
+    _settle(qapp)
+    strip = window.tabs.strip
+    image = strip.grab().toImage()
+    width, height = image.width(), image.height()
+    band = QColor(image.pixel(width // 2, 2))
+    rule = QColor(theme.RULE)
+    # The current tab's accent underline runs along the very bottom, so
+    # a tab's own TEXT is what gets measured rather than its marker.
+    bottom = 5
+
+    def near(one, two, room):
+        return (abs(one.red() - two.red()) + abs(one.green() - two.green())
+                + abs(one.blue() - two.blue())) < room
+
+    def is_rule(x):
+        return sum(1 for y in range(height)
+                   if near(QColor(image.pixel(x, y)), rule, 40)) >= 10
+
+    def has_ink(x):
+        return any(not near(QColor(image.pixel(x, y)), band, 25)
+                   for y in range(height - bottom))
+
+    rules = [x for x in range(width) if is_rule(x)]
+    assert len(rules) >= 5, rules
+    runs, start = [], None
+    for x in range(width):
+        if has_ink(x) and not is_rule(x):
+            start = x if start is None else start
+        elif start is not None:
+            runs.append((start, x - 1))
+            start = None
+    if start is not None:
+        runs.append((start, width - 1))
+
+    # The FIRST rule is the tab bar's own, between Draft and History,
+    # and its gaps come from `QTabBar::tab`'s padding rather than from
+    # this row's spacing — 2px tighter, on the far side of a wide empty
+    # stretch where no eye can compare the two. What was asked for, and
+    # what was wrong, is everything from the record dot rightwards.
+    gaps = []
+    for line in rules[1:]:
+        left = max((end for _a, end in runs if end < line), default=None)
+        right = min((begin for begin, _b in runs if begin > line), default=None)
+        # The leading rule has the whole empty stretch on its left; every
+        # other gap is a control's ink against the line beside it.
+        if left is not None and line - left < 100:
+            gaps.append(line - left)
+        if right is not None and right - line < 100:
+            gaps.append(right - line)
+    assert len(gaps) >= 8, gaps
+    # Antialiased text cannot land on one exact number, so the bar is
+    # that nothing stands out: three pixels between the tightest and the
+    # widest, where it used to be fourteen.
+    assert max(gaps) - min(gaps) <= 3, sorted(gaps)
+
+
 def test_the_tab_row_is_one_unbroken_band(window, qapp):
     """The tabs paint their own strip, the corner widget paints its own,
     and between them — and inside a QSlider left to the base QWidget rule —

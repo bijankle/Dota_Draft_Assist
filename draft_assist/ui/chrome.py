@@ -308,15 +308,23 @@ class TickBox(QCheckBox):
         painter.setPen(QColor(theme.TEXT) if self.underMouse()
                        else self.palette().color(self.foregroundRole()))
         painter.drawText(
-            QRectF(self.BOX + 7, 0, self.width() - self.BOX - 7,
-                   self.height()),
+            QRectF(self.BOX + self.TEXT_GAP, 0,
+                   self.width() - self.BOX - self.TEXT_GAP, self.height()),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             self.text())
         painter.end()
 
+    # The label is drawn at `BOX + TEXT_GAP` and the widget ends one
+    # pixel past it. It used to end THREE past, and since the gap either
+    # side of a rule on this row is measured from the last INK rather
+    # than from the widget, "Auto" sat 24px from its rule where every
+    # other control sat 22 — near enough to look wrong and not near
+    # enough to see why.
+    TEXT_GAP = 7
+
     def sizeHint(self):                             # noqa: N802
         hint = super().sizeHint()
-        return QSize(self.BOX + 9 + self.fontMetrics()
+        return QSize(self.BOX + self.TEXT_GAP + 1 + self.fontMetrics()
                      .horizontalAdvance(self.text()),
                      max(hint.height(), self.BOX + 4))
 
@@ -673,7 +681,14 @@ class BandedTabs(QTabWidget):
         # slider — ran its handle right into the window's frame, which
         # reads as the row having been cut off rather than as it ending.
         row.setContentsMargins(0, 0, self.EDGE_GAP, 0)
-        row.setSpacing(0)
+        # THE SAME GAP THE TOOLBAR PUTS BETWEEN ITS OWN CONTROLS
+        # (`QToolBar#tabStripTools { spacing }`). The rule between the tab
+        # labels and the controls lives out here rather than on the
+        # toolbar, so at spacing 0 it sat 10px off the record dot while
+        # every rule inside the toolbar sat 22 off its neighbours. Only
+        # the tab bar and a stretch are to its left, so nothing else on
+        # the row moves.
+        row.setSpacing(theme.TOOL_GAP)
         self.bar = RuledTabBar()
         self.bar.setObjectName("tabStripBar")
         self.bar.setDrawBase(False)
