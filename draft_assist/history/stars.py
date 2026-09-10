@@ -69,8 +69,14 @@ class Stars:
         return hero_id in self.heroes
 
     def why(self, hero_id) -> str:
-        """The line the tile puts in its tooltip. Empty when unstarred —
-        a tooltip explaining why something is NOT marked is noise.
+        """The two lines the tile puts in its tooltip. Empty when
+        unstarred — a tooltip explaining why something is NOT marked is
+        noise.
+
+        TWO LABELLED LINES rather than one sentence, at the user's
+        request. Every line of that tooltip now names what it is and
+        then gives the figure, so its four numbers are read down a
+        column instead of being picked out of prose.
 
         EACH FIGURE CARRIES ITS OWN STANDING, at the user's request:
         "after 17 games say (top XXX%), and after the win rate say (top
@@ -84,9 +90,11 @@ class Stars:
         row = self.form.get(hero_id)
         if row is None or hero_id not in self.heroes:
             return ""
-        return (f"{row.games} games (top {round(row.pick_top * 100)}%) "
-                f"at {row.rate * 100:.0f}% "
-                f"(top {round(row.win_top * 100)}%)")
+        return "\n".join((
+            f"My Pick Rate = {row.games} games "
+            f"(top {round(row.pick_top * 100)}%)",
+            f"My Win Rate = {row.rate * 100:.0f}% "
+            f"(top {round(row.win_top * 100)}%)"))
 
 
 def rank_fraction(values: dict) -> dict:

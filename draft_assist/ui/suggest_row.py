@@ -68,6 +68,9 @@ class SuggestTile(QWidget):
         self.fit = float(fit_value)
         self._delta: str = ""
         self._delta_colour: str = theme.GOOD
+        # What the badge is currently a relation TO, for the tooltip:
+        # the figure, whether it is a matchup or a synergy, and whose.
+        self._relation: tuple[float, str, str] | None = None
         self._focused = False
         self._starred = False
         self._tip = tooltip or name
@@ -84,7 +87,8 @@ class SuggestTile(QWidget):
         super().mouseReleaseEvent(event)
 
     # ---- what the badge says --------------------------------------------
-    def show_delta(self, delta: float, kind: str | None = None) -> None:
+    def show_delta(self, delta: float, kind: str | None = None,
+                   against: str = "") -> None:
         """Its relation to the focused hero, INSTEAD of its own fit.
 
         Instead rather than beside: two numbers in one corner is two
@@ -93,11 +97,18 @@ class SuggestTile(QWidget):
         """
         self._delta = tilekit.delta_text(delta, kind)
         self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
+        # `against` NAMES the focused hero for the tooltip. The badge has
+        # no room for it and does not need it — you just clicked that
+        # hero — but a tooltip line reading "with +5.20" beside four
+        # labelled ones is the odd one out, and "With Lion" is what the
+        # label wants to say anyway.
+        self._relation = (delta, kind or "", against)
         self._refresh_tip()
         self.update()
 
     def clear_delta(self) -> None:
         self._delta = ""
+        self._relation = None
         self._refresh_tip()
         self.update()
 
@@ -125,9 +136,14 @@ class SuggestTile(QWidget):
         return self._starred
 
     def _refresh_tip(self) -> None:
+        """EVERY LINE NAMES ITSELF AND THEN GIVES A FIGURE, so the
+        numbers are read down a column rather than picked out of prose."""
         lines = [self._tip]
-        if self._delta:
-            lines.append(f"{self._delta} against the clicked hero")
+        if self._relation is not None:
+            delta, kind, against = self._relation
+            label = "With" if kind == "with" else "Vs"
+            lines.append(f"{label} {against or 'the clicked hero'}"
+                         f" = {delta * 100:+.2f}")
         if self._starred and self._why_star:
             lines.append(self._why_star)
         self.setToolTip("\n".join(part for part in lines if part))
@@ -286,7 +302,8 @@ class SuggestRow(QWidget):
         for tile in self._tiles:
             tile.set_focused(tile.hero_id == hero_id)
 
-    def show_deltas(self, values: dict[int, tuple[float, str]]) -> None:
+    def show_deltas(self, values: dict[int, tuple[float, str]],
+                    against: str = "") -> None:
         """Relations to the focused hero, one per candidate.
 
         A candidate with nothing to say — no row in the dataset — keeps
@@ -298,7 +315,7 @@ class SuggestRow(QWidget):
             if found is None:
                 tile.clear_delta()
             else:
-                tile.show_delta(found[0], found[1])
+                tile.show_delta(found[0], found[1], against)
 
     def clear_deltas(self) -> None:
         """Back to draft fit, which is what the strip says on its own."""

@@ -257,17 +257,35 @@ def test_the_star_keeps_out_of_the_numbers_corner(qapp):
     assert tilekit.STAR_MIN_PX <= small < huge == tilekit.STAR_MAX_PX
 
 
-def test_the_reason_rides_in_the_tooltip_beside_the_rest(qapp):
-    """Not on the tile: the star's job is to be seen without being read,
-    and a figure beside it would be a third number in a corner that
-    already has the fit in it."""
-    tile = SuggestTile(1, "Anti-Mage", 0.05, "Anti-Mage\nfit +5.00")
-    tile.set_star(True, "40 games at 65%, inside the top 30% by picks.")
-    assert "fit +5.00" in tile.toolTip()
-    assert "40 games at 65%" in tile.toolTip()
-    tile.show_delta(0.02, "with")
-    assert "with +2.0" in tile.toolTip(), "the relation is still there"
-    assert "40 games at 65%" in tile.toolTip(), "and so is the star's"
+def test_every_tooltip_line_names_itself(qapp):
+    """One label and one figure per line, at the user's request, so the
+    numbers are read down a column rather than picked out of prose."""
+    tile = SuggestTile(1, "Anti-Mage", 0.05,
+                       "Anti-Mage\nCounter Score = +6.46"
+                       "\nSynergy Score = +5.97")
+    tile.set_star(True, "My Pick Rate = 40 games (top 10%)")
+    assert tile.toolTip().splitlines() == [
+        "Anti-Mage", "Counter Score = +6.46", "Synergy Score = +5.97",
+        "My Pick Rate = 40 games (top 10%)"]
+
+    # The relation line is labelled too, and NAMES the clicked hero: the
+    # badge has no room for it, but a line reading "with +5.20" beside
+    # four labelled ones is the odd one out.
+    tile.show_delta(0.052, "with", "Lion")
+    assert "With Lion = +5.20" in tile.toolTip()
+    tile.show_delta(-0.018, "vs", "Axe")
+    assert "Vs Axe = -1.80" in tile.toolTip()
+    assert "My Pick Rate" in tile.toolTip(), "the star's lines survive it"
+    tile.clear_delta()
+    assert "Lion" not in tile.toolTip() and "Axe" not in tile.toolTip()
+
+
+def test_a_relation_with_nobody_named_still_reads(qapp):
+    """`show_delta` is reachable without a name — the tooltip says what
+    it can rather than printing "With  = +5.20"."""
+    tile = SuggestTile(1, "Anti-Mage", 0.05)
+    tile.show_delta(0.052, "with")
+    assert "With the clicked hero = +5.20" in tile.toolTip()
 
 
 def test_the_row_stars_from_a_measurement(qapp):

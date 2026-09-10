@@ -3486,7 +3486,7 @@ class MainWindow(QMainWindow):
             r.hero_id: (r.delta, r.kind) for r in
             scoring.relations_from(self.ds, hid, ally,
                                    self.suggest_row.hero_ids)}
-        self.suggest_row.show_deltas(values)
+        self.suggest_row.show_deltas(values, self.ds.name(hid))
 
     def _drop_focus_if_off_screen(self, draft: scoring.DraftState) -> None:
         """A hero nobody can see cannot be what the numbers are about.
@@ -3693,10 +3693,15 @@ class MainWindow(QMainWindow):
         if not draft.allies and not draft.enemies:
             self.suggest_row.show_heroes([])
             return
+        # ONE LABELLED LINE PER FIGURE, at the user's request. It was a
+        # sentence — "fit +12.43  (vs +6.46, with +5.97)" — carrying a
+        # total and its two parts in one line, and the total is already
+        # the badge on the tile. So the parts are named and the sum is
+        # left where it is drawn.
         rows = [
             (s.hero_id, s.name, s.score,
-             f"{s.name}\nfit {s.score * 100:+.2f}"
-             f"  (vs {s.vs_total * 100:+.2f}, with {s.with_total * 100:+.2f})")
+             f"{s.name}\nCounter Score = {s.vs_total * 100:+.2f}"
+             f"\nSynergy Score = {s.with_total * 100:+.2f}")
             for s in self.scored[:self._how_many("suggested_picks")]
         ]
         self.suggest_row.show_heroes(rows)

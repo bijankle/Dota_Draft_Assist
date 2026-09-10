@@ -108,7 +108,9 @@ def test_each_figure_carries_its_own_standing():
     them, which is what the star already says."""
     marked = stars.measure(run(TEN), 70, 50)
     # Hero 1 is the most played of ten, and its 65% is the fourth best.
-    assert marked.why(1) == "40 games (top 10%) at 65% (top 40%)"
+    assert marked.why(1).splitlines() == [
+        "My Pick Rate = 40 games (top 10%)",
+        "My Win Rate = 65% (top 40%)"]
     assert marked.why(4) == "", "an unstarred tile explains nothing"
     assert "inside" not in marked.why(3), "the star is that evidence"
 

@@ -2379,6 +2379,20 @@ credentials, and put the account at risk. Do not go there.
   **AND THE REASON IS A TOOLTIP.** The star's job is to be seen without
   being read; a figure beside it would be a third number in a corner
   that already has the fit in it.
+  **EVERY LINE OF THAT TOOLTIP NAMES ITSELF AND THEN GIVES A FIGURE**
+  (`_update_suggestions`, `SuggestTile._refresh_tip`, `Stars.why`), at
+  the user's request — "Counter Score = +6.46 / Synergy Score = +5.97 /
+  My Pick Rate = 17 games (top 32%) / My Win Rate = 53% (top 50%)". It
+  was one sentence of prose per fact; five numbers now read down a
+  column instead of being picked out of it.
+  **AND THE FIT ITSELF IS NOT ON IT.** The line used to be "fit +12.43
+  (vs +6.46, with +5.97)" — a total and the two halves that make it, in
+  a tooltip hanging off a tile whose badge IS that total. So the parts
+  are named and the sum is left where it is drawn.
+  The relation line is labelled too and NAMES the clicked hero ("With
+  Lion = +5.20"): the badge has no room for a name and does not need
+  one, since you just clicked that hero, but a line reading "with +5.20"
+  beside four labelled ones is the odd one out.
   **EACH FIGURE CARRIES ITS OWN STANDING IN BRACKETS** (`Stars.why`),
   at the user's request — "after 17 games say (top XXX%), and after the
   win rate say (top XXX%)". It used to name the two FLOORS and say the
