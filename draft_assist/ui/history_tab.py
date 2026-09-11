@@ -742,12 +742,12 @@ class HistoryTab(QWidget):
         row.addWidget(self.export_button)
         lay.addLayout(row)
 
-        # THE ELEVEN ANALYSIS TICK BOXES USED TO BE A GRID HERE, and at
+        # THE ANALYSIS TICK BOXES USED TO BE A GRID HERE, and at
         # the user's request they are on the SIDEBAR now, one per
         # bookmark: "if you can have the tick boxes on the actual
         # bookmarks as well that would be nice... don't show tick boxes
         # on the main menu in that case, duplication will be confusing".
-        # Naming the same eleven analyses twice is two places to read one
+        # Naming the same analyses twice is two places to read one
         # thing, and the row that jumps to a section is the right place
         # to switch it on. What is left on this card is the SAMPLE —
         # which matches are measured — which is why it is no longer
@@ -1061,9 +1061,13 @@ class HistoryTab(QWidget):
             "noise — at least "
             f"{analyse.MIN_BUCKET} games in the bucket and "
             f"{analyse.SIGMA_CAT} standard errors away.\n\n"
-            "Eleven analyses run at once, so some buckets clear that bar by "
-            "chance alone. A finding is a hypothesis to test against the "
-            "next hundred games, not a conclusion.\n\n"
+            # COUNTED, NEVER SPELLED. This read "Eleven analyses" while
+            # the list had grown past eleven, which is a front page
+            # misstating the multiple-comparisons risk it exists to warn
+            # about — and the number rises every time a section is added.
+            f"{len(analyse.ANALYSES)} analyses run at once, so some buckets "
+            "clear that bar by chance alone. A finding is a hypothesis to "
+            "test against the next hundred games, not a conclusion.\n\n"
             "It reads public match history from OpenDota. If nothing comes "
             "back, the usual cause is Expose Public Match Data being off in "
             "the Dota 2 settings.")
@@ -1328,8 +1332,8 @@ class HistoryTab(QWidget):
 
         if block.kind == "metric":
             headers = ["Hero", "Games", f"Mean {block.unit}",
-                       f"Against your {block.datum:.{block.dp}f}"]
-            figure = (lambda row, dp=block.dp: f"{row.mean:.{dp}f}")
+                       f"Against your {analyse.sig(block.datum)}"]
+            figure = (lambda row: analyse.sig(row.mean))
             scale = max(abs(block.datum or 0) * 0.10,
                         max((abs(r.delta) for r in block.shown
                              if r.eligible), default=0.0))

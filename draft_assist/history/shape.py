@@ -81,6 +81,27 @@ class Match:
                 else self.tower_damage / self.minutes)
 
     @property
+    def cs_per_min(self):
+        """Last hits per minute. PER MINUTE rather than raw, because raw CS
+        measures how long the game ran at least as much as how well it was
+        farmed — a 50 minute game beats a 25 minute one on totals alone."""
+        return (None if self.last_hits is None
+                else self.last_hits / self.minutes)
+
+    @property
+    def denies_per_min(self):
+        """Denies per minute, and read it with more suspicion than the rest.
+
+        Denying happens almost entirely in the laning stage, so the rate
+        falls the longer a game runs whether or not anything was done
+        differently: the same laning phase divided by a bigger number. It
+        is per minute anyway, for consistency with every other rate here
+        and because raw denies has the same problem in the other
+        direction, but the caveat is stated where the block is drawn.
+        """
+        return None if self.denies is None else self.denies / self.minutes
+
+    @property
     def kda(self):
         """Kills plus three tenths of assists, over deaths.
 

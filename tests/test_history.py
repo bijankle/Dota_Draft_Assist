@@ -206,6 +206,124 @@ def test_a_metric_split_uses_the_overall_spread_not_the_buckets_own():
     assert axe.sigma > analyse.SIGMA_CAT
 
 
+def test_every_figure_is_two_significant_figures():
+    """At the user's request. SIGNIFICANT FIGURES rather than decimal
+    places because these blocks span four orders of magnitude — gold in
+    the hundreds, CS in single figures, denies in hundredths — so one
+    decimal setting cannot serve them all."""
+    assert analyse.sig(614.67) == "610"
+    assert analyse.sig(5.6) == "5.6"
+    assert analyse.sig(0.48) == "0.48"
+    assert analyse.sig(0.0483) == "0.048"
+    assert analyse.sig(2.345) == "2.3"
+    assert analyse.sig(-3.47) == "-3.5"
+    # NO TRAILING ".0", at the user's request — a whole number is written
+    # as one. It must not reach inside the decimals, though: 0.30 is not
+    # a whole number and keeps the second figure it is drawn at.
+    assert analyse.sig(3.04) == "3"
+    assert analyse.sig(2.98) == "3"
+    assert analyse.sig(0.30) == "0.30"
+    assert not any(analyse.sig(v).endswith(".0")
+                   for v in (3.04, 2.98, 5.02, 9.99, 10.23, 100.0))
+    # Rounding that crosses a power of ten must not print a third figure.
+    assert analyse.sig(9.99) == "10"
+    assert analyse.sig(0.0999) == "0.10"
+    # Nothing measured is nothing written, never "0.00".
+    assert analyse.sig(None) == ""
+    assert analyse.sig(0) == "0"
+    # NEVER an exponent: "6.1e+02" is the right number, unreadably.
+    assert "e" not in analyse.sig(614.67) and "e" not in analyse.sig(0.00012)
+
+
+def test_denies_per_minute_survives_the_rounding():
+    """Denies run at tenths per minute, so whole numbers would print 0 for
+    every hero in the list — the section would say nothing at all. Two
+    significant figures is what keeps the block readable."""
+    matches = shape.shape(rows_for(40), HEROES).matches
+    for index, match in enumerate(matches):
+        match.hero = "Axe" if index < 20 else "Bane"
+        match.denies = 24 if index < 20 else 6       # over a 30 minute game
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    block = next(b for b in blocks if b.id == "denies")
+    figures = {r.key: analyse.format_figure(block, r.mean) for r in block.shown}
+    assert figures == {"Axe": "0.80", "Bane": "0.20"}
+    assert not any(f in ("0", "0.0") for f in figures.values())
+
+
+def test_a_rate_is_per_minute_so_a_long_game_cannot_out_farm_a_short_one():
+    """Raw CS measures how long the game ran at least as much as how well
+    it was farmed, which is the whole reason these are rates."""
+    long_game = shape.shape(rows_for(1, duration=3600, last_hits=300),
+                            HEROES).matches[0]
+    short_game = shape.shape(rows_for(1, duration=1800, last_hits=300),
+                             HEROES).matches[0]
+    assert long_game.last_hits == short_game.last_hits == 300
+    assert long_game.cs_per_min == pytest.approx(5.0)
+    assert short_game.cs_per_min == pytest.approx(10.0)
+    assert short_game.cs_per_min > long_game.cs_per_min
+
+
+def test_gold_and_xp_are_taken_as_the_rates_they_already_are():
+    """OpenDota reports `gold_per_min` and `xp_per_min` PER MINUTE itself.
+    Dividing either by the duration a second time would quietly report a
+    number nobody measured, and it would look plausible."""
+    matches = shape.shape(rows_for(20, duration=3000, gold_per_min=500,
+                                   xp_per_min=600), HEROES).matches
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    gold = next(b for b in blocks if b.id == "gold")
+    experience = next(b for b in blocks if b.id == "xp")
+    assert gold.datum == pytest.approx(500)
+    assert experience.datum == pytest.approx(600)
+
+
+def test_a_field_that_never_arrives_is_unmeasured_rather_than_nought():
+    """The four farm fields are the ones most at risk of coming back empty
+    — a projection OpenDota does not accept is dropped SILENTLY. An absent
+    field must read as "not measured" and produce no finding, never as a
+    hero who farms nothing, which is a measurement nobody made."""
+    matches = shape.shape(rows_for(30), HEROES).matches      # no CS in the row
+    assert all(m.last_hits is None and m.cs_per_min is None for m in matches)
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    cs = next(b for b in blocks if b.id == "cs")
+    assert cs.datum is None
+    assert cs.findings == []
+    assert cs.covered == 0
+
+
+def test_the_farm_four_are_contributions_and_not_win_rate_splits():
+    """They belong in the Impact card with the other caveated rankings:
+    every one of them ranks a ROLE before it ranks the player."""
+    matches = shape.shape(rows_for(40, last_hits=200, denies=20,
+                                   gold_per_min=500, xp_per_min=600),
+                          HEROES).matches
+    # TWO heroes, because a section needs two eligible buckets to have a
+    # best and a worst — one bucket is a figure, not a spread.
+    for index, match in enumerate(matches):
+        carry = index < 20
+        match.hero = "Axe" if carry else "Bane"
+        match.last_hits = 400 if carry else 60
+        match.denies = 24 if carry else 4
+        match.gold_per_min = 620 if carry else 280
+        match.xp_per_min = 700 if carry else 340
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    farm = {b.id: b for b in blocks if b.id in ("gold", "xp", "cs", "denies")}
+    assert set(farm) == {"gold", "xp", "cs", "denies"}
+    assert all(b.kind == "metric" for b in farm.values())
+    assert all(b.caveat for b in farm.values())
+    # Distinct fields, or two sections would draw the same figure twice.
+    assert len({analyse.METRICS[k]["field"] for k in farm}) == 4
+
+    report = Report(options=Options(), how="test", name="", matches=matches,
+                    blocks=blocks, dropped={}, sessions=1,
+                    returned=len(matches))
+    _rates, contributions = report.split_findings()
+    rate_rows, impact_rows = report.summary_rows()
+    impact = {block.name for block, *_ in impact_rows}
+    assert {"Gold/min", "XP/min", "CS/min", "Denies/min"} <= impact
+    assert not {"Gold/min", "XP/min", "CS/min", "Denies/min"} & {
+        block.name for block, *_ in rate_rows}
+
+
 def test_an_item_is_measured_against_that_heros_own_rate():
     """Comparing a Pudge item against an overall rate dominated by other
     heroes would measure the hero, not the item."""

@@ -90,6 +90,12 @@ def test_it_says_what_it_measures_before_anything_has_been_run(qapp):
     assert "datum" in text
     assert "hypothesis" in text, "the multiple-comparisons caveat"
     assert "Expose Public Match Data" in text
+    # COUNTED, NEVER SPELLED. It read "Eleven analyses run at once" after
+    # the list had grown past eleven — a front page understating the very
+    # multiple-comparisons risk that sentence exists to raise.
+    from draft_assist.history import analyse
+    assert f"{len(analyse.ANALYSES)} analyses run at once" in text
+    assert "Eleven analyses" not in text
     tab.deleteLater()
 
 
