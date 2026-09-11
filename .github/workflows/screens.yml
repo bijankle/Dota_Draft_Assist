@@ -1,0 +1,60 @@
+# Photograph every screen on every push, so a layout fault is visible
+# without being at the Windows machine with Dota open.
+#
+# WHY: three times in one evening something shipped that read perfectly
+# in the source and was wrong on screen - an account row that was two
+# lines instead of one, two labels printing with no gap between them,
+# and a gold shield that was computed nowhere and so never appeared.
+# Every test passed through all three. This app's oldest lesson is that
+# a layout is checked by LOOKING at it.
+name: Screens
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:      # so a set can be asked for without a push
+
+jobs:
+  shoot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Qt's offscreen platform still links the graphics and input
+      # stacks even though it draws to memory, so the headless runner
+      # needs them present or the plugin fails to load and every widget
+      # ABORTS the process rather than raising.
+      - name: System libraries Qt needs even offscreen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 \
+            libxcb-cursor0 fontconfig
+
+      # PyQt6 is NOT in requirements.txt: that file is the cross-platform
+      # core the Linux dev container installs, and the GUI runtime lives
+      # in requirements-windows.txt with the capture stack it cannot be
+      # separated from there. Here only the GUI half is wanted.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install PyQt6
+
+      - name: Take the screens
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/shoot.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screens-${{ github.sha }}
+          path: debug_out/shots/
+          if-no-files-found: error
+          retention-days: 30
