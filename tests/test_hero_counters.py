@@ -233,3 +233,4 @@ def test_a_clustered_field_still_fills_the_bar_column():
     assert abs(best.mean) < 0.05, "the raw figure really is tiny"
     assert abs(best.delta) / block.scale > 0.9, (
         "but the bar is nearly full, because it plots the ranking")
+

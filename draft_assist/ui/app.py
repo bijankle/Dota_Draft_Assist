@@ -918,6 +918,19 @@ class MainWindow(QMainWindow):
         # disk the whole time. A signal announces CHANGES; the state it
         # already holds has to be read once, here.
         self._history_run_changed(analysis.report)
+        # AND THE SHIELDS, for the same reason one line up and a worse
+        # one: `_recompute_shields` was called from `reload_backend` and
+        # NOWHERE ELSE, so on an ordinary start it never ran at all and
+        # `self.shields` stayed the empty dict it is built with - for the
+        # whole session, on every tile, for ever. The mark could only
+        # appear after a statistics download, which is not something
+        # anybody does to make a mark show up. "The shield is not working
+        # at all" was exactly right.
+        #
+        # It needs no history and no account, only the matrix, so unlike
+        # the stars it can be worked out the moment the dataset is in
+        # hand.
+        self._recompute_shields()
         tabs.addTab(analysis, "History")
 
         # ----- Debug tab: the picture answers what a log never will
@@ -2989,6 +3002,15 @@ class MainWindow(QMainWindow):
             # input to the ranking, not a filter over its result, so the
             # run has to be read again.
             self._history_run_changed(self.history_tab.report)
+        if self.settings.get("shield_pct") != before.get("shield_pct"):
+            # THE SECOND HALF OF THE SAME BUG. `_refresh_views` above
+            # re-applied whatever shields were last computed, and the bar
+            # is an input to the RANKING rather than a filter over its
+            # result - so without this the control in Settings moved a
+            # number in a file and changed nothing on screen, which is
+            # indistinguishable from the mark being broken.
+            self._recompute_shields()
+            self._refresh_views()
         chosen = self.settings.get("pair_source", pair_source())
         if chosen != pair_source():
             # Written to preferences.json, not just the UI settings: the
