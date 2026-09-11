@@ -310,7 +310,13 @@ def metric_split(matches, key_of, value_of) -> tuple:
         if value is None or key is None or not math.isfinite(value):
             continue
         values.append(value)
-        by_key.setdefault(key, []).append(value)
+        # THE WIN COMES WITH THE FIGURE, so a metric bucket can say what
+        # its win rate was. It could not before: these blocks carried n,
+        # the mean and the sigma and nothing about winning at all, which
+        # is why the scatter above the table needed this first. Counted
+        # over the SAME matches the mean is taken over - a match with no
+        # figure for this metric is not in either.
+        by_key.setdefault(key, []).append((value, bool(match.win)))
     if len(values) < 2:
         return None, 0.0, [], len(values), len(matches)
 
@@ -324,12 +330,15 @@ def metric_split(matches, key_of, value_of) -> tuple:
 
     rows = []
     for key, group in by_key.items():
-        mean = sum(group) / len(group)
-        se = spread / math.sqrt(len(group)) if spread > 0 else 0.0
-        rows.append(Bucket(key=key, n=len(group), mean=mean,
+        figures = [figure for figure, _ in group]
+        wins = sum(1 for _, won in group if won)
+        mean = sum(figures) / len(figures)
+        se = spread / math.sqrt(len(figures)) if spread > 0 else 0.0
+        rows.append(Bucket(key=key, n=len(figures), mean=mean,
+                           wins=wins, rate=wins / len(figures),
                            delta=mean - datum, se=se,
                            sigma=(mean - datum) / se if se > 0 else 0.0,
-                           eligible=len(group) >= MIN_BUCKET))
+                           eligible=len(figures) >= MIN_BUCKET))
     rows.sort(key=lambda b: -b.mean)
     return datum, spread, rows, len(values), len(matches)
 

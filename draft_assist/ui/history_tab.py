@@ -34,6 +34,7 @@ from . import theme
 from .chrome import CountBox, Dropdown, TickBox, card
 from .flowlayout import FlowLayout
 from .section_bar import LOOK_AHEAD, SectionBar, edge
+from .scatter import ScatterPlot
 from .spread_bar import SpreadBar
 from ..history import analyse, cache, opendota, store, workbook
 from ..history.report import CAPS, WINDOWS, Options
@@ -200,12 +201,19 @@ class BucketTable(QTableWidget):
     """
 
     changed = pyqtSignal()
+    # WHICH ROWS ARE ACTUALLY ON SCREEN, after the cut and the sort.
+    # The scatter above a metric card plots the same heroes the table
+    # lists, so it has to be told when that set changes - "it should be
+    # filtered according to the table below it". Reading `_rows` instead
+    # would give it every hero and the cut would appear to do nothing.
+    drawn = pyqtSignal(list)
 
     def __init__(self, headers, parent=None):
         super().__init__(0, 4, parent)
         self.setHorizontalHeaderLabels(headers)
         self._headers = list(headers)
         self._rows: list = []
+        self.drawn_rows: list = []
         self._figure = str
         self._scale = 1.0
         self._no_finding: tuple = ()
@@ -348,6 +356,7 @@ class BucketTable(QTableWidget):
             self.setHorizontalHeaderItem(column, item)
 
     def _draw(self, rows) -> None:
+        self.drawn_rows = list(rows)
         self.setRowCount(len(rows))
         biggest = max((row.n for row in rows), default=1) or 1
         for index, row in enumerate(rows):
@@ -374,6 +383,7 @@ class BucketTable(QTableWidget):
                          (row.n / biggest) ** 0.5))
             self.setItem(index, BAR_COLUMN, bar)
         self._fit_height()
+        self.drawn.emit(self.drawn_rows)
 
     def _fit_height(self) -> None:
         head = self.horizontalHeader()
@@ -1417,6 +1427,22 @@ class HistoryTab(QWidget):
         table = self._table(block.id, headers, block.shown, figure, scale,
                             block.no_finding, value_of)
         lay.addWidget(table.controls)
+        # THE SCATTER GOES ABOVE THE TABLE, on the contribution blocks
+        # only, at the user's request: "it makes way more sense to plot
+        # them on a graph where the visual shows the win rate but the
+        # text shows the impact variable, that way I can see whether high
+        # GPM correlates to a high win rate".
+        #
+        # It answers what the table cannot. A ranking by gold per minute
+        # says which heroes earn most; whether earning more went with
+        # WINNING more is two columns the eye has to join up a row at a
+        # time, and on a scatter it is the shape of the thing.
+        #
+        # BELOW the controls, because they now govern both: "Top 10 by
+        # games" cuts the chart and the table together, and a control
+        # sitting between the two things it changes says so.
+        if block.kind == "metric":
+            lay.addWidget(self._metric_plot(block, table))
         lay.addWidget(table)
 
         # `block.hidden` and `block.caveat` are NOT drawn — see above.
@@ -1424,6 +1450,32 @@ class HistoryTab(QWidget):
         # which is where a caveat can be read once at leisure rather than
         # sat over the table every time it is looked at.
         return frame
+
+    def _metric_plot(self, block, table) -> QWidget:
+        """Win rate against this block's figure, following `table`.
+
+        FED FROM THE TABLE'S OWN ROWS rather than from the block, so the
+        cut above governs both and the two can never describe different
+        heroes. It refills on `drawn`, which the table emits every time
+        it renders - a heading click, a step of the count box, or the
+        first fill - so there is one path rather than three.
+        """
+        plot = ScatterPlot()
+        short = analyse.METRICS.get(block.id, {}).get("short") or block.unit
+
+        def refill(rows=None):
+            rows = table.drawn_rows if rows is None else rows
+            plot.set_points(
+                [(row.key, row.mean, row.rate, row.eligible, row.n)
+                 for row in rows], short)
+            # A SCATTER OF ONE DOT IS NOT A CORRELATION. Below three
+            # heroes there is no shape to read, so the card shows the
+            # table alone rather than a box with a mark in it.
+            plot.setVisible(len(rows) >= 3)
+
+        table.drawn.connect(refill)
+        refill()
+        return plot
 
     def _item_block(self, block, lay) -> None:
         """ONE HERO AT A TIME, chosen from a dropdown.
