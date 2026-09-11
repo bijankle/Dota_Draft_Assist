@@ -142,10 +142,31 @@ def save(report: Report, where: Path | None = None) -> bool:
     return True
 
 
+def run_files(folder: Path) -> list:
+    """The cached RUNS in this folder, and nothing else.
+
+    A run is named for the account it holds (`<account id>.json`), and it
+    is not the only thing living here: `NAMES_FILE` is the item id -> name
+    map, written beside the runs so a rebuild can name items with no
+    network. Globbing `*.json` sweeps that up too, which went wrong in
+    both directions — `_prune` counted it towards `KEEP` and could DELETE
+    it once there were that many accounts, and a reader that assumed
+    every file here was a run raised `KeyError: 'matches'` on it.
+
+    Losing the map is not fatal, because `BUNDLED_NAMES` is underneath
+    it — but it is the "Item 63" bug from a fourth cause, and a prune
+    that deletes a file it does not own is wrong whether or not
+    something else happens to catch it.
+    """
+    if not folder.is_dir():
+        return []
+    return [path for path in folder.glob("*.json") if path.stem.isdigit()]
+
+
 def _prune(folder: Path) -> None:
     """Keep the newest `KEEP` runs and drop the rest."""
     try:
-        files = sorted(folder.glob("*.json"),
+        files = sorted(run_files(folder),
                        key=lambda p: p.stat().st_mtime, reverse=True)
         for stale in files[KEEP:]:
             stale.unlink()

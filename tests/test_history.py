@@ -635,6 +635,34 @@ def test_the_cached_runs_are_local_only(tmp_path):
     assert "history_cache/" in ignored.read_text(encoding="utf-8")
 
 
+def test_the_item_name_map_is_not_a_run_and_is_never_pruned(tmp_path,
+                                                            monkeypatch):
+    """`NAMES_FILE` lives beside the runs, and a `*.json` glob sweeps it
+    up. That went wrong in both directions: `_prune` counted it towards
+    KEEP and would DELETE it once there were that many accounts, and a
+    reader that assumed every file here was a run raised KeyError on it.
+    Losing the map is the "Item 63" bug from a fourth cause."""
+    from draft_assist.history import cache as cache_mod
+    monkeypatch.setattr(cache_mod, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache_mod, "KEEP", 2)
+    assert cache_mod.save_item_names({63: "Power Treads"}, tmp_path)
+    names = tmp_path / cache_mod.NAMES_FILE
+    assert names.exists()
+
+    for account in (111, 222, 333, 444):
+        (tmp_path / f"{account}.json").write_text("{}", encoding="utf-8")
+    cache_mod._prune(tmp_path)
+
+    # The map survives however many accounts there are...
+    assert names.exists(), "the item name map was pruned as though a run"
+    assert cache_mod.item_names().get(63) == "Power Treads"
+    # ...and it never counted towards the runs kept.
+    kept = cache_mod.run_files(tmp_path)
+    assert len(kept) == 2
+    assert names not in kept
+    assert all(p.stem.isdigit() for p in kept)
+
+
 def test_only_the_newest_runs_are_kept(tmp_path, monkeypatch):
     from draft_assist.history import cache
     folder = tmp_path / "cache"

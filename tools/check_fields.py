@@ -36,8 +36,10 @@ ITEM_FIELDS = {f"item_{n}" for n in range(6)}
 
 
 def runs() -> list[Path]:
-    folder = cache.cache_dir()
-    return sorted(folder.glob("*.json")) if folder.is_dir() else []
+    """Only the RUNS. `cache.NAMES_FILE` lives in the same folder and is
+    an item id -> name map with no matches in it at all, so a plain
+    `*.json` here raises `KeyError: 'matches'` on a real cache."""
+    return sorted(cache.run_files(cache.cache_dir()))
 
 
 def main() -> int:
