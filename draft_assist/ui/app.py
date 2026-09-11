@@ -4048,9 +4048,15 @@ class MainWindow(QMainWindow):
         height, width = picture.shape[:2]
         img = QImage(picture.tobytes(), width, height, 3 * width,
                      QImage.Format.Format_BGR888)
+        # INTO THE CONTENTS, not the whole widget: this label is a card,
+        # so a 1px border is drawn round it and a picture fitted to the
+        # full rectangle is two pixels taller than the room it has. That
+        # difference is also what used to make the view grow on every
+        # tick — see `FrameView.minimumSizeHint`.
         self.debug_image.show_frame(
             QPixmap.fromImage(img).scaled(
-                self.debug_image.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                self.debug_image.contentsRect().size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation),
             width, height)
 
