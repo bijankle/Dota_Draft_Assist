@@ -280,41 +280,57 @@ class SpreadBar(QWidget):
                       datum_at: float, metrics: QFontMetrics) -> list:
         """Where each name goes: (rect, text, alignment), worst then best.
 
-        Each name runs AWAY from its own dot — the worst leftward, the
-        best rightward — which is what lets the two share one line: the
-        worst mark is always left of the best, so the two texts point in
-        opposite directions and cannot approach each other.
+        EACH NAME IS CENTRED ON ITS OWN DOT, at the user's request:
+        "like on top of the dots, the centre of the text on top".
 
-        A dot standing ON the end of its scale has nothing outside it to
-        run into, and every contribution section has both (the scale IS
-        worst-to-best there). So a name with no room outward TURNS and
-        runs inward instead, which is the arrangement those rows had
-        before and the one the user asked to keep for them.
+        This REVERSES the rule that stood here, which ran each name AWAY
+        from its dot — the worst leftward, the best rightward — and
+        turned it inward when the dot stood on the end of its scale.
+        Every contribution section has both dots on the ends (the scale
+        IS worst-to-best there), so on the whole Impact card both names
+        turned inward and printed a long way from the marks they belong
+        to: the outer thirds of the row sat empty while the two names
+        crowded the middle, where the grey datum also wants to be.
+        Centring puts each name back over its own mark and spends the
+        width the ends were wasting — "so that they occupy the space
+        better (they are generally the outer bounds)".
 
-        Only then can the two meet, and only on a narrow window — both
-        turned inward, approaching along the same line. They are held
-        apart at the midpoint and elided into what is left, because a
-        name printed over another name is unreadable twice over.
+        ONE RULE FOR BOTH CARDS rather than one for the ends and one for
+        the middle. The old arrangement had a second virtue that is
+        worth naming as a cost: two names pointing in opposite
+        directions could never approach each other, so the gap between
+        the marks was free by construction and the grey figure always
+        had somewhere to go. Centred names can meet, so they are split
+        at the midpoint BETWEEN THE DOTS — the one boundary that belongs
+        to neither — and the datum is dropped when they leave it no
+        room, which is what it already did.
         """
         line = metrics.height()
         worst_wide = metrics.horizontalAdvance(self.worst_text)
         best_wide = metrics.horizontalAdvance(self.best_text)
+        width = float(self.width())
 
-        worst_right = worst_at - DOT - DOT_GAP
-        if worst_right - worst_wide < 0:                 # no room outward
-            worst_right = worst_at + DOT + DOT_GAP + worst_wide
-        best_left = best_at + DOT + DOT_GAP
-        if best_left + best_wide > self.width():
-            best_left = best_at - DOT - DOT_GAP - best_wide
+        # The half of the row each name may use. Applied always rather
+        # than only on a collision: with the dots far apart and the names
+        # short it changes nothing, and there is then one path to get
+        # right instead of two.
+        border = (worst_at + best_at) / 2
+        worst_room = max(0.0, border - LABEL_GAP / 2)
+        best_from = min(width, border + LABEL_GAP / 2)
+        best_room = max(0.0, width - best_from)
 
-        if best_left < worst_right:                      # they would meet
-            middle = (worst_right + best_left) / 2
-            worst_right, best_left = middle, middle
+        worst_shown = min(worst_wide, worst_room)
+        best_shown = min(best_wide, best_room)
+        # Centred on the dot, then pulled back inside the half — so a
+        # name is only ever off-centre because it ran out of room, and a
+        # dot hard against the end of the scale keeps its whole name.
+        worst_left = min(max(worst_at - worst_shown / 2, 0.0),
+                         worst_room - worst_shown)
+        best_left = min(max(best_at - best_shown / 2, best_from),
+                        width - best_shown)
 
-        worst_rect = QRectF(max(0.0, worst_right - worst_wide), 0,
-                            min(worst_wide, worst_right), line)
-        best_rect = QRectF(best_left, 0,
-                           min(best_wide, self.width() - best_left), line)
+        worst_rect = QRectF(worst_left, 0, worst_shown, line)
+        best_rect = QRectF(best_left, 0, best_shown, line)
         # THE GREY FIGURE GOES BETWEEN THEM, which is always free space:
         # the worst's name runs left from its dot and the best's runs
         # right from its own, so nothing either of them draws can be
@@ -333,13 +349,17 @@ class SpreadBar(QWidget):
                  and datum_rect.left() >= room_from
                  and datum_rect.right() <= room_to)
 
+        # ALL THREE ARE CENTRED IN THEIR OWN RECT now. The two names used
+        # to be anchored to the inside edge they ran from, which is what
+        # "runs away from its dot" meant in practice; a rect that is
+        # already placed on the dot has nothing left to anchor.
         return [
             (worst_rect, _fit(self.worst_text, worst_rect.width(), metrics),
-             Qt.AlignmentFlag.AlignRight),
+             Qt.AlignmentFlag.AlignHCenter),
             (datum_rect, self.datum_text if named else "",
              Qt.AlignmentFlag.AlignHCenter),
             (best_rect, _fit(self.best_text, best_rect.width(), metrics),
-             Qt.AlignmentFlag.AlignLeft),
+             Qt.AlignmentFlag.AlignHCenter),
         ]
 
 

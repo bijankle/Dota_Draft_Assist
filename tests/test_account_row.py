@@ -131,9 +131,9 @@ def test_the_row_prompts_before_anything_has_been_measured(qapp):
 
 
 @pytest.mark.parametrize("window,expected_start,expected_span", [
-    ("1m", "12 Aug 2026", "(1 month)"),
-    ("3m", "12 Jun 2026", "(3 months)"),
-    ("12m", "11 Sep 2025", "(12 months)")])
+    ("1m", "Aug 2026", "(1 month)"),
+    ("3m", "Jun 2026", "(3 months)"),
+    ("12m", "Sep 2025", "(12 months)")])
 def test_the_range_is_the_runs_own_window(qapp, window, expected_start,
                                           expected_span):
     """The History window is a DROPDOWN, so a fixed three months would
@@ -148,7 +148,11 @@ def test_the_range_is_the_runs_own_window(qapp, window, expected_start,
     assert row.who.text() == "Bijson"
     text = row.when.text()
     assert text.startswith(expected_start)
-    assert "11 Sep 2026" in text, "the run's own date is the end"
+    assert "Sep 2026" in text, "the run's own date is the end"
+    # THE DAY IS NOT PRINTED, at the user's request. The window is a
+    # dropdown of whole months, so a day was precision the measurement
+    # never claimed.
+    assert "11 Sep" not in text and "12 Aug" not in text
     assert text.endswith(expected_span)
     row.deleteLater()
 

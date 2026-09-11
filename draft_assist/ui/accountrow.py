@@ -31,6 +31,13 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from . import chrome, theme
 
+# MONTH AND YEAR, NOT THE DAY, at the user's request: "you don't need to
+# say the day, just the month and year". The row is read at a glance and
+# the window it describes is a DROPDOWN of months — "3 months", "12
+# months" — so the day was three characters of precision the measurement
+# never claimed and nobody acts on. Spelled once, because the start and
+# the end must not be written two different ways.
+MONTH = "%b %Y"
 FACE = 34                 # the avatar's edge, in pixels
 PADDING = 6
 NOTHING_YET = "No account measured yet"
@@ -226,10 +233,10 @@ class AccountRow(QWidget):
         days = getattr(options, "days", None)
         if ran is None:
             return getattr(options, "window_label", "") or ""
-        end = ran.strftime("%d %b %Y")
+        end = ran.strftime(MONTH)
         if not days:
             return f"All history  \u2192  {end}"
-        start = (ran - timedelta(days=int(days))).strftime("%d %b %Y")
+        start = (ran - timedelta(days=int(days))).strftime(MONTH)
         # AND HOW LONG THAT IS, in brackets, at the user's request - two
         # dates make the reader do the subtraction, and the whole point of
         # the row is to be read at a glance. It is the window's OWN label

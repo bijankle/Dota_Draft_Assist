@@ -382,31 +382,53 @@ def test_both_names_sit_on_one_line(styled):
     assert worst.height() == best.height()
 
 
-def test_each_name_runs_away_from_its_own_dot(styled):
-    """Anchoring each name to the inside edge of its own mark is what
-    lets them share a line: the worst is always the left-hand dot, so the
-    two texts point in opposite directions and can only draw apart."""
+def test_each_name_is_CENTRED_on_its_own_dot(styled):
+    """At the user's request: "like on top of the dots, the centre of the
+    text on top".
+
+    This REVERSES the rule that each name runs AWAY from its own mark.
+    """
     spread, *_ = analyse.section_spread(a_block((0.39, 0.50, 0.71)), 0.50)
     bar = a_bar(spread, "71% Axe", "39% Crystal Maiden")
     (worst, _, _), _, (best, _, _) = _places(bar, spread)
-    assert worst.right() <= _x_of(bar, spread, spread.worst)
-    assert best.left() >= _x_of(bar, spread, spread.best)
-    assert worst.right() <= best.left(), "the two names would touch"
+    assert worst.center().x() == pytest.approx(
+        _x_of(bar, spread, spread.worst), abs=1.0)
+    assert best.center().x() == pytest.approx(
+        _x_of(bar, spread, spread.best), abs=1.0)
 
 
-def test_a_name_with_no_room_outward_turns_inward(styled):
+def test_a_dot_on_the_END_keeps_its_whole_name_on_the_widget(styled):
     """Every contribution section has both dots ON the ends, because the
-    scale there IS worst-to-best — "so it doesn't make sense to align
-    them as I said before". A name that ran outward would fall off the
-    widget, so it turns round."""
+    scale there IS worst-to-best — which is the whole Impact card. A
+    name centred on a dot at x=0 would hang half off the widget, so it
+    is pulled back inside; it may not be cut, and it may not escape.
+
+    This is what "they occupy the space better (they are generally the
+    outer bounds)" asked for: the old rule turned both names inward and
+    printed them a long way from their marks, leaving the outer thirds
+    of the row empty.
+    """
     spread, *_ = analyse.section_spread(
         a_block((0.30, 0.50, 0.90), kind="metric", ident="herodmg"), 0.50)
     assert (spread.worst, spread.best) == (spread.low, spread.high)
     bar = a_bar(spread, "90 Sniper", "30 Axe")
-    (worst, _, _), _, (best, _, _) = _places(bar, spread)
-    assert worst.left() >= _x_of(bar, spread, spread.worst)
-    assert best.right() <= _x_of(bar, spread, spread.best)
+    (worst, worst_text, _), _, (best, best_text, _) = _places(bar, spread)
     assert worst.left() >= 0 and best.right() <= bar.width()
+    assert [worst_text, best_text] == ["30 Axe", "90 Sniper"], "not cut"
+    # And each still sits over its own half of the row, which is what
+    # the old rule gave away.
+    assert worst.center().x() < bar.width() / 2 < best.center().x()
+
+
+def test_two_names_that_would_meet_are_held_apart(styled):
+    """The virtue the old rule had and this one has to buy back: two
+    names pointing in opposite directions could never approach each
+    other. Centred names can, so they are split at the midpoint BETWEEN
+    THE DOTS — the one boundary that belongs to neither."""
+    spread, *_ = analyse.section_spread(a_block((0.48, 0.50, 0.52)), 0.50)
+    bar = a_bar(spread, "52% Anti-Mage", "48% Crystal Maiden")
+    (worst, _, _), _, (best, _, _) = _places(bar, spread)
+    assert worst.right() <= best.left(), "a name over a name is unreadable"
 
 
 def test_a_name_that_fits_is_never_cut(styled):
