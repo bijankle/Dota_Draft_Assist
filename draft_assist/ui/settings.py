@@ -139,6 +139,20 @@ DEFAULTS = {
     # is a line written to everybody's settings file for ever.
     "window_w": 940,
     "window_h": 998,
+    # And WHERE it opens, at the user's request: "I don't like that when
+    # I close and reopen the app it doesn't open in the location where I
+    # closed it... it opens with the same size which is great, just need
+    # the same for location on the screen".
+    #
+    # None means "never saved", which is what a fresh install has and is
+    # not the same as a position of (0, 0) — so the first run is placed
+    # by the window manager rather than jammed into the top-left corner.
+    # They have to be HERE and not only written by `closeEvent`, because
+    # this dict is the write FILTER as well as the fallback: a key it
+    # does not name is kept for the session and dropped on the way to
+    # disk, which is the bug that lost the transparency setting.
+    "window_x": None,
+    "window_y": None,
 }
 
 

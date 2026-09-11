@@ -34,8 +34,8 @@ import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QSize, QT_VERSION_STR,
-                          Qt, QTimer)
+from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QSize,
+                          QT_VERSION_STR, Qt, QTimer)
 from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QDialog, QFrame,
@@ -262,6 +262,8 @@ class MainWindow(QMainWindow):
         self._floor_w = 2 * max(minimum_grid_width(),
                                 minimum_panel_width()) + 44
         self.setMinimumWidth(self._floor_w)
+        # Set before the first resize, since `resizeEvent` writes it.
+        self._normal_box = None
         # CLAMPED TO THE SCREEN ON THE WAY IN. The saved height is now
         # written correctly (see `closeEvent`), but a settings file an
         # earlier build wrote still carries whatever went wrong then — so
@@ -272,6 +274,7 @@ class MainWindow(QMainWindow):
         if area is not None:
             height = min(height, area.height())
         self.resize(int(self.settings.get("window_w", 1240) or 1240), height)
+        self._restore_position()
         self._build_menus()
         self._build()
         self._refresh_sources()
@@ -3694,7 +3697,27 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:       # noqa: N802 - Qt naming
         super().resizeEvent(event)
+        self._remember_place()
         self._match_grid_portraits()
+
+    def moveEvent(self, event) -> None:         # noqa: N802 - Qt naming
+        super().moveEvent(event)
+        self._remember_place()
+
+    def _remember_place(self) -> None:
+        """Keep the last geometry the window had as an ORDINARY window.
+
+        `normalGeometry` is Qt's own answer to this and it is only half
+        an answer: measured here it gives back the right SIZE while a
+        window is maximised and a position of (0, 0) — so relying on it
+        would have remembered the size correctly and forgotten the place
+        every time the window was closed maximised, which is the exact
+        fault the height had before today. Tracking it while it is
+        happening cannot be wrong about either, and does not depend on a
+        platform behaving the way the documentation reads.
+        """
+        if not self.isMaximized() and not self.isMinimized():
+            self._normal_box = self.geometry()
 
     def _resize_strips(self, width: int, height: int) -> None:
         """The picks decided how big a tile is; the strips follow.
@@ -4080,6 +4103,29 @@ class MainWindow(QMainWindow):
             self._names = {hid: self.ds.name(hid) for hid in self.ds.hero_ids}
         return self._names
 
+    def _restore_position(self) -> None:
+        """Open where it was closed, at the user's request.
+
+        The size was already remembered and the place was not, which is
+        half of "where I left it" — and on an always-on-top window that
+        is deliberately parked clear of the game, the place is the half
+        that took the arranging.
+
+        Nothing is restored on a first run (both keys are None, so the
+        window manager places it), and nothing is restored onto a screen
+        that is not there any more: `reachable` either nudges the point
+        until a piece of the title bar can be grabbed or says the spot
+        has gone, because the title bar is the only thing that moves this
+        window and a window opened outside every display is unreachable
+        rather than merely misplaced.
+        """
+        x, y = self.settings.get("window_x"), self.settings.get("window_y")
+        if x is None or y is None:
+            return
+        where = chrome.reachable(QPoint(int(x), int(y)), self.size())
+        if where is not None:
+            self.move(where)
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         # The size it was left at, so an unlocked window reopens where the
         # user left it rather than at the built-in 1240x820.
@@ -4095,14 +4141,26 @@ class MainWindow(QMainWindow):
         # resize handle it had off the bottom of it. One double-click on
         # the title bar and a close was the whole recipe.
         #
-        # `normalGeometry` is the size Qt keeps for restoring, which is
-        # exactly the one to reopen at. It is empty on a window that was
-        # never maximised, so the live size is still the usual answer.
-        box = self.normalGeometry()
-        if not self.isMaximized() or box.isEmpty():
+        # `_normal_box` is the last geometry this window had as an
+        # ORDINARY window, tracked as it happens (`_remember_place`).
+        # Qt's own `normalGeometry` looked like the answer and is only
+        # half of one: measured here it gives the right SIZE while
+        # maximised and a position of (0, 0), so it would have carried
+        # the height fix and quietly reintroduced the same fault in the
+        # PLACE. It is None before the window has ever been laid out, so
+        # the live geometry is still the fallback.
+        box = getattr(self, "_normal_box", None)
+        if box is None or box.isEmpty():
             box = self.geometry()
         self.settings["window_w"] = int(box.width())
         self.settings["window_h"] = int(box.height())
+        # The PLACE as well as the size, and off the same rectangle for
+        # the same reason: a maximised window's position is the corner of
+        # the screen, not the corner the user put it at, so saving the
+        # live one would forget where it lives every time it is closed
+        # maximised — exactly the fault the height had.
+        self.settings["window_x"] = int(box.x())
+        self.settings["window_y"] = int(box.y())
         ui_settings.save(self.settings)
         # A modeless task owns a subprocess that would otherwise keep POSTing
         # to a port nobody is listening on any more.

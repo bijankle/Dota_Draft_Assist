@@ -321,6 +321,46 @@ def is_corner(edges: Qt.Edge | None) -> bool:
         edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge))
 
 
+def reachable(where: QPoint, size: QSize,
+              grab: int = 120, bar: int = BAR_HEIGHT) -> QPoint | None:
+    """`where` nudged so a window of `size` opened there can be grabbed.
+
+    A remembered position is only as good as the screen it was
+    remembered on. Unplug the second monitor, or come back to a laptop
+    undocked, and the spot the window was closed at is somewhere no
+    display reaches — it opens invisible, and because the title bar is
+    the only thing that MOVES this window, invisible means gone.
+
+    So the answer is never the raw saved point. None when it lands on no
+    attached screen at all, in which case the caller lets the window
+    manager place it; otherwise the point pulled back just far enough
+    that a piece of the title bar is on the work area and can be taken
+    hold of. It is deliberately a NUDGE rather than a centring: a window
+    parked deliberately half off the side is a thing people do, and
+    "reachable" is a lower bar than "fully visible" on purpose.
+    """
+    from PyQt6.QtWidgets import QApplication
+    box = QRect(where, size)
+    screens = QApplication.screens()
+    if not screens:
+        return None
+    def covered(screen) -> int:
+        shared = screen.availableGeometry().intersected(box)
+        return shared.width() * shared.height()
+    best = max(screens, key=covered)
+    if not covered(best):
+        return None
+    area = best.availableGeometry()
+    # Horizontally it may hang off either side, so long as `grab` pixels
+    # of it remain. Vertically the TOP edge is special: a title bar above
+    # the top of the screen cannot be reached at all, however much of the
+    # window is showing below it.
+    x = min(max(where.x(), area.left() - size.width() + grab),
+            area.right() - grab)
+    y = min(max(where.y(), area.top()), area.bottom() - bar)
+    return QPoint(x, y)
+
+
 class ResizeBorder(QObject):
     """The four CORNER resize handles a frameless window does not get.
 
