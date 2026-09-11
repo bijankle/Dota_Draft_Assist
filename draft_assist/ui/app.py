@@ -262,8 +262,16 @@ class MainWindow(QMainWindow):
         self._floor_w = 2 * max(minimum_grid_width(),
                                 minimum_panel_width()) + 44
         self.setMinimumWidth(self._floor_w)
-        self.resize(int(self.settings.get("window_w", 1240) or 1240),
-                    int(self.settings.get("window_h", 820) or 820))
+        # CLAMPED TO THE SCREEN ON THE WAY IN. The saved height is now
+        # written correctly (see `closeEvent`), but a settings file an
+        # earlier build wrote still carries whatever went wrong then — so
+        # a copy that has already got into this state opens fixed rather
+        # than staying broken until somebody edits the file by hand.
+        area = chrome.work_area(self)
+        height = int(self.settings.get("window_h", 820) or 820)
+        if area is not None:
+            height = min(height, area.height())
+        self.resize(int(self.settings.get("window_w", 1240) or 1240), height)
         self._build_menus()
         self._build()
         self._refresh_sources()
@@ -1135,6 +1143,27 @@ class MainWindow(QMainWindow):
         self.resize_grip = ResizeGrip(self.status)
         self.status.addPermanentWidget(self.resize_grip)
         self._shell_lay.addWidget(self.status)
+
+        # ALL EIGHT HANDLES, at the user's request: "I want to be able to
+        # resize from any corner of the window... so that if I can only
+        # see / access the top right corner and not the bottom right, I
+        # can shrink it and then drag it up".
+        #
+        # The grip above stays, because it is the only handle that can be
+        # SEEN — three diagonal dots saying the window is resizable — and
+        # because it accepts its own presses it goes on serving the corner
+        # it is in. What it could not do is rescue a window whose bottom
+        # right is off the screen, which is the whole complaint.
+        #
+        # FOUR WATCHERS, and the list is not arbitrary: the window catches
+        # everything that IGNORES a press and propagates up to it, which
+        # is most of the border, and the other three are the widgets on
+        # the border that ACCEPT their own presses and would otherwise
+        # swallow them silently.
+        self.resize_border = chrome.ResizeBorder(self)
+        for edge_widget in (self, self.centralWidget(),
+                            self.title_bar, self.status):
+            self.resize_border.watch(edge_widget)
 
     def _build_sessions_tab(self) -> QWidget:
         """Past recordings, each one discrete, with its report ready to
@@ -4046,8 +4075,26 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         # The size it was left at, so an unlocked window reopens where the
         # user left it rather than at the built-in 1240x820.
-        self.settings["window_w"] = int(self.width())
-        self.settings["window_h"] = int(self.height())
+        #
+        # THE NORMAL SIZE, NEVER THE MAXIMISED ONE, and that distinction
+        # is what "the window height has randomly stretched very tall out
+        # of the screen" actually was. `height()` while maximised is the
+        # maximised height — and a FRAMELESS window maximised on Windows
+        # overhangs the work area rather than fitting it — so closing
+        # maximised wrote a height bigger than the screen, which the next
+        # start applied with `resize()` as an ORDINARY size. The window
+        # then opened taller than the display every time, with the one
+        # resize handle it had off the bottom of it. One double-click on
+        # the title bar and a close was the whole recipe.
+        #
+        # `normalGeometry` is the size Qt keeps for restoring, which is
+        # exactly the one to reopen at. It is empty on a window that was
+        # never maximised, so the live size is still the usual answer.
+        box = self.normalGeometry()
+        if not self.isMaximized() or box.isEmpty():
+            box = self.geometry()
+        self.settings["window_w"] = int(box.width())
+        self.settings["window_h"] = int(box.height())
         ui_settings.save(self.settings)
         # A modeless task owns a subprocess that would otherwise keep POSTing
         # to a port nobody is listening on any more.

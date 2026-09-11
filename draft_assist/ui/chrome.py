@@ -12,8 +12,8 @@ window has neither. Both are deliberately dumb: eight-pixel margins, a
 press, a move, a release.
 """
 
-from PyQt6.QtCore import (QPoint, QPointF, QRect, QRectF, QSize, QTimer,
-                          Qt, pyqtSignal)
+from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
+                          QSize, QTimer, Qt, pyqtSignal)
 from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPen,
                          QPolygonF)
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
@@ -65,6 +65,13 @@ BAR_HEIGHT = 48
 # being sliced top and bottom.
 ICON = BAR_HEIGHT - 8
 EDGE = 6            # how close to the border counts as a resize grab
+# A CORNER IS A BIGGER TARGET THAN AN EDGE, deliberately. An edge is
+# reached for when the window is already where you want it and one
+# dimension is wrong; a corner is what you reach for when the window has
+# got away from you and has to be rescued, which is the harder aim and
+# the one that matters more. Sixteen is about a fingertip at 100% scale
+# and still small enough not to shadow anything a card puts in a corner.
+CORNER = 16
 # The selected tab's underline, in pixels. MUST match the `border-bottom`
 # on `QTabBar::tab` in the stylesheet: the tab's text centres in what is
 # left above it, and the toolbar beside it has to use the same middle.
@@ -243,19 +250,260 @@ class ResizeGrip(QSizeGrip):
         painter.end()
 
 
-def edge_at(window, pos: QPoint) -> Qt.Edge | None:
-    """Which border `pos` is close enough to grab, if any."""
+def _side(value: int, last: int, reach: int) -> int:
+    """-1 near the low end, +1 near the high end, 0 in between."""
+    if value <= reach:
+        return -1
+    if value >= last - reach:
+        return 1
+    return 0
+
+
+def edge_at(window, pos: QPoint,
+            edge: int = EDGE, corner: int = CORNER) -> Qt.Edge | None:
+    """Which border `pos` is close enough to grab, if any.
+
+    CORNERS ARE TESTED FIRST and with a longer reach, because a corner is
+    two edges and an edge is one: asking "is this within `edge` of the
+    left AND within `edge` of the top" makes the corner the SMALLEST
+    target on the border rather than the largest, which is backwards —
+    the corner is the one you reach for when the window has to be
+    rescued.
+    """
     rect: QRect = window.rect()
-    edges = Qt.Edge(0)
-    if pos.x() <= EDGE:
-        edges |= Qt.Edge.LeftEdge
-    if pos.x() >= rect.width() - EDGE:
-        edges |= Qt.Edge.RightEdge
-    if pos.y() <= EDGE:
-        edges |= Qt.Edge.TopEdge
-    if pos.y() >= rect.height() - EDGE:
-        edges |= Qt.Edge.BottomEdge
-    return edges or None
+    right, bottom = rect.width() - 1, rect.height() - 1
+    across = _side(pos.x(), right, corner)
+    down = _side(pos.y(), bottom, corner)
+    if across and down:
+        return ((Qt.Edge.LeftEdge if across < 0 else Qt.Edge.RightEdge)
+                | (Qt.Edge.TopEdge if down < 0 else Qt.Edge.BottomEdge))
+    across = _side(pos.x(), right, edge)
+    down = _side(pos.y(), bottom, edge)
+    if across and not down:
+        return Qt.Edge.LeftEdge if across < 0 else Qt.Edge.RightEdge
+    if down and not across:
+        return Qt.Edge.TopEdge if down < 0 else Qt.Edge.BottomEdge
+    return None
+
+
+#: The pointer for each grab, so the handle can be seen before it is used.
+_CURSORS = {
+    Qt.Edge.LeftEdge: Qt.CursorShape.SizeHorCursor,
+    Qt.Edge.RightEdge: Qt.CursorShape.SizeHorCursor,
+    Qt.Edge.TopEdge: Qt.CursorShape.SizeVerCursor,
+    Qt.Edge.BottomEdge: Qt.CursorShape.SizeVerCursor,
+    Qt.Edge.LeftEdge | Qt.Edge.TopEdge: Qt.CursorShape.SizeFDiagCursor,
+    Qt.Edge.RightEdge | Qt.Edge.BottomEdge: Qt.CursorShape.SizeFDiagCursor,
+    Qt.Edge.RightEdge | Qt.Edge.TopEdge: Qt.CursorShape.SizeBDiagCursor,
+    Qt.Edge.LeftEdge | Qt.Edge.BottomEdge: Qt.CursorShape.SizeBDiagCursor,
+}
+
+
+def work_area(window) -> QRect | None:
+    """The screen's usable rectangle — the monitor less its taskbar.
+
+    Follows the window rather than the primary screen, so a second
+    monitor of a different size gets its own answer. None when there is
+    no screen to ask, which is every headless test.
+    """
+    screen = window.screen() if hasattr(window, "screen") else None
+    if screen is None:
+        from PyQt6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen()
+    return screen.availableGeometry() if screen is not None else None
+
+
+class ResizeBorder(QObject):
+    """The eight resize handles a frameless window does not get.
+
+    Only the bottom-right corner was draggable — one `ResizeGrip` in the
+    status bar — and that is the one handle a window stretched off the
+    bottom of the screen does not have on screen any more. Being unable
+    to reach the only handle is being unable to fix the window at all,
+    which is what "it stretched very tall and I can't make it smaller"
+    was: the fault and the way out went off the screen together.
+
+    AN EVENT FILTER RATHER THAN EIGHT LITTLE WIDGETS, and the window
+    buttons are why. `WindowButton` is 46 by the title bar's FULL height,
+    so it reaches the very top-right pixel of the window — a handle
+    widget laid over that corner would sit on top of Close and take a
+    bite out of it, and a resize handle that eats the close button is a
+    worse bug than the one being fixed. A filter sees only what its
+    watched widgets did not accept, and a button accepts its own press,
+    so every control on the border keeps all of its hit area.
+
+    It therefore has to be installed on the widgets that ACCEPT mouse
+    presses on the border — the title bar and the status bar — as well as
+    on the window, which is where everything that ignores a press ends up
+    by propagation.
+    """
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self._edges: Qt.Edge | None = None
+        self._from: QPoint | None = None
+        self._was: QRect | None = None
+        self._shaped = None         # the widget whose cursor WE set
+        self.watching: list = []
+
+    def watch(self, widget) -> None:
+        """Take this widget's border presses, and its hovers for the cursor."""
+        widget.setMouseTracking(True)
+        widget.installEventFilter(self)
+        self.watching.append(widget)
+
+    # ---- the drag -------------------------------------------------------
+    def begin(self, edges: Qt.Edge, where: QPoint) -> None:
+        self._edges, self._from = edges, QPoint(where)
+        self._was = QRect(self.window.geometry())
+
+    def dragging(self) -> bool:
+        return self._edges is not None
+
+    def end(self) -> None:
+        self._edges = self._from = self._was = None
+
+    def geometry_for(self, where: QPoint) -> QRect:
+        """Where the window lands with the pointer here.
+
+        The edge being dragged is the one that moves; the opposite edge is
+        held, which is what makes dragging the TOP grow the window upwards
+        instead of sliding it. Every limit is applied by pushing the
+        dragged edge back, never the held one — clamping the far edge
+        would walk the window across the screen while the pointer stood
+        still.
+        """
+        box = QRect(self._was)
+        shift = where - self._from
+        left = bool(self._edges & Qt.Edge.LeftEdge)
+        top = bool(self._edges & Qt.Edge.TopEdge)
+        if left:
+            box.setLeft(box.left() + shift.x())
+        if self._edges & Qt.Edge.RightEdge:
+            box.setRight(box.right() + shift.x())
+        if top:
+            box.setTop(box.top() + shift.y())
+        if self._edges & Qt.Edge.BottomEdge:
+            box.setBottom(box.bottom() + shift.y())
+
+        low = self.window.minimumSize()
+        high = self.window.maximumSize()
+        # NEVER TALLER THAN THE SCREEN IT IS ON, at the user's request.
+        # This is the live half of that; the saved size is clamped on the
+        # way in as well, since a window can also arrive oversized from a
+        # settings file an older build wrote.
+        area = work_area(self.window)
+        tallest = high.height()
+        if area is not None:
+            # IT STOPS THE WINDOW GROWING PAST THE SCREEN; it never yanks
+            # one that is already past it. Clamping outright looks like
+            # the same rule and is a trap: a window 4000 tall on an 800
+            # tall screen would snap to 800 on the first touch, anchored
+            # to whichever edge was being held — so the held edge stays
+            # off the bottom, the whole window lands below the display
+            # and the title bar goes with it. That is the complaint
+            # again, one drag later and worse. Starting oversized, the
+            # cap is simply where you started, so the drag shrinks it the
+            # ordinary way; `MainWindow` clamps the SAVED size on the way
+            # in, which is what actually ends the oversized state.
+            tallest = min(tallest, max(area.height(), self._was.height()))
+
+        want = max(low.width(), min(box.width(), high.width()))
+        if want != box.width():
+            if left:
+                box.setLeft(box.right() - want + 1)
+            else:
+                box.setRight(box.left() + want - 1)
+        want = max(low.height(), min(box.height(), tallest))
+        if want != box.height():
+            if top:
+                box.setTop(box.bottom() - want + 1)
+            else:
+                box.setBottom(box.top() + want - 1)
+        return box
+
+    # ---- the filter -----------------------------------------------------
+    def eventFilter(self, watched, event) -> bool:   # noqa: N802 - Qt naming
+        kind = event.type()
+        if kind == QEvent.Type.MouseButtonPress:
+            return self._pressed(event)
+        if kind == QEvent.Type.MouseMove:
+            return self._moved(watched, event)
+        if kind == QEvent.Type.MouseButtonRelease and self.dragging():
+            self.window.releaseMouse()
+            self.end()
+            return True
+        if kind == QEvent.Type.Leave and not self.dragging():
+            self._unshape(watched)
+        return False
+
+    def _at(self, event) -> QPoint:
+        """The pointer in the WINDOW's coordinates, whoever saw the event.
+
+        Read from the global position rather than the widget's own, since
+        the same handler serves the window, the title bar and the status
+        bar and each of those has a different origin.
+        """
+        return self.window.mapFromGlobal(event.globalPosition().toPoint())
+
+    def _pressed(self, event) -> bool:
+        if (event.button() != Qt.MouseButton.LeftButton
+                or self.window.isMaximized()):
+            return False
+        edges = edge_at(self.window, self._at(event))
+        if edges is None:
+            return False
+        self.begin(edges, event.globalPosition().toPoint())
+        # THE WINDOW TAKES THE MOUSE FOR THE DRAG. Without it the moves
+        # go to whichever widget the press was delivered to, and a press
+        # on the border usually lands on a child that merely IGNORED it
+        # and let it propagate up. Moves propagate the same way — until
+        # the pointer crosses something that ACCEPTS them, which a table,
+        # a tab bar or anything doing a hover effect does. The resize
+        # would then freeze halfway across the window for no reason the
+        # user could see. A grab makes delivery certain, and the release
+        # below always gives it back.
+        self.window.grabMouse()
+        return True
+
+    def _moved(self, watched, event) -> bool:
+        if self.dragging():
+            self.window.setGeometry(
+                self.geometry_for(event.globalPosition().toPoint()))
+            return True
+        # Not a drag: say where the handles are. The event is NOT
+        # consumed, or the title bar would never see the move that drags
+        # the window and the tabs would never light under the pointer.
+        if not self.window.isMaximized():
+            self.hover(watched, edge_at(self.window, self._at(event)))
+        return False
+
+    def hover(self, widget, edges: Qt.Edge | None) -> None:
+        """Show the grab under the pointer, and put the cursor back after.
+
+        THE WIDGET IS REMEMBERED, not merely the fact that a cursor was
+        set. Four widgets are watched and the pointer crosses between
+        them — leaving the title bar's left edge for the status bar's
+        would otherwise unset the cursor on the widget being ENTERED,
+        which never had one, and leave the title bar wearing a resize
+        arrow for the rest of the session.
+
+        And only ever a cursor THIS object set: a widget with one of its
+        own — the menu bar, a text field — must keep it.
+        """
+        if edges is None:
+            self._unshape(widget)
+            return
+        if self._shaped is not None and self._shaped is not widget:
+            self._unshape(self._shaped)
+        widget.setCursor(_CURSORS[edges])
+        self._shaped = widget
+
+    def _unshape(self, widget) -> None:
+        if self._shaped is widget and widget is not None:
+            widget.unsetCursor()
+            self._shaped = None
 
 
 class TickBox(QCheckBox):
