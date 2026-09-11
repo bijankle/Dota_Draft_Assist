@@ -143,49 +143,62 @@ class GeneralPage(QWidget):
 
         layout.addWidget(_rule())
         layout.addWidget(_heading("Marks on the suggested picks"))
+        # EVERY BAR ON THIS PAGE READS THE SAME WAY NOW: a percentile, and
+        # a HIGHER number is a STRICTER bar that fewer heroes clear. At
+        # the user's request - "align both the heart and the shield to
+        # look at a high percentile as a good thing... a high percentage
+        # means less heroes make the cut and in that case the symbol will
+        # have more merit".
+        #
+        # The three boxes used to show `100 - stored` and say "top 30%",
+        # on the reasoning that a floor is what the rule needs and "top
+        # 30%" is what a person means. That reading broke the moment the
+        # counterability figure went on an X axis: an axis running strong
+        # to weak against a Y axis running bad to good draws a real
+        # correlation as a downward slope. So the conversion is GONE
+        # rather than moved, and the stored numbers are untouched - they
+        # were always the percentile, and only the display disagreed.
         stars = QHBoxLayout()
-        stars.addWidget(QLabel("Pink heart: my top"))
+        stars.addWidget(QLabel("Pink heart: above the"))
         self.star_pick = CountBox(
-            100 - ui_settings.clamp_pct(
-                settings.get("star_pick_pct", 70), 70), 1, 100)
+            ui_settings.clamp_pct(settings.get("star_pick_pct", 70), 70),
+            1, 100)
         self.star_pick.setSuffix("%")
         self.star_pick.valueChanged.connect(self.changed)
         stars.addWidget(self.star_pick)
-        stars.addWidget(QLabel("by picks and top"))
+        stars.addWidget(QLabel("pick rate percentile and the"))
         self.star_win = CountBox(
-            100 - ui_settings.clamp_pct(
-                settings.get("star_win_pct", 50), 50), 1, 100)
+            ui_settings.clamp_pct(settings.get("star_win_pct", 50), 50),
+            1, 100)
         self.star_win.setSuffix("%")
         self.star_win.valueChanged.connect(self.changed)
         stars.addWidget(self.star_win)
-        stars.addWidget(QLabel("by win rate"))
+        stars.addWidget(QLabel("win rate percentile"))
         stars.addStretch(1)
         layout.addLayout(stars)
-        # THE BOX SAYS "TOP 30%" WHERE THE SETTING STORES 70. A percentile
-        # floor is what the rule needs and "top 30%" is what a person
-        # means, so the conversion happens here, once, at the edge — the
-        # alternative is a control whose number goes the opposite way to
-        # the words beside it.
         layout.addWidget(_note(
-            "The heart is ranked against the heroes in the last History "
-            "run, so it follows whichever account is loaded there. Both "
-            "bars have to be cleared. 100% is no bar on that axis."))
+            "Higher is stricter: 90% marks only heroes in the best tenth "
+            "on both counts. Ranked against the heroes in the last "
+            "History run, so it follows whichever account is loaded "
+            "there. Both bars have to be cleared."))
 
         shield = QHBoxLayout()
-        shield.addWidget(QLabel("Gold shield: hardest to counter, top"))
+        shield.addWidget(QLabel("Gold shield: difficulty to counter above"))
         self.shield_pct = CountBox(
-            100 - ui_settings.clamp_pct(
-                settings.get("shield_pct", 70), 70), 1, 100)
+            ui_settings.clamp_pct(settings.get("shield_pct", 70), 70),
+            1, 100)
         self.shield_pct.setSuffix("%")
         self.shield_pct.valueChanged.connect(self.changed)
         shield.addWidget(self.shield_pct)
         shield.addStretch(1)
         layout.addLayout(shield)
         layout.addWidget(_note(
-            "Ranked against EVERY hero in the game, not just the ones you "
-            "play — it is a property of the hero, so it appears on heroes "
-            "you have never picked. Needs hero statistics downloaded; see "
-            "Hero Counters in the History tab for the same figure."))
+            "Higher is stricter: 90% marks only the tenth of the pool "
+            "hardest to counter. Ranked against EVERY hero in the game, "
+            "not just the ones you play — it is a property of the hero, "
+            "so it appears on heroes you have never picked. Needs hero "
+            "statistics downloaded; see Hero Counters in the History tab "
+            "for the same figure."))
         layout.addStretch(1)
 
     def values(self) -> dict:
@@ -193,12 +206,14 @@ class GeneralPage(QWidget):
         out["pair_source"] = self.pair_source()
         out["data_reminder_days"] = ui_settings.clamp_days(
             self.reminder_days.value(), ui_settings.DATA_REMINDER_DAYS)
+        # No inversion either way now: what the box shows IS what is
+        # stored, which is what these settings always held.
         out["star_pick_pct"] = ui_settings.clamp_pct(
-            100 - self.star_pick.value(), 70)
+            self.star_pick.value(), 70)
         out["star_win_pct"] = ui_settings.clamp_pct(
-            100 - self.star_win.value(), 50)
+            self.star_win.value(), 50)
         out["shield_pct"] = ui_settings.clamp_pct(
-            100 - self.shield_pct.value(), 70)
+            self.shield_pct.value(), 70)
         return out
 
     def pair_source(self) -> str:

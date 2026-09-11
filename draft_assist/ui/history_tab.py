@@ -1392,8 +1392,13 @@ class HistoryTab(QWidget):
             # struggles against this hero, so a column headed by the
             # problem would read upside down. "Vs the field" says which
             # way round it is without a sentence.
+            # THE BAR COLUMN IS NAMED FOR WHAT IT PLOTS. It has drawn the
+            # difficulty percentile since that column was fixed, under a
+            # heading about the median hero - true, and not the thing the
+            # reader is looking for. Now that the figure in brackets is
+            # the same percentile the two agree outright.
             headers = ["Hero", "Games", "Vs the field",
-                       "Against the median hero"]
+                       "Difficulty to counter"]
             figure = (lambda row: f"{analyse.sig(row.mean)}  ({row.note})"
                       if row.note else analyse.sig(row.mean))
             # THE POOL'S OWN RANGE, not the rows on screen. A floor of
@@ -1405,6 +1410,19 @@ class HistoryTab(QWidget):
             table = self._table(block.id, headers, block.shown, figure,
                                 scale, (), lambda row: row.mean)
             lay.addWidget(table.controls)
+            # THE SAME CHART THE IMPACT CARDS CARRY, asking this block's
+            # own question: "the hero's counterability score % on the X
+            # axis and the hero's win rate on the Y axis (my win rate
+            # with that hero)... I'm expecting as resistance to counter
+            # increases, win rate increases".
+            #
+            # It is the one place the two halves of this card meet. The
+            # difficulty is a property of the HERO, measured against the
+            # whole pool and the same for everybody; the win rate is
+            # yours alone. Whether they move together is the only
+            # question this section can ask that the dataset cannot
+            # answer by itself.
+            lay.addWidget(self._counter_plot(table))
             lay.addWidget(table)
             return frame
 
@@ -1471,6 +1489,22 @@ class HistoryTab(QWidget):
             # A SCATTER OF ONE DOT IS NOT A CORRELATION. Below three
             # heroes there is no shape to read, so the card shows the
             # table alone rather than a box with a mark in it.
+            plot.setVisible(len(rows) >= 3)
+
+        table.drawn.connect(refill)
+        refill()
+        return plot
+
+    def _counter_plot(self, table) -> QWidget:
+        """Difficulty to counter across, your win rate up, following the
+        table's own cut exactly as the Impact charts do."""
+        plot = ScatterPlot()
+
+        def refill(rows=None):
+            rows = table.drawn_rows if rows is None else rows
+            plot.set_points(
+                [(row.key, row.pct, row.rate, row.eligible, row.n)
+                 for row in rows], "difficulty to counter", "%")
             plot.setVisible(len(rows) >= 3)
 
         table.drawn.connect(refill)

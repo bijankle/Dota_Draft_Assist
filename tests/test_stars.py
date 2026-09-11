@@ -103,14 +103,18 @@ def test_a_match_with_no_hero_is_skipped():
 
 
 def test_each_figure_carries_its_own_standing():
-    """"After 17 games say (top XXX%), and after the win rate say (top
-    XXX%)." It used to name the two FLOORS and say the hero was inside
-    them, which is what the star already says."""
+    """Each figure says how far inside the bar it is, which is what the
+    star itself cannot: "having the star is evidence of this already".
+
+    AS A PERCENTILE, high meaning strong, at the user's request - every
+    bar and every standing in this app now reads the same way round, so
+    the heart and the shield can be set from the same mental model.
+    """
     marked = stars.measure(run(TEN), 70, 50)
     # Hero 1 is the most played of ten, and its 65% is the fourth best.
     assert marked.why(1).splitlines() == [
-        "My Pick Rate = 40 games (top 10%)",
-        "My Win Rate = 65% (top 40%)"]
+        "My Pick Rate = 40 games (100th percentile)",
+        "My Win Rate = 65% (70th percentile)"]
     assert marked.why(4) == "", "an unstarred tile explains nothing"
     assert "inside" not in marked.why(3), "the star is that evidence"
 

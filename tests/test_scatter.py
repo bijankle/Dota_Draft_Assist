@@ -226,3 +226,68 @@ def test_only_the_IMPACT_sections_get_one(tab):
         assert plot_of(history, ident) is not None, ident
     for ident in ("hero", "dow", "tod", "side", "party", "tilt"):
         assert plot_of(history, ident) is None, ident
+
+
+# ---- the Hero Counters chart, and the flipped convention ---------------
+
+def test_the_counters_card_gets_a_chart_too(tab):
+    """At the user's request: "the hero's counterability score % on the X
+    axis and the hero's win rate on the Y axis (my win rate with that
+    hero)"."""
+    _win, history = tab
+    plot = plot_of(history, "counters")
+    assert plot is not None
+    table = history._tables["counters"][0]
+    assert sorted(p[0] for p in plot.points) == sorted(
+        r.key for r in table.drawn_rows)
+
+
+def test_the_counters_chart_plots_the_DIFFICULTY_and_YOUR_win_rate(tab):
+    """The one place the two halves of this card meet: the difficulty is
+    a property of the hero and the same for everybody, the win rate is
+    yours alone."""
+    _win, history = tab
+    plot = plot_of(history, "counters")
+    table = history._tables["counters"][0]
+    by_name = {row.key: row for row in table.drawn_rows}
+    for name, x, y, _eligible, games in plot.points:
+        row = by_name[name]
+        assert x == pytest.approx(row.pct), "X is the difficulty percentile"
+        assert y == pytest.approx(row.wins / row.n), "Y is your win rate"
+        assert games == row.n
+
+
+def test_a_big_percentage_means_HARD_to_counter(qapp):
+    """At the user's request: "across the board the hero counterability
+    metric should mean that the hero is harder to counter at a large %...
+    move away from the % being for 'top 10%' where the smaller the
+    number, the stronger the resistance".
+
+    The reason is not only taste. This figure is now an X axis, and an
+    axis running strong-to-weak against a Y axis running bad-to-good
+    draws a real correlation as a downward slope.
+    """
+    from test_hero_counters import a_dataset
+    size = 4
+    ds = a_dataset(list(range(1, size + 1)),
+                   [[j - i for j in range(size)] for i in range(size)])
+    deltas, standing, _datum = analyse.counter_standings(ds)
+    assert standing[max(deltas, key=deltas.get)] == "75%", "hardest reads HIGH"
+    assert standing[min(deltas, key=deltas.get)] == "0%"
+    assert "top" not in standing[max(deltas, key=deltas.get)]
+
+
+def test_the_printed_figure_and_the_shield_bar_are_one_quantity(qapp):
+    """The number a hero shows and the number the shield tests against
+    must be the same, or the mark appears on heroes whose own figure says
+    it should not."""
+    from test_hero_counters import a_dataset
+    size = 10
+    ds = a_dataset(list(range(1, size + 1)),
+                   [[j - i for j in range(size)] for i in range(size)])
+    _d, standing, _dat = analyse.counter_standings(ds)
+    marked = analyse.shielded(ds, floor_pct=70)
+    for hero_id, text in standing.items():
+        above = int(text.rstrip("%")) > 70
+        assert (hero_id in marked) == above, (
+            f"{text} and the 70% bar disagree for hero {hero_id}")

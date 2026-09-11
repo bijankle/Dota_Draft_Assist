@@ -56,9 +56,15 @@ class Bucket:
     se: float = 0.0
     sigma: float = 0.0
     eligible: bool = False
-    # A short standing printed beside the figure ("top 12%"). Only the
+    # A short standing printed beside the figure ("88%"). Only the
     # counters block uses it; everything else leaves it empty.
     note: str = ""
+    # The counterability percentile, 0-100, LARGE MEANING HARD TO
+    # COUNTER. Carried explicitly rather than recovered from `delta`,
+    # which happens to hold this less fifty so the bar can draw outward
+    # from the median: a reader of that arithmetic has to know why the
+    # fifty is there, and the scatter needs the figure itself.
+    pct: float = 0.0
 
 
 @dataclass
@@ -524,7 +530,21 @@ def field_deltas(ds) -> dict:
 
 
 def counter_standings(ds) -> tuple:
-    """(delta per hero, "top X%" per hero, the pool's own average).
+    """(delta per hero, "88%" per hero, the pool's own average).
+
+    BIG MEANS HARD TO COUNTER, at the user's request: "across the board
+    the hero counterability metric should mean that the hero is harder
+    to counter at a large %... so I want to move away from the % being
+    for 'top 10%' where the smaller the number, the stronger the
+    resistance".
+
+    It used to read "top 9%", which is the same hero said backwards, and
+    the reason to change it is not only taste: this figure is now plotted
+    on an X axis against win rate, and an axis that runs from strong to
+    weak while the Y axis runs from bad to good draws a real correlation
+    as a downward slope. It also settles a disagreement that was already
+    on the card - the bar column has plotted the percentile this way
+    round since it was fixed, while the text beside it said the opposite.
 
     RANKED AGAINST EVERY HERO IN THE GAME, at the user's request, not
     against the handful the player happens to pick: "Sniper is the 12th
@@ -540,8 +560,11 @@ def counter_standings(ds) -> tuple:
     count = len(order)
     standing = {}
     for place, hero_id in enumerate(order, start=1):
-        share = max(1, round(100.0 * place / count))
-        standing[hero_id] = f"top {share}%"
+        # Place 1 is the hardest to counter, so the share of the field it
+        # is at least as hard to counter as is (count - place) / count.
+        # The same quantity `shielded` compares against its bar, so the
+        # number printed and the number tested cannot drift apart.
+        standing[hero_id] = f"{round(100.0 * (count - place) / count)}%"
     # The pool's own pick-weighted average, which is what a hero is read
     # against. Near zero by construction (the matrix is antisymmetric),
     # but computed rather than assumed to be.
@@ -650,6 +673,13 @@ def counter_analysis(matches, ds) -> Block:
         # middle of the field and green means "harder to counter than
         # most" rather than "above an average nobody can picture".
         bucket.delta = percentile[hero_id] - 50.0
+        bucket.pct = percentile[hero_id]
+        # YOUR OWN WIN RATE ON THE HERO, which this block counted and
+        # never worked out: the scatter above the table plots it up the
+        # Y axis against the difficulty across the X, so the card can
+        # answer whether the heroes that resist being countered are the
+        # ones you actually win on.
+        bucket.rate = bucket.wins / bucket.n if bucket.n else 0.0
         bucket.note = standing[hero_id]
         bucket.eligible = bucket.n >= MIN_BUCKET
         rows.append(bucket)

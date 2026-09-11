@@ -41,11 +41,12 @@ def test_a_hero_the_field_beats_ranks_below_one_it_beats():
     deltas, standing, _datum = analyse.counter_standings(ds)
 
     assert deltas[1] < deltas[2], "the beaten hero is the counterable one"
-    assert standing[max(deltas, key=deltas.get)].startswith("top ")
-    # Ranked against EVERY hero in the game, so the best of three is the
-    # top third rather than "top 1".
-    assert standing[max(deltas, key=deltas.get)] == "top 33%"
-    assert standing[min(deltas, key=deltas.get)] == "top 100%"
+    # BIG MEANS HARD TO COUNTER, at the user's request. It read "top 33%"
+    # for the best of three, which is the same hero said backwards - and
+    # an X axis running strong-to-weak against a Y axis running bad-to-
+    # good would draw a real correlation as a downward slope.
+    assert standing[max(deltas, key=deltas.get)] == "67%"
+    assert standing[min(deltas, key=deltas.get)] == "0%"
 
 
 def test_a_counter_nobody_picks_counts_for_less():
@@ -117,7 +118,9 @@ def test_the_table_is_ordered_least_counterable_first():
     assert means == sorted(means, reverse=True)
     assert block.shown[0].key == "Strong"
     assert block.shown[-1].key == "Beaten"
-    assert all(r.note.startswith("top ") for r in block.shown)
+    assert all(r.note.endswith("%") for r in block.shown)
+    assert not any(r.note.startswith("top") for r in block.shown), (
+        "the old strong-is-small wording is gone")
 
 
 def test_it_sits_above_the_item_block_and_is_a_section_like_any_other():
@@ -141,7 +144,7 @@ def test_the_shield_needs_no_match_history_at_all():
                                   [-5, 0, 0, 0], [-5, 0, 0, 0]])
     marked = analyse.shielded(ds, floor_pct=70)
     assert 1 in marked, "the hero the field loses to is shielded"
-    assert "vs the field" in marked[1] and "top " in marked[1]
+    assert "vs the field" in marked[1] and "%" in marked[1]
     # No matches were passed in anywhere above.
 
 

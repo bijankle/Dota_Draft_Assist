@@ -55,16 +55,23 @@ class ScatterPlot(QWidget):
         # widget's real size.
         self._at: list = []
         self.x_label = ""
+        self.x_suffix = ""
         self.y_label = "Win rate"
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Fixed)
         self.setMinimumHeight(HEIGHT)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
 
-    def set_points(self, points, x_label: str) -> None:
-        """`points` is (name, x, y, eligible, games), y as a fraction."""
+    def set_points(self, points, x_label: str, x_suffix: str = "") -> None:
+        """`points` is (name, x, y, eligible, games), y as a fraction.
+
+        `x_suffix` is stuck on the two axis ends. The counters chart plots
+        a PERCENTILE across the bottom, and an end reading "97" beside a
+        table saying "97%" is the same number wearing two faces.
+        """
         self.points = list(points)
         self.x_label = x_label
+        self.x_suffix = x_suffix
         self.setToolTip(
             "" if not self.points else
             f"{self.x_label} across the bottom, win rate up the side. "
@@ -173,7 +180,7 @@ class ScatterPlot(QWidget):
             if gap <= (DOT * 2) ** 2:
                 QToolTip.showText(
                     happening.globalPos(),
-                    f"{name}\n{_figure(x)} {self.x_label}"
+                    f"{name}\n{_figure(x)}{self.x_suffix} {self.x_label}"
                     f"\n{y * 100:.0f}% win rate over {games} games", self)
                 return True
             QToolTip.hideText()
@@ -226,9 +233,9 @@ class ScatterPlot(QWidget):
         bottom = QRectF(box.left(), box.bottom() + 4, box.width(),
                         metrics.height())
         painter.drawText(bottom, int(Qt.AlignmentFlag.AlignLeft),
-                         _figure(low_x))
+                         _figure(low_x) + self.x_suffix)
         painter.drawText(bottom, int(Qt.AlignmentFlag.AlignRight),
-                         _figure(high_x))
+                         _figure(high_x) + self.x_suffix)
         painter.drawText(bottom, int(Qt.AlignmentFlag.AlignHCenter),
                          self.x_label)
 

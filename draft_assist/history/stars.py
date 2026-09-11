@@ -90,11 +90,16 @@ class Stars:
         row = self.form.get(hero_id)
         if row is None or hero_id not in self.heroes:
             return ""
+        # THE PERCENTILE, NOT "TOP X%", at the user's request: every bar
+        # and every standing in this app now reads the same way round,
+        # with a HIGH number meaning a strong hero. `pick_top` and
+        # `win_top` are the old complement and are still carried for the
+        # workbook; what a person reads here is the percentile itself.
         return "\n".join((
             f"My Pick Rate = {row.games} games "
-            f"(top {round(row.pick_top * 100)}%)",
+            f"({round(row.pick_pct * 100)}th percentile)",
             f"My Win Rate = {row.rate * 100:.0f}% "
-            f"(top {round(row.win_top * 100)}%)"))
+            f"({round(row.win_pct * 100)}th percentile)"))
 
 
 def rank_fraction(values: dict) -> dict:
