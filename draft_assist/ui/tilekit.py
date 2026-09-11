@@ -329,57 +329,101 @@ STAR_MAX_PX = 22
 STAR_INSET = 3
 
 
-def star_box(box: QRect) -> QRect:
-    """Where the star goes: the TOP-RIGHT corner, inset off both edges.
+def star_box(box: QRect, left: bool = False) -> QRect:
+    """Where a mark goes: a TOP corner, inset off both edges.
 
     The bottom-right is the number's (`paint_badge`) and the whole border
-    is the focus ring's, so the top right is the one corner of a tile
-    with nothing already in it.
+    is the focus ring's, so the two top corners are the only ones with
+    nothing already in them. The HEART takes the right, which is where
+    the star it replaces always sat, so nothing moves for a reader who
+    already knows where to look; the SHIELD takes the left.
     """
     side = min(box.width(), box.height())
     size = max(STAR_MIN_PX, min(STAR_MAX_PX, round(side * STAR_OF_TILE)))
-    return QRect(box.right() - STAR_INSET - size,
-                 box.top() + STAR_INSET, size, size)
+    x = (box.left() + STAR_INSET if left
+         else box.right() - STAR_INSET - size)
+    return QRect(x, box.top() + STAR_INSET, size, size)
 
 
-def paint_star(painter: QPainter, box: QRect) -> None:
-    """A five-pointed star, PAINTED like every other mark in this app.
+def _stamp(painter: QPainter, path: QPainterPath, colour: str,
+           weight: float) -> None:
+    """Stroke in black, then fill - the app's one way of drawing a mark.
 
-    A glyph would resize with whatever font the tile happens to carry and
-    could not be coloured apart from it — the same reason the tick box,
-    the window buttons and the count box's arrows are all drawn rather
-    than typed. It is STROKED in black first, exactly as a number is:
-    the mark sits on a portrait, so without an outline it disappears
-    into whatever is behind it, and it has to read as the same KIND of
-    object as the figure in the corner below it.
+    The stroke is what stops it disappearing into the portrait behind it,
+    and drawing it FIRST leaves the shape its full area with the black
+    only outside, exactly as `stroked` does for a number.
     """
-    from math import cos, pi, sin
-
-    where = star_box(box)
-    outer = where.width() / 2.0
-    inner = outer * 0.42
-    middle = QPointF(where.center()) + QPointF(0.5, 0.5)
-    path = QPainterPath()
-    for step in range(STAR_POINTS * 2):
-        radius = outer if step % 2 == 0 else inner
-        # Start at the top: -90 degrees, then round the points.
-        angle = -pi / 2 + step * pi / STAR_POINTS
-        point = QPointF(middle.x() + radius * cos(angle),
-                        middle.y() + radius * sin(angle))
-        path.lineTo(point) if step else path.moveTo(point)
-    path.closeSubpath()
-
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setPen(QPen(STROKE, max(1.0, outer * 0.34),
-                        Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
-                        Qt.PenJoinStyle.RoundJoin))
+    painter.setPen(QPen(STROKE, max(1.0, weight), Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawPath(path)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(FOCUS_COLOUR))
+    painter.setBrush(QColor(colour))
     painter.drawPath(path)
     painter.restore()
+
+
+def _shape(where: QRect, points) -> QPainterPath:
+    """A path from unit coordinates, so the outlines read as drawings
+    rather than as arithmetic scattered through the painter."""
+    def at(u, v):
+        return QPointF(where.left() + u * where.width(),
+                       where.top() + v * where.height())
+
+    path = QPainterPath()
+    for kind, *coords in points:
+        if kind == "m":
+            path.moveTo(at(*coords[:2]))
+        elif kind == "l":
+            path.lineTo(at(*coords[:2]))
+        else:
+            path.cubicTo(at(coords[0], coords[1]), at(coords[2], coords[3]),
+                         at(coords[4], coords[5]))
+    path.closeSubpath()
+    return path
+
+
+HEART = (("m", 0.50, 0.97),
+         ("c", 0.10, 0.68, 0.00, 0.42, 0.00, 0.28),
+         ("c", 0.00, 0.06, 0.30, 0.00, 0.50, 0.22),
+         ("c", 0.70, 0.00, 1.00, 0.06, 1.00, 0.28),
+         ("c", 1.00, 0.42, 0.90, 0.68, 0.50, 0.97))
+
+SHIELD = (("m", 0.50, 0.00),
+          ("l", 0.96, 0.16),
+          ("l", 0.96, 0.52),
+          ("c", 0.96, 0.80, 0.74, 0.95, 0.50, 1.00),
+          ("c", 0.26, 0.95, 0.04, 0.80, 0.04, 0.52),
+          ("l", 0.04, 0.16))
+
+
+def paint_heart(painter: QPainter, box: QRect) -> None:
+    """A hero you play a lot and win on. TOP-RIGHT, where the star was.
+
+    PAINTED, like every other mark here: a glyph would resize with
+    whatever font the tile carries and could not be coloured apart from
+    it - the reason the tick box, the window buttons and the count box's
+    arrows are all drawn rather than typed.
+    """
+    where = star_box(box)
+    _stamp(painter, _shape(where, HEART), theme.HEART_PINK,
+           where.width() * 0.22)
+
+
+def paint_shield(painter: QPainter, box: QRect) -> None:
+    """A hero the field struggles to counter. TOP-LEFT, and GOLD.
+
+    The frame's own gold, the fourth thing in this app wearing it beside
+    the window border, the focus ring and (until now) the star - and all
+    of them mean "this one" rather than "this is good". Green and red are
+    spoken for by every signed number here, so a mark in either would
+    read as a judgement about the figure below it.
+    """
+    where = star_box(box, left=True)
+    _stamp(painter, _shape(where, SHIELD), FOCUS_COLOUR,
+           where.width() * 0.20)
 
 
 def delta_text(delta: float, kind: str | None = None) -> str:

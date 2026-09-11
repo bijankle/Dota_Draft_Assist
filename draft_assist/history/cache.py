@@ -271,7 +271,8 @@ def rebuild(options: Options, matches: list, raw: dict,
     # The remembered map, not {}: see NAMES_FILE. With no map the item
     # block prints raw ids, and this is the path every cached run takes.
     blocks = analyse.build_blocks(matches, baseline, options.picked,
-                                  item_names())
+                                  item_names(),
+                                  ds=analyse.ranked_dataset())
     return Report(options=options, how=str(raw.get("how") or ""),
                   name=str(raw.get("name") or ""), matches=matches,
                   blocks=blocks, dropped=dict(raw.get("dropped") or {}),

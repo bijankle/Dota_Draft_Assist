@@ -69,6 +69,12 @@ DEFAULTS = {
     # thing when it moves. Nought is no bar on that axis.
     "star_pick_pct": 70,
     "star_win_pct": 50,
+    # The gold shield's bar, read the same way as the two above: stored
+    # as a percentile floor, shown as "top 30%". Ranked against EVERY
+    # hero in the game rather than against the ones you play, because
+    # counterability is a property of the hero and a percentile inside
+    # your own pool would be self-referential.
+    "shield_pct": 70,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather

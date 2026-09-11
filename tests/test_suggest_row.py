@@ -218,28 +218,73 @@ def test_the_row_hands_the_numbers_round_and_takes_them_back(qapp):
     assert not any(t.focused for t in row.tiles)
 
 
-def test_a_starred_suggestion_wears_the_frames_gold(qapp):
-    """The third thing in this app in that colour, beside the window's
-    border and the focus ring — all three mean "this one" rather than
-    "this is good", which green and red are already spoken for."""
+def _ink(tile, colour) -> int:
+    """How many pixels of exactly this colour the tile is drawing."""
     from PyQt6.QtGui import QColor
-    from draft_assist.ui import tilekit
+    image = tile.grab().toImage()
+    want = QColor(colour)
+    return sum(QColor(image.pixel(x, y)) == want
+               for y in range(image.height())
+               for x in range(image.width()))
+
+
+def test_the_heart_is_pink_and_the_shield_is_the_frames_gold(qapp):
+    """TWO MARKS, at the user's request, and they answer different
+    questions: the heart is about YOU (a hero you play and win on), the
+    shield is about the HERO (the field struggles to counter it).
+
+    The heart is PINK rather than the red first asked for, on the user's
+    own second thought. Every signed number in this app is green or red,
+    and a red mark would sit directly above a red "-2.4" on the same
+    tile; pink belongs to nothing else here. The shield keeps the gold,
+    which means "this one" everywhere it appears.
+    """
+    from draft_assist.ui import theme, tilekit
     tile = SuggestTile(1, "Anti-Mage", 0.05)
     tile.resize(120, 68)
 
-    def gold() -> int:
-        image = tile.grab().toImage()
-        want = QColor(tilekit.FOCUS_COLOUR)
-        return sum(QColor(image.pixel(x, y)) == want
-                   for y in range(image.height())
-                   for x in range(image.width()))
+    assert _ink(tile, theme.HEART_PINK) == 0
+    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
 
-    assert gold() == 0
     tile.set_star(True, "40 games at 65%")
-    assert gold() > 0
+    assert _ink(tile, theme.HEART_PINK) > 0, "the heart draws"
     assert tile.starred
+    # The heart must NOT be gold, or the two marks would be one colour
+    # saying two things.
+    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
+
+    tile.set_shield(True, "Hard to counter = 1.8 vs the field (top 12%)")
+    assert _ink(tile, tilekit.FOCUS_COLOUR) > 0, "the shield draws"
+    assert tile.shielded
+    assert _ink(tile, theme.HEART_PINK) > 0, "both at once"
+
     tile.set_star(False)
-    assert gold() == 0
+    tile.set_shield(False)
+    assert _ink(tile, theme.HEART_PINK) == 0
+    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
+
+
+def test_the_two_marks_take_opposite_corners(qapp):
+    """The bottom-right is the number's and the border is the ring's, so
+    the two top corners are the only ones free. The heart keeps the
+    right, where the star it replaces always sat."""
+    from draft_assist.ui import theme, tilekit
+    tile = SuggestTile(1, "Anti-Mage", 0.05)
+    tile.resize(120, 68)
+    tile.set_star(True, "why")
+    tile.set_shield(True, "why")
+
+    from PyQt6.QtGui import QColor
+    image = tile.grab().toImage()
+
+    def middle_x(colour) -> float:
+        want = QColor(colour)
+        xs = [x for y in range(image.height()) for x in range(image.width())
+              if QColor(image.pixel(x, y)) == want]
+        return sum(xs) / len(xs)
+
+    assert middle_x(tilekit.FOCUS_COLOUR) < image.width() / 2, "shield left"
+    assert middle_x(theme.HEART_PINK) > image.width() / 2, "heart right"
 
 
 def test_the_star_keeps_out_of_the_numbers_corner(qapp):

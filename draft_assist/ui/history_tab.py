@@ -1348,10 +1348,38 @@ class HistoryTab(QWidget):
             self._item_block(block, lay)
             return frame
 
+        if block.kind == "counters" and not block.shown:
+            # Two different empties, and they must not read alike: no
+            # STATISTICS is a thing the user can fix in one click, while
+            # no heroes is simply a thin sample.
+            note = QLabel(block.caveat if not block.rows and block.caveat
+                          else "No heroes with enough games yet.")
+            note.setWordWrap(True)
+            note.setProperty("warn", True)
+            lay.addWidget(note)
+            return frame
+
         if not block.shown:
             empty = QLabel("No matches carry this field.")
             empty.setProperty("dim", True)
             lay.addWidget(empty)
+            return frame
+
+        if block.kind == "counters":
+            # NOT "counterability": a POSITIVE figure means the field
+            # struggles against this hero, so a column headed by the
+            # problem would read upside down. "Vs the field" says which
+            # way round it is without a sentence.
+            headers = ["Hero", "Games", "Vs the field",
+                       "Against the average hero"]
+            figure = (lambda row: f"{analyse.sig(row.mean)}  ({row.note})"
+                      if row.note else analyse.sig(row.mean))
+            scale = max(0.5, max((abs(r.delta) for r in block.shown),
+                                 default=0.0))
+            table = self._table(block.id, headers, block.shown, figure,
+                                scale, (), lambda row: row.mean)
+            lay.addWidget(table.controls)
+            lay.addWidget(table)
             return frame
 
         if block.kind == "metric":

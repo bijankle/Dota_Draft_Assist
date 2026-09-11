@@ -142,9 +142,9 @@ class GeneralPage(QWidget):
                                "be asked."))
 
         layout.addWidget(_rule())
-        layout.addWidget(_heading("Stars on the suggested picks"))
+        layout.addWidget(_heading("Marks on the suggested picks"))
         stars = QHBoxLayout()
-        stars.addWidget(QLabel("Star a hero in my top"))
+        stars.addWidget(QLabel("Pink heart: my top"))
         self.star_pick = CountBox(
             100 - ui_settings.clamp_pct(
                 settings.get("star_pick_pct", 70), 70), 1, 100)
@@ -167,9 +167,25 @@ class GeneralPage(QWidget):
         # alternative is a control whose number goes the opposite way to
         # the words beside it.
         layout.addWidget(_note(
-            "Ranked against the heroes in the last History run, so it "
-            "follows whichever account is loaded there. Both bars have to "
-            "be cleared. 100% is no bar on that axis."))
+            "The heart is ranked against the heroes in the last History "
+            "run, so it follows whichever account is loaded there. Both "
+            "bars have to be cleared. 100% is no bar on that axis."))
+
+        shield = QHBoxLayout()
+        shield.addWidget(QLabel("Gold shield: hardest to counter, top"))
+        self.shield_pct = CountBox(
+            100 - ui_settings.clamp_pct(
+                settings.get("shield_pct", 70), 70), 1, 100)
+        self.shield_pct.setSuffix("%")
+        self.shield_pct.valueChanged.connect(self.changed)
+        shield.addWidget(self.shield_pct)
+        shield.addStretch(1)
+        layout.addLayout(shield)
+        layout.addWidget(_note(
+            "Ranked against EVERY hero in the game, not just the ones you "
+            "play — it is a property of the hero, so it appears on heroes "
+            "you have never picked. Needs hero statistics downloaded; see "
+            "Hero Counters in the History tab for the same figure."))
         layout.addStretch(1)
 
     def values(self) -> dict:
@@ -181,6 +197,8 @@ class GeneralPage(QWidget):
             100 - self.star_pick.value(), 70)
         out["star_win_pct"] = ui_settings.clamp_pct(
             100 - self.star_win.value(), 50)
+        out["shield_pct"] = ui_settings.clamp_pct(
+            100 - self.shield_pct.value(), 70)
         return out
 
     def pair_source(self) -> str:

@@ -73,6 +73,8 @@ class SuggestTile(QWidget):
         self._relation: tuple[float, str, str] | None = None
         self._focused = False
         self._starred = False
+        self._shielded = False
+        self._why_shield = ""
         self._tip = tooltip or name
         self._why_star = ""
         self.setFixedSize(*(size or (WIDTH, ART_H)))
@@ -120,10 +122,20 @@ class SuggestTile(QWidget):
         self.update()
 
     def set_star(self, on: bool, why: str = "") -> None:
-        """Mark this as a hero the last History run says you are good on.
+        """A PINK HEART: a hero the last History run says you are good on.
+
+        It was a gold star; at the user's request the mark is a heart and
+        the colour is pink. Pink is the better half of that change and
+        theirs: every signed number in this app is green or red, and the
+        red first asked for would have sat directly above a red "-2.4" on
+        the same tile. Pink belongs to nothing else here.
+
+        The method keeps its name because the whole path from the History
+        run down to this tile is spelled "star", and renaming half of it
+        is how two names for one thing start.
 
         The reason rides along and goes in the TOOLTIP rather than on the
-        tile: the star's job is to be seen without being read, and a
+        tile: the mark's job is to be seen without being read, and a
         figure beside it would be a third number in a corner that already
         has the fit in it.
         """
@@ -131,9 +143,26 @@ class SuggestTile(QWidget):
         self._refresh_tip()
         self.update()
 
+    def set_shield(self, on: bool, why: str = "") -> None:
+        """A GOLD SHIELD: a hero the field struggles to counter.
+
+        NOT ABOUT YOU, which is what makes it worth a second mark rather
+        than a second condition on the first. The heart is your own
+        history; this is a property of the hero, read out of the ranked
+        dataset, so it appears on heroes you have never picked - which is
+        exactly where it tells you something you did not know.
+        """
+        self._shielded, self._why_shield = bool(on), why
+        self._refresh_tip()
+        self.update()
+
     @property
     def starred(self) -> bool:
         return self._starred
+
+    @property
+    def shielded(self) -> bool:
+        return self._shielded
 
     def _refresh_tip(self) -> None:
         """EVERY LINE NAMES ITSELF AND THEN GIVES A FIGURE, so the
@@ -146,6 +175,8 @@ class SuggestTile(QWidget):
                          f" = {delta * 100:+.2f}")
         if self._starred and self._why_star:
             lines.append(self._why_star)
+        if self._shielded and self._why_shield:
+            lines.append(self._why_shield)
         self.setToolTip("\n".join(part for part in lines if part))
 
     @property
@@ -182,12 +213,14 @@ class SuggestTile(QWidget):
                                 f"{self.fit * 100:+.1f}",
                                 theme.GOOD if self.fit >= 0 else theme.BAD,
                                 self.font())
+        # UNDER the ring, not over it: the ring is the window's frame and
+        # runs round the tile's edge, so a mark drawn afterwards would sit
+        # on top of the one line that says what the whole board is being
+        # measured against.
         if self._starred:
-            # UNDER the ring, not over it: the ring is the window's frame
-            # and runs round the tile's edge, so a star drawn afterwards
-            # would sit on top of the one line that says what the whole
-            # board is being measured against.
-            tilekit.paint_star(painter, box)
+            tilekit.paint_heart(painter, box)
+        if self._shielded:
+            tilekit.paint_shield(painter, box)
         if self._focused:
             tilekit.paint_focus_ring(painter, box)
         painter.end()
@@ -336,3 +369,16 @@ class SuggestRow(QWidget):
         for tile in self._tiles:
             on = bool(stars is not None and tile.hero_id in stars)
             tile.set_star(on, stars.why(tile.hero_id) if on else "")
+
+    def set_shields(self, shields: dict | None) -> None:
+        """Shield the heroes the field struggles to counter.
+
+        A PLAIN MAPPING rather than a `Stars`, because this one needs no
+        history object behind it: it is {hero id: sentence}, worked out
+        from the ranked dataset alone. Called AFTER `show_heroes` for the
+        same reason the hearts are - that rebuilds every tile, so a mark
+        set before it is a mark on a widget that no longer exists.
+        """
+        for tile in self._tiles:
+            why = (shields or {}).get(tile.hero_id, "")
+            tile.set_shield(bool(why), why)

@@ -102,7 +102,8 @@ def run(options: Options, say=None, cancelled=None) -> Report:
 
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
-                                  options.picked, item_names)
+                                  options.picked, item_names,
+                                  ds=analyse.ranked_dataset())
     return Report(options=options, how="", name=name, matches=shaped.matches,
                   blocks=blocks, dropped=shaped.dropped,
                   sessions=shaped.sessions, returned=shaped.returned,

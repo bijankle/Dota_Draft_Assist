@@ -231,6 +231,10 @@ class MainWindow(QMainWindow):
         # Which heroes the History tab's current run says you are good
         # on, or None for "no run loaded" — see `_history_run_changed`.
         self.stars = None
+        # {hero id: why} for the gold shield. From the DATASET rather
+        # than from any run, so it is filled before the History tab has
+        # ever been opened.
+        self.shields: dict = {}
         # Rectangles drawn on the debug picture during drag calibration.
         self._drag_rects: list[tuple[int, int, int, int]] = []
         # Heroes whose alternative portrait has been learned this session,
@@ -1300,6 +1304,9 @@ class MainWindow(QMainWindow):
         capture session around them, so a data update takes effect without
         restarting the app."""
         self.ds = store.load_or_empty()
+        # The shield reads the matrix, so a reloaded dataset is a new
+        # answer and this is the one place that can notice.
+        self._recompute_shields()
         # The icon can come out of the portrait library, so a download that
         # has just landed may have supplied one.
         appicon.forget()
@@ -3744,9 +3751,28 @@ class MainWindow(QMainWindow):
         ]
         self.suggest_row.show_heroes(rows)
         # AFTER `show_heroes`, always: it destroys every tile and builds
-        # new ones, so a star applied before this is a star on a widget
+        # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
         self.suggest_row.set_stars(self.stars)
+        self.suggest_row.set_shields(self.shields)
+
+    def _recompute_shields(self) -> None:
+        """Which heroes the field struggles to counter, from the DATASET.
+
+        Nothing to do with the History tab: this needs no match history,
+        so it is filled on a fresh install with no account ever measured,
+        and it appears on heroes nobody has picked. Recomputed when the
+        dataset or the bar changes, never per tile - it is one pass over
+        the matrix and the strip is rebuilt on every pick.
+        """
+        from ..history import analyse as analyse_mod
+
+        try:
+            self.shields = analyse_mod.shielded(
+                self.ds,
+                ui_settings.clamp_pct(self.settings.get("shield_pct", 70), 70))
+        except Exception:                  # noqa: BLE001 - never fatal
+            self.shields = {}
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.

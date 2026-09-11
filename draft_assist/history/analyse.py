@@ -56,6 +56,9 @@ class Bucket:
     se: float = 0.0
     sigma: float = 0.0
     eligible: bool = False
+    # A short standing printed beside the figure ("top 12%"). Only the
+    # counters block uses it; everything else leaves it empty.
+    note: str = ""
 
 
 @dataclass
@@ -163,6 +166,14 @@ ANALYSES = [
      "Last hits per minute on each hero, relative to the average."),
     ("denies", "Denies/game", True,
      "Denies per game on each hero, relative to the average."),
+    # NOT MEASURED FROM YOUR GAMES, and the only section here that is
+    # not. Counterability is a property of the HERO, read out of the
+    # ranked dataset; your history only decides which heroes appear. So
+    # there is no "against your win rate" column and no sigma - it is the
+    # same figure for everybody who plays that hero.
+    ("counters", "Hero Counters", True,
+     "How each of your heroes fares against the whole hero pool, weighted "
+     "by how often each opponent is picked."),
     ("items", "Items by hero", True,
      "Win rate in games that ended with each item in your inventory, "
      "against that hero's own win rate."),
@@ -192,6 +203,17 @@ def _pct(value: float) -> str:
 
 
 SIG_FIGURES = 2
+
+NO_DATASET = (
+    "No hero statistics on this machine yet, so there is nothing to "
+    "measure a hero against. Settings > Downloads fetches them.")
+COUNTER_CAVEAT = (
+    "This is a property of the HERO, not of your play: it is the same "
+    "figure for everybody who picks it, and your history only decides "
+    "which heroes are listed. It reads at whichever ranks the statistics "
+    "were built for, which is not necessarily your own. And it counts "
+    "matchups only - a hero nothing counters can still be a poor pick "
+    "because of what it fails to do for a line-up.")
 
 
 def sig(value, figures: int = SIG_FIGURES) -> str:
@@ -444,6 +466,168 @@ def section_spread(block: "Block", baseline: float):
     return spread, best, worst
 
 
+def field_deltas(ds) -> dict:
+    """Every hero's matchup delta against the WHOLE POOL, pick-weighted.
+
+    For hero i this is the mean of `delta_vs[i, j]` over every other hero
+    j, weighted by how often j is actually picked. Positive means the
+    field struggles against this hero; negative means the field beats it,
+    which is what "counterable" means.
+
+    WEIGHTED, at the user's request - "this should be driven by the
+    community data of hero pick rate". A hero countered hard by three
+    heroes nobody plays is not countered in practice, and an unweighted
+    sum cannot tell that apart from one countered by three heroes in
+    every other game.
+
+    A MEAN, not the raw sum the request described. The ORDERING is
+    identical either way, but a weighted sum's magnitude is whatever the
+    weights happen to add up to, while the mean is in percentage points -
+    the same unit as every other figure in the matrix, so "-1.8" can be
+    read rather than merely ranked.
+
+    The self term needs no special case: `delta_vs` is antisymmetrised at
+    ingestion, so its diagonal is zero. Only the DIVISOR drops the hero's
+    own weight.
+    """
+    import numpy as np
+
+    if ds is None or getattr(ds, "is_empty", True):
+        return {}
+    weights = np.asarray(ds.picks, dtype=float)
+    if weights.size != len(ds.hero_ids) or not float(weights.sum()):
+        return {}
+    totals = np.asarray(ds.delta_vs, dtype=float) @ weights
+    divisors = weights.sum() - weights
+    out = {}
+    for hero_id, index in ds.index.items():
+        divisor = float(divisors[index])
+        if divisor > 0:
+            out[int(hero_id)] = float(totals[index]) / divisor
+    return out
+
+
+def counter_standings(ds) -> tuple:
+    """(delta per hero, "top X%" per hero, the pool's own average).
+
+    RANKED AGAINST EVERY HERO IN THE GAME, at the user's request, not
+    against the handful the player happens to pick: "Sniper is the 12th
+    least counterable hero in Dota" means something on its own and stays
+    comparable between runs, where a percentile inside a pool of fifteen
+    is self-referential - your least counterable hero tops it by
+    definition.
+    """
+    deltas = field_deltas(ds)
+    if not deltas:
+        return {}, {}, 0.0
+    order = sorted(deltas, key=lambda h: -deltas[h])
+    count = len(order)
+    standing = {}
+    for place, hero_id in enumerate(order, start=1):
+        share = max(1, round(100.0 * place / count))
+        standing[hero_id] = f"top {share}%"
+    # The pool's own pick-weighted average, which is what a hero is read
+    # against. Near zero by construction (the matrix is antisymmetric),
+    # but computed rather than assumed to be.
+    datum = sum(deltas.values()) / count
+    return deltas, standing, datum
+
+
+def ranked_dataset():
+    """The hero statistics the counters block reads, or an empty one.
+
+    LOADED HERE rather than threaded down from the window, because the
+    two places that build blocks are a worker thread and a cache rebuild
+    and neither has ever needed the window for anything. It is one npz
+    off disk, on a path that already costs a network round trip or a full
+    recompute - and `load_or_empty` answers with an empty dataset rather
+    than raising when nothing has been downloaded, which is the state a
+    fresh install is in.
+    """
+    from ..data.store import load_or_empty
+    try:
+        return load_or_empty()
+    except Exception:                      # noqa: BLE001 - never fatal
+        return None
+
+
+def shielded(ds, floor_pct: int = 70) -> dict:
+    """{hero id: why} for every hero the field struggles to counter.
+
+    NOT ABOUT THE PLAYER, which is the whole difference between this mark
+    and the heart. It needs no match history at all - only the ranked
+    dataset - so it appears on heroes nobody has ever picked, which is
+    exactly where it says something the strip could not otherwise.
+
+    STRICTLY ABOVE THE FLOOR, the same rule the stars follow: standing AT
+    the 70th percentile means 70% are at or below you, which is the top
+    of the bottom 70% rather than the top 30%.
+    """
+    deltas, standing, _datum = counter_standings(ds)
+    if not deltas:
+        return {}
+    order = sorted(deltas, key=lambda h: -deltas[h])
+    count = len(order)
+    out = {}
+    for place, hero_id in enumerate(order, start=1):
+        # `place` 1 is the least counterable, so the fraction AT OR BELOW
+        # this hero is (count - place) / count.
+        below = (count - place) / count
+        if below * 100 > float(floor_pct):
+            out[hero_id] = (f"Hard to counter = {sig(deltas[hero_id])} "
+                            f"vs the field ({standing[hero_id]})")
+    return out
+
+
+def counter_analysis(matches, ds) -> Block:
+    """Your most played heroes, ranked by how counterable they are.
+
+    THE ONLY SECTION HERE THAT IS NOT MEASURED FROM YOUR GAMES. Your
+    history decides WHICH heroes appear and how many games sit behind
+    each; the figure itself comes out of the ranked dataset and is the
+    same for everybody who plays that hero. So there is no win rate
+    column, no baseline and no sigma - a hero cannot be significantly
+    counterable for you in particular.
+    """
+    name, desc = NAMES["counters"], DESCS["counters"]
+    deltas, standing, datum = counter_standings(ds)
+    if not deltas:
+        # No statistics pulled, or a dataset with no matchups in it. Say
+        # so rather than draw an empty table, which reads as "you have no
+        # counterable heroes" - a measurement nobody made.
+        return Block(id="counters", name=name, desc=desc, kind="counters",
+                     rows=[], shown=[], caveat=NO_DATASET)
+
+    played: dict = {}
+    for match in matches:
+        if match.hero_id is None:
+            continue
+        bucket = played.setdefault(
+            match.hero_id, Bucket(key=match.hero))
+        bucket.n += 1
+        bucket.wins += 1 if match.win else 0
+
+    rows = []
+    for hero_id, bucket in played.items():
+        if hero_id not in deltas:
+            continue                      # a hero the dataset does not know
+        bucket.mean = deltas[hero_id]
+        bucket.delta = bucket.mean - datum
+        bucket.note = standing[hero_id]
+        bucket.eligible = bucket.n >= MIN_BUCKET
+        rows.append(bucket)
+    # Least counterable first, which is the table's resting order; the
+    # cut and the sort above it still do what they do everywhere else.
+    rows.sort(key=lambda r: -r.mean)
+    shown = [r for r in rows if r.n >= MIN_DISPLAY]
+    return Block(id="counters", name=name, desc=desc, kind="counters",
+                 rows=rows, shown=shown, hidden=len(rows) - len(shown),
+                 hidden_games=sum(r.n for r in rows if r.n < MIN_DISPLAY),
+                 datum=datum, unit="percentage points",
+                 covered=len(rows), total=len(played),
+                 caveat=COUNTER_CAVEAT)
+
+
 def item_analysis(matches, item_names: dict) -> Block:
     """Final inventory against THAT HERO'S own win rate.
 
@@ -654,13 +838,13 @@ METRICS = {
 # threaded through it: they are outcomes, not decisions, so they belong
 # where the caveated rankings already sit, and the three that were here
 # first keep the positions they were given.
-BLOCK_ORDER = ("hero", "items", "tod", "session", "tilt", "dow", "party",
+BLOCK_ORDER = ("hero", "counters", "items", "tod", "session", "tilt", "dow", "party",
                "length", "side", "herodmg", "herokda", "towerdmg",
                "gold", "xp", "cs", "denies")
 
 
 def build_blocks(matches, baseline: float, picked: dict,
-                 item_names: dict | None = None) -> list:
+                 item_names: dict | None = None, ds=None) -> list:
     """Every analysis the user asked for, in the order they are read in."""
     blocks = []
 
@@ -697,6 +881,11 @@ def build_blocks(matches, baseline: float, picked: dict,
             continue
         if block_id == "items":
             blocks.append(item_analysis(matches, item_names or {}))
+        elif block_id == "counters":
+            # `ds` is the ranked dataset, which this tab has never needed
+            # before. None is a perfectly good answer - a machine with no
+            # statistics pulled gets the block saying so.
+            blocks.append(counter_analysis(matches, ds))
         elif block_id in METRICS:
             add_metric(block_id)
         else:

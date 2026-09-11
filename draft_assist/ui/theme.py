@@ -36,6 +36,13 @@ ROW_ALT = "#2e3035"
 # The window frame's lit edge (see `ui/ornate.py`), so the app's name and
 # the border round it read as one piece rather than two decisions.
 FRAME_GOLD = "#c9a45a"
+# The heart on a suggestion you play and win on. PINK rather than the red
+# it was first asked for, at the user's own second thought - and it is
+# the better call: every signed number in this app is printed in green or
+# red, and a red mark sits directly above a red "-2.4" on the same tile.
+# Pink belongs to nothing else here, so it cannot be read as a judgement
+# about the figure beside it.
+HEART_PINK = "#ff6fa5"
 # The hairline between one control and the next, at the user's request:
 # "right in the middle" of white and black, which is exactly #808080. It
 # is deliberately NOT one of the greys above — those are surfaces and
