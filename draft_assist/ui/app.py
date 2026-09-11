@@ -64,7 +64,7 @@ from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
-from . import adslot
+from . import accountrow, adslot
 from . import chrome
 from . import ornate
 from . import reasons
@@ -352,8 +352,11 @@ class MainWindow(QMainWindow):
         # was six clicks deep in the debug panel until the user said so.
         self._act(file_menu, "&Calibrate pick boxes…", self._calibrate,
                   None, "Put two boxes over the pick bar, on the game")
-        self._act(file_menu, "&Update application…", self._update_app,
-                  None, "Pull the latest code, then reopen the app")
+        # UPDATE IS IN HELP AND ONLY IN HELP, at the user's request. It
+        # was on BOTH menus, wired to the same `_update_app` - one action
+        # in two places, which is two things to keep in step for no gain.
+        # Help is where it belongs: it is pressed about once a patch, and
+        # it sits beside About, which answers "which version have I got".
         # NO QUIT, at the user's request: the window's own close button is
         # where everybody closes a window, and a menu item for it is a
         # line of menu that has never been read.
@@ -532,7 +535,11 @@ class MainWindow(QMainWindow):
                     "Everything the app reads, downloads and diagnoses.",
                     ("preferences", "options", "config"),
                     self._open_settings),
-            Command("Update application…", "File",
+            # HELP, not File. The search TELLS you where a thing lives,
+            # so a stale menu name here sends somebody to a menu that no
+            # longer holds it - worse than not finding it, because they
+            # stop looking.
+            Command("Update application…", "Help",
                     "Pull the latest code, then reopen the app.",
                     ("upgrade", "version", "new"), self._update_app),
             Command("Transparency", "View",
@@ -753,6 +760,16 @@ class MainWindow(QMainWindow):
         self.ad_slot = adslot.AdSlot()
         self.ad_slot.set_enabled(bool(self.settings.get("ads_enabled", False)))
         outer.addWidget(self.ad_slot)
+
+        # WHOSE HISTORY THE NUMBERS ARE FOR, at the user's request, in the
+        # slot the ad used to have to itself - and the ad now defaults
+        # OFF, so on an ordinary install this row IS the top of the
+        # content. It follows `report_changed` like the stars do, so
+        # looking somebody else up re-draws it, and it makes no request of
+        # its own: the picture was fetched during the run.
+        self.account_row = accountrow.AccountRow(draft_widget)
+        self.account_row.clicked.connect(self._show_history_tab)
+        outer.addWidget(self.account_row)
 
         self.teams_row = teams_row = QHBoxLayout()
         teams_row.setSpacing(10)
@@ -3728,6 +3745,21 @@ class MainWindow(QMainWindow):
         # The tiles are already on screen, so this is the whole update —
         # no pick changed and nothing needs re-scoring.
         self.suggest_row.set_stars(self.stars)
+        # And the row at the top says whose run it is. Same signal, same
+        # moment: the star bars and the face must never describe two
+        # different accounts.
+        self.account_row.show_report(report)
+
+    def _show_history_tab(self) -> None:
+        """Clicking the account row opens the tab that fills it.
+
+        A row that says "no account measured yet" and does nothing when
+        pressed is a prompt with no way to act on it.
+        """
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == "History":
+                self.tabs.setCurrentIndex(index)
+                return
 
     def _update_items(self, draft: scoring.DraftState) -> None:
         """The strip is live from the first enemy pick.

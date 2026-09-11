@@ -17,6 +17,16 @@ from dataclasses import dataclass
 
 API = "https://api.opendota.com/api"
 
+# Steam's own avatar CDN, and nothing else. The URL comes out of a field
+# in somebody's OpenDota profile, so it is not this app's string, and a
+# run must not be able to be pointed at an arbitrary host by it.
+AVATAR_HOSTS = ("https://avatars.steamstatic.com/",
+                "https://avatars.akamai.steamstatic.com/",
+                "https://avatars.cloudflare.steamstatic.com/",
+                "https://steamcdn-a.akamaihd.net/")
+# A profile picture is a few kilobytes. Anything far past that is not one.
+AVATAR_MAX = 2 * 1024 * 1024
+
 # Every field the analyses read, named explicitly. OpenDota's `project`
 # has been documented as extending the default projection and observed to
 # REPLACE it; naming them all is correct either way — harmless duplication
@@ -108,6 +118,11 @@ class Profile:
     """
     name: str = ""
     known: bool | None = None
+    # The Steam avatar's URL, straight off the same row the name came
+    # from. A URL rather than the picture: fetching it is a SECOND
+    # request, so the caller decides whether it is worth making, and a
+    # Profile stays cheap enough to ask for on any path.
+    avatar: str = ""
 
 
 def profile(account_id: int) -> Profile:
@@ -135,8 +150,42 @@ def profile(account_id: int) -> Profile:
         # A 200 with no profile is OpenDota saying it does not have this
         # account, which is an ANSWER rather than a failure to answer.
         return Profile(known=False)
+    # `avatarfull` is the 184px one. Steam also publishes `avatar` (32px)
+    # and `avatarmedium` (64px); the big one is taken because the row
+    # draws it at whatever height it has and scaling DOWN is free while
+    # scaling up is not.
     return Profile(name=str(found.get("personaname") or "").strip(),
-                   known=True)
+                   known=True,
+                   avatar=str(found.get("avatarfull") or "").strip())
+
+
+def avatar_bytes(url: str, timeout: int = 20) -> bytes:
+    """The raw picture at `url`, or empty bytes.
+
+    IN THIS MODULE because this is the one place the history feature
+    talks to the network, and that rule is only worth anything if it has
+    no exceptions - a download tucked into a widget is exactly how the
+    live loop ends up making a request nobody expected.
+
+    COSMETIC AND NEVER FATAL, the rule `heroes` and `profile` follow: a
+    missing avatar draws a fallback and nothing anywhere says the run
+    failed, because it did not.
+
+    Only Steam's own CDN is fetched. The URL arrives inside an OpenDota
+    response, so it is not ours, and a run must not be able to be talked
+    into fetching an arbitrary host by a field in somebody's profile.
+    """
+    if not isinstance(url, str) or not url.startswith(AVATAR_HOSTS):
+        return b""
+    import requests
+    try:
+        response = requests.get(url, timeout=timeout)
+    except requests.RequestException:
+        return b""
+    if not response.ok:
+        return b""
+    content = response.content or b""
+    return content if len(content) <= AVATAR_MAX else b""
 
 
 def item_names() -> dict:

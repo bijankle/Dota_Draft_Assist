@@ -59,7 +59,7 @@ CATALOGUE = [
          ("rank", "ranks", "mmr")),
     _cmd("Transparency", "View", "How see-through the window is.",
          ("opacity", "seethrough")),
-    _cmd("Update application…", "File",
+    _cmd("Update application…", "Help",
          "Pull the latest code, then reopen the app.",
          ("upgrade", "version", "new")),
 ]

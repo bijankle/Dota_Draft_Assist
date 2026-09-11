@@ -9,7 +9,7 @@ near a network call.
 
 from datetime import datetime
 
-from . import analyse, cache, opendota, shape
+from . import analyse, avatars, cache, opendota, shape
 from .report import Options, Report
 
 
@@ -53,6 +53,13 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     name = who.name
     if cancelled():
         raise Refused("Stopped.")
+
+    # THE PICTURE, ONCE, HERE. The account row on the Draft tab draws it
+    # on every repaint and must never make a request, so the one moment
+    # it can be fetched is during a run - and `ensure` skips the fetch
+    # entirely when the avatar has not changed. Never fatal: no picture
+    # means the row draws its fallback, which is a normal state.
+    avatars.ensure(options.account_id, who.avatar)
 
     say(f"Reading the hero list… ({name})" if name
         else "Reading the hero list…")

@@ -114,7 +114,12 @@ DEFAULTS = {
     # The placeholder ad slot. ON, because that is where the owner left
     # it — no network is touched and no ad network is wired in; what it
     # reserves is the SPACE a banner would take.
-    "ads_enabled": True,
+    # OFF, at the user's request, and the slot is now the ACCOUNT ROW
+    # instead (see `adslot` / the History header). This file's notes have
+    # claimed "off by default" for a while and this dict said True - the
+    # drift came in when DEFAULTS was reseeded from the owner's own
+    # settings file, which had ads switched on at the time.
+    "ads_enabled": False,
     "portrait_scale": 1.0,
     "number_scale": 1.0,
     # The size the window opens at, and the size it is closed at is
