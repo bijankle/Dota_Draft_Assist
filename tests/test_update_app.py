@@ -71,27 +71,47 @@ def new_commit(seed, branch, text="second"):
 
 # ------------------------------------------------------- the ladder ----
 
-def test_an_upstream_is_used_when_the_branch_has_one():
-    target, why = update_app.choose_target(
-        "main", "origin/main", ["main", "other"], "main")
+def test_the_release_branch_wins_over_everything_else():
+    """At the user's request: "everything through main until I say so".
+
+    Whatever the checkout is tracking, whatever it is called, and
+    whatever the repository's default branch has been pointed at.
+    """
+    target, why = update_app.choose_target("master", "", ["main", "dev"],
+                                           "dev")
     assert target == "origin/main"
+    assert "release branch" in why
+
+
+def test_it_beats_the_branchs_own_upstream():
+    target, why = update_app.choose_target(
+        "spike", "origin/spike", ["main", "spike"], "main")
+    assert target == "origin/main"
+
+
+def test_and_it_beats_a_remote_branch_of_the_same_name():
+    """THE BUG THIS FIXES, exactly as it happened. A checkout sitting on
+    `claude/...` — by accident of how the work was first pushed, not by
+    choice — pulled that stale branch and reported an honest success
+    while nothing on screen changed. Twice."""
+    target, why = update_app.choose_target(
+        "claude/dota-drafting-assistant-review-y16n89", "",
+        ["main", "claude/dota-drafting-assistant-review-y16n89"], "main")
+    assert target == "origin/main"
+    assert "release branch" in why
+
+
+def test_the_upstream_is_still_the_fallback_without_a_release_branch():
+    target, why = update_app.choose_target(
+        "spike", "origin/spike", ["spike", "other"], "spike")
+    assert target == "origin/spike"
     assert "tracking" in why
 
 
 def test_a_branch_of_the_same_name_is_next():
     target, why = update_app.choose_target(
-        "claude/work", "", ["main", "claude/work"], "main")
+        "claude/work", "", ["claude/work", "dev"], "dev")
     assert target == "origin/claude/work"
-
-
-def test_then_the_release_branch_whatever_the_default_says():
-    """`main` is what a stranger's copy follows, so once the remote has one
-    a checkout with nothing better to go on lands there — even if the
-    repository's default branch has been pointed somewhere else."""
-    target, why = update_app.choose_target("master", "", ["main", "dev"],
-                                           "dev")
-    assert target == "origin/main"
-    assert "release branch" in why
 
 
 def test_then_the_remotes_default_branch():

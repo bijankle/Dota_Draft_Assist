@@ -149,13 +149,32 @@ def choose_target(branch: str, upstream: str, remote_branches, head: str):
     "claude/thing". `head` is what `origin/HEAD` resolves to, or "".
     """
     branches = [b for b in remote_branches if b]
+    # THE RELEASE BRANCH WINS OUTRIGHT, at the user's request:
+    # "everything through main until I say so".
+    #
+    # It used to be the THIRD rung, under the branch's own upstream and
+    # under a remote branch of the same name, on the reasoning that a
+    # clone should follow whatever it is actually tracking so the
+    # author's own checkout is unaffected. That reasoning had the wrong
+    # person in mind. The author IS the user here, and their checkout
+    # was sitting on a `claude/...` branch by accident of how the work
+    # was first pushed rather than by choice — so Update pulled that
+    # stale branch, reported a perfectly honest success, and changed
+    # nothing on screen. Twice. A button labelled "Update application"
+    # has to mean "give me the current application", and the current
+    # application is whatever `main` says it is.
+    #
+    # The cost is stated and was accepted: a checkout deliberately
+    # parked on another branch gets pulled back to the release branch
+    # too. Everything below is now the fallback for a remote that has no
+    # release branch at all.
+    if RELEASE_BRANCH in branches:
+        return (f"origin/{RELEASE_BRANCH}",
+                f"the release branch, {RELEASE_BRANCH}")
     if upstream:
         return upstream, f"tracking {upstream}"
     if branch and branch in branches:
         return f"origin/{branch}", f"the remote's own {branch}"
-    if RELEASE_BRANCH in branches:
-        return (f"origin/{RELEASE_BRANCH}",
-                f"the release branch, {RELEASE_BRANCH}")
     if head and head in branches:
         return f"origin/{head}", f"the remote's default branch, {head}"
     if len(branches) == 1:
