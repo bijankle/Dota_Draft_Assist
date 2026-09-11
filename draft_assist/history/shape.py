@@ -80,6 +80,15 @@ class Match:
         return (None if self.tower_damage is None
                 else self.tower_damage / self.minutes)
 
+    # DENIES IS MEASURED PER GAME, NOT PER MINUTE, and it is the one
+    # figure in the contribution family that is not a rate. There is no
+    # `denies_per_min` on purpose. Denying happens almost entirely in the
+    # laning stage, so a 25 minute game and a 50 minute game hold about
+    # the SAME number of denies — dividing by the length then makes a long
+    # game look like worse denying when nothing about the laning changed.
+    # Raw denies is also what a player counts, and what makes the section
+    # print whole numbers rather than hundredths.
+
     @property
     def cs_per_min(self):
         """Last hits per minute. PER MINUTE rather than raw, because raw CS
@@ -87,19 +96,6 @@ class Match:
         farmed — a 50 minute game beats a 25 minute one on totals alone."""
         return (None if self.last_hits is None
                 else self.last_hits / self.minutes)
-
-    @property
-    def denies_per_min(self):
-        """Denies per minute, and read it with more suspicion than the rest.
-
-        Denying happens almost entirely in the laning stage, so the rate
-        falls the longer a game runs whether or not anything was done
-        differently: the same laning phase divided by a bigger number. It
-        is per minute anyway, for consistency with every other rate here
-        and because raw denies has the same problem in the other
-        direction, but the caveat is stated where the block is drawn.
-        """
-        return None if self.denies is None else self.denies / self.minutes
 
     @property
     def kda(self):

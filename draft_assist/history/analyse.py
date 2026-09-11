@@ -161,8 +161,8 @@ ANALYSES = [
      "Experience per minute on each hero, relative to the average."),
     ("cs", "CS/min", True,
      "Last hits per minute on each hero, relative to the average."),
-    ("denies", "Denies/min", True,
-     "Denies per minute on each hero, relative to the average."),
+    ("denies", "Denies/game", True,
+     "Denies per game on each hero, relative to the average."),
     ("items", "Items by hero", True,
      "Win rate in games that ended with each item in your inventory, "
      "against that hero's own win rate."),
@@ -597,16 +597,22 @@ METRICS = {
                "run; the question this answers is how you farm on ONE "
                "hero against how you usually farm on it, never how one "
                "hero compares with another."),
+    # PER GAME, AND IT IS THE ONLY ONE HERE THAT IS NOT A RATE. Denying
+    # happens almost entirely in the laning stage, so a 25 minute game and
+    # a 50 minute game hold about the same number — per minute would make
+    # a long game read as worse denying with nothing about the laning
+    # changed. It also prints whole numbers, which per minute could not:
+    # denies run at tenths of one a minute, so rounding those to integers
+    # gives 0 for every hero and a section that says nothing at all.
     "denies": dict(
-        field="denies_per_min", unit="denies per minute",
-        short="denies/min",
+        field="denies", unit="denies per game",
+        short="denies/game",
         more="More denies", less="Fewer denies",
-        caveat="Read this one with the most suspicion of any block here. "
-               "Denying happens almost entirely in the laning stage, so "
-               "the rate falls the longer a game runs whether or not you "
-               "did anything differently — a 45 minute game divides the "
-               "same laning phase by a bigger number. The counts are "
-               "small too, so a couple of games move a hero a long way."),
+        caveat="Role-bound like the rest, and thin: the counts are small, "
+               "so a couple of games move a hero a long way. It is per "
+               "GAME rather than per minute because denying is a laning "
+               "stage act — a long game does not dilute it, so dividing "
+               "by the length would measure the length."),
 }
 
 

@@ -235,19 +235,27 @@ def test_every_figure_is_two_significant_figures():
     assert "e" not in analyse.sig(614.67) and "e" not in analyse.sig(0.00012)
 
 
-def test_denies_per_minute_survives_the_rounding():
-    """Denies run at tenths per minute, so whole numbers would print 0 for
-    every hero in the list — the section would say nothing at all. Two
-    significant figures is what keeps the block readable."""
+def test_denies_is_counted_per_game_and_a_long_game_does_not_dilute_it():
+    """The one figure in the contribution family that is NOT a rate, at
+    the user's request and on its own merits. Denying is a laning stage
+    act, so a 25 minute game and a 50 minute game hold about the same
+    number — per minute would make the long game read as worse denying
+    with nothing about the laning changed. Per minute also could not give
+    the whole numbers asked for: denies run at tenths of one a minute, so
+    rounding those to integers prints 0 for every hero."""
     matches = shape.shape(rows_for(40), HEROES).matches
     for index, match in enumerate(matches):
         match.hero = "Axe" if index < 20 else "Bane"
-        match.denies = 24 if index < 20 else 6       # over a 30 minute game
+        match.denies = 24 if index < 20 else 6
+        # Axe's games run twice as long. Per minute that would halve his
+        # figure; per game it must not move it at all.
+        match.duration = 3600 if index < 20 else 1800
     blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
     block = next(b for b in blocks if b.id == "denies")
     figures = {r.key: analyse.format_figure(block, r.mean) for r in block.shown}
-    assert figures == {"Axe": "0.80", "Bane": "0.20"}
-    assert not any(f in ("0", "0.0") for f in figures.values())
+    assert figures == {"Axe": "24", "Bane": "6"}
+    assert not any("." in f for f in figures.values()), "whole numbers"
+    assert analyse.METRICS["denies"]["field"] == "denies", "the raw count"
 
 
 def test_a_rate_is_per_minute_so_a_long_game_cannot_out_farm_a_short_one():
@@ -319,8 +327,8 @@ def test_the_farm_four_are_contributions_and_not_win_rate_splits():
     _rates, contributions = report.split_findings()
     rate_rows, impact_rows = report.summary_rows()
     impact = {block.name for block, *_ in impact_rows}
-    assert {"Gold/min", "XP/min", "CS/min", "Denies/min"} <= impact
-    assert not {"Gold/min", "XP/min", "CS/min", "Denies/min"} & {
+    assert {"Gold/min", "XP/min", "CS/min", "Denies/game"} <= impact
+    assert not {"Gold/min", "XP/min", "CS/min", "Denies/game"} & {
         block.name for block, *_ in rate_rows}
 
 

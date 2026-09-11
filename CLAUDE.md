@@ -1044,10 +1044,20 @@ credentials, and put the account at risk. Do not go there.
   does — a safe lane carry out-earns a hard support by construction, on
   the same night and the same skill. That is why they sit at the bottom
   of `BLOCK_ORDER` with the other caveated rankings and why each is
-  measured PER HERO against your own average on that hero. Denies carries
-  one more: denying happens almost entirely in the laning stage, so the
-  rate falls the longer a game runs whether or not anything was done
-  differently.
+  measured PER HERO against your own average on that hero.
+  **AND DENIES IS COUNTED PER GAME, the one figure in this family that
+  is NOT a rate** (`Denies/game`, `field="denies"`, and there is
+  deliberately no `Match.denies_per_min`). Two reasons, and the user's
+  instruction was the first of them: denies run at TENTHS of one a
+  minute, so the whole numbers they asked for would print 0 for every
+  hero and the section would say nothing at all. That was reported back
+  rather than shipped, and the answer that came out of it is better than
+  either starting position — denying is a LANING STAGE act, so a 25
+  minute game and a 50 minute game hold about the same number, and
+  dividing by the length makes a long game read as worse denying with
+  nothing about the laning changed. Per game is what a player counts and
+  what the data actually supports; a test drives Axe's games to twice
+  the length and requires his figure not to move.
   **EVERY FIGURE IS TWO SIGNIFICANT FIGURES** (`analyse.sig`,
   `SIG_FIGURES`), at the user's request — "I basically want all numbers
   in this analysis to be to two significant figures". This REPLACED the
