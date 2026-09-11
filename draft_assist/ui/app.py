@@ -1144,10 +1144,18 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.resize_grip)
         self._shell_lay.addWidget(self.status)
 
-        # ALL EIGHT HANDLES, at the user's request: "I want to be able to
+        # ALL FOUR CORNERS, at the user's request: "I want to be able to
         # resize from any corner of the window... so that if I can only
         # see / access the top right corner and not the bottom right, I
         # can shrink it and then drag it up".
+        #
+        # CORNERS AND NOT SIDES, which is the second half of that request
+        # and a correction to the first attempt: a live top edge and a
+        # draggable title bar cannot share the same pixels, so a resize
+        # strip along the top of the bar took away the gesture the bar
+        # exists for — "now I can't drag to move the app window". The
+        # sides went with it; the complaint was about reaching a CORNER
+        # of a window grown off the screen, and four corners answer it.
         #
         # The grip above stays, because it is the only handle that can be
         # SEEN — three diagonal dots saying the window is resizable — and

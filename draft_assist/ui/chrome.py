@@ -313,8 +313,16 @@ def work_area(window) -> QRect | None:
     return screen.availableGeometry() if screen is not None else None
 
 
+def is_corner(edges: Qt.Edge | None) -> bool:
+    """Two edges at once — a corner rather than a side."""
+    if edges is None:
+        return False
+    return bool(edges & (Qt.Edge.LeftEdge | Qt.Edge.RightEdge)) and bool(
+        edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge))
+
+
 class ResizeBorder(QObject):
-    """The eight resize handles a frameless window does not get.
+    """The four CORNER resize handles a frameless window does not get.
 
     Only the bottom-right corner was draggable — one `ResizeGrip` in the
     status bar — and that is the one handle a window stretched off the
@@ -336,6 +344,20 @@ class ResizeBorder(QObject):
     presses on the border — the title bar and the status bar — as well as
     on the window, which is where everything that ignores a press ends up
     by propagation.
+
+    CORNERS ONLY, AND THE EDGES ARE LEFT ALONE, at the user's request:
+    "now I can't drag to move the app window, can you make it so that it
+    is only the corner (all 4) that can be dragged to resize, and the
+    edges are just drag to move as they were before".
+
+    A live top edge and a draggable title bar cannot share the same
+    pixels, and the title bar is what the window is MOVED by — so a strip
+    along the top of it that resized instead was the move gesture failing
+    on the widget that exists for it. Sides are the same trade one axis
+    over, for a gesture nobody was missing: the complaint this started
+    from was reaching a CORNER of a window that had grown off the screen,
+    and four corners answer it completely. `edge_at` still reports sides,
+    because it describes the border; this decides what to act on.
     """
 
     def __init__(self, window):
@@ -363,6 +385,12 @@ class ResizeBorder(QObject):
 
     def end(self) -> None:
         self._edges = self._from = self._was = None
+
+    def release(self) -> None:
+        """Give the mouse back and stop resizing."""
+        if self.dragging():
+            self.window.releaseMouse()
+        self.end()
 
     def geometry_for(self, where: QPoint) -> QRect:
         """Where the window lands with the pointer here.
@@ -431,8 +459,7 @@ class ResizeBorder(QObject):
         if kind == QEvent.Type.MouseMove:
             return self._moved(watched, event)
         if kind == QEvent.Type.MouseButtonRelease and self.dragging():
-            self.window.releaseMouse()
-            self.end()
+            self.release()
             return True
         if kind == QEvent.Type.Leave and not self.dragging():
             self._unshape(watched)
@@ -447,11 +474,16 @@ class ResizeBorder(QObject):
         """
         return self.window.mapFromGlobal(event.globalPosition().toPoint())
 
+    def grab_at(self, pos: QPoint) -> Qt.Edge | None:
+        """The handle under `pos`, which is a corner or nothing at all."""
+        edges = edge_at(self.window, pos)
+        return edges if is_corner(edges) else None
+
     def _pressed(self, event) -> bool:
         if (event.button() != Qt.MouseButton.LeftButton
                 or self.window.isMaximized()):
             return False
-        edges = edge_at(self.window, self._at(event))
+        edges = self.grab_at(self._at(event))
         if edges is None:
             return False
         self.begin(edges, event.globalPosition().toPoint())
@@ -469,6 +501,15 @@ class ResizeBorder(QObject):
 
     def _moved(self, watched, event) -> bool:
         if self.dragging():
+            # A RESIZE WITH NO BUTTON HELD IS OVER, whatever happened to
+            # the release. Losing one — the grab failing, the release
+            # delivered somewhere unwatched — would otherwise leave every
+            # later move resizing the window, and the title bar would
+            # stop moving it for the rest of the session with nothing on
+            # screen saying why.
+            if not (event.buttons() & Qt.MouseButton.LeftButton):
+                self.release()
+                return False
             self.window.setGeometry(
                 self.geometry_for(event.globalPosition().toPoint()))
             return True
@@ -476,7 +517,7 @@ class ResizeBorder(QObject):
         # consumed, or the title bar would never see the move that drags
         # the window and the tabs would never light under the pointer.
         if not self.window.isMaximized():
-            self.hover(watched, edge_at(self.window, self._at(event)))
+            self.hover(watched, self.grab_at(self._at(event)))
         return False
 
     def hover(self, widget, edges: Qt.Edge | None) -> None:

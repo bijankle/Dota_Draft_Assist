@@ -49,12 +49,33 @@ def test_every_corner_is_a_handle(window):
     assert edge(window, right - 2, bottom - 2) == R | B
 
 
-def test_every_edge_is_a_handle(window):
+def test_edge_at_still_reports_the_sides(window):
+    """It describes the BORDER. What is acted on is decided separately,
+    by `ResizeBorder.grab_at`, which takes corners only."""
     right, bottom = window.width() - 1, window.height() - 1
     assert edge(window, 2, bottom // 2) == L
     assert edge(window, right - 2, bottom // 2) == R
     assert edge(window, right // 2, 2) == T
     assert edge(window, right // 2, bottom - 2) == B
+
+
+def test_only_the_CORNERS_resize_and_the_sides_are_left_alone(window):
+    """At the user's request: "make it so that it is only the corner (all
+    4) that can be dragged to resize, and the edges are just drag to move
+    as they were before".
+
+    A live top edge and a draggable title bar cannot share the same
+    pixels — a strip along the top of the bar that resized instead was
+    the move gesture failing on the widget that exists for it.
+    """
+    border = chrome.ResizeBorder(window)
+    right, bottom = window.width() - 1, window.height() - 1
+    for x, y in ((2, 2), (right - 2, 2), (2, bottom - 2),
+                 (right - 2, bottom - 2)):
+        assert border.grab_at(QPoint(x, y)) is not None, "every corner"
+    for x, y in ((right // 2, 2), (right // 2, bottom - 2),
+                 (2, bottom // 2), (right - 2, bottom // 2)):
+        assert border.grab_at(QPoint(x, y)) is None, "no side"
 
 
 def test_the_middle_of_the_window_is_not_a_handle(window):
@@ -91,9 +112,9 @@ def drag(window, edges, by_x, by_y):
     return border.geometry_for(start + QPoint(by_x, by_y))
 
 
-def test_dragging_the_TOP_edge_grows_the_window_upwards(window):
-    """Not slides it. The dragged edge moves and the far edge is HELD —
-    a resize that moved both edges would be a drag with extra steps."""
+def test_dragging_upwards_grows_the_window_rather_than_sliding_it(window):
+    """The dragged edge moves and the far edge is HELD — a resize that
+    moved both edges would be a drag with extra steps."""
     was = QRect(window.geometry())
     box = drag(window, T, 0, -100)
     assert box.top() == was.top() - 100
@@ -339,4 +360,58 @@ def test_a_maximised_window_has_no_handles(qapp):
     corner = window.mapToGlobal(QPoint(window.width() - 3, 3))
     qapp.sendEvent(window, press(window, corner))
     assert not border.dragging()
+    window.close()
+
+
+def test_the_title_bar_still_MOVES_the_window(qapp):
+    """The regression this change is for. The bar is what the window is
+    dragged by, and a resize strip along the top of it took that gesture
+    away: "now I can't drag to move the app window"."""
+    from PyQt6.QtWidgets import QVBoxLayout
+    window = QWidget()
+    lay = QVBoxLayout(window)
+    lay.setContentsMargins(3, 3, 3, 3)
+    bar = chrome.TitleBar("Dota Draft Assist")
+    lay.addWidget(bar)
+    lay.addStretch(1)
+    window.setGeometry(300, 300, 900, 700)
+    window.show()
+    border = chrome.ResizeBorder(window)
+    border.watch(window)
+    border.watch(bar)
+
+    # Pressing the top edge of the BAR is a move now, not a resize.
+    top = window.mapToGlobal(QPoint(450, 1))
+    qapp.sendEvent(bar, press(bar, top))
+    assert not border.dragging(), "the top edge no longer resizes"
+
+    was = window.pos()
+    size = window.size()
+    qapp.sendEvent(bar, move(bar, top + QPoint(120, 60)))
+    assert window.pos() - was == QPoint(120, 60), "it moved"
+    assert window.size() == size, "and did not resize"
+    window.close()
+
+
+def test_a_resize_whose_RELEASE_WENT_MISSING_does_not_jam_the_window(qapp):
+    """Losing a release would leave every later move resizing, and the
+    title bar would stop moving the window for the rest of the session
+    with nothing on screen saying why."""
+    window = QWidget()
+    window.setGeometry(100, 100, 800, 600)
+    window.setMinimumSize(200, 150)
+    window.show()
+    border = chrome.ResizeBorder(window)
+    border.watch(window)
+
+    corner = window.mapToGlobal(QPoint(window.width() - 3, 3))
+    qapp.sendEvent(window, press(window, corner))
+    assert border.dragging()
+
+    # The release never arrives; the next move has no button held.
+    qapp.sendEvent(window, QMouseEvent(
+        QEvent.Type.MouseMove, QPointF(0, 0), QPointF(corner),
+        QPointF(corner), Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier))
+    assert not border.dragging(), "a move with no button held ends it"
     window.close()
