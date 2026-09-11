@@ -123,12 +123,88 @@ def test_the_where_is_carried_so_the_answer_teaches_the_way_back():
 
 # ---- the dialog ------------------------------------------------------
 
-def test_enter_takes_the_top_match_and_clicking_takes_that_one(qapp):
-    """Both, at the user's request: Enter for the top match, and any
-    result clickable. A box that only obeys Enter makes the list a
-    display rather than a control, and the list is the part that answers
-    "what else is there"."""
-    from draft_assist.ui.search_dialog import SearchDialog
+def _a_menu(entries, qapp):
+    """A Help menu with its own items and the search attached, exactly
+    the way `MainWindow` builds it."""
+    from PyQt6.QtWidgets import QMenu
+    from draft_assist.ui.menusearch import MenuSearch
+
+    menu = QMenu("&Help")
+    own = [menu.addAction(name) for name in ("User manual", "About")]
+    return menu, own, MenuSearch(menu, lambda: entries)
+
+
+def _type(qapp, menu, text):
+    """Press each key AT THE MENU, which is where an open menu's keyboard
+    grab sends them — not at the box, which never has focus."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+
+    for ch in text:
+        qapp.sendEvent(menu, QKeyEvent(QEvent.Type.KeyPress, 0,
+                                       Qt.KeyboardModifier.NoModifier, ch))
+
+
+def test_typing_at_the_menu_lands_in_the_box(qapp):
+    """"When I hit help and start typing I should see it being entered
+    into a text box which sits on the help dropdown list."
+
+    An open QMenu holds a keyboard GRAB, so every key goes to the menu
+    whatever has focus. The box therefore never asks for focus: the keys
+    are forwarded to it. This is the assertion that the whole design
+    exists to make true.
+    """
+    from draft_assist.ui.commands import Command
+
+    entries = [Command("Diagnose game data", "Settings ▸ Game data", "",
+                       ("broken",), lambda: None)]
+    menu, own, search = _a_menu(entries, qapp)
+    menu.aboutToShow.emit()
+    assert search.edit.text() == "", "a fresh box every time it opens"
+
+    _type(qapp, menu, "broken")
+    assert search.edit.text() == "broken"
+    assert [a.text() for a in search._results] == [
+        "Settings ▸ Game data ▸ Diagnose game data"], "the trail, not just the name"
+    assert all(not a.isVisible() for a in own), "own items give way"
+
+
+def test_the_menu_keeps_the_keys_a_menu_is_driven_by(qapp):
+    """Arrows, Enter and Escape stay the MENU's. Swallowing them for the
+    box would take the keyboard navigation away from a menu to give it a
+    text field nobody is looking at."""
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+    from draft_assist.ui.commands import Command
+
+    entries = [Command("First", "File", "", ("alpha",), lambda: None)]
+    menu, _own, search = _a_menu(entries, qapp)
+    menu.aboutToShow.emit()
+    _type(qapp, menu, "alpha")
+    before = search.edit.text()
+
+    # NAVIGATION only. Return and Escape are deliberately not in here:
+    # they also belong to the menu, but they ACT — Return takes the
+    # highlighted result, which clears the box on purpose.
+    for key in (Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_Left,
+                Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End):
+        qapp.sendEvent(menu, QKeyEvent(QEvent.Type.KeyPress, key,
+                                       Qt.KeyboardModifier.NoModifier, ""))
+    assert search.edit.text() == before, "navigation keys are not typing"
+
+    # Backspace IS the box's, or a typo could only be fixed by starting
+    # the whole query again.
+    qapp.sendEvent(menu, QKeyEvent(QEvent.Type.KeyPress,
+                                   Qt.Key.Key_Backspace,
+                                   Qt.KeyboardModifier.NoModifier, ""))
+    assert search.edit.text() == "alph"
+
+
+def test_enter_takes_the_top_match_and_any_result_is_clickable(qapp):
+    """Both, at the user's request. A QMenu activates NOTHING until an
+    arrow is pressed, so without highlighting the top result you could
+    type a setting's exact name, press Enter, and watch the menu sit
+    there doing nothing."""
     from draft_assist.ui.commands import Command
 
     fired = []
@@ -138,28 +214,58 @@ def test_enter_takes_the_top_match_and_clicking_takes_that_one(qapp):
         Command("Second thing", "View", "", ("alpha",),
                 lambda: fired.append("second")),
     ]
-    dialog = SearchDialog(entries)
-    dialog.box.setText("alpha")
-    assert dialog.results.count() == 2
-    dialog._take_top()
-    assert fired == ["first"]
+    menu, _own, search = _a_menu(entries, qapp)
+    menu.aboutToShow.emit()
+    _type(qapp, menu, "alpha")
 
-    dialog = SearchDialog(entries)
-    dialog.box.setText("alpha")
-    dialog._take(dialog.results.item(1))
+    assert len(search._results) == 2
+    assert menu.activeAction() is search._results[0], "Enter has a target"
+    # Held BEFORE triggering: taking a result clears the box, which
+    # clears the results with it — so `_results` is empty a line later,
+    # which is the behaviour rather than a bug.
+    first, second = search._results
+    first.trigger()
+    assert fired == ["first"]
+    assert search.edit.text() == "" and search._results == [], (
+        "taking a result puts the menu back to its resting state")
+
+    second.trigger()
     assert fired == ["first", "second"]
 
 
-def test_an_empty_box_shows_what_there_is(qapp):
-    """Half of searching is finding out what the app can do at all, and a
-    blank list answers that with nothing."""
-    from draft_assist.ui.search_dialog import SearchDialog
+def test_an_empty_box_shows_the_menus_own_items(qapp):
+    """This REVERSES what the dialog did — it listed every command when
+    empty. At the user's request the menu shows "top 8 matches, nothing
+    when empty", because a menu that listed thirty commands before a key
+    was pressed is a page rather than a menu."""
     from draft_assist.ui.commands import Command
 
-    entries = [Command(f"Thing {n}", "File", run=lambda: None)
-               for n in range(3)]
-    dialog = SearchDialog(entries)
-    assert dialog.results.count() == 3
+    entries = [Command(f"Thing {n}", "File", "", ("alpha",), lambda: None)
+               for n in range(12)]
+    menu, own, search = _a_menu(entries, qapp)
+    menu.aboutToShow.emit()
+    assert search._results == [] and all(a.isVisible() for a in own)
+
+    _type(qapp, menu, "alpha")
+    from draft_assist.ui.menusearch import CAP
+    assert len(search._results) == CAP, "a menu is not a scrolling list"
+
+    # And clearing it puts the menu back the way it was found.
+    search.edit.setText("")
+    assert search._results == [] and all(a.isVisible() for a in own)
+
+
+def test_a_query_with_no_answer_says_so(qapp):
+    """Silently showing nothing reads as the search having broken."""
+    from draft_assist.ui.commands import Command
+    from draft_assist.ui.menusearch import NOTHING
+
+    menu, _own, search = _a_menu(
+        [Command("First", "File", "", ("alpha",), lambda: None)], qapp)
+    menu.aboutToShow.emit()
+    _type(qapp, menu, "zzzznope")
+    assert [a.text() for a in search._results] == [NOTHING]
+    assert not search._results[0].isEnabled()
 
 
 def test_every_command_the_app_offers_can_be_found_by_its_own_name(window):

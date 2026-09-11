@@ -100,11 +100,18 @@ class AccountRow(QWidget):
 
     clicked = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, prompt: str = PROMPT, *,
+                 clickable: bool = True):
+        """`prompt` differs by WHERE the row is. The Draft tab's says to
+        open the History tab; on the History tab itself that is an
+        instruction to stay where you already are."""
         super().__init__(parent)
+        self._prompt = prompt
+        self._clickable = clickable
         self.setObjectName("accountRow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        if clickable:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(12, PADDING, 12, PADDING)
@@ -125,7 +132,7 @@ class AccountRow(QWidget):
         # holding it - the same reason the menus, tabs and toolbar all
         # draw their rules instead of spelling them.
         self.rule = chrome.Divider(self)
-        self.when = QLabel(PROMPT, self)
+        self.when = QLabel(prompt, self)
         self.when.setProperty("dim", True)
         row.addWidget(self.who, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.rule, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -135,7 +142,7 @@ class AccountRow(QWidget):
         self.face.show_initial("")
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if self._clickable and event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mouseReleaseEvent(event)
 
@@ -149,7 +156,7 @@ class AccountRow(QWidget):
         """
         if report is None:
             self.who.setText(NOTHING_YET)
-            self.when.setText(PROMPT)
+            self.when.setText(self._prompt)
             self.face.show_initial("")
             self.setToolTip("")
             return
@@ -165,9 +172,45 @@ class AccountRow(QWidget):
             shown = self.face.show_file(avatars.stored(account))
         if not shown:
             self.face.show_initial(name or str(account))
+        # "Click to open the History tab" is only true on the DRAFT tab.
+        # On the History tab you are already there and the row does not
+        # take a click, so promising one is an instruction that does
+        # nothing when followed.
+        tail = " Click to open the History tab." if self._clickable else ""
         self.setToolTip(
             f"{name or account} - {len(getattr(report, 'matches', []))} "
-            f"matches. Click to open the History tab.")
+            f"matches.{tail}")
+
+    def show_account(self, row: dict) -> None:
+        """Draw a REMEMBERED account, which is not the same as a run.
+
+        The History tab knows who was last measured before it knows what
+        was measured — the accounts come off `history_accounts.json` and
+        the run itself off the cache — so the row has to be able to say
+        the first without the second. A `show_report` follows a moment
+        later when there IS a cached run, and overwrites this.
+        """
+        if not isinstance(row, dict) or not row.get("account_id"):
+            self.show_report(None)
+            return
+        from ..history import avatars, store
+
+        account = int(row["account_id"])
+        name = (row.get("name") or "").strip()
+        self.who.setText(name or str(account))
+        when = (row.get("last_run") or "").strip()
+        self.when.setText(f"Last run {when}" if when
+                          else "Not run on this machine yet")
+        if not self.face.show_file(avatars.stored(account)):
+            self.face.show_initial(name or str(account))
+        matches, wins = row.get("matches", 0), row.get("wins", 0)
+        rate = f", {wins / matches * 100:.1f}% win rate" if matches else ""
+        # THE COUNT AND THE RATE MOVE HERE rather than being dropped. The
+        # line they used to be printed on is gone, and losing a figure
+        # while replacing the thing that carried it is how a "tidy up"
+        # becomes a regression.
+        self.setToolTip(f"{store.label(row)} - {matches} matches{rate}."
+                        if matches else store.label(row))
 
     @staticmethod
     def span(report) -> str:

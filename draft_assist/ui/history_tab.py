@@ -662,8 +662,16 @@ class HistoryTab(QWidget):
         # THE LAST RUN LIVES AT THE TOP, at the user's request: opening the
         # tab should say when this account was last measured without
         # measuring it again.
-        self.last_run = QLabel("")
-        self.last_run.setProperty("dim", True)
+        # IT IS THE DRAFT TAB'S ROW, at the user's request - "replace what
+        # is existing under that search bar with this as they basically
+        # say the same thing". They did: one was a dim sentence naming the
+        # account and when it ran, the other is that with the face on it.
+        # ONE widget class, so the two can never drift into describing the
+        # same run differently. Not clickable here and with its own
+        # prompt, since "open the History tab" is where you already are.
+        from .accountrow import AccountRow
+        self.last_run = AccountRow(frame, "Enter a Friend ID and press Run",
+                                   clickable=False)
         self.last_run.setVisible(False)
         lay.addWidget(self.last_run)
         self.status = QLabel("")
@@ -847,6 +855,11 @@ class HistoryTab(QWidget):
     @report.setter
     def report(self, value) -> None:
         self._report = value
+        # The row at the top of THIS tab follows the same assignment the
+        # Draft tab's does, so the two can never show different runs.
+        if getattr(self, "last_run", None) is not None and value is not None:
+            self.last_run.show_report(value)
+            self.last_run.setVisible(True)
         self.report_changed.emit(value)
 
     def _name_the_button(self) -> None:
@@ -934,17 +947,28 @@ class HistoryTab(QWidget):
         self._save_settings()
 
     def _show_last_run(self, row: dict) -> None:
-        when = row.get("last_run") or ""
-        if not when:
-            self._note(self.last_run, "Not run on this machine yet.")
-            return
-        matches, wins = row.get("matches", 0), row.get("wins", 0)
-        rate = f", {wins / matches * 100:.1f}% win rate" if matches else ""
-        # One spelling of an account, so the line above the box and the
-        # entry in the dropdown cannot drift apart.
-        self._note(self.last_run,
-                   f"Last run {when} for {store.label(row)} — "
-                   f"{matches} matches{rate}.")
+        """Who was last measured, before the run itself is known.
+
+        The accounts come off `history_accounts.json` and the run off the
+        cache, so this draws the first; `_adopt_report` overwrites it with
+        the full range the moment a cached run loads.
+        """
+        # THE RUN WINS OVER THE STORE ROW, when it is the same account.
+        # `_done` sets `report` (which draws the range) and then calls
+        # this, so drawing the store row unconditionally overwrote the
+        # range with "Last run ..." the instant a run finished - the one
+        # moment the range is most worth seeing. Switching to a DIFFERENT
+        # remembered account does not match, so that one still draws the
+        # store row until its own cached run loads a moment later.
+        report = self.report
+        same = (report is not None
+                and getattr(getattr(report, "options", None), "account_id",
+                            None) == row.get("account_id"))
+        if same:
+            self.last_run.show_report(report)
+        else:
+            self.last_run.show_account(row)
+        self.last_run.setVisible(True)
 
     # ---- running -------------------------------------------------------
     def options(self) -> Options:

@@ -44,6 +44,18 @@ def window(qapp):
     win.close()
 
 
+def row_says(tab) -> str:
+    """Everything the account row at the top of the tab is saying.
+
+    It REPLACED a dim one-line label, at the user's request, so the
+    assertions that used to read `.text()` read the row's parts instead:
+    the name, the range, and the tooltip that took over the match count
+    and win rate the old line printed inline.
+    """
+    row = tab.last_run
+    return " | ".join((row.who.text(), row.when.text(), row.toolTip()))
+
+
 def a_report(count=60):
     start = time.time() - count * 1500 - 86400
     rows = []
@@ -153,8 +165,16 @@ def test_a_finished_run_is_remembered_and_headlined(qapp, tmp_path,
     tab._done(report)
     assert tab.report is report
     assert tab.export_button.isEnabled()
-    assert "Last run" in tab.last_run.text()
-    assert "195286385" in tab.last_run.text()
+    # After a run the row shows the RANGE, the same way the Draft tab's
+    # does — it is the same widget, so the two cannot describe one run
+    # two different ways.
+    # The run's own name, not its number: the lookup resolved it, and
+    # the number is what you TYPE while the name is what you recognise.
+    assert tab.last_run.who.text() == "Bijson"
+    assert "\u2192" in tab.last_run.when.text(), "a from-to range"
+    assert "60 matches" in tab.last_run.toolTip()
+    # And no offer to click through to the tab you are already on.
+    assert "Click to open" not in tab.last_run.toolTip()
     saved = store.load(tmp_path / "accounts.json")
     assert saved and saved[0]["account_id"] == 195286385
     assert saved[0]["matches"] == report.n
@@ -197,9 +217,9 @@ def test_the_dropdown_names_the_account_it_cannot_be_recognised_by(
     # An account with no resolved name is its number alone: empty brackets
     # would be the app reporting a failed lookup at the user.
     assert "()" not in " ".join(shown)
-    assert "195286385 (Bijson)" not in tab.last_run.text()   # 42 is newest
+    assert "195286385 (Bijson)" not in row_says(tab)   # 42 is newest
     tab._apply_remembered(store.load(path)[1])
-    assert "195286385 (Bijson)" in tab.last_run.text()
+    assert "195286385 (Bijson)" in row_says(tab)
     tab.deleteLater()
 
 
@@ -240,6 +260,45 @@ def test_opening_the_tab_draws_the_last_run_with_no_network(qapp, tmp_path,
     assert tab.export_button.isEnabled(), "export must work with no network"
     # And the button says what pressing it would now do.
     assert tab.run_button.text() == "Update"
+    tab.deleteLater()
+
+
+def test_a_listener_connected_after_the_tab_must_be_told_what_it_holds(
+        qapp, tmp_path, monkeypatch):
+    """Closing the app and reopening it showed "No account measured yet"
+    with last night's run sitting on disk the whole time.
+
+    `HistoryTab.__init__` loads the cached run and ASSIGNS `report`,
+    which emits `report_changed` - before `MainWindow` has connected
+    anything to it. A signal announces CHANGES; whatever the object
+    already holds has to be read once, explicitly, or every listener
+    built after it starts life out of date.
+    """
+    from draft_assist.history import cache, store
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
+
+    report = a_report()
+    report.options.account_id = 195286385
+    report.name = "Bijson"
+    cache.save(report)
+    store.remember(195286385, "Bijson",
+                   when=report.ran_at.strftime("%Y-%m-%d %H:%M"),
+                   matches=report.n, wins=report.wins,
+                   options=report.options.as_dict())
+
+    tab = HistoryTab()                       # as if the app just opened
+    assert tab.report is not None, "the cached run is loaded on construction"
+
+    heard = []
+    tab.report_changed.connect(heard.append)
+    assert heard == [], "the emit already happened - this is the trap"
+
+    # So the window reads it once, and only then is the row right.
+    tab.report_changed.emit(tab.report)
+    assert heard and heard[0] is tab.report
+    assert tab.last_run.who.text() == "Bijson"
+    assert "\u2192" in tab.last_run.when.text()
     tab.deleteLater()
 
 

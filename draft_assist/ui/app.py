@@ -64,7 +64,7 @@ from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
-from . import accountrow, adslot
+from . import accountrow, adslot, menusearch
 from . import chrome
 from . import ornate
 from . import reasons
@@ -391,12 +391,13 @@ class MainWindow(QMainWindow):
         self.addAction(self.force_action)
 
         help_menu = bar.addMenu("&Help")
-        # FIRST, because it is the way back to everything the bar stopped
-        # listing. Ctrl+K is what every application with a command box
-        # uses, so it costs nothing to learn.
-        self._act(help_menu, "&Search…", self._open_search, "Ctrl+K",
-                  "Find any setting or action by what you call it")
-        help_menu.addSeparator()
+        # THE SEARCH IS THE MENU, not an item in it. It was "Search…",
+        # which opened a modal window with a box in it - "I don't like all
+        # the dead space of having a separate window to search on". Now
+        # the box sits at the top of this dropdown and the first key
+        # pressed lands in it, the way the Windows key behaves. Attached
+        # at the END of building this menu, since it keeps the menu's own
+        # items to put back when the box is empty.
         # EVERY EXPLANATION IN THE APP ENDS UP HERE. The screens carry one
         # line each now, so this is where "how does it actually work" is
         # answered — see `ui/manual.py`.
@@ -405,6 +406,18 @@ class MainWindow(QMainWindow):
         self._act(help_menu, "Update &application…", self._update_app)
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
+        # AFTER the items above, so `MenuSearch` reads the real list.
+        self.menu_search = menusearch.MenuSearch(
+            help_menu, self._all_commands, self)
+        self.help_menu = help_menu
+        # Ctrl+K drops the same menu rather than opening anything of its
+        # own: a shortcut that led somewhere else would be a second way to
+        # search that behaved like a different feature.
+        search_key = QAction("Search", self)
+        search_key.setShortcut("Ctrl+K")
+        search_key.triggered.connect(
+            lambda: self.menu_search.popup_under(bar))
+        self.addAction(search_key)
 
     # ---- what the app can be asked to do -------------------------------
     def _command_groups(self) -> list:
@@ -882,6 +895,14 @@ class MainWindow(QMainWindow):
         # fit is already on. It follows whichever run is LOADED there, at
         # the user's request, rather than being pinned to one account.
         analysis.report_changed.connect(self._history_run_changed)
+        # AND THE RUN IT ALREADY HAS. `HistoryTab.__init__` loads the
+        # cached run and assigns `report`, which emits - EIGHT LINES
+        # ABOVE this connect, into nothing at all. So on a fresh start the
+        # account row sat at "No account measured yet" until the user
+        # re-ran or changed account, with last night's analysis sitting on
+        # disk the whole time. A signal announces CHANGES; the state it
+        # already holds has to be read once, here.
+        self._history_run_changed(analysis.report)
         tabs.addTab(analysis, "History")
 
         # ----- Debug tab: the picture answers what a log never will
@@ -2932,11 +2953,11 @@ class MainWindow(QMainWindow):
                 "matrices from it", 12000)
 
     def _open_search(self) -> None:
-        """Help ▸ Search — the way back to everything the bar stopped
-        listing."""
-        from .search_dialog import SearchDialog
-
-        SearchDialog(self._all_commands(), self).exec()
+        """Kept as the name the command list calls, and it now drops the
+        HELP MENU open rather than a window of its own — see
+        `ui/menusearch.py`. One search, one place it appears."""
+        self.menu_search.popup_under(self.menuBar() if self.menuBar()
+                                     else self.title_bar.menu_bar)
 
     def _apply_sources(self) -> None:
         """Rebuild the draft source from the settings.
