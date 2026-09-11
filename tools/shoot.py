@@ -224,6 +224,11 @@ def a_history_tab(width: int = 1400, height: int = 1000):
     report = mock_report()
     tab.report = report
     tab.render(report)
+    # `_done` is what enables Export in the real app, and it also writes
+    # to the accounts store - so the state is set here instead, or every
+    # shot of this card shows a control greyed out that a reader with a
+    # report on screen would find live.
+    tab.export_button.setEnabled(True)
     settle(win)
     return win, tab
 

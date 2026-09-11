@@ -749,9 +749,27 @@ class HistoryTab(QWidget):
             self.cap_box.addItem(f"{cap} matches", cap)
         self.cap_box.setCurrentIndex(CAPS.index(1000))
         row.addWidget(self.cap_box)
-        self.turbo_tick = TickBox("Exclude Turbo")
-        self.turbo_tick.setChecked(True)
-        row.addWidget(self.turbo_tick)
+        lay.addLayout(row)
+
+        # THE TWO TICKS TOGETHER, AND EXPORT IN THE BOTTOM RIGHT CORNER,
+        # at the user's request and drawn on a screenshot. They were all
+        # in the flow above, so where each landed depended only on how
+        # much room was left on the line - which put "Exclude Turbo" at
+        # the end of the first row and "Ranked only" at the start of the
+        # second, with the two halves of one question on different lines.
+        #
+        # A SEPARATE ROW IS WHAT "BOTTOM RIGHT" COSTS. A FlowLayout packs
+        # from the left and has no stretch, so nothing in it can be
+        # pinned to a corner; this row is an ordinary QHBoxLayout with
+        # the stretch doing the pinning. That is the arrangement this
+        # card was moved AWAY from - a row of fixed controls sets a
+        # minimum width and a widget's minimum is the window's - so it is
+        # kept to the three narrow controls while the wide dropdowns stay
+        # in the flow above. Measured either side: the card's floor goes
+        # 247px to 580px, against a window floor of 1244 set by the
+        # grids, so nothing on screen moves. A test holds that.
+        ticks = QHBoxLayout()
+        ticks.setSpacing(10)
         self.ranked_tick = TickBox("Ranked only")
         # TICKED, like Exclude Turbo beside it and for the same reason: the
         # question this tab asks is what goes with winning RANKED games,
@@ -759,7 +777,11 @@ class HistoryTab(QWidget):
         # defaults to True to match, so a remembered run and a fresh tab
         # cannot disagree about it.
         self.ranked_tick.setChecked(True)
-        row.addWidget(self.ranked_tick)
+        ticks.addWidget(self.ranked_tick)
+        self.turbo_tick = TickBox("Exclude Turbo")
+        self.turbo_tick.setChecked(True)
+        ticks.addWidget(self.turbo_tick)
+        ticks.addStretch(1)
         self.export_button = QPushButton("Export workbook…")
         # THE SAME BUTTON AS RUN, at the user's request — accent red once
         # there is a report behind it, and plainly disabled until then.
@@ -769,8 +791,8 @@ class HistoryTab(QWidget):
         self.export_button.setProperty("accent", True)
         self.export_button.clicked.connect(self.export)
         self.export_button.setEnabled(False)
-        row.addWidget(self.export_button)
-        lay.addLayout(row)
+        ticks.addWidget(self.export_button)
+        lay.addLayout(ticks)
 
         # THE ANALYSIS TICK BOXES USED TO BE A GRID HERE, and at
         # the user's request they are on the SIDEBAR now, one per
