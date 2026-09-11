@@ -165,16 +165,26 @@ def test_every_section_appears_once_in_section_order():
     the best and worst mentality for all headers seen in the left
     sidebar". Four Hero win rate lines crowding out Party size was the
     complaint; so was Hero win rates being absent altogether."""
-    metrics = ("herodmg", "herokda", "towerdmg")
-    blocks = [a_block(ident=key, kind="metric" if key in metrics else "cat")
+    # WHICH KEYS ARE CONTRIBUTIONS IS READ OFF `METRICS`, never spelled
+    # again here: a hardcoded tuple made this test fail the moment a
+    # section was added, and the failure said the summary was broken when
+    # what was really stale was the list in the test.
+    blocks = [a_block(ident=key,
+                      kind="metric" if key in analyse.METRICS else "cat")
               for key in analyse.BLOCK_ORDER if key != "items"]
     rates, contributions = a_report(blocks).summary_rows()
+    expected_rates = [k for k in analyse.BLOCK_ORDER
+                      if k != "items" and k not in analyse.METRICS]
+    expected_contributions = [k for k in analyse.BLOCK_ORDER
+                              if k in analyse.METRICS]
     # In BLOCK_ORDER, which is ordered by what you can act on: the side
     # you are assigned last, the hero you choose first.
-    assert [block.id for block, _s, _b, _w in rates] == [
-        "hero", "tod", "session", "tilt", "dow", "party", "length", "side"]
-    assert [block.id for block, _s, _b, _w in contributions] == [
-        "herodmg", "herokda", "towerdmg"]
+    assert expected_rates[0] == "hero" and expected_rates[-1] == "side"
+    assert [block.id for block, _s, _b, _w in rates] == expected_rates
+    assert [block.id for block, _s, _b, _w in contributions] == \
+        expected_contributions
+    # Every section in the order, exactly once, and nothing invented.
+    assert len(rates) + len(contributions) == len(analyse.BLOCK_ORDER) - 1
 
 
 def test_a_section_with_nothing_significant_still_gets_its_row():

@@ -14,7 +14,7 @@ entirely — a row reading 0% next to an n of one is noise wearing a number
 — while the workbook still carries them and the block header says how many
 were hidden.
 
-ELEVEN ANALYSES RUN AT ONCE, so some buckets clear the bar by chance
+MANY ANALYSES RUN AT ONCE, so some buckets clear the bar by chance
 alone. The report says so on its own front page. A finding is a hypothesis
 to test against the next hundred games, not a conclusion.
 """
@@ -93,7 +93,6 @@ class Block:
     no_finding: list = field(default_factory=list)
     datum: float | None = None
     unit: str = ""
-    dp: int = 0
     caveat: str = ""
     covered: int = 0
     total: int = 0
@@ -152,6 +151,18 @@ ANALYSES = [
     # fits the column on one line, which "Building dmg/min" did not.
     ("towerdmg", "Siege dmg/min", True,
      "Siege dmg/min on each hero, relative to the average."),
+    # THE FARM FOUR. Gold and XP arrive from OpenDota ALREADY per minute,
+    # so those two are read straight off the row; CS and denies are totals
+    # and are divided here, because a raw total measures how long the game
+    # ran at least as much as how it was played.
+    ("gold", "Gold/min", True,
+     "Gold per minute on each hero, relative to the average."),
+    ("xp", "XP/min", True,
+     "Experience per minute on each hero, relative to the average."),
+    ("cs", "CS/min", True,
+     "Last hits per minute on each hero, relative to the average."),
+    ("denies", "Denies/game", True,
+     "Denies per game on each hero, relative to the average."),
     ("items", "Items by hero", True,
      "Win rate in games that ended with each item in your inventory, "
      "against that hero's own win rate."),
@@ -178,6 +189,52 @@ PHRASE = {
 
 def _pct(value: float) -> str:
     return f"{value * 100:.0f}%"
+
+
+SIG_FIGURES = 2
+
+
+def sig(value, figures: int = SIG_FIGURES) -> str:
+    """A figure to `figures` significant figures, at the user's request —
+    "I basically want all numbers in this analysis to be to two
+    significant figures".
+
+    SIGNIFICANT FIGURES RATHER THAN DECIMAL PLACES, because these blocks
+    span four orders of magnitude: gold runs in the hundreds, CS in
+    single figures and denies in hundredths. One decimal-place setting
+    per block was the old answer and it had to be chosen by hand for
+    each, which is a number to get wrong every time a section is added —
+    and getting it wrong is not cosmetic. Denies at nought decimal places
+    is 0 for every hero in the list.
+
+    NEVER SCIENTIFIC NOTATION. `f"{614.7:.2g}"` is "6.1e+02", which is
+    the right number and an unreadable one on a card read at a glance.
+    """
+    if value is None:
+        return ""
+    value = float(value)
+    if not math.isfinite(value):
+        return ""
+    if value == 0:
+        return "0"
+    places = figures - 1 - math.floor(math.log10(abs(value)))
+    rounded = round(value, places)
+    # ROUNDING CAN CROSS A POWER OF TEN. 9.99 to two figures is 10, but
+    # the places were worked out from 9.99's magnitude, so it would print
+    # "10.0" — three figures, from the one line that exists to give two.
+    if rounded:
+        places = figures - 1 - math.floor(math.log10(abs(rounded)))
+        rounded = round(value, places)
+    # NO TRAILING ".0", at the user's request — "if it's something that
+    # is inherently a whole number don't add a .0 to the end". A weighted
+    # KDA of 3.04 reads "3" rather than "3.0". The trade is real and is
+    # theirs: "3" claims one significant figure where "3.0" claimed two.
+    # It does NOT reach inside the decimals — 0.30 is not a whole number
+    # and keeps its second figure, or the block would lose the precision
+    # it is drawn at.
+    if places <= 0 or rounded == int(rounded):
+        return f"{int(round(rounded)):d}"
+    return f"{rounded:.{places}f}"
 
 
 def categorical(matches, baseline: float, key_of, order=None) -> list:
@@ -268,14 +325,14 @@ def cat_findings(rows, block_id: str, no_finding=()) -> list:
             for r in hits]
 
 
-def metric_findings(rows, datum, more, less, dp, short="") -> list:
+def metric_findings(rows, datum, more, less, short="") -> list:
     hits = [r for r in rows if r.eligible and abs(r.sigma) >= SIGMA_CAT]
     hits.sort(key=lambda r: -abs(r.sigma))
     return [Finding(r.sigma, r.key,
                     f"{more if r.sigma > 0 else less} on {r.key}: "
-                    f"{r.mean:.{dp}f} against your usual {datum:.{dp}f}, "
+                    f"{sig(r.mean)} against your usual {sig(datum)}, "
                     f"from {r.n} games",
-                    short=f"{r.key} {short} {r.mean:.{dp}f}".replace("  ", " "),
+                    short=f"{r.key} {short} {sig(r.mean)}".replace("  ", " "),
                     value=r.mean, n=r.n)
             for r in hits]
 
@@ -325,7 +382,7 @@ def format_figure(block: "Block", value: float) -> str:
     """
     if block.kind == "cat":
         return _pct(value)
-    return f"{value:.{block.dp}f}"
+    return sig(value)
 
 
 def section_spread(block: "Block", baseline: float):
@@ -488,7 +545,7 @@ METRICS = {
         field="damage_per_min", unit="hero damage per minute",
         # SHORT enough for a summary line, where the block's own name is
         # already printed in the column to the left of it.
-        short="damage/min", dp=0,
+        short="damage/min",
         more="More damage", less="Less damage",
         caveat="This ranks heroes, not your play. Damage per minute is set "
                "mostly by what a hero does: a mid laner out-damages a hard "
@@ -496,7 +553,7 @@ METRICS = {
                "buildings. It is worth reading when a hero sits far from "
                "where its role would put it."),
     "herokda": dict(
-        field="kda", unit="weighted KDA", short="KDA", dp=2,
+        field="kda", unit="weighted KDA", short="KDA",
         more="Better trades", less="Worse trades",
         caveat="Deaths are floored at one, so a deathless game reads as its "
                "own kill contribution rather than infinity, which flatters "
@@ -504,19 +561,64 @@ METRICS = {
                "game's ratio, not the ratio of your totals."),
     "towerdmg": dict(
         field="tower_per_min", unit="building damage per minute",
-        short="siege dmg/min", dp=0,
+        short="siege dmg/min",
         more="More pushing", less="Less pushing",
         caveat="This ranks heroes at least as much as your play, the way "
                "hero damage does: a pusher and a support are not doing the "
                "same job. It also rises with a game going WELL — you cannot "
                "hit a building you never reach — so read a high figure as "
                "partly a consequence rather than only a cause."),
+    # GOLD AND XP ARE ALREADY RATES. OpenDota reports `gold_per_min` and
+    # `xp_per_min` per minute itself, so these two name the row's own
+    # field; CS and denies name a property that does the division. Do not
+    # "fix" the inconsistency by dividing gold again.
+    "gold": dict(
+        field="gold_per_min", unit="gold per minute",
+        short="gold/min",
+        more="More gold", less="Less gold",
+        caveat="This ranks ROLES before it ranks your play. A safe lane "
+               "carry out-earns a hard support by construction, on the "
+               "same night and the same skill. It also rises with a game "
+               "going well, so a high figure is partly a consequence. Read "
+               "it where a hero sits far from where its role would put it."),
+    "xp": dict(
+        field="xp_per_min", unit="experience per minute",
+        short="XP/min",
+        more="More XP", less="Less XP",
+        caveat="Role-bound the same way gold is, and with one of its own: "
+               "experience is SHARED, so a solo lane gains faster than two "
+               "players in the same lane whatever either of them does."),
+    "cs": dict(
+        field="cs_per_min", unit="last hits per minute",
+        short="CS/min",
+        more="More farm", less="Less farm",
+        caveat="The most role-bound figure on this card. A support is not "
+               "trying to last hit and will sit at the bottom of every "
+               "run; the question this answers is how you farm on ONE "
+               "hero against how you usually farm on it, never how one "
+               "hero compares with another."),
+    # PER GAME, AND IT IS THE ONLY ONE HERE THAT IS NOT A RATE. Denying
+    # happens almost entirely in the laning stage, so a 25 minute game and
+    # a 50 minute game hold about the same number — per minute would make
+    # a long game read as worse denying with nothing about the laning
+    # changed. It also prints whole numbers, which per minute could not:
+    # denies run at tenths of one a minute, so rounding those to integers
+    # gives 0 for every hero and a section that says nothing at all.
+    "denies": dict(
+        field="denies", unit="denies per game",
+        short="denies/game",
+        more="More denies", less="Fewer denies",
+        caveat="Role-bound like the rest, and thin: the counts are small, "
+               "so a couple of games move a hero a long way. It is per "
+               "GAME rather than per minute because denying is a laning "
+               "stage act — a long game does not dilute it, so dividing "
+               "by the length would measure the length."),
 }
 
 
 # THE ORDER A REPORT IS READ IN, AND THERE IS ONLY ONE OF IT.
 # `build_blocks` walks this and so does the History tab's sidebar, which
-# lists the same eleven sections down the left of the page they are on. It
+# lists these same sections down the left of the page they are on. It
 # used to be a tuple inlined in the loop below plus the order of `METRICS`
 # plus wherever `items` happened to be appended — three places, agreeing by
 # luck, and they did NOT agree with `ANALYSES` (which has items last, where
@@ -548,8 +650,13 @@ METRICS = {
 #
 # This is the one list, so the sidebar, the summary's rows and the cards
 # down the page all take this order together — "they should all agree".
+# The FARM FOUR are appended to the contribution family rather than
+# threaded through it: they are outcomes, not decisions, so they belong
+# where the caveated rankings already sit, and the three that were here
+# first keep the positions they were given.
 BLOCK_ORDER = ("hero", "items", "tod", "session", "tilt", "dow", "party",
-               "length", "side", "herodmg", "herokda", "towerdmg")
+               "length", "side", "herodmg", "herokda", "towerdmg",
+               "gold", "xp", "cs", "denies")
 
 
 def build_blocks(matches, baseline: float, picked: dict,
@@ -580,11 +687,10 @@ def build_blocks(matches, baseline: float, picked: dict,
             kind="metric", rows=rows, shown=shown,
             hidden=len(rows) - len(shown),
             hidden_games=sum(r.n for r in rows if r.n < MIN_DISPLAY),
-            datum=datum, unit=spec["unit"], dp=spec["dp"],
+            datum=datum, unit=spec["unit"],
             caveat=spec["caveat"], covered=covered, total=total,
             findings=([] if datum is None else metric_findings(
-                rows, datum, spec["more"], spec["less"], spec["dp"],
-                spec["short"]))))
+                rows, datum, spec["more"], spec["less"], spec["short"]))))
 
     for block_id in BLOCK_ORDER:
         if not picked.get(block_id):

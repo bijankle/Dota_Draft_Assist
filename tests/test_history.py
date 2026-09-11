@@ -206,6 +206,132 @@ def test_a_metric_split_uses_the_overall_spread_not_the_buckets_own():
     assert axe.sigma > analyse.SIGMA_CAT
 
 
+def test_every_figure_is_two_significant_figures():
+    """At the user's request. SIGNIFICANT FIGURES rather than decimal
+    places because these blocks span four orders of magnitude — gold in
+    the hundreds, CS in single figures, denies in hundredths — so one
+    decimal setting cannot serve them all."""
+    assert analyse.sig(614.67) == "610"
+    assert analyse.sig(5.6) == "5.6"
+    assert analyse.sig(0.48) == "0.48"
+    assert analyse.sig(0.0483) == "0.048"
+    assert analyse.sig(2.345) == "2.3"
+    assert analyse.sig(-3.47) == "-3.5"
+    # NO TRAILING ".0", at the user's request — a whole number is written
+    # as one. It must not reach inside the decimals, though: 0.30 is not
+    # a whole number and keeps the second figure it is drawn at.
+    assert analyse.sig(3.04) == "3"
+    assert analyse.sig(2.98) == "3"
+    assert analyse.sig(0.30) == "0.30"
+    assert not any(analyse.sig(v).endswith(".0")
+                   for v in (3.04, 2.98, 5.02, 9.99, 10.23, 100.0))
+    # Rounding that crosses a power of ten must not print a third figure.
+    assert analyse.sig(9.99) == "10"
+    assert analyse.sig(0.0999) == "0.10"
+    # Nothing measured is nothing written, never "0.00".
+    assert analyse.sig(None) == ""
+    assert analyse.sig(0) == "0"
+    # NEVER an exponent: "6.1e+02" is the right number, unreadably.
+    assert "e" not in analyse.sig(614.67) and "e" not in analyse.sig(0.00012)
+
+
+def test_denies_is_counted_per_game_and_a_long_game_does_not_dilute_it():
+    """The one figure in the contribution family that is NOT a rate, at
+    the user's request and on its own merits. Denying is a laning stage
+    act, so a 25 minute game and a 50 minute game hold about the same
+    number — per minute would make the long game read as worse denying
+    with nothing about the laning changed. Per minute also could not give
+    the whole numbers asked for: denies run at tenths of one a minute, so
+    rounding those to integers prints 0 for every hero."""
+    matches = shape.shape(rows_for(40), HEROES).matches
+    for index, match in enumerate(matches):
+        match.hero = "Axe" if index < 20 else "Bane"
+        match.denies = 24 if index < 20 else 6
+        # Axe's games run twice as long. Per minute that would halve his
+        # figure; per game it must not move it at all.
+        match.duration = 3600 if index < 20 else 1800
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    block = next(b for b in blocks if b.id == "denies")
+    figures = {r.key: analyse.format_figure(block, r.mean) for r in block.shown}
+    assert figures == {"Axe": "24", "Bane": "6"}
+    assert not any("." in f for f in figures.values()), "whole numbers"
+    assert analyse.METRICS["denies"]["field"] == "denies", "the raw count"
+
+
+def test_a_rate_is_per_minute_so_a_long_game_cannot_out_farm_a_short_one():
+    """Raw CS measures how long the game ran at least as much as how well
+    it was farmed, which is the whole reason these are rates."""
+    long_game = shape.shape(rows_for(1, duration=3600, last_hits=300),
+                            HEROES).matches[0]
+    short_game = shape.shape(rows_for(1, duration=1800, last_hits=300),
+                             HEROES).matches[0]
+    assert long_game.last_hits == short_game.last_hits == 300
+    assert long_game.cs_per_min == pytest.approx(5.0)
+    assert short_game.cs_per_min == pytest.approx(10.0)
+    assert short_game.cs_per_min > long_game.cs_per_min
+
+
+def test_gold_and_xp_are_taken_as_the_rates_they_already_are():
+    """OpenDota reports `gold_per_min` and `xp_per_min` PER MINUTE itself.
+    Dividing either by the duration a second time would quietly report a
+    number nobody measured, and it would look plausible."""
+    matches = shape.shape(rows_for(20, duration=3000, gold_per_min=500,
+                                   xp_per_min=600), HEROES).matches
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    gold = next(b for b in blocks if b.id == "gold")
+    experience = next(b for b in blocks if b.id == "xp")
+    assert gold.datum == pytest.approx(500)
+    assert experience.datum == pytest.approx(600)
+
+
+def test_a_field_that_never_arrives_is_unmeasured_rather_than_nought():
+    """The four farm fields are the ones most at risk of coming back empty
+    — a projection OpenDota does not accept is dropped SILENTLY. An absent
+    field must read as "not measured" and produce no finding, never as a
+    hero who farms nothing, which is a measurement nobody made."""
+    matches = shape.shape(rows_for(30), HEROES).matches      # no CS in the row
+    assert all(m.last_hits is None and m.cs_per_min is None for m in matches)
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    cs = next(b for b in blocks if b.id == "cs")
+    assert cs.datum is None
+    assert cs.findings == []
+    assert cs.covered == 0
+
+
+def test_the_farm_four_are_contributions_and_not_win_rate_splits():
+    """They belong in the Impact card with the other caveated rankings:
+    every one of them ranks a ROLE before it ranks the player."""
+    matches = shape.shape(rows_for(40, last_hits=200, denies=20,
+                                   gold_per_min=500, xp_per_min=600),
+                          HEROES).matches
+    # TWO heroes, because a section needs two eligible buckets to have a
+    # best and a worst — one bucket is a figure, not a spread.
+    for index, match in enumerate(matches):
+        carry = index < 20
+        match.hero = "Axe" if carry else "Bane"
+        match.last_hits = 400 if carry else 60
+        match.denies = 24 if carry else 4
+        match.gold_per_min = 620 if carry else 280
+        match.xp_per_min = 700 if carry else 340
+    blocks = analyse.build_blocks(matches, 0.5, picked=dict(analyse.DEFAULT_ON))
+    farm = {b.id: b for b in blocks if b.id in ("gold", "xp", "cs", "denies")}
+    assert set(farm) == {"gold", "xp", "cs", "denies"}
+    assert all(b.kind == "metric" for b in farm.values())
+    assert all(b.caveat for b in farm.values())
+    # Distinct fields, or two sections would draw the same figure twice.
+    assert len({analyse.METRICS[k]["field"] for k in farm}) == 4
+
+    report = Report(options=Options(), how="test", name="", matches=matches,
+                    blocks=blocks, dropped={}, sessions=1,
+                    returned=len(matches))
+    _rates, contributions = report.split_findings()
+    rate_rows, impact_rows = report.summary_rows()
+    impact = {block.name for block, *_ in impact_rows}
+    assert {"Gold/min", "XP/min", "CS/min", "Denies/game"} <= impact
+    assert not {"Gold/min", "XP/min", "CS/min", "Denies/game"} & {
+        block.name for block, *_ in rate_rows}
+
+
 def test_an_item_is_measured_against_that_heros_own_rate():
     """Comparing a Pudge item against an overall rate dominated by other
     heroes would measure the hero, not the item."""
@@ -515,6 +641,34 @@ def test_the_cached_runs_are_local_only(tmp_path):
     import pathlib
     ignored = pathlib.Path("/home/user/Dota_Draft_Assist/.gitignore")
     assert "history_cache/" in ignored.read_text(encoding="utf-8")
+
+
+def test_the_item_name_map_is_not_a_run_and_is_never_pruned(tmp_path,
+                                                            monkeypatch):
+    """`NAMES_FILE` lives beside the runs, and a `*.json` glob sweeps it
+    up. That went wrong in both directions: `_prune` counted it towards
+    KEEP and would DELETE it once there were that many accounts, and a
+    reader that assumed every file here was a run raised KeyError on it.
+    Losing the map is the "Item 63" bug from a fourth cause."""
+    from draft_assist.history import cache as cache_mod
+    monkeypatch.setattr(cache_mod, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache_mod, "KEEP", 2)
+    assert cache_mod.save_item_names({63: "Power Treads"}, tmp_path)
+    names = tmp_path / cache_mod.NAMES_FILE
+    assert names.exists()
+
+    for account in (111, 222, 333, 444):
+        (tmp_path / f"{account}.json").write_text("{}", encoding="utf-8")
+    cache_mod._prune(tmp_path)
+
+    # The map survives however many accounts there are...
+    assert names.exists(), "the item name map was pruned as though a run"
+    assert cache_mod.item_names().get(63) == "Power Treads"
+    # ...and it never counted towards the runs kept.
+    kept = cache_mod.run_files(tmp_path)
+    assert len(kept) == 2
+    assert names not in kept
+    assert all(p.stem.isdigit() for p in kept)
 
 
 def test_only_the_newest_runs_are_kept(tmp_path, monkeypatch):

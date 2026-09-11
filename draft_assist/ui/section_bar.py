@@ -9,7 +9,7 @@ of whatever you are looking at is lit.
 you can have the tick boxes on the actual bookmarks as well that would be
 nice... don't show tick boxes on the main menu in that case, duplication
 will be confusing". They were a three-column grid on the "What to
-measure" card, naming the same eleven analyses this list already names,
+measure" card, naming the same analyses this list already names,
 which is two places to read one thing and two places for it to go stale.
 Now the row IS the control: tick it and the section appears below, untick
 it and the section goes and the row dims. One name per analysis, and the

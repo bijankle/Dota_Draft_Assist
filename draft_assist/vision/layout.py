@@ -28,7 +28,37 @@ def hud_box(width: int, height: int) -> tuple[float, float]:
 
     On 16:9 and narrower this is the whole window. On anything wider the
     HUD is pillarboxed to a centred 16:9 box, which is what makes a plain
-    fraction-of-width wrong on an ultrawide monitor.
+    fraction-of-width wrong on an ultrawide monitor. That half is
+    CONFIRMED: on a real 3440x1440 client the draft timer sits exactly at
+    the centre of the middle 2560 pixels, and the pick bar is symmetric
+    about it.
+
+    **THE NARROW HALF IS NOT CONFIRMED, and this is the honest state of
+    it.** Horizontally there is nothing to decide — the largest 16:9
+    rectangle that fits inside a display taller than 16:9 is the full
+    width, which is what the `min` returns. What has never been measured
+    is the VERTICAL: `SlotRect.to_pixels` reads `y` and `h` as fractions of
+    the WINDOW height, so on a 1920x1200 panel it places the bar 11% lower
+    and draws it 11% taller than on 1920x1080. If Dota scales its HUD by
+    the width — which is what pillarboxing on the wide side implies — that
+    is wrong, and 16:10 laptops are the commonest display this app has
+    never run on.
+
+    It is left alone rather than "fixed", because replacing an unverified
+    guess with a different unverified guess is not progress, and the cost
+    of being wrong is asymmetric: the fractions in a saved
+    `calibration_local.json` mean whatever this function said when they
+    were written, so changing the convention silently invalidates every
+    calibration anybody already has.
+
+    What makes it survivable is that the app no longer has to be right
+    about it. `autocal.find_banks` MEASURES `y` and `slot_h` off the
+    picture in whatever units this function implies, on the user's own
+    machine, so the convention cancels out of the answer. It bites in
+    exactly two places: the shipped defaults transferring to a display
+    nobody has calibrated on, and the search region — and `BAR_FRACTION`
+    is deliberately loose enough to hold the bar under either reading.
+    Settle it with a real 16:10 frame, not with reasoning.
     """
     if not width or not height:
         return 0.0, float(width)
@@ -72,6 +102,18 @@ class DraftLayout:
     # the slot's top-left). Ranked role queue shows assigned roles here.
     role_dy: float = 0.0960
     role_h: float = 0.0180
+
+    def bank_span(self) -> float:
+        """Left edge of a bank's first portrait to the right edge of its
+        fifth, as a fraction of the HUD box.
+
+        FOUR pitches plus ONE portrait, which is the arithmetic that has
+        already been got wrong once: `4 * slot_w + 4 * pitch` hung the Dire
+        calibration box a hundred pixels off the right of the screen, where
+        it could not be dragged at all. Spelled once so nobody has to
+        rederive it.
+        """
+        return 4 * self.pitch + self.slot_w
 
     def slots(self) -> list[SlotRect]:
         out = []

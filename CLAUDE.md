@@ -1026,6 +1026,66 @@ credentials, and put the account at risk. Do not go there.
   measured POSITION rather than by list order: the two agree today, and a
   highlight that silently lies the day they stop agreeing is worse than
   one that costs a sort.
+  **AND THE FARM FOUR ARE THE NEXT FOUR** (`gold`, `xp`, `cs`,
+  `denies`; `Match.cs_per_min`, `Match.denies_per_min`), added at the
+  user's request after noticing Dota Plus's battle report measures CS
+  and this tab did not. Same story as building damage, four times over:
+  `gold_per_min`, `xp_per_min`, `last_hits` and `denies` were fetched in
+  `opendota.FIELDS`, stored on every `Match` and written to the
+  workbook's raw sheet from the beginning, and NOTHING had ever measured
+  them. No new request, no new field, no parsed-match problem — an entry
+  in `ANALYSES`, one in `METRICS`, and a place in `BLOCK_ORDER`.
+  **GOLD AND XP ARE ALREADY RATES.** OpenDota reports them per minute
+  itself, so those two name the row's own field while CS and denies name
+  a property that does the division. Dividing gold by the duration a
+  second time would report a number nobody measured and it would look
+  perfectly plausible; a test holds it.
+  **THEY RANK ROLES BEFORE THEY RANK YOU**, harder than hero damage
+  does — a safe lane carry out-earns a hard support by construction, on
+  the same night and the same skill. That is why they sit at the bottom
+  of `BLOCK_ORDER` with the other caveated rankings and why each is
+  measured PER HERO against your own average on that hero.
+  **AND DENIES IS COUNTED PER GAME, the one figure in this family that
+  is NOT a rate** (`Denies/game`, `field="denies"`, and there is
+  deliberately no `Match.denies_per_min`). Two reasons, and the user's
+  instruction was the first of them: denies run at TENTHS of one a
+  minute, so the whole numbers they asked for would print 0 for every
+  hero and the section would say nothing at all. That was reported back
+  rather than shipped, and the answer that came out of it is better than
+  either starting position — denying is a LANING STAGE act, so a 25
+  minute game and a 50 minute game hold about the same number, and
+  dividing by the length makes a long game read as worse denying with
+  nothing about the laning changed. Per game is what a player counts and
+  what the data actually supports; a test drives Axe's games to twice
+  the length and requires his figure not to move.
+  **EVERY FIGURE IS TWO SIGNIFICANT FIGURES** (`analyse.sig`,
+  `SIG_FIGURES`), at the user's request — "I basically want all numbers
+  in this analysis to be to two significant figures". This REPLACED the
+  per-block `dp` decimal-place setting outright rather than joining it,
+  because two conventions is one of them drifting. Decimal places could
+  not serve these blocks anyway: they span four orders of magnitude —
+  gold in the hundreds, CS in single figures, denies in hundredths — so
+  the setting had to be chosen by hand per section, which is a number to
+  get wrong every time a section is added. The user's first instruction
+  here was whole numbers for denies, and it is NOT what shipped: denies
+  run at tenths per minute, so rounding to integers prints 0 for every
+  hero and the section says nothing at all. Said so rather than
+  implementing it.
+  Three traps in that one function. It must never use `%g` — `f"{614.7:
+  .2g}"` is "6.1e+02", the right number and an unreadable one on a card
+  read at a glance. Rounding can CROSS A POWER OF TEN, so 9.99 works its
+  places out from 9.99's magnitude and prints "10.0", three figures from
+  the line that exists to give two; the magnitude is re-read after the
+  round. And there is **NO TRAILING ".0"**, also at the user's request —
+  a weighted KDA of 3.04 reads "3", and the trade is theirs, since "3"
+  claims one significant figure where "3.0" claimed two. It does not
+  reach inside the decimals: 0.30 is not a whole number and keeps the
+  second figure the block is drawn at.
+  **AND THE ANALYSIS COUNT IS COUNTED, NEVER SPELLED.** The front page
+  warned that "Eleven analyses run at once, so some buckets clear that
+  bar by chance alone" — a sentence that exists to state the
+  multiple-comparisons risk, understating it the moment a twelfth was
+  added. It reads `len(ANALYSES)`.
   **THE OPTIONS ROW WRAPS, and that is the sidebar's real cost**
   (`flowlayout.FlowLayout`, the same tool the suggestion strips use).
   A row of fixed controls that cannot wrap sets a MINIMUM WIDTH, and a

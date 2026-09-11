@@ -59,6 +59,11 @@ class Distortions:
     jitter_frac: float = 0.06
     dim_chance: float = 0.3      # draft UI dims already-picked portraits
     dim_factor: tuple[float, float] = (0.55, 0.8)
+    # Dota's own HUD scale setting. It is not aspect ratio and no amount of
+    # tuning the shipped fractions survives it: one person's slider is
+    # baked into every default, and a stranger on another notch is off by a
+    # multiplier. Modelled here so the measurement has to earn it.
+    hud_scale: tuple[float, float] = (1.0, 1.0)
 
 
 @dataclass
@@ -68,7 +73,42 @@ class SynthCase:
     resolution: tuple[int, int]
 
 
-RESOLUTIONS = [(1920, 1080), (2560, 1440), (1600, 900), (1366, 768)]
+# Every one of these used to be 16:9, so the whole suite was silent about
+# the aspect ratios strangers actually own. A HUD is pillarboxed into a
+# centred 16:9 box on anything WIDER and takes the full width on anything
+# narrower, and those are two different pieces of arithmetic — neither was
+# ever exercised against a frame.
+RESOLUTIONS = [
+    (1920, 1080), (2560, 1440), (1600, 900), (1366, 768),   # 16:9
+    (1920, 1200), (2560, 1600),                             # 16:10 laptops
+    (1280, 1024),                                           # 5:4
+    (2560, 1080), (3440, 1440),                             # 21:9
+    (3840, 1080),                                           # 32:9
+    (3840, 2160),                                           # 4K, 16:9
+]
+
+
+def scaled_layout(layout: DraftLayout, factor: float) -> DraftLayout:
+    """`layout` as it would be with Dota's HUD scale turned up or down.
+
+    The bar grows about the HUD's CENTRE — it is a mirrored pair of banks
+    either side of the timer, so scaling it from the left edge would walk
+    the whole thing sideways instead of fattening it. Every fraction is of
+    the HUD box already, so the centre is 0.5 whatever the monitor is.
+    """
+    def about_centre(x: float, width: float) -> float:
+        return 0.5 + (x + width / 2.0 - 0.5) * factor - width * factor / 2.0
+
+    return DraftLayout(
+        radiant_x=about_centre(layout.radiant_x, layout.bank_span()),
+        dire_x=about_centre(layout.dire_x, layout.bank_span()),
+        y=layout.y * factor,
+        slot_w=layout.slot_w * factor,
+        slot_h=layout.slot_h * factor,
+        pitch=layout.pitch * factor,
+        role_dy=layout.role_dy * factor,
+        role_h=layout.role_h * factor,
+    )
 
 
 def generate_case(portraits: dict[int, np.ndarray], layout: DraftLayout,
@@ -78,6 +118,13 @@ def generate_case(portraits: dict[int, np.ndarray], layout: DraftLayout,
                   fill_range: tuple[int, int] = (0, 10)) -> SynthCase:
     d = distort or Distortions()
     width, height = resolution or RESOLUTIONS[rng.integers(len(RESOLUTIONS))]
+    # The HUD scale is applied to where the portraits are PAINTED while the
+    # recogniser goes on cropping at the nominal layout, exactly like the
+    # jitter below — because that is what a stranger's non-default slider
+    # does to boxes calibrated on somebody else's.
+    painted = layout
+    if d.hud_scale != (1.0, 1.0):
+        painted = scaled_layout(layout, float(rng.uniform(*d.hud_scale)))
 
     # Menu-ish background: dark vertical gradient with mild texture.
     grad = np.linspace(18, 42, height, dtype=np.float32)[:, None]
@@ -86,7 +133,7 @@ def generate_case(portraits: dict[int, np.ndarray], layout: DraftLayout,
     frame += rng.normal(0, 2, frame.shape)
     frame = np.clip(frame, 0, 255).astype(np.uint8)
 
-    slots = layout.slots()
+    slots = painted.slots()
     n_fill = int(rng.integers(fill_range[0], fill_range[1] + 1))
     hero_pool = rng.permutation(list(portraits))
     filled_idx = set(rng.choice(len(slots), size=n_fill, replace=False).tolist())
