@@ -23,7 +23,18 @@ import numpy as np
 
 from .layout import DraftLayout, hud_box
 
-TOP_FRACTION = 0.30          # the pick bar is at the top; the hero is not
+# How far down the frame the pick bar can reach, as a fraction of its
+# height. It hugs the top edge — measured at 6.0% on a real 3440x1440
+# client, so this is twice what the bar takes and covers a HUD scaled well
+# past anything the slider offers.
+#
+# It is deliberately a fraction of the WINDOW rather than of the HUD box,
+# which is the one place that is safe: the bar's height in pixels is set by
+# the HUD's own scale, so on a display NARROWER than 16:9 the bar takes a
+# SMALLER share of the (taller) window, never a larger one. A bound that is
+# right on 16:9 is therefore loose on 16:10 and 5:4, which is the direction
+# a bound wants to be wrong in.
+BAR_FRACTION = 0.15
 # Width as a fraction of the HUD box, height as a fraction of the frame.
 # Both are searched, because the portrait's aspect ON SCREEN is not the
 # aspect of the stored image — Dota stretches it into its own box, and
@@ -32,6 +43,13 @@ TOP_FRACTION = 0.30          # the pick bar is at the top; the hero is not
 # the neighbourhood; _refine walks in from there a pixel at a time.
 WIDTHS = tuple(round(0.028 + 0.003 * i, 4) for i in range(19))
 HEIGHTS = tuple(round(0.050 + 0.006 * i, 4) for i in range(17))
+# `locate` needs a strip TALLER THAN THE TALLEST TEMPLATE IT SEARCHES, and
+# that is not the same number as where the bar ends. Cutting this to the
+# bar's own 0.15 left the 0.146 template with four rows to slide in — a
+# correlation that can only match at the very top of the frame, which is a
+# search in name only. Derived from the grid rather than typed, so
+# narrowing one can never quietly starve the other.
+TOP_FRACTION = max(BAR_FRACTION, max(HEIGHTS) * 1.5)
 MIN_SCORE = 0.35
 MIN_FOUND = 8
 # The coarse scale grid runs on a strip decimated to about this width. The
@@ -448,3 +466,286 @@ def base_portraits(hero_ids) -> dict[int, np.ndarray]:
     except (FileNotFoundError, ValueError):
         return {}
     return out
+
+
+# ---------------------------------------------------------------------------
+# Finding the bar with nothing to go on but the picture
+# ---------------------------------------------------------------------------
+#
+# `measure_bank` above fits five portraits INSIDE a rectangle somebody drew.
+# That is the same fit this does, minus the drawing: the pick bar is the
+# only periodic thing on the screen, so the two banks can be found rather
+# than pointed at — which is the whole reason a stranger should never have
+# to drag anything.
+#
+# THE MIRROR IS WHAT MAKES IT TRACTABLE. Ten free rectangles is a search
+# nobody can afford; two banks reflected about the HUD's centre line is
+# THREE numbers — where the first portrait starts, how far apart they are,
+# and how wide one is — with twenty predicted boundaries to score them on.
+# Confirmed against a real 3440x1440 client: the Radiant bank ran
+# 0.1137-0.4336 of the HUD box and the Dire bank 0.5664-0.8863, which is
+# the same two numbers reflected to within a pixel.
+#
+# It also kills the false positive. Plenty of HUDs have a row of evenly
+# spaced boxes in them somewhere; almost none have two runs of five that
+# are each other's reflection about the centre of the screen.
+
+# Where the first Radiant portrait's left edge may sit, as a fraction of
+# the HUD box. Measured 0.114 on a real client; the range covers a HUD
+# scaled well either side of that.
+BANK_START = (0.02, 0.26)
+# Pitch between portraits in a bank, same units. Measured 0.065.
+BANK_PITCH = (0.038, 0.105)
+# A bank may not reach the middle of the HUD: the timer lives there.
+BANK_REACH = 0.47
+# A portrait is Dota's own 16:9 top-bar crop, which is what the downloaded
+# base images are. Dota fits rather than stretches it, so this is a PULL on
+# the vertical fit and never a constraint — the height is still measured.
+PORTRAIT_ASPECT = 16 / 9
+# How hard the two vertical anchors pull, in units of the strip's mean edge
+# strength. Horizontally there are twenty boundaries agreeing with each
+# other; vertically there are two, so they need help or a single bright row
+# of HUD chrome wins.
+ASPECT_PULL = 2.5
+TOP_PULL = 4.0
+# Every portrait has a GUTTER after it, and the gutter is the discriminator.
+# A fit whose portrait width equals its pitch predicts each right edge on
+# top of the next left edge: all twenty of its boundaries land on the ten
+# real LEFT edges, counted twice, so it scores as well as the truth and
+# lands a whole portrait out. Scoring the gutters too is what tells them
+# apart — a real gutter is flat background, and the degenerate fit has no
+# gutter to be flat. Measured on a real client the gutter is about 9% of
+# the pitch, so a fit claiming a portrait wider than this has not found
+# one.
+WIDEST_SLOT = 0.95
+# What a bright gutter costs, per gutter, against the twenty boundaries.
+GUTTER_WEIGHT = 1.5
+# A fit has to beat the picture's own noise by this much before it is
+# believed. Twenty boundaries plus the weakest-edge weighting, all at the
+# mean, is what a flat rectangle scores.
+FIT_MARGIN = 1.35
+
+
+def _mirrored_fit(profile: np.ndarray, gutters: np.ndarray,
+                  width: int, starts, pitches):
+    """Best (score, start, pitch, slot_w) for two mirrored banks of five.
+
+    Scored as `measure_bank` scores one bank — the sum of the boundaries
+    AND the weakest of them — plus the gutters, which is the half
+    `measure_bank` does not need because a drawn rectangle already pins the
+    start. Here the start is free, so the fit that is one portrait out has
+    to be beaten on evidence: it puts twenty boundaries on ten real edges
+    and leaves no gutter at all.
+
+    `gutters` is the RAW edge profile, not the tolerant one: a gutter is
+    only a tenth of a pitch wide and smearing every edge by two pixels
+    either way would fill it in.
+
+    Every candidate START is evaluated at once rather than in a Python
+    loop. There are a couple of hundred of them per pitch and sixty
+    pitches, and looping both took 1.4 SECONDS a frame — which matters
+    even for a setup step, because the point of running it during a whole
+    draft is to fit dozens of frames and keep only what they agree on.
+    """
+    index = np.arange(TEAM_SIZE)
+    limit = profile.size - 1
+    starts = np.asarray(starts, dtype=np.int64)
+    if not starts.size:
+        return None
+    best = None
+    for pitch in pitches:
+        widths = np.arange(max(4, int(pitch * 0.55)),
+                           max(5, int(pitch * WIDEST_SLOT)) + 1)
+        if not widths.size:
+            continue
+        # Mid-gutter, as an offset from a portrait's own left edge.
+        mid = widths + (pitch - widths) // 2                       # (W,)
+        span = 4 * pitch + widths                                  # (W,)
+
+        lefts = starts[:, None] + index[None, :] * pitch           # (S, 5)
+        rights = lefts[:, :, None] + widths[None, None, :]         # (S, 5, W)
+        # The reflection: whatever gap the Radiant bank leaves on the left,
+        # the Dire bank leaves on the right.
+        dire_x = width - starts[:, None] - span[None, :]           # (S, W)
+        dire_lefts = dire_x[:, None, :] + (index * pitch)[None, :, None]
+        dire_rights = dire_lefts + widths[None, None, :]
+
+        ok = ((rights.max(axis=1) < width * BANK_REACH)
+              & (dire_lefts.min(axis=1) > width * (1 - BANK_REACH))
+              & (dire_rights.max(axis=1) <= limit)
+              & (lefts.min(axis=1)[:, None] >= 0))                 # (S, W)
+        if not ok.any():
+            continue
+
+        wide = np.broadcast_to(profile[lefts][:, :, None],
+                               rights.shape)                       # (S, 5, W)
+        edges = np.concatenate([
+            wide,
+            profile[np.clip(rights, 0, limit)],
+            profile[np.clip(dire_lefts, 0, limit)],
+            profile[np.clip(dire_rights, 0, limit)],
+        ], axis=1)                                                 # (S, 20, W)
+        # Four gutters per bank — there is none after the fifth portrait,
+        # where the bar simply ends.
+        holes = np.concatenate([
+            gutters[np.clip(lefts[:, :-1, None] + mid[None, None, :],
+                            0, limit)],
+            gutters[np.clip(dire_lefts[:, :-1, :] + mid[None, None, :],
+                            0, limit)],
+        ], axis=1)                                                 # (S, 8, W)
+        scores = (edges.sum(axis=1) + WEAKEST_WEIGHT * edges.min(axis=1)
+                  - GUTTER_WEIGHT * holes.sum(axis=1))             # (S, W)
+        scores = np.where(ok, scores, -np.inf)
+        flat = int(np.argmax(scores))
+        row, col = divmod(flat, scores.shape[1])
+        if np.isfinite(scores[row, col]) and (
+                best is None or scores[row, col] > best[0]):
+            best = (float(scores[row, col]), int(starts[row]), int(pitch),
+                    int(widths[col]))
+    return best
+
+
+def _vertical_fit(strip_grey: np.ndarray, columns: np.ndarray,
+                  slot_w: int):
+    """Top and bottom of the portraits, from the rows all ten share.
+
+    Read off the bank COLUMNS only. The gutters between portraits and the
+    middle of the bar carry the timer and the mode name, whose rows are
+    nothing to do with where a portrait starts.
+
+    Two anchors, because two edges cannot corroborate each other the way
+    twenty can: a portrait is about 16:9, and the pick bar hugs the top of
+    the screen. Both are pulls rather than rules — the answer is still
+    whichever pair of rows is actually brightest, nudged.
+    """
+    if not columns.size:
+        return None
+    band = _tolerant(_row_profile(strip_grey[:, columns]))
+    rows = band.size
+    if rows < 8:
+        return None
+    want = max(4.0, slot_w / PORTRAIT_ASPECT)
+    floor = float(band.mean()) or 1e-6
+
+    y0 = np.arange(rows)[:, None]
+    y1 = np.arange(rows)[None, :]
+    height = y1 - y0
+    ok = (height >= max(6, int(want * 0.5))) & (height <= want * 2.0)
+    value = (band[y0] + band[y1]
+             - floor * ASPECT_PULL * np.abs(height - want) / want
+             - floor * TOP_PULL * (y0 / rows))
+    value = np.where(ok, value, -np.inf)
+    if not np.isfinite(value).any():
+        return None
+    top, bottom = np.unravel_index(int(np.argmax(value)), value.shape)
+    return int(top), int(bottom - top)
+
+
+def find_banks(frame, base: DraftLayout | None = None):
+    """The whole layout from one frame, with no heroes and no game data.
+
+    This is the step that removes the drag. It needs no portrait library,
+    no GSI and no minimap — only a frame with a pick bar in it — so it can
+    run DURING hero selection rather than after the draft is over, and it
+    can run on every frame of one and be believed only where they agree.
+
+    Returns (DraftLayout, note) or (None, reason). It never invents a
+    layout: a picture with no mirrored pair of five in it scores at the
+    noise floor and is refused.
+    """
+    base = base or DraftLayout()
+    if frame is None or not getattr(frame, "size", 0):
+        return None, "there is no picture to measure"
+    height, width = frame.shape[:2]
+    left_edge, span = hud_box(width, height)
+    if span < 8 * 2 * TEAM_SIZE or height < 16:
+        return None, "the frame is too small to hold a pick bar"
+
+    x0 = int(round(left_edge))
+    strip = _grey(frame)[:max(8, int(height * BAR_FRACTION)),
+                         x0:x0 + int(round(span))]
+    if strip.shape[1] < 8 * 2 * TEAM_SIZE:
+        return None, "the frame is too small to hold a pick bar"
+
+    # Coarse pass on a decimated strip, for the same reason `find_scale`
+    # does it: the grid only has to find the neighbourhood, and a 3440-wide
+    # strip is ten times the work for the same answer.
+    shrink = max(1, int(round(strip.shape[1] / SEARCH_WIDTH)))
+    small = (strip if shrink == 1 else
+             cv2.resize(strip, (strip.shape[1] // shrink,
+                                max(2, strip.shape[0] // shrink)),
+                        interpolation=cv2.INTER_AREA))
+    small_w = small.shape[1]
+    raw = _edge_profile(small)
+    profile = _tolerant(raw)
+    coarse = _mirrored_fit(
+        profile, raw, small_w,
+        np.arange(int(small_w * BANK_START[0]),
+                  int(small_w * BANK_START[1]) + 1),
+        range(int(small_w * BANK_PITCH[0]), int(small_w * BANK_PITCH[1]) + 1))
+    if coarse is None:
+        return None, "no pick bar found in the top of this frame"
+    if coarse[0] <= float(profile.mean()) * (4 * TEAM_SIZE
+                                             + WEAKEST_WEIGHT) * FIT_MARGIN:
+        return None, ("nothing in the top of this frame looks like two banks "
+                      "of five portraits — is the pick screen up?")
+
+    # Walk the coarse answer back to full resolution. Everything below is
+    # in the strip's own pixels, which are the HUD box's.
+    if shrink > 1:
+        full_raw = _edge_profile(strip)
+        full = _tolerant(full_raw)
+        scale = strip.shape[1] / float(small_w)
+        centre = [int(round(v * scale)) for v in coarse[1:]]
+        # The two reaches are NOT the same, and one number for both left
+        # 4K short. A coarse pitch is an integer at the decimated scale, so
+        # it can be half a decimated pixel out — and the pitch MULTIPLIES:
+        # by the fifth portrait that is four times the error, which walks
+        # the bank further than a reach sized for the start alone can get
+        # back. So the start is allowed the accumulated slack and the pitch
+        # only its own.
+        pitch_reach = shrink + 2
+        start_reach = 3 * shrink + 2
+        fine = _mirrored_fit(
+            full, full_raw, strip.shape[1],
+            np.arange(max(0, centre[0] - start_reach),
+                      centre[0] + start_reach + 1),
+            range(max(4, centre[1] - pitch_reach),
+                  centre[1] + pitch_reach + 1))
+        best = fine or coarse
+        if fine is None:
+            best = (coarse[0], *centre)
+    else:
+        best = coarse
+    _score, start, pitch, slot_w = best
+
+    # The vertical, read off the twenty columns the portraits occupy.
+    index = np.arange(TEAM_SIZE)
+    bank_span = 4 * pitch + slot_w
+    dire_x = strip.shape[1] - start - bank_span
+    columns = np.concatenate([
+        np.concatenate([np.arange(s + i * pitch, s + i * pitch + slot_w)
+                        for i in index])
+        for s in (start, dire_x)])
+    columns = columns[(columns >= 0) & (columns < strip.shape[1])]
+    vertical = _vertical_fit(strip, columns, slot_w)
+    if vertical is None:
+        return None, "the portraits' top and bottom edges could not be found"
+    top, slot_h = vertical
+
+    layout = DraftLayout(
+        radiant_x=start / span,
+        dire_x=dire_x / span,
+        y=top / height,
+        slot_w=slot_w / span,
+        slot_h=slot_h / height,
+        pitch=pitch / span,
+        role_dy=base.role_dy, role_h=base.role_h,
+    )
+    for name in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
+        value = getattr(layout, name)
+        if not 0.0 <= value <= 1.0:
+            return None, (f"{name} came out at {value:.3f}, which is off "
+                          "the frame")
+    return layout, (f"{2 * TEAM_SIZE} portraits {slot_w}px wide, {pitch}px "
+                    f"apart, {slot_h}px tall")
