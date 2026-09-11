@@ -165,3 +165,71 @@ def test_no_statistics_means_no_shields_rather_than_all_of_them():
     were applied to nothing."""
     assert analyse.shielded(None, 70) == {}
     assert analyse.shielded(a_dataset([], []), 70) == {}
+
+
+def test_the_bar_plots_the_RANKING_not_the_raw_figure():
+    """At the user's request: "if Sniper is in the top 9% in terms of
+    being hard to counter then his score is 91%, a lot of green".
+
+    It also fixes the column at the root. Counterability is clustered -
+    a pick-weighted average over ~126 heroes sits within about half a
+    point of neutral - so a bar scaled to the raw figures is a few
+    pixels for everybody and says nothing. Percentiles are UNIFORM by
+    construction, so the column always uses its full width.
+    """
+    from datetime import datetime
+    from draft_assist.history.shape import Match
+
+    size = 100
+    ids = list(range(1, size + 1))
+    # A ladder: hero 1 beats everyone below it, hero 100 beats nobody.
+    matrix = [[(j - i) for j in range(size)] for i in range(size)]
+    ds = a_dataset(ids, matrix)
+
+    # The player picks the 9th best and the very worst.
+    matches = []
+    for hero_id in (9, size):
+        matches += [Match(match_id=hero_id * 100 + k, start=0,
+                          when=datetime(2026, 1, 1), duration=1800, slot=0,
+                          radiant=True, win=True, hero_id=hero_id,
+                          hero=f"Hero {hero_id}") for k in range(10)]
+
+    block = analyse.counter_analysis(matches, ds)
+    assert block.scale == 50.0, "half the percentile range, always"
+
+    by_hero = {r.key: r for r in block.shown}
+    ninth = by_hero["Hero 9"]
+    # 9th of 100 => 91 heroes at or below => the 91st percentile, which
+    # is +41 on a bar centred at the median.
+    assert ninth.delta == pytest.approx(41.0)
+    assert ninth.delta > 0, "green: harder to counter than most"
+    assert abs(ninth.delta) / block.scale == pytest.approx(0.82)
+
+    worst = by_hero[f"Hero {size}"]
+    assert worst.delta == pytest.approx(-50.0), "bottom of the field"
+    assert abs(worst.delta) / block.scale == pytest.approx(1.0)
+
+
+def test_a_clustered_field_still_fills_the_bar_column():
+    """The failure this replaces: with the raw figures the whole pool
+    lives within a fraction of a point, every bar rounded to nothing and
+    the column read as blank. A ranking cannot do that - the spread of
+    percentiles does not depend on the spread of the numbers."""
+    from datetime import datetime
+    from draft_assist.history.shape import Match
+
+    size = 40
+    ids = list(range(1, size + 1))
+    # Differences a thousand times smaller than a percentage point.
+    matrix = [[(j - i) * 0.001 for j in range(size)] for i in range(size)]
+    ds = a_dataset(ids, matrix)
+    matches = [Match(match_id=k, start=0, when=datetime(2026, 1, 1),
+                     duration=1800, slot=0, radiant=True, win=True,
+                     hero_id=1, hero="Best")
+               for k in range(10)]
+    block = analyse.counter_analysis(matches, ds)
+
+    best = block.shown[0]
+    assert abs(best.mean) < 0.05, "the raw figure really is tiny"
+    assert abs(best.delta) / block.scale > 0.9, (
+        "but the bar is nearly full, because it plots the ranking")

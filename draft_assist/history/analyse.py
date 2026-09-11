@@ -99,6 +99,12 @@ class Block:
     caveat: str = ""
     covered: int = 0
     total: int = 0
+    # How far the bar column reaches, when the block knows better than
+    # the rows on screen do. The counters block sets it from the WHOLE
+    # hero pool rather than from your own heroes, which are a handful of
+    # it and never its extremes. Zero means "work it out from the rows",
+    # which is what every other block still does.
+    scale: float = 0.0
     groups: list = field(default_factory=list)
 
 
@@ -173,7 +179,8 @@ ANALYSES = [
     # same figure for everybody who plays that hero.
     ("counters", "Hero Counters", True,
      "How each of your heroes fares against the whole hero pool, weighted "
-     "by how often each opponent is picked."),
+     "by how often each opponent is picked. The bar is its ranking among "
+     "every hero in the game."),
     ("items", "Items by hero", True,
      "Win rate in games that ended with each item in your inventory, "
      "against that hero's own win rate."),
@@ -607,12 +614,33 @@ def counter_analysis(matches, ds) -> Block:
         bucket.n += 1
         bucket.wins += 1 if match.win else 0
 
+    # THE BAR PLOTS THE RANKING, not the raw figure, at the user's
+    # request: "if Sniper is in the top 9% in terms of being hard to
+    # counter then his score is 91%, a lot of green".
+    #
+    # It is the better measure and it fixes the column at the root.
+    # Counterability is clustered - a pick-weighted average over ~126
+    # heroes sits within about half a percentage point either side of
+    # neutral - so a bar scaled to those raw figures is a few pixels for
+    # everybody and says nothing. Percentiles are UNIFORM by
+    # construction, so the column always uses its full width however
+    # tightly the underlying numbers bunch up.
+    order = sorted(deltas, key=lambda h: -deltas[h])
+    count = len(order)
+    # Place 1 is the hardest to counter, so the share AT OR BELOW it is
+    # (count - place) / count - which is the "91%" in the request.
+    percentile = {hero_id: 100.0 * (count - place) / count
+                  for place, hero_id in enumerate(order, start=1)}
+
     rows = []
     for hero_id, bucket in played.items():
         if hero_id not in deltas:
             continue                      # a hero the dataset does not know
         bucket.mean = deltas[hero_id]
-        bucket.delta = bucket.mean - datum
+        # Centred on the MEDIAN hero, so the delegate's datum line is the
+        # middle of the field and green means "harder to counter than
+        # most" rather than "above an average nobody can picture".
+        bucket.delta = percentile[hero_id] - 50.0
         bucket.note = standing[hero_id]
         bucket.eligible = bucket.n >= MIN_BUCKET
         rows.append(bucket)
@@ -620,11 +648,26 @@ def counter_analysis(matches, ds) -> Block:
     # cut and the sort above it still do what they do everywhere else.
     rows.sort(key=lambda r: -r.mean)
     shown = [r for r in rows if r.n >= MIN_DISPLAY]
+    # THE BAR REACHES AS FAR AS THE WHOLE POOL DOES, at the user's
+    # request: "the min / max is the most and least counterable hero's
+    # score... it's likely that there is an easily or difficultly
+    # counterable hero that I just don't happen to pick". Every hero in
+    # the game is ranked, so the pool's own extremes ARE 100 and 0 and
+    # the reach is half of that, the delegate drawing outward from the
+    # median line.
+    #
+    # FIXED rather than measured, which is what makes two runs
+    # comparable: the percentile range is 0 to 100 whatever the figures
+    # do, so a bar means the same thing in every run and under every cut.
+    # Scaling to the rows on screen would instead make a pool of three
+    # heroes look as spread as the entire game, and would move the scale
+    # every time the count box was stepped.
+    reach = 50.0
     return Block(id="counters", name=name, desc=desc, kind="counters",
                  rows=rows, shown=shown, hidden=len(rows) - len(shown),
                  hidden_games=sum(r.n for r in rows if r.n < MIN_DISPLAY),
                  datum=datum, unit="percentage points",
-                 covered=len(rows), total=len(played),
+                 covered=len(rows), total=len(played), scale=reach,
                  caveat=COUNTER_CAVEAT)
 
 

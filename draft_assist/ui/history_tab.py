@@ -46,6 +46,7 @@ BAR_COLUMN = 3
 BAR_MIN_SCALE = 0.08
 # A bucket's bar fades with its sample: the eye should not read a 3-game
 # bucket and a 90-game bucket as the same claim.
+MIN_BAR_PX = 2      # see `DeltaBar.paint`
 FADE_FLOOR = 0.25
 
 
@@ -72,6 +73,17 @@ class Bar(QStyledItemDelegate):
             delta, scale, eligible, weight = data
             span = 0.0 if not scale else min(abs(delta) / scale, 1.0)
             width = int(span * (rect.width() / 2 - 6))
+            # A REAL DIFFERENCE NEVER ROUNDS AWAY TO NOTHING. A bar of
+            # nought and a bar of two pixels mean different things - "the
+            # same as the average" and "a little above it" - and `int()`
+            # collapses the second into the first whenever the figure is
+            # small against the scale. That is exactly the counters
+            # block's normal case: it is scaled to the WHOLE hero pool,
+            # so a hero near the average draws a few percent of half a
+            # column. The length still carries the magnitude; the floor
+            # only stops it disappearing.
+            if span > 0:
+                width = max(MIN_BAR_PX, width)
             if width > 0:
                 colour = QColor(theme.GOOD if delta >= 0 else theme.BAD)
                 colour.setAlphaF(max(FADE_FLOOR, weight)
@@ -1371,11 +1383,15 @@ class HistoryTab(QWidget):
             # problem would read upside down. "Vs the field" says which
             # way round it is without a sentence.
             headers = ["Hero", "Games", "Vs the field",
-                       "Against the average hero"]
+                       "Against the median hero"]
             figure = (lambda row: f"{analyse.sig(row.mean)}  ({row.note})"
                       if row.note else analyse.sig(row.mean))
-            scale = max(0.5, max((abs(r.delta) for r in block.shown),
-                                 default=0.0))
+            # THE POOL'S OWN RANGE, not the rows on screen. A floor of
+            # 0.5 was here and was wrong in both directions: it flattened
+            # a real spread when the figures are clustered near zero, and
+            # it let three heroes look as spread as the whole game.
+            scale = block.scale or max(
+                (abs(r.delta) for r in block.shown), default=0.0)
             table = self._table(block.id, headers, block.shown, figure,
                                 scale, (), lambda row: row.mean)
             lay.addWidget(table.controls)
