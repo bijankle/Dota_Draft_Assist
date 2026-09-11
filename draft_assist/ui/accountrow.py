@@ -27,9 +27,9 @@ from datetime import timedelta
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from . import theme
+from . import chrome, theme
 
 FACE = 34                 # the avatar's edge, in pixels
 PADDING = 6
@@ -113,16 +113,23 @@ class AccountRow(QWidget):
         self.face = Face(self)
         row.addWidget(self.face, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        stack = QVBoxLayout()
-        stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(0)
+        # ONE LINE, at the user's request: "picture - steam name | from
+        # date --> to date (XXX months)". Stacked, the two texts were a
+        # block as tall as the face for two short strings, and the row had
+        # to be tall enough for both; on one line it is the height of the
+        # picture and nothing else.
         self.who = QLabel(NOTHING_YET, self)
         self.who.setProperty("strong", True)
+        # PAINTED, not a typed "|". A pipe in a label is a glyph that
+        # resizes with the font and cannot be coloured apart from the text
+        # holding it - the same reason the menus, tabs and toolbar all
+        # draw their rules instead of spelling them.
+        self.rule = chrome.Divider(self)
         self.when = QLabel(PROMPT, self)
         self.when.setProperty("dim", True)
-        stack.addWidget(self.who)
-        stack.addWidget(self.when)
-        row.addLayout(stack)
+        row.addWidget(self.who, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.rule, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.when, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addStretch(1)
 
         self.face.show_initial("")
@@ -178,6 +185,15 @@ class AccountRow(QWidget):
             return getattr(options, "window_label", "") or ""
         end = ran.strftime("%d %b %Y")
         if not days:
-            return f"All history  ->  {end}"
+            return f"All history  \u2192  {end}"
         start = (ran - timedelta(days=int(days))).strftime("%d %b %Y")
-        return f"{start}  ->  {end}"
+        # AND HOW LONG THAT IS, in brackets, at the user's request - two
+        # dates make the reader do the subtraction, and the whole point of
+        # the row is to be read at a glance. It is the window's OWN label
+        # ("Last 3 months" less the "Last"), so it can never disagree with
+        # the dates beside it the way a recomputed figure could.
+        span = (getattr(options, "window_label", "") or "").strip()
+        if span.lower().startswith("last "):
+            span = span[5:]
+        tail = f"  ({span})" if span else ""
+        return f"{start}  \u2192  {end}{tail}"

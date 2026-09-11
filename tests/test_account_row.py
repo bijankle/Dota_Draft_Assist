@@ -130,17 +130,72 @@ def test_the_row_prompts_before_anything_has_been_measured(qapp):
     row.deleteLater()
 
 
-@pytest.mark.parametrize("window,expected_start", [
-    ("3m", "12 Jun 2026"), ("12m", "11 Sep 2025")])
-def test_the_range_is_the_runs_own_window(qapp, window, expected_start):
+@pytest.mark.parametrize("window,expected_start,expected_span", [
+    ("1m", "12 Aug 2026", "(1 month)"),
+    ("3m", "12 Jun 2026", "(3 months)"),
+    ("12m", "11 Sep 2025", "(12 months)")])
+def test_the_range_is_the_runs_own_window(qapp, window, expected_start,
+                                          expected_span):
     """The History window is a DROPDOWN, so a fixed three months would
-    have the row describing data that was never measured."""
+    have the row describing data that was never measured.
+
+    AND HOW LONG IT IS, in brackets: two bare dates make the reader do
+    the subtraction, on a row whose whole job is to be read at a glance.
+    """
     from draft_assist.ui.accountrow import AccountRow
     row = AccountRow()
     row.show_report(a_report(window=window))
     assert row.who.text() == "Bijson"
-    assert row.when.text().startswith(expected_start)
-    assert row.when.text().endswith("11 Sep 2026")
+    text = row.when.text()
+    assert text.startswith(expected_start)
+    assert "11 Sep 2026" in text, "the run's own date is the end"
+    assert text.endswith(expected_span)
+    row.deleteLater()
+
+
+def test_the_row_is_one_line_with_a_PAINTED_rule(qapp):
+    """"Picture - steam name | from date --> to date", at the user's
+    request. The rule is a widget rather than a typed "|": a pipe in a
+    label resizes with the font and cannot be coloured apart from the text
+    holding it, which is why every other rule in this app is painted.
+
+    Checked against the PIXELS, because "it is in the stylesheet" has
+    twice not meant "it is on the screen" in this codebase.
+    """
+    from PyQt6.QtCore import QPoint
+    from PyQt6.QtGui import QColor, QImage, QPainter, QRegion
+    from PyQt6.QtWidgets import QWidget
+    from draft_assist.ui import theme
+    from draft_assist.ui.accountrow import FACE, PADDING, AccountRow
+
+    row = AccountRow()
+    row.resize(700, FACE + 2 * PADDING)
+    row.show_report(a_report(window="3m"))
+    # FORCED, because Qt defers layout: measuring straight after a resize
+    # reads the geometry from before it, which is every widget at x=0.
+    # The same trap `_hold_still` documents one axis over.
+    row.layout().activate()
+
+    # One line: everything sits inside the height the face needs, so the
+    # name and the dates share a row rather than stacking.
+    assert row.sizeHint().height() == FACE + 2 * PADDING
+    assert row.who.y() < row.rule.y() + row.rule.height()
+    assert row.when.x() > row.rule.x(), "dates follow the rule"
+    assert "|" not in row.who.text() and "|" not in row.when.text()
+
+    shot = QImage(700, row.height(), QImage.Format.Format_ARGB32)
+    shot.fill(0)
+    painter = QPainter(shot)
+    row.render(painter, QPoint(), QRegion(row.rect()),
+               QWidget.RenderFlag.DrawChildren)
+    painter.end()
+
+    want = QColor(theme.RULE)
+    inside = [x for x in range(row.rule.x(), row.rule.x() + row.rule.width())
+              for y in range(row.height())
+              if QColor.fromRgba(shot.pixel(x, y)).alpha() > 0
+              and abs(QColor(shot.pixel(x, y)).red() - want.red()) < 24]
+    assert inside, "the rule between the name and the dates drew nothing"
     row.deleteLater()
 
 
