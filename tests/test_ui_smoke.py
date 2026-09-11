@@ -3524,10 +3524,14 @@ def test_the_ad_slot_is_a_switch_and_reserves_nothing_while_it_is_off(qapp):
     defaults are their own setup — but the SWITCH is what matters and it
     still has to work in both directions. Nothing is fetched either way:
     the slot is a painted placeholder for a banner that does not exist,
-    and off means it takes no room at all rather than reserving a strip."""
+    and off means it takes no room at all rather than reserving a strip.
+
+    OFF BY DEFAULT, at the user's request. This dict said True while the
+    notes claimed otherwise - drift from when DEFAULTS was reseeded off
+    the owner's own settings file, which had ads on at the time."""
     from draft_assist.ui import settings as ui_settings
     from draft_assist.ui.adslot import AdSlot
-    assert ui_settings.DEFAULTS["ads_enabled"] is True
+    assert ui_settings.DEFAULTS["ads_enabled"] is False
     slot = AdSlot()
     assert not slot.showing
     slot.set_enabled(True)
