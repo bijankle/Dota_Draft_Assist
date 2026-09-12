@@ -44,6 +44,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import cv2                                          # noqa: E402
+import numpy as np                                  # noqa: E402
 
 from draft_assist import console                    # noqa: E402
 from draft_assist.vision.autocal import find_banks  # noqa: E402
@@ -53,9 +54,61 @@ SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
 HUD_ASPECT = 16.0 / 9.0
 
 
-def measure(path: Path) -> dict:
+def read_image(path: Path):
+    """Decode a picture from BYTES, never by handing OpenCV a path.
+
+    `cv2.imread` opens a file through Windows' ANSI codepage, so it
+    cannot see a filename with a character outside it - and the Snipping
+    Tool names its files "1920 x 1080.png" with U+00D7, the real
+    multiplication sign. Twenty of a user's twenty-two screenshots were
+    refused as "not an image this build can read" while the only two
+    named with an ASCII "x" loaded perfectly, which is as clean a
+    fingerprint as this fault ever leaves.
+
+    Reading the bytes in Python and decoding in memory sidesteps the
+    whole question: pathlib is unicode all the way down.
+    """
+    try:
+        data = np.frombuffer(path.read_bytes(), dtype=np.uint8)
+    except OSError:
+        return None
+    if not data.size:
+        return None
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
+
+
+def save_strip(frame, path: Path, into: Path) -> None:
+    """Write the band `find_banks` actually searches, small.
+
+    When it reports "nothing in the top of this frame looks like two
+    banks of five portraits", the one thing nobody can see from here is
+    what it WAS looking at. The strip is the top `BAR_FRACTION` of the
+    HUD box - a few tens of kilobytes rather than a 2.5MB screenshot -
+    so it can be attached to a message without sending the whole screen.
+
+    It is still Valve's artwork: attach it, never commit it.
+    """
+    from draft_assist.vision.autocal import BAR_FRACTION
+    height, width = frame.shape[:2]
+    left, span = hud_box(width, height)
+    band = frame[:max(8, int(height * BAR_FRACTION)),
+                 int(round(left)):int(round(left + span))]
+    if band.size and band.shape[1] > 1200:
+        scale = 1200.0 / band.shape[1]
+        band = cv2.resize(band, (1200, max(1, int(band.shape[0] * scale))),
+                          interpolation=cv2.INTER_AREA)
+    into.mkdir(parents=True, exist_ok=True)
+    # Encoded in memory and written by pathlib, for the reason
+    # `read_image` decodes that way: `cv2.imwrite` takes the path through
+    # the ANSI codepage too, and these names carry a multiplication sign.
+    ok, buffer = cv2.imencode(".png", band)
+    if ok:
+        (into / f"{path.stem}-strip.png").write_bytes(buffer.tobytes())
+
+
+def measure(path: Path, strips: Path | None = None) -> dict:
     """One picture, or a row saying why it could not be read."""
-    frame = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
     height, width = frame.shape[:2]
@@ -69,6 +122,9 @@ def measure(path: Path) -> dict:
            "aspect": round(width / height, 4),
            "hud_left": round(left, 1), "hud_span": round(span, 1),
            "hud_height": round(box_h, 1)}
+
+    if strips is not None:
+        save_strip(frame, path, strips)
 
     layout, note = find_banks(frame)
     if layout is None:
@@ -105,6 +161,9 @@ def main() -> None:
         description="Measure the pick bar in each screenshot in a folder.")
     parser.add_argument("folder", help="where the screenshots are")
     parser.add_argument("--json", default="", help="also write the figures here")
+    parser.add_argument("--strips", default="", help=(
+        "write the band each picture is searched in, as small PNGs - "
+        "attach one when a frame is refused, so the refusal can be seen"))
     args = parser.parse_args()
 
     folder = Path(args.folder).expanduser()
@@ -123,9 +182,10 @@ def main() -> None:
     print("  ".join(name.ljust(w) for name, w in zip(head, widths)))
     print("-" * (sum(widths) + 2 * len(widths)))
 
+    strips = Path(args.strips) if args.strips else None
     rows = []
     for shot in shots:
-        row = measure(shot)
+        row = measure(shot, strips)
         rows.append(row)
         if "why" in row:
             print(f"{row['file'][:26].ljust(26)}  "
@@ -150,6 +210,9 @@ def main() -> None:
         Path(args.json).write_text(json.dumps(rows, indent=1),
                                    encoding="utf-8")
         print(f"\nFigures written to {args.json} - no picture in it.")
+    if strips is not None:
+        print(f"Search bands written to {strips} - these ARE pictures. "
+              "Attach one, never commit it.")
 
 
 def _verdict(rows: list) -> None:
