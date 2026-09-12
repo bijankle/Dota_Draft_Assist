@@ -59,12 +59,33 @@ four of the five pairs: the screen put the player with the HIGHER-indexed
 half of each pair, while an older recording has the player with the LOWER
 half. Object index does not decide it, and no rule found so far does.
 
-So the halves are a coin flip that must be labelled: `sides_certain` stays
-False, the note says which rule produced the split, and the drag
-correction stays. What the pairing still buys is that the teams come out
-5-5 with one hero from each lane whichever way the coin lands, so the app
-can no longer show a 4-1 team. **The screen settles it outright when
-vision has a frame**; this is the fallback for when it does not.
+So for THAT case the halves are a coin flip that must be labelled:
+`sides_certain` stays False, the note says which rule produced the split,
+and the drag correction stays. What the pairing still buys is that the
+teams come out 5-5 with one hero from each lane whichever way the coin
+lands, so the app can no longer show a 4-1 team. **The screen settles it
+outright when vision has a frame**; this is the fallback for when it does
+not.
+
+**AND ONE CASE IS NOW SETTLED OUTRIGHT** (`_split_by_strategy_slots`,
+`tests/test_minimap_strategy_slots.py`), which is the first thing in this
+module decided by evidence rather than offered. It came from a match whose
+real teams the user named after seeing the app get them wrong: the ten
+placed heroes were NOT two to a slot, so the reading fell back to object
+order and swapped Hoodwink and Riki. FIVE of them stood on the canonical
+lane slots, one each; the other five stood at real world coordinates,
+clustered together — and the five on the slots were the player's team
+exactly.
+
+The mechanism is why this one can be asserted. The strategy screen draws
+YOUR OWN team at the lanes your team chose, and has nothing to draw the
+enemy from unless you predicted them, so they arrive at their positions in
+the world. Predict them and the slots hold two apiece, which is every
+earlier recording and which this rule declines, leaving that case to the
+pairs unchanged. And it cannot invert — the fault every other rule here
+has had — because the player's own hero must be among the five on the
+slots, and a contradiction declines rather than handing back the halves
+the other way round.
 
 Only STRATEGY_TIME is read. In TEAM_SHOWCASE and later the minimap holds
 real units rather than strategy-map slots, and the object order means
@@ -79,6 +100,13 @@ HERO_PREFIX = "npc_dota_hero_"
 TEAM_SIZE = 5
 ORIGIN = (0, 0)
 STRATEGY_STATE = "STRATEGY_TIME"
+# THE FIVE STRATEGY-MAP LANE SLOTS, the same coordinates in every
+# recording: the positions the strategy screen draws a chosen lane at.
+# They are a coordinate space of their own - three-figure numbers, where a
+# real world position runs to four - which is why a hero standing on one
+# can be told from a hero standing where it actually is.
+LANE_SLOTS = frozenset({(176, -370), (176, 370),
+                        (752, -144), (752, 144), (1088, 0)})
 
 
 @dataclass
@@ -86,13 +114,14 @@ class Lineups:
     allies: list[int] = field(default_factory=list)
     enemies: list[int] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
-    # WHICH ten heroes is solid. WHICH FIVE ARE YOURS IS NOT: a real match
-    # came out inverted — the run holding the player's own hero was the
-    # other team. Until a signal is found that settles it, the split is
-    # offered and labelled, never asserted, and the UI can flip it.
+    # WHICH ten heroes is solid. WHICH FIVE ARE YOURS depends on the rule
+    # that produced the split: "strategy slots" is decided and sets this
+    # True, and the other two are offered and labelled, never asserted,
+    # because a real match came out inverted under object order.
     sides_certain: bool = False
-    # "lane pairs" or "object order" — which rule produced the split, so
-    # the session report can grade one against the other.
+    # "strategy slots", "lane pairs" or "object order" — which rule
+    # produced the split, so the session report can grade them against
+    # each other.
     split_rule: str = ""
 
     @property
@@ -190,8 +219,13 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
         return out
 
     by_id = dict(zip(names, ids))
-    split = _split_by_lane_pairs(entries, by_id)
-    how = "lane pairs"
+    # THE STRATEGY SLOTS FIRST, because that one is decided rather than
+    # offered. See `_split_by_strategy_slots`.
+    split = _split_by_strategy_slots(entries, by_id, my_hero_id)
+    how = "strategy slots"
+    if split is None:
+        split = _split_by_lane_pairs(entries, by_id)
+        how = "lane pairs"
     if split is None:
         split = (ids[:TEAM_SIZE], ids[TEAM_SIZE:])
         how = "object order"
@@ -209,7 +243,13 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
 
     out.allies, out.enemies = allies, enemies
     out.split_rule = how
-    if how == "lane pairs":
+    if how == "strategy slots":
+        out.sides_certain = True
+        out.notes.append(
+            "ten heroes read from the minimap, split by the strategy map — "
+            "five stand on its lane slots and five at their own world "
+            "positions, and the five on the slots are yours")
+    elif how == "lane pairs":
         out.notes.append(
             "ten heroes read from the minimap, split by the five strategy-"
             "map lane slots — each holds one of yours and one of theirs, "
@@ -223,6 +263,52 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
             "that has come out INVERTED on a real match, so check it and "
             "drag heroes across if it is wrong")
     return out
+
+
+def _split_by_strategy_slots(entries, by_id: dict[str, int],
+                             my_hero_id: int
+                             ) -> tuple[list[int], list[int]] | None:
+    """Your five and theirs, when the strategy map drew only your own.
+
+    THIS IS THE ONE RULE HERE THAT IS DECIDED RATHER THAN OFFERED, and it
+    came from a match whose real teams the user named. The ten placed
+    heroes were NOT two to a lane slot, which is what `_split_by_lane_
+    pairs` needs, so the reading fell back to object order and put
+    Hoodwink and Riki on the wrong sides. The positions say why:
+
+        axe          (1088,    0)     riki           (3968, -2885)
+        storm_spirit ( 176, -370)     grimstroke     (3740, -2972)
+        juggernaut   ( 752, -144)     snapfire       (3865, -3513)
+        rubick       ( 176,  370)     nyx_assassin   (3917, -3175)
+        hoodwink     ( 752,  144)     winter_wyvern  (3634, -2526)
+
+    Five stand on the canonical lane slots, one each; five stand at real
+    world coordinates, clustered where they actually are. The left column
+    is the player's team exactly — Rubick, their own hero, among them —
+    and the right column is the enemy.
+
+    The mechanism is what makes this safe to assert where the pairs
+    cannot be. The strategy screen draws YOUR OWN team at the lanes your
+    team chose; it has nothing to draw the enemy from unless you predicted
+    them, so they come through at their positions in the world. When you
+    DO predict them the slots hold two apiece and this declines, leaving
+    that case to `_split_by_lane_pairs` exactly as before.
+
+    And it cannot invert, which is the fault every earlier rule here had.
+    If the halves were the other way round the player's own hero would be
+    in the off-slot five — so that is checked, and a contradiction
+    declines rather than asserting the opposite.
+    """
+    on_slots, off_slots = [], []
+    for index, name, position in entries:
+        where = on_slots if tuple(position) in LANE_SLOTS else off_slots
+        where.append((index, by_id[name]))
+    if len(on_slots) != TEAM_SIZE or len(off_slots) != TEAM_SIZE:
+        return None
+    mine = [hid for _i, hid in on_slots]
+    if my_hero_id not in mine:
+        return None                      # the premise is wrong; do not guess
+    return (mine, [hid for _i, hid in off_slots])
 
 
 def _split_by_lane_pairs(entries, by_id: dict[str, int]

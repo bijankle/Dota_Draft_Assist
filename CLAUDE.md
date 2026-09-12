@@ -339,7 +339,9 @@ credentials, and put the account at risk. Do not go there.
     slots are placements (two team-mates share one), and object order is
     not reliably team order. So `Lineups.sides_certain` is False and the
     note says the split is a guess. Do not re-assert it as fact without
-    evidence that settles it.
+    evidence that settles it — which has since happened for ONE of the
+    three rules, and only that one: see "the commoner case is now decided"
+    below.
 
     **The rule is still unsolved, but the app no longer needs it**
     (`vision/lineup.py`). The minimap is reliable about WHICH ten and
@@ -420,13 +422,45 @@ credentials, and put the account at risk. Do not go there.
   Object index does not decide it, and nothing found so far does. Do not
   ship a rule that claims to.
 
-  So `sides_certain` stays False, the note names the rule that produced the
-  split ("lane pairs" or the "object order" fallback) and calls the halves
-  a coin flip, and the drag correction stays. What the pairing still buys,
-  whichever way the coin lands, is a 5-5 split with one hero from each lane
-  — the app can no longer show a 4-1 team, which is what it kept doing.
-  When the positions do not pair cleanly it falls back to the runs rather
-  than refusing.
+  So for the PAIRED case `sides_certain` stays False, the note names the
+  rule that produced the split and calls the halves a coin flip, and the
+  drag correction stays. What the pairing still buys, whichever way the
+  coin lands, is a 5-5 split with one hero from each lane — the app can no
+  longer show a 4-1 team, which is what it kept doing. When the positions
+  do not pair cleanly it falls back to the runs rather than refusing.
+
+  **BUT THE COMMONER CASE IS NOW DECIDED, AND IT IS THE FIRST THING HERE
+  THAT IS** (`minimap._split_by_strategy_slots`, fixture
+  `tests/fixtures/gsi/strategy_slots_8995290135.json`). Ground truth, for
+  the second time and this time it BUILT a rule instead of killing one:
+  the user played match 8995290135, the app put Hoodwink on the enemy team
+  and Riki on theirs, and they said so. The placed heroes were not two to
+  a slot — so `_split_by_lane_pairs` declined and object order, which is
+  known to invert, produced exactly that swap. The positions say why:
+
+      axe          (1088,    0)     riki           (3968, -2885)
+      storm_spirit ( 176, -370)     grimstroke     (3740, -2972)
+      juggernaut   ( 752, -144)     snapfire       (3865, -3513)
+      rubick       ( 176,  370)     nyx_assassin   (3917, -3175)
+      hoodwink     ( 752,  144)     winter_wyvern  (3634, -2526)
+
+  **FIVE ON THE CANONICAL LANE SLOTS, ONE EACH; FIVE AT REAL WORLD
+  COORDINATES.** The left column is the player's team exactly, their own
+  hero among them, and the right is the enemy. The strategy screen draws
+  YOUR OWN team at the lanes your team chose and has nothing to draw the
+  enemy from unless you predicted them, so they come through at their
+  positions in the world — a coordinate space that is visibly different,
+  four figures against three.
+  **IT CANNOT INVERT, which is the fault every other rule here has had.**
+  The player's own hero must be among the five on the slots; a
+  contradiction DECLINES rather than handing back the halves the other way
+  round, so the worst it can do is fall through to the rules that were
+  already there. That is what makes it safe to set `sides_certain` True
+  where the pairs cannot be.
+  **AND IT NEVER TAKES THE PAIRED CASE.** Predict the enemy lanes too and
+  all ten stand on the five slots, which is every earlier recording; this
+  rule wants exactly five on and five off, so that goes to the pairs
+  unchanged. The two rules partition the cases rather than competing.
 
   **Only `STRATEGY_TIME` is read**, and the first complete reading is
   latched for the match by `GsiProvider`. After strategy time the minimap

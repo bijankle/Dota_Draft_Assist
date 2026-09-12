@@ -1,0 +1,138 @@
+{
+ "provider": {
+  "name": "Dota 2"
+ },
+ "map": {
+  "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
+  "matchid": "8995290135"
+ },
+ "player": {
+  "name": "Bijson",
+  "team_name": "radiant"
+ },
+ "hero": {
+  "facet": 0,
+  "id": 86,
+  "name": "npc_dota_hero_rubick"
+ },
+ "draft": {},
+ "minimap": {
+  "o0": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_rubick",
+   "visionrange": 0,
+   "xpos": 0,
+   "yaw": 0,
+   "ypos": 0
+  },
+  "o1": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_rubick",
+   "visionrange": 0,
+   "xpos": 0,
+   "yaw": 0,
+   "ypos": 0
+  },
+  "o2": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_rubick",
+   "visionrange": 0,
+   "xpos": 0,
+   "yaw": 0,
+   "ypos": 0
+  },
+  "o3": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_axe",
+   "visionrange": 0,
+   "xpos": 1088,
+   "yaw": 0,
+   "ypos": 0
+  },
+  "o4": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_storm_spirit",
+   "visionrange": 0,
+   "xpos": 176,
+   "yaw": 0,
+   "ypos": -370
+  },
+  "o5": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_juggernaut",
+   "visionrange": 0,
+   "xpos": 752,
+   "yaw": 0,
+   "ypos": -144
+  },
+  "o6": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_rubick",
+   "visionrange": 0,
+   "xpos": 176,
+   "yaw": 0,
+   "ypos": 370
+  },
+  "o7": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_riki",
+   "visionrange": 0,
+   "xpos": 3968,
+   "yaw": 0,
+   "ypos": -2885
+  },
+  "o8": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_grimstroke",
+   "visionrange": 0,
+   "xpos": 3740,
+   "yaw": 0,
+   "ypos": -2972
+  },
+  "o9": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_hoodwink",
+   "visionrange": 0,
+   "xpos": 752,
+   "yaw": 0,
+   "ypos": 144
+  },
+  "o10": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_snapfire",
+   "visionrange": 0,
+   "xpos": 3865,
+   "yaw": 0,
+   "ypos": -3513
+  },
+  "o11": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_nyx_assassin",
+   "visionrange": 0,
+   "xpos": 3917,
+   "yaw": 0,
+   "ypos": -3175
+  },
+  "o12": {
+   "image": "minimap_plaincircle",
+   "team": 2,
+   "unitname": "npc_dota_hero_winter_wyvern",
+   "visionrange": 0,
+   "xpos": 3634,
+   "yaw": 0,
+   "ypos": -2526
+  }
+ }
+}
