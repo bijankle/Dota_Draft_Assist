@@ -136,3 +136,79 @@ def test_a_frame_with_only_text_is_refused(art):
     found = fp.hunt(fp.autocal._grey(frame), art)
     if found is not None:
         assert fp.banks_from(found[2], found[0]) is None
+
+
+# --------------------------------------------------------------------
+# WHAT THE HUD DOES TO A PORTRAIT, which is what decides whether
+# matching the artwork can work at all. Measured, not assumed:
+#
+#   damage            slots located (whole art)   (centre 76%)
+#   tint / gamma              10 / 10               10 / 10
+#   + HUD border               6 / 10               10 / 10
+#
+# Normalised cross-correlation ignores brightness and contrast outright,
+# so a team tint and a gamma shift cost nothing at all. A BORDER does,
+# because a template covering the whole picture necessarily overlaps it
+# - and a template covering only the middle never can, which is what
+# `INSET` is for and the only reason the border row passes.
+
+
+def hud_damage(art, team_bgr, border=True):
+    """A portrait as the HUD draws it: tinted, gamma-shifted, framed."""
+    out = cv2.addWeighted(art, 0.80, np.full_like(art, team_bgr), 0.20, 0)
+    out = np.clip(out.astype(np.float32) ** 1.15 / (255 ** 0.15),
+                  0, 255).astype(np.uint8)
+    if border:
+        h, w = out.shape[:2]
+        edge = max(2, int(w * 0.04))
+        out[:edge] = out[-edge:] = team_bgr
+        out[:, :edge] = out[:, -edge:] = team_bgr
+    return out
+
+
+def frame_with_hud(width, height, radiant_x, dire_x, pitch, slot_w, top):
+    slot_h = int(round(slot_w / fp.PORTRAIT_ASPECT))
+    frame = frame_with_bar(width, height, radiant_x, dire_x, pitch, slot_w,
+                           top, heroes=[])
+    for index in range(10):
+        bank_x = radiant_x if index < 5 else dire_x
+        x = bank_x + (index % 5) * pitch
+        team = (60, 120, 60) if index < 5 else (60, 60, 140)
+        frame[top:top + slot_h, x:x + slot_w] = cv2.resize(
+            hud_damage(art_for(index + 1), team), (slot_w, slot_h),
+            interpolation=cv2.INTER_AREA)
+    return frame
+
+
+@pytest.mark.parametrize("name,w,h,rx,dx,pitch,slot_w,top", CASES)
+def test_a_tinted_and_framed_bar_is_still_located(art, name, w, h, rx, dx,
+                                                  pitch, slot_w, top):
+    frame = frame_with_hud(w, h, rx, dx, pitch, slot_w, top)
+    found = fp.hunt(fp.autocal._grey(frame), art)
+    assert found is not None, f"{name}: recognised nothing through the HUD"
+    got_w, _got_h, hits = found
+    banks = fp.banks_from(hits, got_w)
+    assert banks is not None, f"{name}: {len(hits)} hits did not form banks"
+    got_rx, got_dx, got_pitch, got_top = banks
+    assert got_top < h * 0.05
+    assert abs(got_pitch - pitch) <= max(4, pitch * 0.08)
+    assert abs(got_rx - rx) <= max(6, slot_w * 0.15)
+    assert abs(got_dx - dx) <= max(6, slot_w * 0.15)
+
+
+def test_the_inset_is_what_carries_the_border_case(art, monkeypatch):
+    """Hold the measurement that chose INSET, so it cannot be tuned away.
+
+    With the whole portrait as the template the same framed bar is
+    located far worse. If someone sets INSET to 0 because it looks like
+    a free simplification, this says what it costs.
+    """
+    frame = frame_with_hud(*CASES[0][1:])
+    grey = fp.autocal._grey(frame)
+    with_inset = fp.hunt(grey, art)
+    monkeypatch.setattr(fp, "INSET", 0.0)
+    without = fp.hunt(grey, art)
+    assert with_inset is not None
+    kept = len(with_inset[2])
+    assert kept >= 8, f"the inset sweep found only {kept}"
+    assert kept >= len(without[2]) if without else True

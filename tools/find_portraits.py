@@ -77,8 +77,22 @@ PORTRAIT_ASPECT = autocal.PORTRAIT_ASPECT
 # Here 126 templates are swept against a frame that holds ten of them, so
 # 116 of every 126 matches are wrong by construction and the floor is
 # what keeps them out.
-HIT_FLOOR = 0.45
+# MEASURED RATHER THAN CHOSEN, and it turns out to matter far less than
+# it looks. Sweeping a strip at 0.45 and at 0.30 produces the SAME ten
+# positions: the work is done by "the row carrying the most distinct
+# hits", not by the floor. It is kept low enough not to throw away a
+# portrait the HUD has knocked about.
+HIT_FLOOR = 0.30
 MIN_HITS = 4              # fewer than this is not a pick bar
+# MATCH THE MIDDLE OF THE ART, NOT ALL OF IT. Dota draws a frame around
+# each portrait in the pick bar, and a template that covers the whole
+# picture necessarily overlaps that frame - which is the one kind of HUD
+# damage that measurably breaks this. Measured over a strip of ten
+# portraits with a border painted on: whole-portrait templates located
+# 6 of the 10 slots, centre-76% templates located 10 of 10, and the
+# margin between the right hero and the best wrong one went from -0.064
+# to +0.120. Costs nothing on an undamaged frame (0.987 against 1.000).
+INSET = 0.12
 
 
 def read_image(path: Path):
@@ -138,6 +152,38 @@ def _one_row(hits, apart: int):
     return best[1] if best else []
 
 
+def _template(art, inset: float = INSET):
+    """The middle of a portrait — see INSET."""
+    if inset <= 0:
+        return art
+    rows, cols = art.shape[:2]
+    return art[int(rows * inset):rows - int(rows * inset),
+               int(cols * inset):cols - int(cols * inset)]
+
+
+def _sweep(strip, art: dict, box_w: int, box_h: int):
+    """Every hero's best hit at one portrait size, in SLOT coordinates.
+
+    The template covers the middle of the art, so what `matchTemplate`
+    returns is where that middle is; the slot's own corner is an inset
+    further out. Reporting the inset rectangle as the slot would put
+    every box 12% of a portrait down and to the right.
+    """
+    inner_w = max(8, int(round(box_w * (1 - 2 * INSET))))
+    inner_h = max(8, int(round(box_h * (1 - 2 * INSET))))
+    back_x = int(round(box_w * INSET))
+    back_y = int(round(box_h * INSET))
+    hits = []
+    for hero_id, whole in art.items():
+        found = autocal._best_at(strip, _template(whole), inner_w, inner_h)
+        if found is None:
+            continue
+        score, (x, y) = found
+        if score >= HIT_FLOOR:
+            hits.append((score, x - back_x, y - back_y, hero_id))
+    return hits
+
+
 def hunt(grey, art: dict, note=None):
     """(slot_w, slot_h, hits) in this picture's own pixels, or None.
 
@@ -148,6 +194,15 @@ def hunt(grey, art: dict, note=None):
     count is the discriminator, and it is why this cannot be fooled by a
     line of text the way an edge fit is - a word does not correlate with
     Lion's portrait however evenly its letters are spaced.
+
+    **WHAT IS BEING ASKED FOR IS GEOMETRY, NOT IDENTITY**, and that is
+    why this works at thresholds that would be far too loose for
+    recognition. Measured against a strip with a HUD border painted over
+    every portrait, whole-portrait templates named the right hero in 0
+    of 10 slots and still found 10 of 10 POSITIONS - because the thing a
+    wrong hero's portrait correlates best with is another portrait, and
+    a misidentified slot is still a slot. `recognize.py` is what answers
+    "which hero"; this only has to say where to look.
     """
     rows, width = grey.shape[:2]
     band = grey[:max(16, int(rows * TOP_REACH))]
@@ -160,19 +215,12 @@ def hunt(grey, art: dict, note=None):
     for frac in WIDTH_FRACS:
         box_w = int(round(frac * small.shape[1]))
         box_h = int(round(box_w / PORTRAIT_ASPECT))
-        if box_w < 10 or box_h < 8 or box_h >= small.shape[0]:
+        if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
             continue
-        hits = []
-        for hero_id, template in art.items():
-            found = autocal._best_at(small, template, box_w, box_h)
-            if found is None:
-                continue
-            score, (x, y) = found
-            if score >= HIT_FLOOR:
-                hits.append((score, x, y, hero_id))
-        keep = _one_row(hits, box_w)
+        keep = _one_row(_sweep(small, art, box_w, box_h), box_w)
         if note is not None and keep:
-            note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)")
+            note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)"
+                 f"  best {max(keep)[0]:.2f}")
         if len(keep) < MIN_HITS:
             continue
         # MOST HITS WINS, and the total score only breaks a tie. A size
@@ -191,21 +239,20 @@ def hunt(grey, art: dict, note=None):
     # time at FULL resolution, on the hero that matched best, exactly as
     # `autocal.find_scale` does after its own decimated pass.
     scale = width / float(small.shape[1])
-    full_w = max(10, int(round(box_w * scale)))
-    full_h = max(8, int(round(box_h * scale)))
-    anchor = max(keep)[3]
-    full_w, full_h, _score = autocal._refine(
-        band, art[anchor], full_w, full_h, reach=max(3, int(scale) + 2))
+    full_w = max(12, int(round(box_w * scale)))
+    full_h = max(10, int(round(box_h * scale)))
+    anchor = _template(art[max(keep)[3]])
+    inner_w, inner_h, _score = autocal._refine(
+        band, anchor, max(8, int(full_w * (1 - 2 * INSET))),
+        max(8, int(full_h * (1 - 2 * INSET))), reach=max(3, int(scale) + 2))
+    full_w = int(round(inner_w / (1 - 2 * INSET)))
+    full_h = int(round(inner_h / (1 - 2 * INSET)))
 
     # And the positions are re-read at that exact size, for the heroes
     # already known to be there - ten matches rather than another sweep.
-    exact = []
-    for _s, _x, _y, hero_id in keep:
-        hit = autocal._best_at(band, art[hero_id], full_w, full_h)
-        if hit is None or hit[0] < HIT_FLOOR:
-            continue
-        exact.append((hit[0], hit[1][0], hit[1][1], hero_id))
-    exact = _one_row(exact, full_w)
+    exact = _one_row(
+        _sweep(band, {hid: art[hid] for _s, _x, _y, hid in keep},
+               full_w, full_h), full_w)
     if len(exact) < MIN_HITS:
         return None
     return full_w, full_h, exact
@@ -263,7 +310,8 @@ def boxes_of(radiant_x: int, dire_x: int, pitch: int, slot_w: int,
     return out
 
 
-def measure(path: Path, into: Path, art: dict, loud=False) -> dict:
+def measure(path: Path, into: Path, art: dict, loud=False,
+            strips=False) -> dict:
     frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
@@ -272,15 +320,22 @@ def measure(path: Path, into: Path, art: dict, loud=False) -> dict:
            "aspect": round(width / height, 4)}
 
     note = (lambda line: print(line, flush=True)) if loud else None
+    if strips:
+        strip_of(frame, path, into)
     found = hunt(autocal._grey(frame), art, note=note)
     if found is None:
         row["why"] = (f"no hero portrait recognised in the top "
                       f"{TOP_REACH:.0%} of this frame")
+        # A FAILURE WRITES ITS OWN EVIDENCE. Without the strip, "found
+        # nothing" is unanswerable: it could be the sweep, the artwork,
+        # or a screenshot whose pick slots are simply still empty.
+        strip_of(frame, path, into)
         return row
     slot_w, slot_h, hits = found
 
     banks = banks_from(hits, slot_w)
     if banks is None:
+        strip_of(frame, path, into)
         row["why"] = (f"recognised {len(hits)} portrait(s) but they do not "
                       "fall into two banks")
         row["heroes"] = len(hits)
@@ -356,6 +411,29 @@ def slices(frame, rects, path: Path, into: Path) -> None:
         (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
 
 
+def strip_of(frame, path: Path, into: Path) -> None:
+    """The band that was searched, saved as a picture.
+
+    EVERY CONCLUSION ABOUT THIS BAR HAS BEEN A SIMULATION. How much the
+    HUD alters a portrait decides whether matching the artwork can work
+    at all - a tint costs nothing, a border costs everything unless the
+    template is inset, something drawn ON the art breaks it outright -
+    and which of those is true of Dota cannot be reasoned out from here.
+    One look at the real strip answers it, so a failed frame writes one
+    without being asked.
+    """
+    height = frame.shape[0]
+    band = frame[:max(16, int(height * TOP_REACH))]
+    if band.shape[1] > 1600:
+        factor = 1600 / band.shape[1]
+        band = cv2.resize(band, (1600, max(1, int(band.shape[0] * factor))),
+                          interpolation=cv2.INTER_AREA)
+    into.mkdir(parents=True, exist_ok=True)
+    ok, buffer = cv2.imencode(".png", band)
+    if ok:
+        (into / f"{path.stem}-strip.png").write_bytes(buffer.tobytes())
+
+
 def draw(frame, rects, path: Path, into: Path) -> None:
     """The ten boxes, over the picture, cropped to the bar and its
     surroundings so the file is small enough to attach."""
@@ -390,6 +468,9 @@ def main() -> None:
                              "filename to resume AFTER")
     parser.add_argument("--only", default="",
                         help="comma-separated names to do and nothing else")
+    parser.add_argument("--strips", action="store_true",
+                        help="also save the searched band of every frame, "
+                             "not only the ones that fail")
     parser.add_argument("--loud", action="store_true",
                         help="print every size tried and what it matched")
     args = parser.parse_args()
@@ -445,7 +526,8 @@ def main() -> None:
         # empty table?" - and the honest answer took a stopwatch.
         print(f"[{number}/{len(shots)}] {shot.name} ...",
               end="", flush=True)
-        row = measure(shot, into, art, loud=args.loud)
+        row = measure(shot, into, art, loud=args.loud,
+                      strips=args.strips)
         print("\r" + " " * 60 + "\r", end="", flush=True)
         rows.append(row)
         if "why" in row:
@@ -475,6 +557,8 @@ def main() -> None:
     print(f"\nPictures -> {into}")
     print("  <name>-found.png   the ten boxes drawn on the frame")
     print("  <name>-slices.png  the ten crops, side by side, enlarged")
+    print("  <name>-strip.png   the band that was searched (failures "
+          "always; all of them with --strips)")
     print("CHECK THE SLICES. A fit half a portrait out still draws a tidy "
           "row of boxes; cut the crops out and it is obvious at once.")
     if args.json:
