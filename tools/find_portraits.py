@@ -52,6 +52,18 @@ STEP = 2                  # how far the band moves each try, in work pixels
 # wider than its range allows once the HUD is not the whole screen.
 BANK_START = (0.01, 0.40)
 BANK_PITCH = (0.025, 0.140)
+# THE BAR IS AT THE TOP OF THE WINDOW, which is the one thing the user
+# said outright - "no, heroes are always at the top" - and the first
+# version of this tool ignored it, scanning to the bottom of the frame
+# on the grounds of assuming nothing. That is not caution, it is throwing
+# away evidence: on a plain 1280x720 it duly found a "pick bar" 57% of
+# the way down the screen. Top of the WINDOW, never of the 16:9 HUD box,
+# because the box is the model under suspicion. A third is generous -
+# the real bar ends inside the top 15% of every frame measured so far.
+TOP_REACH = 0.33
+# A portrait is at least this much of its own pitch. See
+# `autocal._mirrored_fit`: it is the guard against fitting a harmonic.
+NARROWEST = 0.85
 
 
 def read_image(path: Path):
@@ -74,6 +86,7 @@ def scan(grey: np.ndarray):
     above and below the bar.
     """
     rows, width = grey.shape[:2]
+    rows = max(BAND + 1, int(rows * TOP_REACH))
     starts = np.arange(int(width * BANK_START[0]), int(width * BANK_START[1]))
     pitches = range(int(width * BANK_PITCH[0]), int(width * BANK_PITCH[1]) + 1)
     if not starts.size or not len(pitches):
@@ -84,7 +97,7 @@ def scan(grey: np.ndarray):
         band = grey[top:top + BAND]
         raw = autocal._edge_profile(band)
         fit = autocal._mirrored_fit(autocal._tolerant(raw), raw, width,
-                                    starts, pitches)
+                                    starts, pitches, narrowest=NARROWEST)
         if fit is None:
             continue
         score = fit[0]
@@ -244,6 +257,11 @@ def main() -> None:
     parser.add_argument("folder")
     parser.add_argument("--out", default=str(ROOT / "debug_out" / "found"))
     parser.add_argument("--json", default="")
+    parser.add_argument("--skip", default="",
+                        help="comma-separated names already done, or a "
+                             "filename to resume AFTER")
+    parser.add_argument("--only", default="",
+                        help="comma-separated names to do and nothing else")
     args = parser.parse_args()
 
     folder = Path(args.folder).expanduser()
@@ -254,8 +272,22 @@ def main() -> None:
     if not shots:
         raise SystemExit(f"No images in {folder}")
 
+    # RESUMING IS THE NORMAL CASE, not an edge one. A run is minutes
+    # long and a console is one Ctrl+C away from losing all of it, so
+    # there has to be a way back in that does not redo what is done.
+    if args.only:
+        want = {n.strip().lower() for n in args.only.split(",") if n.strip()}
+        shots = [p for p in shots if p.name.lower() in want]
+    elif args.skip:
+        marks = [n.strip().lower() for n in args.skip.split(",") if n.strip()]
+        names = [p.name.lower() for p in shots]
+        if len(marks) == 1 and marks[0] in names:
+            shots = shots[names.index(marks[0]) + 1:]   # resume AFTER it
+        else:
+            shots = [p for p in shots if p.name.lower() not in set(marks)]
+
     into = Path(args.out)
-    print(f"{len(shots)} picture(s) in {folder}\n")
+    print(f"{len(shots)} picture(s) to do in {folder}\n")
     head = ("file", "WxH", "aspect", "bar top", "slot h", "rad x", "dire x",
             "slot w", "pitch", "x/width", "x/hud", "y/win", "y/hud")
     widths = (24, 11, 7, 8, 7, 8, 8, 7, 7, 8, 8, 8, 8)
@@ -263,12 +295,20 @@ def main() -> None:
     print("-" * (sum(widths) + 2 * len(widths)))
 
     rows = []
-    for shot in shots:
+    for number, shot in enumerate(shots, 1):
+        # SAY WHICH ONE IT IS ON. The first version printed only
+        # finished rows, so a minute of work per picture was
+        # indistinguishable from a hang - "is it loading, or is it an
+        # empty table?" - and the honest answer took a stopwatch.
+        print(f"[{number}/{len(shots)}] {shot.name} ...",
+              end="", flush=True)
         row = measure(shot, into)
+        print("\r" + " " * 60 + "\r", end="", flush=True)
         rows.append(row)
         if "why" in row:
             print(f"{row['file'][:24].ljust(24)}  "
-                  f"{row.get('w','?')}x{row.get('h','?')}   -- {row['why']}")
+                  f"{row.get('w','?')}x{row.get('h','?')}   -- {row['why']}",
+                  flush=True)
             continue
         cells = (row["file"][:24], f"{row['w']}x{row['h']}",
                  f"{row['aspect']:.3f}", row["bar_top_px"], row["slot_h_px"],
@@ -276,7 +316,8 @@ def main() -> None:
                  row["pitch_px"], f"{row['x_of_width']:.5f}",
                  f"{row['x_of_hudbox']:.5f}", f"{row['y_of_window']:.5f}",
                  f"{row['y_of_hudbox']:.5f}")
-        print("  ".join(str(c).ljust(w) for c, w in zip(cells, widths)))
+        print("  ".join(str(c).ljust(w) for c, w in zip(cells, widths)),
+              flush=True)
 
     good = [r for r in rows if "why" not in r]
     print(f"\n{len(good)} of {len(rows)} located.")

@@ -527,8 +527,17 @@ FIT_MARGIN = 1.35
 
 
 def _mirrored_fit(profile: np.ndarray, gutters: np.ndarray,
-                  width: int, starts, pitches):
+                  width: int, starts, pitches, narrowest: float = 0.55):
     """Best (score, start, pitch, slot_w) for two mirrored banks of five.
+
+    `narrowest` is the slimmest portrait allowed, as a share of its own
+    pitch, and it is THE GUARD AGAINST A HARMONIC. A fit at half the true
+    pitch puts twenty boundaries on ten real edges and ten more on
+    nothing, which the sum alone can still like — but it can only do that
+    by claiming a portrait about half the width of its own spacing. Real
+    portraits nearly touch. The live path keeps the loose 0.55 it was
+    measured with, because there a drawn rectangle already pins the scale;
+    a search with the start AND the scale free needs the tighter bar.
 
     Scored as `measure_bank` scores one bank — the sum of the boundaries
     AND the weakest of them — plus the gutters, which is the half
@@ -554,7 +563,7 @@ def _mirrored_fit(profile: np.ndarray, gutters: np.ndarray,
         return None
     best = None
     for pitch in pitches:
-        widths = np.arange(max(4, int(pitch * 0.55)),
+        widths = np.arange(max(4, int(pitch * narrowest)),
                            max(5, int(pitch * WIDEST_SLOT)) + 1)
         if not widths.size:
             continue
