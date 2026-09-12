@@ -199,6 +199,14 @@ class GeneralPage(QWidget):
             "so it appears on heroes you have never picked. Needs hero "
             "statistics downloaded; see Hero Counters in the History tab "
             "for the same figure."))
+        # WHAT THE BAR IS ACTUALLY DOING, live, under the control that
+        # sets it. "No shields" has four causes and one appearance - no
+        # statistics, a dataset with no matrix, a bar nothing can clear,
+        # and the ordinary case - and this mark has already shipped
+        # broken once looking exactly like the last of them. A count here
+        # tells a working feature from a broken one at a glance.
+        self.shield_note = _note("")
+        layout.addWidget(self.shield_note)
         layout.addStretch(1)
 
     def values(self) -> dict:
@@ -252,6 +260,20 @@ class SettingsWindow(QDialog):
 
     applied = pyqtSignal(dict)
 
+    def set_shield_note(self, text: str) -> None:
+        """What the gold shield's bar is currently doing, in a sentence.
+
+        Pushed in by `MainWindow` rather than worked out here, because
+        the window has no dataset and no business loading one: the count
+        is a by-product of the recompute that already happens whenever
+        the statistics or the bar change.
+        """
+        page = getattr(self, "general", None)
+        label = getattr(page, "shield_note", None) if page else None
+        if label is not None:
+            label.setText(text or "")
+            label.setVisible(bool(text))
+
     def __init__(self, settings: dict, pages, debug=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -262,6 +284,7 @@ class SettingsWindow(QDialog):
 
         self.general = GeneralPage(settings)
         self.general.changed.connect(self._apply)
+
         self.tabs.addTab(_scrolling(self.general), "General")
         for title, intro, commands in pages:
             self.tabs.addTab(_scrolling(ActionPage(intro, commands)), title)

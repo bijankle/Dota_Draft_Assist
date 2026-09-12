@@ -235,6 +235,9 @@ class MainWindow(QMainWindow):
         # than from any run, so it is filled before the History tab has
         # ever been opened.
         self.shields: dict = {}
+        # Why the shields are what they are, for Settings to print under
+        # the bar that sets them. Never empty after the first recompute.
+        self.shields_note: str = ""
         # Rectangles drawn on the debug picture during drag calibration.
         self._drag_rects: list[tuple[int, int, int, int]] = []
         # Heroes whose alternative portrait has been learned this session,
@@ -2962,11 +2965,17 @@ class MainWindow(QMainWindow):
         from .settings_window import SettingsWindow
 
         self.settings.setdefault("pair_source", pair_source())
-        if getattr(self, "settings_window", None) is None:
+        fresh = getattr(self, "settings_window", None) is None
+        if fresh:
             self.settings_window = SettingsWindow(
                 self.settings, self._command_groups(),
                 debug=getattr(self, "debug_tabs", None), parent=self)
             self.settings_window.applied.connect(self._apply_settings)
+            # A window built just now has missed every recompute that ever
+            # happened, so it would open with a blank line under the bar
+            # until something changed - which is the same "says nothing"
+            # this note exists to end.
+            self.settings_window.set_shield_note(self.shields_note)
         self.settings_window.show_tab(tab)
 
     def _apply_settings(self, values: dict) -> None:
@@ -3849,12 +3858,22 @@ class MainWindow(QMainWindow):
         """
         from ..history import analyse as analyse_mod
 
+        bar = ui_settings.clamp_pct(self.settings.get("shield_pct", 70), 70)
         try:
-            self.shields = analyse_mod.shielded(
-                self.ds,
-                ui_settings.clamp_pct(self.settings.get("shield_pct", 70), 70))
-        except Exception:                  # noqa: BLE001 - never fatal
+            self.shields, self.shields_note = analyse_mod.shield_report(
+                self.ds, bar)
+        except Exception as bad:           # noqa: BLE001 - never fatal
+            # STILL NEVER FATAL - a missing or malformed dataset must not
+            # take the app down - but no longer SILENT. This swallow is
+            # what kept the mark's absence indistinguishable from a mark
+            # nothing qualified for, and that is the state it shipped in.
             self.shields = {}
+            self.shields_note = (
+                f"The shields could not be worked out: "
+                f"{type(bad).__name__}: {bad}")
+        window = getattr(self, "settings_window", None)
+        if window is not None:
+            window.set_shield_note(self.shields_note)
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.

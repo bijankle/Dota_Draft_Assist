@@ -83,3 +83,42 @@ def test_moving_the_bar_in_settings_RE_MEASURES(window):
         "top 10%% must mark fewer heroes than top 30%% (%d vs %d)"
         % (len(narrow), len(wide)))
     assert set(narrow) <= set(wide), "and they are the same heroes"
+
+
+# ---- no shields must say WHICH cause ------------------------------------
+
+def test_the_reason_is_reported_beside_the_answer(window):
+    """NO SHIELDS HAS FOUR CAUSES AND ONE APPEARANCE, which is this app's
+    most repeated bug and was this mark's own: it was computed nowhere
+    for weeks and looked exactly like "no hero clears the bar"."""
+    assert window.shields_note, "the recompute said nothing about itself"
+    assert str(len(window.shields)) in window.shields_note
+
+
+def test_a_missing_dataset_says_so_rather_than_marking_nothing(qapp):
+    from draft_assist.data.store import empty_dataset
+    from draft_assist.history import analyse
+
+    marked, why = analyse.shield_report(empty_dataset(), 70)
+    assert marked == {}
+    assert "downloaded" in why.lower(), why
+
+
+def test_a_bar_nothing_can_clear_says_that_instead(qapp):
+    from test_hero_counters import a_dataset
+    ds = a_dataset([1, 2, 3], [[0, 1, 2], [-1, 0, 1], [-2, -1, 0]])
+    from draft_assist.history import analyse
+    marked, why = analyse.shield_report(ds, 100)
+    assert marked == {}
+    assert "100%" in why and "Lower the bar" in why
+
+
+
+def test_the_settings_page_prints_it_under_the_bar(window, qapp):
+    """A count beside the control tells a working feature from a broken
+    one at a glance, which is the whole complaint this answers."""
+    window._open_settings("General")
+    qapp.processEvents()
+    label = window.settings_window.general.shield_note
+    assert label.text() == window.shields_note
+    assert label.text(), "opened blank"

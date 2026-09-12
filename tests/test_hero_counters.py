@@ -45,6 +45,10 @@ def test_a_hero_the_field_beats_ranks_below_one_it_beats():
     # for the best of three, which is the same hero said backwards - and
     # an X axis running strong-to-weak against a Y axis running bad-to-
     # good would draw a real correlation as a downward slope.
+    # The share of the field STRICTLY easier to counter, so the hardest
+    # of three reads 67% and the most counterable reads 0%. Unchanged
+    # from counting by place - which is the point: the rule was made
+    # tie-safe without moving a single figure anybody sees.
     assert standing[max(deltas, key=deltas.get)] == "67%"
     assert standing[min(deltas, key=deltas.get)] == "0%"
 
@@ -155,11 +159,27 @@ def test_the_bar_is_strictly_above_the_floor():
     ds = a_dataset([1, 2, 3, 4, 5],
                    [[0, 1, 2, 3, 4], [-1, 0, 1, 2, 3], [-2, -1, 0, 1, 2],
                     [-3, -2, -1, 0, 1], [-4, -3, -2, -1, 0]])
-    # Five heroes: the best has 80% at or below it, the second 60%.
+    # Five heroes, so the percentiles are 80, 60, 40, 20, 0.
     assert set(analyse.shielded(ds, floor_pct=70)) == {1}
     assert set(analyse.shielded(ds, floor_pct=50)) == {1, 2}
-    # A floor of 99 is "the very top" and still admits the best hero.
-    assert set(analyse.shielded(ds, floor_pct=99)) == set()
+    # STRICTLY above: standing AT 80 does not clear a bar of 80.
+    assert set(analyse.shielded(ds, floor_pct=80)) == set()
+
+
+def test_heroes_on_IDENTICAL_scores_are_never_split_by_the_bar():
+    """The robustness fault this replaces. Ranking by POSITION gives two
+    heroes with the same delta different percentiles, according to
+    whatever order `sorted` happened to put them in - so one could wear
+    the shield and the other not, on evidence that does not tell them
+    apart at all. `stars.rank_fraction` has counted "at or below" for
+    exactly this reason since it was written; the shield was the one mark
+    that did not."""
+    tied = {1: 5.0, 2: 5.0, 3: 5.0, 4: -1.0}
+    shares = analyse.difficulty_percentiles(tied)
+    assert shares[1] == shares[2] == shares[3], "identical deltas, one answer"
+    assert shares[4] < shares[1]
+    # And the figures anybody sees are unchanged by the fix.
+    assert shares[4] == 0.0
 
 
 def test_no_statistics_means_no_shields_rather_than_all_of_them():

@@ -529,6 +529,44 @@ def field_deltas(ds) -> dict:
     return out
 
 
+def difficulty_percentiles(deltas: dict) -> dict:
+    """hero id -> 0-100, LARGE MEANING HARD TO COUNTER.
+
+    THE ONE SPELLING. This was computed independently in three places -
+    the standing printed beside a hero, the bar the table draws, and the
+    figure the shield tests against - each as `(count - place) / count`
+    off its own `sorted()`. They agreed, which is the dangerous kind of
+    duplication: nothing would have caught them drifting, and a mark
+    appearing on a hero whose own printed figure says it should not is
+    the failure that follows.
+
+    TIES SHARE ONE ANSWER, which position-counting cannot do. Ranking by
+    place gives two heroes on IDENTICAL deltas different percentiles
+    according to whatever order `sorted` happened to put them in - so one
+    could wear the shield and the other not, on evidence that does not
+    tell them apart at all. `stars.rank_fraction` has counted a share
+    rather than a place since it was written for exactly this reason; the
+    shield was the one mark that did not.
+
+    STRICTLY BELOW, which is where this parts company with the stars, and
+    deliberately. Counting "at or below" would make the hardest hero of
+    the pool read 100% - a claim that nothing counters it at all - and
+    would shift every figure a step off the arithmetic the user asked
+    for: "if Sniper is in the top 9% then his score is 91%". Counting the
+    share STRICTLY easier to counter gives exactly that, leaves the most
+    counterable hero at 0% where it belongs, and is just as safe on ties,
+    because heroes with equal deltas have equal numbers below them.
+    """
+    if not deltas:
+        return {}
+    count = len(deltas)
+    ordered = sorted(deltas.values())
+    # The share of the field that is strictly easier to counter.
+    return {hero_id: 100.0 * sum(1 for other in ordered if other < value)
+            / count
+            for hero_id, value in deltas.items()}
+
+
 def counter_standings(ds) -> tuple:
     """(delta per hero, "88%" per hero, the pool's own average).
 
@@ -556,15 +594,11 @@ def counter_standings(ds) -> tuple:
     deltas = field_deltas(ds)
     if not deltas:
         return {}, {}, 0.0
-    order = sorted(deltas, key=lambda h: -deltas[h])
-    count = len(order)
-    standing = {}
-    for place, hero_id in enumerate(order, start=1):
-        # Place 1 is the hardest to counter, so the share of the field it
-        # is at least as hard to counter as is (count - place) / count.
-        # The same quantity `shielded` compares against its bar, so the
-        # number printed and the number tested cannot drift apart.
-        standing[hero_id] = f"{round(100.0 * (count - place) / count)}%"
+    count = len(deltas)
+    # The number printed, the number the bar draws and the number the
+    # shield is tested against are ONE quantity, computed once.
+    pct = difficulty_percentiles(deltas)
+    standing = {hero_id: f"{round(share)}%" for hero_id, share in pct.items()}
     # The pool's own pick-weighted average, which is what a hero is read
     # against. Near zero by construction (the matrix is antisymmetric),
     # but computed rather than assumed to be.
@@ -602,20 +636,44 @@ def shielded(ds, floor_pct: int = 70) -> dict:
     the 70th percentile means 70% are at or below you, which is the top
     of the bottom 70% rather than the top 30%.
     """
+    return shield_report(ds, floor_pct)[0]
+
+
+def shield_report(ds, floor_pct: int = 70) -> tuple:
+    """({hero id: why}, a sentence saying what happened).
+
+    NO SHIELDS HAS FOUR CAUSES AND ONE APPEARANCE, which is this app's
+    most repeated bug and was this mark's own: it was computed nowhere
+    for weeks and looked exactly like "no hero clears the bar". The
+    causes are: no statistics downloaded at all, a dataset carrying no
+    matchup matrix, a bar set so high nothing can clear it, and the
+    ordinary case of a bar nothing happens to clear today. A mark that
+    silently produces nothing cannot be told from a broken one, so the
+    reason is returned beside the answer and the Settings page prints it
+    under the bar that sets it.
+    """
     deltas, standing, _datum = counter_standings(ds)
     if not deltas:
-        return {}
-    order = sorted(deltas, key=lambda h: -deltas[h])
-    count = len(order)
-    out = {}
-    for place, hero_id in enumerate(order, start=1):
-        # `place` 1 is the least counterable, so the fraction AT OR BELOW
-        # this hero is (count - place) / count.
-        below = (count - place) / count
-        if below * 100 > float(floor_pct):
-            out[hero_id] = (f"Hard to counter = {sig(deltas[hero_id])} "
-                            f"vs the field ({standing[hero_id]})")
-    return out
+        if ds is None or getattr(ds, "is_empty", True):
+            return {}, ("No hero statistics downloaded yet, so nothing can "
+                        "be marked. Settings > Downloads.")
+        return {}, ("The statistics on disk carry no hero-versus-hero "
+                    "matrix, so difficulty to counter cannot be worked "
+                    "out. Re-run Settings > Downloads > Statistics.")
+
+    pct = difficulty_percentiles(deltas)
+    # STRICTLY ABOVE, the same rule the stars follow: standing AT the
+    # 70th percentile means 70% are at or below you, which is the top of
+    # the bottom 70% rather than the top 30%.
+    out = {hero_id: (f"Hard to counter = {sig(deltas[hero_id])} "
+                     f"vs the field ({standing[hero_id]})")
+           for hero_id, share in pct.items() if share > float(floor_pct)}
+    if not out:
+        return out, (f"No hero is above {floor_pct}% difficulty to counter, "
+                     f"out of {len(deltas)} measured. Lower the bar to mark "
+                     "more.")
+    return out, (f"{len(out)} of {len(deltas)} heroes are above "
+                 f"{floor_pct}% difficulty to counter.")
 
 
 def counter_analysis(matches, ds) -> Block:
@@ -657,12 +715,7 @@ def counter_analysis(matches, ds) -> Block:
     # everybody and says nothing. Percentiles are UNIFORM by
     # construction, so the column always uses its full width however
     # tightly the underlying numbers bunch up.
-    order = sorted(deltas, key=lambda h: -deltas[h])
-    count = len(order)
-    # Place 1 is the hardest to counter, so the share AT OR BELOW it is
-    # (count - place) / count - which is the "91%" in the request.
-    percentile = {hero_id: 100.0 * (count - place) / count
-                  for place, hero_id in enumerate(order, start=1)}
+    percentile = difficulty_percentiles(deltas)
 
     rows = []
     for hero_id, bucket in played.items():
