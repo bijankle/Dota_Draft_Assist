@@ -165,7 +165,54 @@ def measure(path: Path, into: Path) -> dict:
         "boxes": rects,
     })
     draw(frame, rects, path, into)
+    slices(frame, rects, path, into)
     return row
+
+
+def slices(frame, rects, path: Path, into: Path) -> None:
+    """The TEN CROPS, side by side and enlarged, exactly as cut.
+
+    At the user's request: "I want you to show me snippets of what each
+    portrait looks like according to where the image recognition engine
+    thinks the portraits are."
+
+    This is the check that matters and the one a box drawn on a wide
+    screenshot cannot give. A fit that is half a portrait out still draws
+    a tidy row of rectangles at a glance; cut the crops out and stand
+    them next to each other and it is obvious at once, because every one
+    of them is half a hero and half the gap.
+
+    Numbered 1 to 10, left bank first, on the order they are cut in - so
+    a crop that is empty or doubled names its own slot.
+    """
+    tall = 120
+    tiles = []
+    for x, y, w, h in rects:
+        crop = frame[max(0, y):y + h, max(0, x):x + w]
+        if crop.size == 0:
+            crop = np.zeros((max(1, h), max(1, w), 3), np.uint8)
+        factor = tall / max(1, crop.shape[0])
+        tiles.append(cv2.resize(
+            crop, (max(1, int(crop.shape[1] * factor)), tall),
+            interpolation=cv2.INTER_NEAREST))
+
+    gap = 6
+    width = sum(t.shape[1] for t in tiles) + gap * (len(tiles) + 1)
+    sheet = np.full((tall + 34 + gap * 2, width, 3), 24, np.uint8)
+    at = gap
+    for index, tile in enumerate(tiles):
+        sheet[gap:gap + tall, at:at + tile.shape[1]] = tile
+        # GREEN FOR THE LEFT BANK, RED FOR THE RIGHT, the same two
+        # colours the boxes are drawn in, so the two pictures can be read
+        # against each other without a legend.
+        colour = (90, 220, 90) if index < 5 else (80, 80, 240)
+        cv2.putText(sheet, str(index + 1), (at + 4, tall + gap + 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, colour, 2, cv2.LINE_AA)
+        at += tile.shape[1] + gap
+    into.mkdir(parents=True, exist_ok=True)
+    ok, buffer = cv2.imencode(".png", sheet)
+    if ok:
+        (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
 
 
 def draw(frame, rects, path: Path, into: Path) -> None:
@@ -239,9 +286,11 @@ def main() -> None:
         if values:
             print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
                   f"   spread {max(values) - min(values):.5f}")
-    print(f"\nAnnotated pictures -> {into}")
-    print("CHECK THEM BY EYE. A fit that is one portrait out still scores "
-          "well and still prints a tidy table.")
+    print(f"\nPictures -> {into}")
+    print("  <name>-found.png   the ten boxes drawn on the frame")
+    print("  <name>-slices.png  the ten crops, side by side, enlarged")
+    print("CHECK THE SLICES. A fit half a portrait out still draws a tidy "
+          "row of boxes; cut the crops out and it is obvious at once.")
     if args.json:
         Path(args.json).write_text(json.dumps(rows, indent=1),
                                    encoding="utf-8")
