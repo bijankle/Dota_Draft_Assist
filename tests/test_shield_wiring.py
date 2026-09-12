@@ -122,3 +122,26 @@ def test_the_settings_page_prints_it_under_the_bar(window, qapp):
     label = window.settings_window.general.shield_note
     assert label.text() == window.shields_note
     assert label.text(), "opened blank"
+
+
+def test_the_shield_does_not_print_over_the_heros_own_name(window, qapp):
+    """The two top corners are free space ON A PORTRAIT - and are exactly
+    where the NAME goes when there is no portrait, which is every fresh
+    install. A shielded hero printed a gold shield across the first
+    letters of its own name."""
+    from draft_assist.ui import tilekit
+    from PyQt6.QtCore import QRect
+
+    for _ in range(6):
+        window.refresh()
+        qapp.processEvents()
+    worn = [t for t in window.suggest_row._tiles if t.shielded]
+    assert worn, "no tile to check"
+    tile = worn[0]
+    box = QRect(0, 0, tile.width(), tile.height())
+    mark = tilekit.star_box(box)
+    # Where the name is drawn once a mark is present.
+    name_top = mark.bottom() + 2
+    assert name_top > mark.top(), "the name starts below the mark"
+    assert name_top < box.bottom() - box.height() // 4, (
+        "and there is still room left to draw it in")

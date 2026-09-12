@@ -200,9 +200,17 @@ class SuggestTile(QWidget):
             # a 22px strip can fail to fit at all and draw NOTHING, which
             # is a tile that says neither picture nor name. The bottom
             # quarter is left clear so the badge does not land on it.
-            tilekit.paint_band(painter,
-                               box.adjusted(0, 0, 0, -box.height() // 4),
-                               self.hero_name, self.font())
+            # AND IT DROPS BELOW THE MARKS. The heart and the shield take
+            # the two top corners, which is free space on a portrait and
+            # is exactly where this name sits when there is no portrait -
+            # so a shielded hero on a fresh install printed a gold shield
+            # over the first letters of its own name. With art there is
+            # nothing to move; without it, the name starts under them.
+            name_box = box.adjusted(0, 0, 0, -box.height() // 4)
+            if self._starred or self._shielded:
+                name_box.setTop(tilekit.star_box(box).bottom() + 2)
+            tilekit.paint_band(painter, name_box, self.hero_name,
+                               self.font())
         # Same figure, same corner, same colours as a drafted tile: a
         # suggestion and a pick have to be comparable at a glance.
         if self._delta:
