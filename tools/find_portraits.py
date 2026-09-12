@@ -1,24 +1,40 @@
-"""Find the ten draft portraits ANYWHERE in a frame, and draw what it found.
+"""Find the ten draft portraits in a frame BY RECOGNISING THEM.
 
-WHY THIS IS NOT `autocal.find_banks`. That one searches the top 15% of
-Dota's 16:9 HUD box, because it is built for the live path where being
-fast matters and where the bar has always been at the top. It refused
-the user's real screenshots outright - "nothing in the top of this frame
-looks like two banks of five portraits" - and their read of it is the
-obvious one: "I think the search area is too small, so when we change
-the aspect ratio the portraits spill out into other areas."
+WHY THIS NO LONGER FITS EDGES. The first two versions looked for the
+only periodic feature a pick bar has - the seams between portraits - and
+fitted (start, pitch, width) against the column edge profile, the way
+`autocal.measure_bank` does inside a rectangle the user has drawn. Swept
+over a whole frame with nothing pinning it, that method has one failure
+it cannot avoid, and every one of the user's 23 screenshots hit it:
 
-So this makes NO assumption about where the bar is. It scans the whole
-frame for a horizontal row of two mirrored banks of five, over the FULL
-width rather than the 16:9 box - because the 16:9 box is exactly the
-model under suspicion, and a search restricted to it could only ever
-confirm what it already believes.
+    CHOOSE HERO      DARK WI[LLOW]      ENTERING BATTLE      LION
 
-IT SHOWS ITS WORK. For every picture it writes an annotated copy with
-the ten boxes it settled on drawn over them, because a table of numbers
-cannot be checked by eye and this is a calibration nobody should take on
-trust: "I'm expecting you to show me snippets of what you think the 10
-portraits are in each snippet."
+It locks onto TEXT. Letters are the strongest regularly spaced vertical
+edges on the screen by a wide margin - stronger than any seam between
+two portraits - and a row of words has near-uniform letter spacing, so
+it satisfies a pitch fit better than the thing being looked for. Every
+frame reported the bar between 12% and 17% down the window, which is a
+line of interface text, and not one of them ever looked at the top.
+Tightening the slot-to-pitch ratio did not help and could not: the fault
+is that an edge profile cannot tell a letter from a portrait.
+
+SO IT MATCHES THE ARTWORK. Valve's own portrait for every hero is
+already on disk (`assets/portraits/base/`, downloaded by
+`build_library`), so the question becomes "where in this frame is a hero
+portrait", which the word LION cannot answer yes to. It sweeps a range
+of sizes, matches all 126 heroes at each, and keeps the size that yields
+the most distinct confident hits - the right size gives about ten in two
+banks and every wrong size gives noise.
+
+It differs from `autocal.locate` in the two ways that matter here.
+`locate` sizes its search against the 16:9 HUD BOX, which is the model
+being tested, so this works in fractions of the WINDOW; and `find_scale`
+probes with `list(greys)[:2]`, two ARBITRARY heroes - fine in the live
+path, where the probes are heroes the minimap has just named, and wrong
+here, where nothing says those two are in the picture at all.
+
+IT SHOWS ITS WORK, which is the whole point: "I'm expecting you to show
+me snippets of what you think the 10 portraits are in each snippet."
 
     python tools/find_portraits.py <folder> [--out DIR] [--json FILE]
 
@@ -28,6 +44,7 @@ come from. Attach them, never commit them.
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -40,30 +57,28 @@ if str(ROOT) not in sys.path:
 
 from draft_assist import console                     # noqa: E402
 from draft_assist.vision import autocal              # noqa: E402
+from draft_assist.vision import library              # noqa: E402
 from draft_assist.vision.layout import hud_box       # noqa: E402
 
 SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
-WORK_WIDTH = 960          # the scan runs on a picture this wide
-BAND = 9                  # rows averaged for one horizontal fit
-STEP = 2                  # how far the band moves each try, in work pixels
-# GENEROUS, because the whole point is not to assume. `autocal` looks for
-# a bank starting 2% to 26% across the HUD BOX; over the full width of a
-# letterboxed frame the same bar can start further in, and a pitch can be
-# wider than its range allows once the HUD is not the whole screen.
-BANK_START = (0.01, 0.40)
-BANK_PITCH = (0.025, 0.140)
-# THE BAR IS AT THE TOP OF THE WINDOW, which is the one thing the user
-# said outright - "no, heroes are always at the top" - and the first
-# version of this tool ignored it, scanning to the bottom of the frame
-# on the grounds of assuming nothing. That is not caution, it is throwing
-# away evidence: on a plain 1280x720 it duly found a "pick bar" 57% of
-# the way down the screen. Top of the WINDOW, never of the 16:9 HUD box,
-# because the box is the model under suspicion. A third is generous -
-# the real bar ends inside the top 15% of every frame measured so far.
+WORK_WIDTH = 960          # the hunt runs on a picture this wide
+# THE BAR IS AT THE TOP OF THE WINDOW - "no, heroes are always at the
+# top" - and of the WINDOW rather than of the 16:9 HUD box, since the box
+# is the model under suspicion. A third is generous; every frame measured
+# so far puts the whole bar inside the top 15%.
 TOP_REACH = 0.33
-# A portrait is at least this much of its own pitch. See
-# `autocal._mirrored_fit`: it is the guard against fitting a harmonic.
-NARROWEST = 0.85
+# A portrait's width as a share of the WINDOW's width. Wide, because the
+# whole question is what this actually is on each aspect ratio.
+WIDTH_FRACS = tuple(round(0.022 + 0.004 * i, 4) for i in range(24))
+PORTRAIT_ASPECT = autocal.PORTRAIT_ASPECT
+# How well a portrait must match before it counts as found. Higher than
+# `autocal.MIN_SCORE` (0.35) on purpose: that one is applied when the ten
+# heroes are already KNOWN, so a weak best-of-ten is still informative.
+# Here 126 templates are swept against a frame that holds ten of them, so
+# 116 of every 126 matches are wrong by construction and the floor is
+# what keeps them out.
+HIT_FLOOR = 0.45
+MIN_HITS = 4              # fewer than this is not a pick bar
 
 
 def read_image(path: Path):
@@ -76,50 +91,179 @@ def read_image(path: Path):
     return cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
 
 
-def scan(grey: np.ndarray):
-    """(score, y, start, pitch, slot_w) in this picture's own pixels.
+def load_art() -> dict[int, "np.ndarray"]:
+    """Every base portrait on disk, in grey, keyed by hero id."""
+    out = {}
+    for path in sorted(library.BASE_DIR.glob("*.png")):
+        match = re.match(r"(\d+)_", path.name)
+        if not match:
+            continue
+        image = read_image(path)
+        if image is None or not image.size:
+            continue
+        out[int(match.group(1))] = autocal._grey(image)
+    return out
 
-    One horizontal fit per candidate row band, all the way down the
-    frame. The band is thin: `_edge_profile` averages the column
-    differences over its rows, so any band lying INSIDE the portraits
-    carries their borders, and a thin one cannot be diluted by the rows
-    above and below the bar.
+
+def _one_row(hits, apart: int):
+    """The single best ROW of hits, strongest first, one per position.
+
+    Two constraints, and both are facts about a pick bar rather than
+    tuning. Ten portraits stand on ONE line, so hits at different heights
+    are not ten heroes, they are one hero matched well and nine matched
+    somewhere else; the row carrying the most distinct heroes wins. And
+    two heroes cannot occupy the same place, so a second template landing
+    on one already kept is that same portrait matched by the wrong hero -
+    which is the normal case when 126 templates are swept over a frame
+    holding ten of them.
+
+    An earlier version suppressed on x OR y, which let a hit at the same
+    x and a different y through as a separate hero and reported thirteen
+    portraits in a bar of ten.
+    """
+    if not hits:
+        return []
+    tolerance = max(2, int(apart * 0.15))
+    best = None
+    for anchor in sorted({hit[2] for hit in hits}):
+        kept = []
+        for hit in sorted(hits, reverse=True):
+            if abs(hit[2] - anchor) > tolerance:
+                continue
+            if all(abs(hit[1] - other[1]) >= apart * 0.7 for other in kept):
+                kept.append(hit)
+        rank = (len(kept), sum(hit[0] for hit in kept))
+        if best is None or rank > best[0]:
+            best = (rank, kept)
+    return best[1] if best else []
+
+
+def hunt(grey, art: dict, note=None):
+    """(slot_w, slot_h, hits) in this picture's own pixels, or None.
+
+    One sweep of every hero at every candidate SIZE. The size is what is
+    really being searched for: portraits are all one size on screen, so
+    the right one produces about ten confident hits standing apart from
+    each other and every wrong one produces a handful of accidents. That
+    count is the discriminator, and it is why this cannot be fooled by a
+    line of text the way an edge fit is - a word does not correlate with
+    Lion's portrait however evenly its letters are spaced.
     """
     rows, width = grey.shape[:2]
-    rows = max(BAND + 1, int(rows * TOP_REACH))
-    starts = np.arange(int(width * BANK_START[0]), int(width * BANK_START[1]))
-    pitches = range(int(width * BANK_PITCH[0]), int(width * BANK_PITCH[1]) + 1)
-    if not starts.size or not len(pitches):
-        return None
+    band = grey[:max(16, int(rows * TOP_REACH))]
+    shrink = max(1.0, width / WORK_WIDTH)
+    small = cv2.resize(band, (int(width / shrink),
+                              max(1, int(band.shape[0] / shrink))),
+                       interpolation=cv2.INTER_AREA) if shrink > 1 else band
 
     best = None
-    for top in range(0, rows - BAND, STEP):
-        band = grey[top:top + BAND]
-        raw = autocal._edge_profile(band)
-        fit = autocal._mirrored_fit(autocal._tolerant(raw), raw, width,
-                                    starts, pitches, narrowest=NARROWEST)
-        if fit is None:
+    for frac in WIDTH_FRACS:
+        box_w = int(round(frac * small.shape[1]))
+        box_h = int(round(box_w / PORTRAIT_ASPECT))
+        if box_w < 10 or box_h < 8 or box_h >= small.shape[0]:
             continue
-        score = fit[0]
-        if best is None or score > best[0]:
-            best = (score, top, fit[1], fit[2], fit[3])
-    return best
+        hits = []
+        for hero_id, template in art.items():
+            found = autocal._best_at(small, template, box_w, box_h)
+            if found is None:
+                continue
+            score, (x, y) = found
+            if score >= HIT_FLOOR:
+                hits.append((score, x, y, hero_id))
+        keep = _one_row(hits, box_w)
+        if note is not None and keep:
+            note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)")
+        if len(keep) < MIN_HITS:
+            continue
+        # MOST HITS WINS, and the total score only breaks a tie. A size
+        # one pixel out still matches a few heroes very well; what it
+        # cannot do is match ten of them.
+        rank = (len(keep), sum(hit[0] for hit in keep))
+        if best is None or rank > best[0]:
+            best = (rank, box_w, box_h, keep)
+    if best is None:
+        return None
+    _rank, box_w, box_h, keep = best
+
+    # THE COARSE GRID ONLY HAS TO FIND THE NEIGHBOURHOOD. Its step is
+    # 0.4% of the window, which is five pixels at 1280 wide - enough to
+    # report an 80px portrait as 75. So the size is walked a pixel at a
+    # time at FULL resolution, on the hero that matched best, exactly as
+    # `autocal.find_scale` does after its own decimated pass.
+    scale = width / float(small.shape[1])
+    full_w = max(10, int(round(box_w * scale)))
+    full_h = max(8, int(round(box_h * scale)))
+    anchor = max(keep)[3]
+    full_w, full_h, _score = autocal._refine(
+        band, art[anchor], full_w, full_h, reach=max(3, int(scale) + 2))
+
+    # And the positions are re-read at that exact size, for the heroes
+    # already known to be there - ten matches rather than another sweep.
+    exact = []
+    for _s, _x, _y, hero_id in keep:
+        hit = autocal._best_at(band, art[hero_id], full_w, full_h)
+        if hit is None or hit[0] < HIT_FLOOR:
+            continue
+        exact.append((hit[0], hit[1][0], hit[1][1], hero_id))
+    exact = _one_row(exact, full_w)
+    if len(exact) < MIN_HITS:
+        return None
+    return full_w, full_h, exact
 
 
-def boxes_of(start: int, pitch: int, slot_w: int, width: int,
-             top: int, height: int) -> list:
-    """The ten rectangles, left bank then right, MIRRORED about the
-    centre - which is how the bar is built and how the fit found it."""
-    out = []
-    for i in range(autocal.TEAM_SIZE):
-        out.append((start + i * pitch, top, slot_w, height))
-    for i in range(autocal.TEAM_SIZE):
-        right = width - (start + i * pitch) - slot_w
-        out.append((right, top, slot_w, height))
-    return sorted(out)
+def banks_from(hits, slot_w: int):
+    """(radiant_x, dire_x, pitch, top) from where the heroes were found.
+
+    A pick bar is two banks of five, so the ten x positions hold one gap
+    far bigger than the rest - the space between the teams - and that is
+    where they split. Pitch is the MEDIAN step inside a bank rather than
+    the mean: a missing hero leaves a double-width step, and a median
+    over the rest is unmoved by it where a mean is dragged out.
+    """
+    xs = sorted(hit[1] for hit in hits)
+    if len(xs) < MIN_HITS:
+        return None
+    steps = [b - a for a, b in zip(xs, xs[1:])]
+    if not steps:
+        return None
+    split = steps.index(max(steps)) + 1
+    if not (2 <= split <= len(xs) - 2):
+        return None
+    left, right = xs[:split], xs[split:]
+    within = [b - a for bank in (left, right)
+              for a, b in zip(bank, bank[1:])]
+    if not within:
+        return None
+    # A GAP OF TWO SLOTS IS STILL ONE PITCH. Heroes the sweep missed
+    # leave a step that is a whole multiple of the pitch, so each step is
+    # divided by how many pitches it plausibly spans before the median.
+    unit = min(within)
+    singles = [step / max(1, round(step / unit)) for step in within]
+    pitch = float(np.median(singles))
+    if pitch <= 0:
+        return None
+    top = int(round(float(np.median([hit[2] for hit in hits]))))
+    return int(left[0]), int(right[0]), int(round(pitch)), top
 
 
-def measure(path: Path, into: Path) -> dict:
+def boxes_of(radiant_x: int, dire_x: int, pitch: int, slot_w: int,
+             top: int, slot_h: int) -> list:
+    """The ten rectangles: five from each bank's own measured start.
+
+    NOT MIRRORED about the centre any more. Mirroring was the edge fit's
+    own assumption - it searched for a start and reflected it, so the two
+    banks could not disagree and a fit that was wrong was wrong twice
+    symmetrically. Here each bank is found independently, and letting
+    them differ is what makes a lopsided result visible instead of tidy.
+    """
+    out = [(radiant_x + i * pitch, top, slot_w, slot_h)
+           for i in range(autocal.TEAM_SIZE)]
+    out += [(dire_x + i * pitch, top, slot_w, slot_h)
+            for i in range(autocal.TEAM_SIZE)]
+    return out
+
+
+def measure(path: Path, into: Path, art: dict, loud=False) -> dict:
     frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
@@ -127,51 +271,35 @@ def measure(path: Path, into: Path) -> dict:
     row = {"file": path.name, "w": width, "h": height,
            "aspect": round(width / height, 4)}
 
-    shrink = max(1.0, width / WORK_WIDTH)
-    small = cv2.resize(autocal._grey(frame),
-                       (int(width / shrink), int(height / shrink)),
-                       interpolation=cv2.INTER_AREA)
-    found = scan(small)
+    note = (lambda line: print(line, flush=True)) if loud else None
+    found = hunt(autocal._grey(frame), art, note=note)
     if found is None:
-        row["why"] = "no row of five-plus-five found anywhere in this frame"
+        row["why"] = (f"no hero portrait recognised in the top "
+                      f"{TOP_REACH:.0%} of this frame")
         return row
+    slot_w, slot_h, hits = found
 
-    _score, sy, sstart, spitch, swide = found
-    # Back to full resolution. The scan only has to find the
-    # NEIGHBOURHOOD; the vertical fit below reads the real edges.
-    scale = width / float(small.shape[1])
-    start = int(round(sstart * scale))
-    pitch = int(round(spitch * scale))
-    slot_w = int(round(swide * scale))
-    band_top = int(round(sy * scale))
+    banks = banks_from(hits, slot_w)
+    if banks is None:
+        row["why"] = (f"recognised {len(hits)} portrait(s) but they do not "
+                      "fall into two banks")
+        row["heroes"] = len(hits)
+        return row
+    radiant_x, dire_x, pitch, top = banks
 
-    # THE TOP AND HEIGHT OFF THE PICTURE, from the bank columns only, in a
-    # window round where the scan landed rather than from the top of the
-    # frame - `_vertical_fit` pulls towards the top of whatever it is
-    # given, which would drag the answer back up to y=0.
-    reach = max(40, int(pitch * 2))
-    y0 = max(0, band_top - reach)
-    y1 = min(height, band_top + reach)
-    columns = np.concatenate([
-        np.arange(start + i * pitch, min(width, start + i * pitch + slot_w))
-        for i in range(autocal.TEAM_SIZE)])
-    columns = columns[columns < width]
-    vertical = autocal._vertical_fit(
-        autocal._grey(frame)[y0:y1], columns, slot_w)
-    if vertical is None:
-        top, slot_h = band_top, int(slot_w / autocal.PORTRAIT_ASPECT)
-    else:
-        top, slot_h = y0 + vertical[0], vertical[1]
-
-    rects = boxes_of(start, pitch, slot_w, width, top, slot_h)
+    rects = boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
     left, span = hud_box(width, height)
     row.update({
+        "heroes": len(hits),
         "bar_top_px": top, "slot_h_px": slot_h,
-        "radiant_x_px": rects[0][0], "dire_x_px": rects[5][0],
+        "radiant_x_px": radiant_x, "dire_x_px": dire_x,
         "slot_w_px": slot_w, "pitch_px": pitch,
         # BOTH READINGS, so the model can be derived rather than assumed.
-        "x_of_width": round(rects[0][0] / width, 5),
-        "x_of_hudbox": round((rects[0][0] - left) / span, 5) if span else None,
+        "x_of_width": round(radiant_x / width, 5),
+        "x_of_hudbox": round((radiant_x - left) / span, 5) if span else None,
+        "pitch_of_width": round(pitch / width, 5),
+        "pitch_of_hudbox": round(pitch / span, 5) if span else None,
+        "slot_w_of_hudbox": round(slot_w / span, 5) if span else None,
         "y_of_window": round(top / height, 5),
         "y_of_hudbox": round(top / (span / (16 / 9)), 5) if span else None,
         "slot_h_of_window": round(slot_h / height, 5),
@@ -262,6 +390,8 @@ def main() -> None:
                              "filename to resume AFTER")
     parser.add_argument("--only", default="",
                         help="comma-separated names to do and nothing else")
+    parser.add_argument("--loud", action="store_true",
+                        help="print every size tried and what it matched")
     args = parser.parse_args()
 
     folder = Path(args.folder).expanduser()
@@ -286,11 +416,24 @@ def main() -> None:
         else:
             shots = [p for p in shots if p.name.lower() not in set(marks)]
 
+    # THE ARTWORK IS THE METHOD, so its absence is refused rather than
+    # worked around. Without it this tool has nothing to recognise and
+    # would fall back to guessing, which is what the edge fit was.
+    art = load_art()
+    if len(art) < 50:
+        raise SystemExit(
+            f"Only {len(art)} hero portrait(s) in {library.BASE_DIR}.\n"
+            "This tool RECOGNISES the portraits, so it needs them on disk.\n"
+            "Open the app and run Settings > Downloads > All artwork, then "
+            "try again.")
+
     into = Path(args.out)
+    print(f"{len(art)} hero portraits loaded")
     print(f"{len(shots)} picture(s) to do in {folder}\n")
-    head = ("file", "WxH", "aspect", "bar top", "slot h", "rad x", "dire x",
-            "slot w", "pitch", "x/width", "x/hud", "y/win", "y/hud")
-    widths = (24, 11, 7, 8, 7, 8, 8, 7, 7, 8, 8, 8, 8)
+    head = ("file", "WxH", "aspect", "seen", "bar top", "slot h", "rad x",
+            "dire x", "slot w", "pitch", "x/hud", "w/hud", "pitch/hud",
+            "y/win")
+    widths = (24, 11, 7, 5, 8, 7, 7, 7, 7, 6, 8, 8, 9, 8)
     print("  ".join(h.ljust(w) for h, w in zip(head, widths)))
     print("-" * (sum(widths) + 2 * len(widths)))
 
@@ -302,7 +445,7 @@ def main() -> None:
         # empty table?" - and the honest answer took a stopwatch.
         print(f"[{number}/{len(shots)}] {shot.name} ...",
               end="", flush=True)
-        row = measure(shot, into)
+        row = measure(shot, into, art, loud=args.loud)
         print("\r" + " " * 60 + "\r", end="", flush=True)
         rows.append(row)
         if "why" in row:
@@ -311,17 +454,19 @@ def main() -> None:
                   flush=True)
             continue
         cells = (row["file"][:24], f"{row['w']}x{row['h']}",
-                 f"{row['aspect']:.3f}", row["bar_top_px"], row["slot_h_px"],
-                 row["radiant_x_px"], row["dire_x_px"], row["slot_w_px"],
-                 row["pitch_px"], f"{row['x_of_width']:.5f}",
-                 f"{row['x_of_hudbox']:.5f}", f"{row['y_of_window']:.5f}",
-                 f"{row['y_of_hudbox']:.5f}")
+                 f"{row['aspect']:.3f}", row["heroes"], row["bar_top_px"],
+                 row["slot_h_px"], row["radiant_x_px"], row["dire_x_px"],
+                 row["slot_w_px"], row["pitch_px"],
+                 f"{row['x_of_hudbox']:.5f}", f"{row['slot_w_of_hudbox']:.5f}",
+                 f"{row['pitch_of_hudbox']:.5f}",
+                 f"{row['y_of_window']:.5f}")
         print("  ".join(str(c).ljust(w) for c, w in zip(cells, widths)),
               flush=True)
 
     good = [r for r in rows if "why" not in r]
     print(f"\n{len(good)} of {len(rows)} located.")
-    for key in ("x_of_width", "x_of_hudbox", "y_of_window", "y_of_hudbox",
+    for key in ("x_of_width", "x_of_hudbox", "slot_w_of_hudbox",
+                "pitch_of_hudbox", "y_of_window", "y_of_hudbox",
                 "slot_h_of_window"):
         values = [r[key] for r in good if r.get(key) is not None]
         if values:
