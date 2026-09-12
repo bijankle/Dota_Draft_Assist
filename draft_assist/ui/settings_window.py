@@ -37,6 +37,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QFrame,
 from ..config import DEFAULT_PAIR_SOURCE
 from . import settings as ui_settings
 from .chrome import CountBox
+from .flowlayout import FlowLayout
 from .settings_dialog import PAIR_SOURCES, SWITCHES
 
 
@@ -158,7 +159,15 @@ class GeneralPage(QWidget):
         # correlation as a downward slope. So the conversion is GONE
         # rather than moved, and the stored numbers are untouched - they
         # were always the percentile, and only the display disagreed.
-        stars = QHBoxLayout()
+        # THESE TWO ROWS WRAP, for the reason the History tab's Filter
+        # card does: a row of fixed controls that cannot wrap sets a
+        # minimum WIDTH, and a widget's minimum is the window's. Measured
+        # before this change, the heart's row alone demanded 942px while
+        # the settings window's own sizeHint was 786 - so Settings opened
+        # with every explanation truncated, a horizontal scrollbar under
+        # it and its own tab strip overflowing into a chevron. Wrapping
+        # drops the row's minimum to its widest single control.
+        stars = FlowLayout(spacing=8)
         stars.addWidget(QLabel("Pink heart: above the"))
         self.star_pick = CountBox(
             ui_settings.clamp_pct(settings.get("star_pick_pct", 70), 70),
@@ -174,7 +183,6 @@ class GeneralPage(QWidget):
         self.star_win.valueChanged.connect(self.changed)
         stars.addWidget(self.star_win)
         stars.addWidget(QLabel("win rate percentile"))
-        stars.addStretch(1)
         layout.addLayout(stars)
         layout.addWidget(_note(
             "Higher is stricter: 90% marks only heroes in the best tenth "
@@ -182,7 +190,7 @@ class GeneralPage(QWidget):
             "History run, so it follows whichever account is loaded "
             "there. Both bars have to be cleared."))
 
-        shield = QHBoxLayout()
+        shield = FlowLayout(spacing=8)
         shield.addWidget(QLabel("Gold shield: difficulty to counter above"))
         self.shield_pct = CountBox(
             ui_settings.clamp_pct(settings.get("shield_pct", 70), 70),
@@ -190,7 +198,6 @@ class GeneralPage(QWidget):
         self.shield_pct.setSuffix("%")
         self.shield_pct.valueChanged.connect(self.changed)
         shield.addWidget(self.shield_pct)
-        shield.addStretch(1)
         layout.addLayout(shield)
         layout.addWidget(_note(
             "Higher is stricter: 90% marks only the tenth of the pool "
