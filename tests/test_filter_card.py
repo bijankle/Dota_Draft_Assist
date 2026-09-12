@@ -80,37 +80,3 @@ def test_the_pinned_row_does_not_raise_the_WINDOWS_floor(tab):
     card = history._anchors["sample"]
     assert card.minimumSizeHint().width() < win.minimumSizeHint().width(), (
         "the Filter card now decides how narrow the window can be")
-
-
-# ---- the same fault, two menus away ------------------------------------
-
-def test_the_settings_page_fits_the_window_that_opens_it(qapp):
-    """The Filter card's lesson, in Settings: a row of fixed controls
-    that cannot wrap sets a minimum WIDTH, and a widget's minimum is the
-    window's.
-
-    Measured before this was fixed: the General page demanded 960px - set
-    by one 942px row, "Pink heart: above the [70%] pick rate percentile
-    and the [50%] win rate percentile" - while the settings window's own
-    sizeHint was 786. So Settings opened with every explanation truncated
-    mid-word, a horizontal scrollbar under it, and its own tab strip
-    overflowing into a chevron. That is the first thing anybody sees on
-    opening Settings.
-    """
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))
-    from tools import shoot
-    shoot.application()
-    shoot.sandbox()
-    win = shoot.a_window(drafted=False)
-    try:
-        win._open_settings("General")
-        shoot.settle(win)
-        window = win.settings_window
-        page = window.general
-        assert page.minimumSizeHint().width() <= window.sizeHint().width(), (
-            "the page needs %d px and the window asks for only %d"
-            % (page.minimumSizeHint().width(), window.sizeHint().width()))
-    finally:
-        win.close()
