@@ -67,7 +67,7 @@ WORK_WIDTH = 960          # the hunt runs on a picture this wide
 # top" - and of the WINDOW rather than of the 16:9 HUD box, since the box
 # is the model under suspicion. A third is generous; every frame measured
 # so far puts the whole bar inside the top 15%.
-TOP_REACH = 0.33
+TOP_REACH = 0.18
 # A portrait's width as a share of the WINDOW's width. Wide, because the
 # whole question is what this actually is on each aspect ratio.
 WIDTH_FRACS = tuple(round(0.022 + 0.004 * i, 4) for i in range(24))
@@ -85,6 +85,11 @@ PORTRAIT_ASPECT = autocal.PORTRAIT_ASPECT
 # portrait the HUD has knocked about.
 HIT_FLOOR = 0.30
 MIN_HITS = 4              # fewer than this is not a pick bar
+# A BANK IS FIVE. Ten is the whole bar, so a row carrying more than this
+# is not a pick bar at all - it is a row of the hero roster, which is the
+# single thing most likely to be mistaken for one because every tile in
+# it is a real portrait.
+MOST_HITS = 2 * autocal.TEAM_SIZE
 # MATCH THE MIDDLE OF THE ART, NOT ALL OF IT. Dota draws a frame around
 # each portrait in the pick bar, and a template that covers the whole
 # picture necessarily overlaps that frame - which is the one kind of HUD
@@ -185,6 +190,40 @@ def _sweep(strip, art: dict, box_w: int, box_h: int):
     return hits
 
 
+def bar_shape(keep, apart: int):
+    """Rank a row as a PICK BAR, or refuse it. (hits, score) or None.
+
+    Ranking by "most distinct heroes" is what lost to the hero grid: a
+    grid row holds fifteen or twenty real portraits and beats a bar of
+    ten on that measure every time, while being just as genuinely made
+    of hero art. Counting cannot tell them apart. SHAPE can - a pick bar
+    is TWO BANKS OF AT MOST FIVE with a wide gap between the teams, and
+    a roster row is one long even run that no split makes five-and-five.
+
+    So the test is the shape, and the count only orders the rows that
+    pass it.
+    """
+    xs = sorted(hit[1] for hit in keep)
+    if not (MIN_HITS <= len(xs) <= MOST_HITS):
+        return None
+    steps = [b - a for a, b in zip(xs, xs[1:])]
+    if not steps:
+        return None
+    split = steps.index(max(steps)) + 1
+    left, right = xs[:split], xs[split:]
+    if max(len(left), len(right)) > autocal.TEAM_SIZE:
+        return None
+    # THE GAP BETWEEN THE TEAMS IS THE TELL, and it has to be clear of
+    # the ordinary spacing - in an evenly spaced run the biggest step is
+    # whatever rounding made largest, which would "split" a grid row
+    # anywhere at all.
+    others = [step for index, step in enumerate(steps)
+              if index != split - 1] or [apart]
+    if max(steps) < 1.35 * max(sorted(others)[len(others) // 2], 1):
+        return None
+    return len(xs), sum(hit[0] for hit in keep)
+
+
 def hunt(grey, art: dict, note=None):
     """(slot_w, slot_h, hits) in this picture's own pixels, or None.
 
@@ -222,12 +261,10 @@ def hunt(grey, art: dict, note=None):
         if note is not None and keep:
             note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)"
                  f"  best {max(keep)[0]:.2f}")
-        if len(keep) < MIN_HITS:
+        # SHAPED LIKE A BAR FIRST, counted second. See `bar_shape`.
+        rank = bar_shape(keep, box_w)
+        if rank is None:
             continue
-        # MOST HITS WINS, and the total score only breaks a tie. A size
-        # one pixel out still matches a few heroes very well; what it
-        # cannot do is match ten of them.
-        rank = (len(keep), sum(hit[0] for hit in keep))
         if best is None or rank > best[0]:
             best = (rank, box_w, box_h, keep)
     if best is None:
@@ -254,7 +291,7 @@ def hunt(grey, art: dict, note=None):
     exact = _one_row(
         _sweep(band, {hid: art[hid] for _s, _x, _y, hid in keep},
                full_w, full_h), full_w)
-    if len(exact) < MIN_HITS:
+    if bar_shape(exact, full_w) is None:
         return None
     return full_w, full_h, exact
 

@@ -212,3 +212,70 @@ def test_the_inset_is_what_carries_the_border_case(art, monkeypatch):
     kept = len(with_inset[2])
     assert kept >= 8, f"the inset sweep found only {kept}"
     assert kept >= len(without[2]) if without else True
+
+
+# --------------------------------------------------------------------
+# THE HERO ROSTER, which is the thing most likely to be mistaken for a
+# pick bar and beat two versions of this sweep. During hero selection
+# the screen carries the whole grid - 120-odd REAL portraits in rows -
+# so every tile in it is a genuine match and a row of eighteen wins on
+# "most distinct heroes found" against a bar of ten.
+#
+# Counting cannot tell them apart. Shape can: a pick bar is two banks of
+# at most five with a wide gap between the teams, and a roster row is
+# one long even run.
+
+
+def frame_with_roster(width, height, radiant_x, dire_x, pitch, slot_w, top):
+    """A pick bar at the top and the hero grid below it."""
+    frame = frame_with_hud(width, height, radiant_x, dire_x, pitch, slot_w,
+                           top)
+    icon = max(12, int(slot_w * 0.55))
+    tall = int(round(icon / fp.PORTRAIT_ASPECT))
+    across = max(8, int((width * 0.62) // (icon + 4)))
+    hero = 11
+    for row in range(4):
+        y = int(height * 0.30) + row * (tall + 6)
+        if y + tall >= height:
+            break
+        for column in range(across):
+            x = int(width * 0.19) + column * (icon + 4)
+            if x + icon >= width:
+                break
+            hero = hero % HEROES + 1
+            frame[y:y + tall, x:x + icon] = cv2.resize(
+                art_for(hero), (icon, tall), interpolation=cv2.INTER_AREA)
+            hero += 1
+    return frame
+
+
+@pytest.mark.parametrize("name,w,h,rx,dx,pitch,slot_w,top", CASES)
+def test_the_hero_grid_does_not_win(art, name, w, h, rx, dx, pitch,
+                                    slot_w, top):
+    frame = frame_with_roster(w, h, rx, dx, pitch, slot_w, top)
+    found = fp.hunt(fp.autocal._grey(frame), art)
+    assert found is not None, f"{name}: recognised nothing"
+    got_w, _got_h, hits = found
+    assert len(hits) <= fp.MOST_HITS, (
+        f"{name}: {len(hits)} portraits in one row is a roster, not a bar")
+    banks = fp.banks_from(hits, got_w)
+    assert banks is not None, f"{name}: hits did not form two banks"
+    got_rx, got_dx, got_pitch, got_top = banks
+    assert got_top < h * 0.12, (
+        f"{name}: bar at {got_top / h:.1%} down the window — that is the "
+        "grid, not the pick bar")
+    assert abs(got_pitch - pitch) <= max(4, pitch * 0.08)
+    assert abs(got_rx - rx) <= max(6, slot_w * 0.15)
+
+
+def test_a_roster_row_is_refused_outright(art):
+    """Shape, not count: eighteen evenly spaced heroes is never a bar."""
+    hits = [(0.9, 40 + i * 60, 300, i + 1) for i in range(18)]
+    assert fp.bar_shape(hits, 55) is None
+
+
+def test_two_banks_of_five_are_accepted(art):
+    """The same test must still say yes to the thing it is looking for."""
+    xs = [40 + i * 60 for i in range(5)] + [700 + i * 60 for i in range(5)]
+    hits = [(0.9, x, 8, i + 1) for i, x in enumerate(xs)]
+    assert fp.bar_shape(hits, 55) is not None

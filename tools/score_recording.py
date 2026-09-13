@@ -221,7 +221,7 @@ def tune(samples: list, truth: set, params) -> None:
 
 
 def score(folder: Path, every: int, proofs: int, out: Path,
-          last: int = 0) -> int:
+          last: int = 0, sweeps: int = 4) -> int:
     art = fp.load_art()
     if len(art) < 50:
         raise SystemExit(
@@ -262,10 +262,70 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     frames = sorted((folder / "frames").glob("*.png"))
     if last:
         frames = frames[-last:]
-    frames = frames[::max(1, every)]
     if not frames:
         raise SystemExit(f"No frames in {folder / 'frames'}")
-    print(f"\n{len(frames)} frame(s) to score\n")
+
+    # LOCATE ONCE, IDENTIFY MANY. The pick bar does not move during a
+    # match, and locating it is the whole cost - a full sweep of 126
+    # heroes at two dozen sizes is about twenty seconds a frame, where
+    # identifying ten crops in boxes already known is milliseconds. Doing
+    # it per frame made a 489-frame recording a two-hour job, which is
+    # not a tool anybody runs twice.
+    #
+    # THE DRAFT IS AT THE END. Frames start when recording does, so the
+    # queue and the loading screen are at the front and the full bar is
+    # at the back; the sweep therefore samples from the LAST part.
+    tail = frames[len(frames) // 2:] or frames
+    step = max(1, len(tail) // max(1, sweeps))
+    probes = tail[::step][:sweeps]
+    print(f"{len(frames)} frame(s); sweeping {len(probes)} of them for the "
+          f"bar, then reading the rest with what it finds\n")
+
+    geometries, probe_shapes = [], None
+    for number, path in enumerate(probes, 1):
+        print(f"[sweep {number}/{len(probes)}] {path.name} ...", end="",
+              flush=True)
+        frame = fp.read_image(path)
+        if frame is None:
+            print("\r" + " " * 70 + "\r", end="", flush=True)
+            continue
+        found = fp.hunt(autocal._grey(frame), art)
+        banks = fp.banks_from(found[2], found[0]) if found else None
+        print("\r" + " " * 70 + "\r", end="", flush=True)
+        if found and banks:
+            probe_shapes = frame.shape[:2]
+            geometries.append((banks[0], banks[1], banks[2], found[0],
+                               banks[3], found[1]))
+            print(f"  swept {path.name}: slot {found[0]}x{found[1]}, "
+                  f"pitch {banks[2]}, radiant x {banks[0]}, "
+                  f"dire x {banks[1]}, top {banks[3]}", flush=True)
+        else:
+            print(f"  swept {path.name}: no bar found", flush=True)
+
+    if not geometries:
+        raise SystemExit(
+            "\nNo frame in this recording showed a pick bar the sweep could "
+            "find.\nRun with --sweeps 12 to try more of them, or send me "
+            "a -strip.png from debug_out.")
+
+    # THE MEDIAN OF WHAT THE SWEEPS AGREED ON. One frame can be unlucky;
+    # the spread across several is also the confidence, and it is printed
+    # because a wide one means the geometry below is not to be trusted.
+    columns = list(zip(*geometries))
+    geom = [int(np.median(column)) for column in columns]
+    spread = [int(max(column) - min(column)) for column in columns]
+    names = ("radiant x", "dire x", "pitch", "slot w", "top", "slot h")
+    print(f"\nGEOMETRY from {len(geometries)} sweep(s)")
+    print("-" * 58)
+    for name, value, wide in zip(names, geom, spread):
+        flag = "" if wide <= 2 else ("  <- sweeps disagree by "
+                                     f"{wide}px")
+        print(f"  {name:<12} {value:>6}{flag}")
+    radiant_x, dire_x, pitch, slot_w, top, slot_h = geom
+    rects = fp.boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
+
+    frames = frames[::max(1, every)]
+    print(f"\nreading {len(frames)} frame(s) with those boxes\n")
 
     tally = Counter()
     wrong_heroes = Counter()
@@ -273,29 +333,19 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     samples = []          # one distance vector per slot, for tuning
     misplaced = 0
     for number, path in enumerate(frames, 1):
-        print(f"[{number}/{len(frames)}] {path.name} ...", end="",
-              flush=True)
+        if number % 25 == 0 or number == len(frames):
+            print(f"  {number}/{len(frames)} ...", end="\r", flush=True)
         frame = fp.read_image(path)
-        print("\r" + " " * 60 + "\r", end="", flush=True)
         if frame is None:
             tally["unreadable"] += 1
             continue
-        found = fp.hunt(autocal._grey(frame), art)
-        if found is None:
-            tally["not located"] += 1
-            worst.append((0, path, frame, None, None))
+        if probe_shapes and frame.shape[:2] != probe_shapes:
+            # A frame a different size from the one measured is a
+            # different window, and the boxes do not describe it.
+            tally["wrong size"] += 1
             continue
-        slot_w, slot_h, hits = found
-        banks = fp.banks_from(hits, slot_w)
-        if banks is None:
-            tally["no banks"] += 1
-            worst.append((0, path, frame, None, None))
-            continue
-        radiant_x, dire_x, pitch, top = banks
-        rects = fp.boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
         reads = fp.identify(frame, rects, lib, params)
         tally["located"] += 1
-
         right = declined = wrong = 0
         for (x, y, w, h), (hero_id, name, _ref, _d, _m) in zip(rects, reads):
             crop = frame[max(0, y):y + h, max(0, x):x + w]
@@ -369,12 +419,25 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         for got in sorted(spread, reverse=True):
             print(f"    {got:>2}/10   {'#' * min(40, spread[got])} "
                   f"{spread[got]}")
+        # THE VERDICT COMES FROM "IS THE CORRECT HERO CLOSEST", never
+        # from the right-count. A run can name almost nothing and still
+        # have every box dead on the portraits - that is a threshold
+        # story - and the right-count cannot tell it from boxes landing
+        # on the wrong thing, which is the one distinction this whole
+        # report exists to draw.
+        closest = sum(1 for d in samples if key_rank(d, truth)[2] == 1)
+        share = closest / max(1, len(samples))
         if top[0] >= 8:
-            print("  -> the boxes ARE on the portraits. The low average is "
-                  "the early frames, not the geometry.")
+            print("  -> the boxes are on the portraits AND the thresholds "
+                  "are right. Nothing to fix here.")
+        elif share >= 0.5:
+            print(f"  -> the boxes ARE on the portraits: the correct hero "
+                  f"is the closest match in {share:.0%} of slots. What is "
+                  "costing the reads is the THRESHOLDS, above.")
         else:
-            print("  -> no frame read the board, so this is the geometry "
-                  "rather than the phase.")
+            print(f"  -> the correct hero is closest in only {share:.0%} "
+                  "of slots, so the boxes are NOT on the portraits. This "
+                  "is geometry, and no threshold will fix it.")
 
     # PROOF SHEETS FOR THE WORST, not for the best. A sheet of a frame
     # that worked shows nothing that the tally has not already said.
@@ -419,6 +482,10 @@ def main() -> None:
                              "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
+    parser.add_argument("--sweeps", type=int, default=4,
+                        help="how many frames to run the full (slow) "
+                             "portrait sweep on; the rest reuse what it "
+                             "finds, since the bar does not move")
     parser.add_argument("--last", type=int, default=0,
                         help="score only the last N frames - the draft is "
                              "at the END of a recording, since frames "
@@ -456,7 +523,7 @@ def main() -> None:
         library.VARIANTS_DIR = library.BASE_DIR.parent / "variants"
     out = Path(args.out) if args.out else ROOT / "debug_out" / "scored"
     raise SystemExit(score(folder, args.every, args.proof, out,
-                       last=args.last))
+                       last=args.last, sweeps=args.sweeps))
 
 
 if __name__ == "__main__":
