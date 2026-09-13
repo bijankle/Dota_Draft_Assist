@@ -368,7 +368,9 @@ def score(folder: Path, every: int, proofs: int, out: Path) -> int:
 def main() -> None:
     console.plain_output()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("recording")
+    parser.add_argument("recording", nargs="?", default="",
+                        help="a recordings/<stamp> folder; the NEWEST one "
+                             "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
     parser.add_argument("--proof", type=int, default=3,
@@ -377,7 +379,23 @@ def main() -> None:
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
-    folder = Path(args.recording).expanduser()
+    # THE NEWEST RECORDING, because that is the one somebody has just
+    # made. Asking for the folder meant listing a directory and copying a
+    # timestamp across by hand, between finishing a bot match and finding
+    # out whether it worked.
+    if args.recording:
+        folder = Path(args.recording).expanduser()
+    else:
+        made = sorted((ROOT / "recordings").glob("*/"),
+                      key=lambda p: p.stat().st_mtime)
+        made = [p for p in made if (p / "frames").is_dir()]
+        if not made:
+            raise SystemExit(
+                f"No recordings with frames in {ROOT / 'recordings'}.\n"
+                "Play a bot match with the app open - it records the draft "
+                "by itself - then run this again.")
+        folder = made[-1]
+        print(f"scoring the newest recording: {folder.name}")
     if not folder.is_dir():
         raise SystemExit(f"Not a folder: {folder}")
     if args.art:
