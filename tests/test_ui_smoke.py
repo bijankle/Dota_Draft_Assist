@@ -2057,7 +2057,7 @@ def _silent_gsi_snapshot(fault: bool):
     from draft_assist.ui.providers import Snapshot
     snap = Snapshot()
     snap.warning = ("no data from Dota yet — GSI config installed: Run "
-                    "Game > Set up game data (GSI).")
+                    "Settings > Game data > Set up game data (GSI).")
     snap.gsi_setup_broken = fault
     return snap
 

@@ -96,7 +96,8 @@ def main() -> None:
           "should not need to run it by hand.")
     if not icon:
         print("No icon — the shortcut uses Python's. Put an .ico in assets/ "
-              "(or use Setup > Choose app icon) and run this again.")
+              "(or use Settings > Appearance > Choose app icon) and "
+              "run this again.")
     print("")
     print("TO PIN IT TO THE TASKBAR: Windows does not allow a program to "
           "pin itself — that verb was removed — so drag the shortcut onto "

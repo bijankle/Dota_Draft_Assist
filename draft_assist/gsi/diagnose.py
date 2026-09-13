@@ -97,8 +97,10 @@ def run_checks(server=None, port: int | None = None) -> list[Check]:
             checks.append(Check(
                 "GSI config installed", False,
                 f"no file at {path}",
-                "Run Game > Set up game data (GSI). The launch option alone "
-                "does nothing — without this file Dota has nothing to send."))
+                "Run Settings > Game data > Set up game data "
+                "(GSI). The launch option alone "
+                "does nothing — without this file Dota has nothing "
+                "to send."))
 
     # 3. Config and listener must agree on the port
     if config_port is not None:
@@ -106,7 +108,8 @@ def run_checks(server=None, port: int | None = None) -> list[Check]:
         checks.append(Check(
             "Config port matches listener", agree,
             f"config says {config_port}, app is listening on {port}",
-            "" if agree else "Re-run Game > Set up game data (GSI) to "
+            "" if agree else
+            "Re-run Settings > Game data > Set up game data (GSI) to "
                              "rewrite the config with the current port."))
 
     # 4. Launch option
@@ -166,7 +169,8 @@ def run_checks(server=None, port: int | None = None) -> list[Check]:
             checks.append(Check(
                 "Payloads received", False,
                 f"{snap.rejected} rejected: {snap.last_error}",
-                "Re-run Game > Set up game data (GSI) so the app and the "
+                "Re-run Settings > Game data > Set up game data "
+                "(GSI) so the app and the "
                 "config share a token, then restart Dota."))
         else:
             checks.append(Check(

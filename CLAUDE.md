@@ -2715,6 +2715,19 @@ credentials, and put the account at risk. Do not go there.
   main window at all. File is Settings… and Update application… and
   **no Quit** — the window's close button is where everybody closes a
   window.
+  **AND NOTHING MAY SEND ANYBODY TO A MENU THAT IS GONE**
+  (`tests/test_no_stale_menu_trails.py`). "Game > Start a fresh
+  recording --- i dont have this option", and they were right: nothing
+  has, since Setup and Game became tabs. FOURTEEN strings across the
+  GSI code and the console tools still named the old trails, and
+  RECORDING had stopped being a menu item at all - it is the red dot on
+  the tab row, beside Auto. Same family as the `fetch_assets` message
+  that named "Setup > Download": a sentence about the app's own past,
+  printed at somebody trying to use it now. Prose goes stale silently,
+  so a test scans every STRING LITERAL in `draft_assist/` and `tools/`
+  for those two menu names - string literals rather than whole files,
+  because a COMMENT recording what a message used to say is this
+  project explaining itself rather than the app misdirecting anybody.
   **FOUR ITEMS WENT ENTIRELY rather than moving**, also at the user's
   request, because each asked for something the app now does for itself
   or says somewhere better: *Make a pinnable shortcut…* (written

@@ -45,7 +45,8 @@ def main() -> None:
     token = gsi_install.read_installed_token()
     if token is None:
         print("No GSI config found in the Dota install.")
-        print("Install it from the app (Game > Set up game data), or the "
+        print("Install it from the app (Settings > Game data > Set "
+              "up game data), or the "
               "probe will accept unauthenticated payloads.\n")
 
     server = GsiServer(args.port, token=token,
@@ -58,7 +59,7 @@ def main() -> None:
             "Only one program can listen for Dota's game data, and the app "
             "is almost certainly already doing it. Recording from a second "
             "process cannot work.\n\n"
-            "Use the app instead: Game > Record game data (a toggle). It "
+            "Use the app instead: the red dot on the tab row (a toggle). It "
             "archives to the same folder, using the listener that is "
             "already receiving everything.\n\n"
             "This standalone probe is only for running with the app closed.")
@@ -100,7 +101,8 @@ def main() -> None:
     if not reception.count:
         print(f"Payloads received: 0   rejected: {reception.rejected}")
         print("\nNOTHING WAS RECEIVED. Check, in order:")
-        print("  1. Game > Set up game data installed the config")
+        print("  1. Settings > Game data > Set up game data "
+              "installed the config")
         print(f"  2. Dota launch options contain {gsi_install.LAUNCH_OPTION}")
         print("  3. Dota was restarted after adding it")
         return

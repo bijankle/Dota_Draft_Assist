@@ -1136,6 +1136,51 @@ def draw(frame, rects, path: Path, into: Path) -> None:
         (into / f"{path.stem}-found.png").write_bytes(buffer.tobytes())
 
 
+def _scaling(good: list, middle: dict) -> None:
+    """PREDICT each resolution from the constant, and show the error.
+
+    "I want you to instil confidence that this portrait recognition is
+    working and that it follows simple math in terms of the scaling
+    with resolution." A spread of 0.0019 is a correct answer to that and
+    an unreadable one: it is a fraction of a fraction, with no units
+    anybody can check.
+
+    So the claim is made in the form it would be USED in. One constant
+    times the HUD span is a prediction in PIXELS for a resolution the
+    constant never saw, and the error is a whole number of pixels beside
+    the measurement. A law that predicts eight screenshots to within a
+    pixel or two is a law; one that needs a different number per
+    resolution is a lookup table with ambitions.
+    """
+    keys = (("slot width", "slot_w_of_hudbox", "slot_w_px"),
+            ("pitch", "pitch_of_hudbox", "pitch_px"))
+    rows = [r for r in good
+            if all(r.get(k) is not None for _n, _f, k in keys)]
+    if not rows:
+        return
+    print("\nDOES IT FOLLOW SIMPLE MATHS? "
+          "(one constant x the HUD span, predicted in PIXELS)")
+    for name, frac_key, _px in keys:
+        print(f"  {name:<11} = {middle[frac_key]:.5f} x span")
+    head = ("file", "span", "slot w", "predicted", "out",
+            "pitch", "predicted", "out")
+    widths = (18, 6, 7, 10, 5, 6, 10, 5)
+    print("  " + "  ".join(h.ljust(w) for h, w in zip(head, widths)))
+    worst = 0
+    for row in rows:
+        _left, span = hud_box(row["w"], row["h"])
+        cells = [row["file"][:18], f"{span:.0f}"]
+        for _name, frac_key, px_key in keys:
+            want = round(middle[frac_key] * span)
+            got = row[px_key]
+            worst = max(worst, abs(got - want))
+            cells += [str(got), str(want), f"{got - want:+d}"]
+        print("  " + "  ".join(c.ljust(w) for c, w in zip(cells, widths)))
+    print(f"  worst error anywhere: {worst}px. A law predicts a "
+          f"resolution it never saw; a lookup table needs a new number "
+          f"for each.")
+
+
 def _consensus(good: list) -> None:
     """Do the 23 screenshots AGREE? That is the check that needs no eyes.
 
@@ -1189,6 +1234,7 @@ def _consensus(good: list) -> None:
                    "loose" if off <= 0.03 else "NOT CONSISTENT")
         print(f"  {key:<18} median {middle[key]:.4f}   worst miss "
               f"{off:.4f}   {verdict}")
+    _scaling(good, middle)
     rogue = [(max(abs(r[k] - middle[k]) for k in keys), r["file"])
              for r in good if all(r.get(k) is not None for k in keys)]
     rogue.sort(reverse=True)
@@ -1584,8 +1630,16 @@ def main() -> None:
     _failures([r for r in rows if "why" in r])
     # THE PROOF, IN ONE PICTURE. Written last so it carries every
     # resolution this run located, in the order they were done.
-    where = proof_sheet([(f"{r['w']}x{r['h']}", r.get("crops"))
-                         for r in good], into)
+    # THE LABEL CARRIES THE COUNT, so a row of rubbish explains itself
+    # rather than looking like the recognition failing. The two frames
+    # that located five of ten produced exactly that, and the reader had
+    # to cross-reference a table to know which rows to disbelieve.
+    where = proof_sheet(
+        [(f"{r['w']}x{r['h']}"
+          + ("" if r.get("heroes") == 2 * autocal.TEAM_SIZE
+             else f"  ({r.get('heroes', 0)} of "
+                  f"{2 * autocal.TEAM_SIZE} - set aside)"),
+          r.get("crops")) for r in good], into)
     if where is not None:
         print(f"\n{SHEET} {where}")
         print(f"  {len(good)} row(s) of ten crops, one per resolution. "

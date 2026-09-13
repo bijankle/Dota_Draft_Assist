@@ -1,6 +1,7 @@
 """Print a recording session's report.
 
-The same document the app shows under Debug > Recordings: what the app
+The same document the app shows under Settings > Debug > Recordings:
+what the app
 concluded tick by tick, why it declined when it declined, how the screen's
 reading scored against the game's own line-ups, and what the raw payloads
 contained. One report, because Record starts both sources at once.

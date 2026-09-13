@@ -7,7 +7,7 @@ and is therefore refused, or a file on disk that will not decode. "Eul's
 Scepter isn't showing the image" cannot be answered from the picture, so
 this answers it from the disk.
 
-Reads only. Fixing a missing file is Setup > Download > Item icons, which
+Reads only. Fixing a missing file is Settings > Downloads > Item icons, which
 skips what is already there and so retries exactly the ones that failed.
 """
 
@@ -37,7 +37,7 @@ def main() -> None:
     print(f"Icons live in {ITEMS_DIR}")
     if not ITEMS_DIR.is_dir():
         raise SystemExit("The folder does not exist — the download has never "
-                         "run. Setup > Download > Item icons.")
+                         "run. Settings > Downloads > Item icons.")
     slugs = sorted(p.stem for p in ITEMS_DIR.glob("*.png"))
     print(f"{len(slugs)} icons on disk\n")
 

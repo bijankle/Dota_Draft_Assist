@@ -178,7 +178,7 @@ def replay_scenario(directory: Path, token: str | None = None,
     if not paths:
         raise FileNotFoundError(
             f"no archived payloads in {directory} — record some first with "
-            "Game > Record game data")
+            "the red dot on the tab row")
     steps = []
     for path in paths:
         try:

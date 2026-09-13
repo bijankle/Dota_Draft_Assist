@@ -305,7 +305,7 @@ def test_provider_explains_silence_from_dota(dataset, monkeypatch):
     monkeypatch.setattr(diagnose, "run_checks", lambda server=None, port=None: [
         diagnose.Check("Dota installation", True, "somewhere"),
         diagnose.Check("GSI config installed", False, "no file at C:/x",
-                       "Run Game > Set up game data (GSI)."),
+                       "Run Settings > Game data > Set up game data (GSI)."),
         diagnose.Check("Dota launch options", False, "(empty)", "later fix"),
     ])
     provider = GsiProvider(dataset, FakeServer(payload=None, count=0),
@@ -313,7 +313,7 @@ def test_provider_explains_silence_from_dota(dataset, monkeypatch):
     snap = provider.poll()
     assert "no data from Dota yet" in snap.warning
     assert "GSI config installed" in snap.warning
-    assert "Run Game > Set up game data (GSI)." in snap.warning
+    assert "Run Settings > Game data > Set up game data (GSI)." in snap.warning
     assert "launch options" not in snap.warning, "that is the NEXT link"
     assert snap.needs_manual
 

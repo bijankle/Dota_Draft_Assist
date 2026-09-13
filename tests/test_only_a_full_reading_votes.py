@@ -32,6 +32,7 @@ def frame(name, w, h, seen, top, slot_h, rad, dire, slot_w, pitch):
     return {
         "file": name, "w": w, "h": h, "aspect": round(w / h, 4),
         "heroes": seen, "bar_top_px": top, "slot_h_px": slot_h,
+        "slot_w_px": slot_w, "pitch_px": pitch,
         "x_of_hudbox": round(rad / span, 5),
         "slot_w_of_hudbox": round(slot_w / span, 5),
         "pitch_of_hudbox": round(pitch / span, 5),
@@ -161,3 +162,35 @@ def test_a_coarse_top_does_not_stop_the_impossible_model_being_struck():
     survive the height taking over the decision."""
     for row in FULL:
         assert row["y_of_hudbox_centred"] < 0
+
+
+# --- and the law is stated as a PREDICTION, in pixels -----------------
+
+def test_the_constant_predicts_every_resolution_in_pixels(capsys):
+    """"Instil confidence that it follows simple math in terms of the
+    scaling with resolution." A spread of 0.0019 answers that and
+    cannot be checked by eye; a prediction in pixels can."""
+    printed = say(FULL + PARTIAL, capsys)
+    assert "DOES IT FOLLOW SIMPLE MATHS?" in printed
+    assert "x span" in printed
+    assert "predicted" in printed
+    assert "worst error anywhere" in printed
+
+
+def test_the_prediction_holds_to_a_few_pixels_on_the_real_run(capsys):
+    """The eight full readings from the ten-of-fourteen run. If this
+    ever needs loosening, the law has stopped being one."""
+    printed = say(FULL + PARTIAL, capsys)
+    worst = [ln for ln in printed.splitlines() if "worst error" in ln]
+    assert worst, printed
+    pixels = int(worst[0].split("worst error anywhere:")[1].split("px")[0])
+    assert pixels <= 8, worst[0]
+
+
+def test_the_partial_frames_are_not_in_the_prediction(capsys):
+    """They do not vote on the constant, so they cannot be scored
+    against it either - that would be marking its own homework."""
+    printed = say(FULL + PARTIAL, capsys)
+    table = printed.split("DOES IT FOLLOW SIMPLE MATHS?")[1]
+    assert "800 x 600" not in table
+    assert "1440 x 900" not in table

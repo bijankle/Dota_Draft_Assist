@@ -227,7 +227,8 @@ def format_report(report: Report, archive: Path | None = None) -> str:
         lines += [
             "",
             "NOTHING TO EXAMINE. Record a draft first: tick",
-            "Game > Record game data, then sit through hero selection.",
+            "Press the red dot on the tab row, then sit through hero "
+            "selection.",
         ]
         return "\n".join(lines)
 

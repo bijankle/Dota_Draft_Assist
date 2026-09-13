@@ -144,15 +144,18 @@ def main() -> None:
                   "every payload away.")
             if rejected:
                 print(f"Reason: {after.get('last_error') or 'auth token'}")
-                print("Fix: Game > Set up game data (GSI) so the app and the "
+                print("Fix: Settings > Game data > Set up game data "
+                      "(GSI) so the app and the "
                       "config share a token, then restart this.")
         elif accepted < sent:
-            print("Some payloads were dropped; see Game > Diagnose game "
+            print("Some payloads were dropped; see Settings > Game "
+                  "data > Diagnose game "
                   "data in the app.")
 
     if not args.replay:
         print("\nReminder: these were MODELLED on what this codebase expects "
-              "Dota to send.\nRecord real ones with Game > Record game data "
+              "Dota to send.\nRecord real ones with the red dot on "
+              "the tab row "
               "for a stronger test.")
 
 
