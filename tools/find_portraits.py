@@ -82,6 +82,12 @@ WIDTH_FRACS = tuple(round(0.014 + 0.002 * i, 4) for i in range(24))
 # measurement from one client, and a wrong constant here cannot be seen
 # in the output - it just never finds anything.
 ASPECTS = (0.93, 1.33, 16 / 9)
+# How much of one picture's progress the coarse size sweep accounts for.
+# Measured rather than guessed: the sweep is 72 passes over every hero
+# and the refine that follows is a handful over one, so the sweep is
+# nearly all of it - but not all, and a bar that reaches 100% before the
+# work ends is a silence with a number on it.
+SWEEP_SHARE = 0.9
 PORTRAIT_ASPECT = autocal.PORTRAIT_ASPECT
 HIT_FLOOR = 0.30
 MIN_HITS = 4              # fewer than this is not a pick bar
@@ -99,6 +105,29 @@ MOST_HITS = 2 * autocal.TEAM_SIZE
 # margin between the right hero and the best wrong one went from -0.064
 # to +0.120. Costs nothing on an undamaged frame (0.987 against 1.000).
 INSET = 0.12
+
+
+# A LINE THE APP CAN READ, AND A PLAIN ONE A PERSON CAN TOO. This is
+# `score_recording.STEP` spelled a second time on purpose - the two are
+# separate programs and a shared import for one format string is not
+# worth the coupling - but the LESSON behind it is the same one, and
+# this tool shipped without it: "there is no ability to see what the
+# program is thinking".
+#
+# Two faults, and the second is the one that made it silent. A run is
+# about a minute PER PICTURE, and the only thing printed in that minute
+# was a `[3/23] name ...` written with `end=""` and then erased with a
+# carriage return. `TaskDialog` reads the child's output with `for raw in
+# proc.stdout`, which yields LINES - so a write with no newline is not
+# emitted at all until the next one arrives, and the erase produces
+# nothing but junk in a text box. A prefix and a NEWLINE work in both
+# places.
+STEP = "PROGRESS"
+
+
+def step(share: float, what: str) -> None:
+    print(f"{STEP} {min(100, max(0, round(share * 100)))}%  {what}",
+          flush=True)
 
 
 def read_image(path: Path):
@@ -224,8 +253,13 @@ def bar_shape(keep, apart: int):
     return len(xs), sum(hit[0] for hit in keep)
 
 
-def hunt(grey, art: dict, note=None):
+def hunt(grey, art: dict, note=None, tick=None):
     """(slot_w, slot_h, hits) in this picture's own pixels, or None.
+
+    `tick` is called with 0..1 as the size sweep walks, because that
+    sweep IS the minute this tool spends on a picture: 24 widths x 3
+    aspects x 126 heroes. Without it the whole minute is one silence,
+    and a silence is indistinguishable from a hang.
 
     One sweep of every hero at every candidate SIZE. The size is what is
     really being searched for: portraits are all one size on screen, so
@@ -252,8 +286,17 @@ def hunt(grey, art: dict, note=None):
                        interpolation=cv2.INTER_AREA) if shrink > 1 else band
 
     best = None
+    tried = 0
+    total = len(WIDTH_FRACS) * len(ASPECTS)
     for frac in WIDTH_FRACS:
       for aspect in ASPECTS:
+        tried += 1
+        if tick is not None:
+            # THE COARSE SWEEP IS NOT THE WHOLE JOB, so it does not get
+            # the whole bar: the refine and the exact re-read after it
+            # are real work too, and a bar that hits 100% and then sits
+            # there is the same silence wearing a number.
+            tick(SWEEP_SHARE * tried / total)
         box_w = int(round(frac * small.shape[1]))
         box_h = int(round(box_w / aspect))
         if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
@@ -289,9 +332,13 @@ def hunt(grey, art: dict, note=None):
 
     # And the positions are re-read at that exact size, for the heroes
     # already known to be there - ten matches rather than another sweep.
+    if tick is not None:
+        tick(SWEEP_SHARE + (1 - SWEEP_SHARE) * 0.5)
     exact = _one_row(
         _sweep(band, {hid: art[hid] for _s, _x, _y, hid in keep},
                full_w, full_h), full_w)
+    if tick is not None:
+        tick(1.0)
     if bar_shape(exact, full_w) is None:
         return None
     return full_w, full_h, exact
@@ -350,7 +397,7 @@ def boxes_of(radiant_x: int, dire_x: int, pitch: int, slot_w: int,
 
 
 def measure(path: Path, into: Path, art: dict, loud=False,
-            strips=False, lib=None, params=None) -> dict:
+            strips=False, lib=None, params=None, tick=None) -> dict:
     frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
@@ -361,7 +408,7 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     note = (lambda line: print(line, flush=True)) if loud else None
     if strips:
         strip_of(frame, path, into)
-    found = hunt(autocal._grey(frame), art, note=note)
+    found = hunt(autocal._grey(frame), art, note=note, tick=tick)
     if found is None:
         row["why"] = (f"no hero portrait recognised in the top "
                       f"{TOP_REACH:.0%} of this frame")
@@ -854,15 +901,23 @@ def main() -> None:
 
     rows = []
     for number, shot in enumerate(shots, 1):
-        # SAY WHICH ONE IT IS ON. The first version printed only
-        # finished rows, so a minute of work per picture was
-        # indistinguishable from a hang - "is it loading, or is it an
-        # empty table?" - and the honest answer took a stopwatch.
-        print(f"[{number}/{len(shots)}] {shot.name} ...",
-              end="", flush=True)
-        row = measure(shot, into, art, loud=args.loud,
-                      strips=args.strips, lib=lib, params=params)
-        print("\r" + " " * 60 + "\r", end="", flush=True)
+        # SAY WHICH ONE IT IS ON, AND HOW FAR INTO IT. The first version
+        # printed only finished rows, so a minute of work per picture
+        # was indistinguishable from a hang - "is it loading, or is it
+        # an empty table?" The second printed a `[3/23] name ...` with
+        # `end=""` and erased it with a carriage return, which is worse
+        # in the place this is actually run from: the dialog reads the
+        # child's output LINE BY LINE, so a write with no newline never
+        # arrives at all and the erase is junk. "There is no ability to
+        # see what the program is thinking" was exactly that.
+        done = (number - 1) / len(shots)
+        each = 1.0 / len(shots)
+        step(done, f"{shot.name}  ({number} of {len(shots)})")
+        row = measure(
+            shot, into, art, loud=args.loud, strips=args.strips,
+            lib=lib, params=params,
+            tick=lambda share, at=done, size=each, name=shot.name:
+                step(at + size * share, name))
         rows.append(row)
         if "why" in row:
             print(f"{row['file'][:24].ljust(24)}  "
@@ -879,6 +934,7 @@ def main() -> None:
         print("  ".join(str(c).ljust(w) for c, w in zip(cells, widths)),
               flush=True)
 
+    step(1.0, "done")
     good = [r for r in rows if "why" not in r]
     _consensus(good)
     print(f"\n{len(good)} of {len(rows)} located.")

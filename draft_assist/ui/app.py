@@ -3071,20 +3071,29 @@ class MainWindow(QMainWindow):
         dialog.start()
 
     def _recognition_progress(self, line: str) -> None:
+        self._tool_progress(line, "Recognition check")
+
+    def _resolutions_progress(self, line: str) -> None:
+        self._tool_progress(line, "Resolutions")
+
+    def _tool_progress(self, line: str, label: str) -> None:
         """Show the tool's own percentage, and nothing else it prints.
 
         The tool marks these lines itself rather than this guessing at
         them: a run prints tables, hero names and file paths, and a
         status bar that tried to summarise the latest of those would
         flicker through all of it.
+
+        LABELLED BY CALLER, because two different runs report through
+        here and a resolution sweep announcing itself as "Recognition
+        check" is a status line lying about what is happening.
         """
         if not line.startswith("PROGRESS "):
             return
         # `_say` and not `showMessage`, so the state line does not
         # overwrite it on the very next tick - which is what made every
         # timed message in this app invisible before `_say` existed.
-        self._say(f"Recognition check — {line[len('PROGRESS '):].strip()}",
-                  4000)
+        self._say(f"{label} — {line[len('PROGRESS '):].strip()}", 4000)
 
     def _recognition_finished(self, dialog) -> None:
         """Copy the report, and say so WHERE THE REPORT IS.
@@ -3110,7 +3119,28 @@ class MainWindow(QMainWindow):
             f"it into the chat (Ctrl+V).{where}")
         self._say("Recognition report copied — paste it to Claude", 8000)
 
-    SHOTS = Path.home() / "Pictures" / "Screenshots"
+    # WHERE WINDOWS PUTS SCREENSHOTS, and ONEDRIVE IS FIRST because it
+    # REDIRECTS the folder: with Backup on, `~/Pictures/Screenshots` is
+    # not where the pictures are, `~/OneDrive/Pictures/Screenshots` is -
+    # and the first version of this opened the picker on an empty folder
+    # for exactly that reason. Each is a place to START the picker, not
+    # an answer: the user's own set lives in a named subfolder of one of
+    # these ("All Resolutions - Dota 2"), and guessing at subfolder
+    # names is how a picker opens somewhere surprising.
+    SHOT_FOLDERS = (
+        ("OneDrive", "Pictures", "Screenshots"),
+        ("Pictures", "Screenshots"),
+        ("OneDrive", "Pictures"),
+        ("Pictures",),
+    )
+
+    @classmethod
+    def _shots_folder(cls) -> Path:
+        for parts in cls.SHOT_FOLDERS:
+            candidate = Path.home().joinpath(*parts)
+            if candidate.is_dir():
+                return candidate
+        return Path.home()
 
     def _check_resolutions(self) -> None:
         """Does the layout read the same at every resolution?
@@ -3128,15 +3158,28 @@ class MainWindow(QMainWindow):
         broken. Windows puts screenshots in Pictures\\Screenshots, so
         that is where the picker opens.
         """
-        start = self.SHOTS if self.SHOTS.is_dir() else Path.home()
         folder = QFileDialog.getExistingDirectory(
             self, "Folder of draft screenshots, one per resolution",
-            str(start))
+            str(self._shots_folder()))
         if not folder:
+            return
+        # REFUSED HERE RATHER THAN INSIDE THE TASK. The tool exits with
+        # "No images in ..." on stderr, which arrives in the dialog as a
+        # failed run with one line in it - a worse way to say "you picked
+        # the wrong folder" than saying it before anything starts.
+        shots = [name for name in os.listdir(folder)
+                 if name.lower().endswith((".png", ".jpg", ".jpeg", ".bmp"))]
+        if not shots:
+            QMessageBox.information(
+                self, "Check other screen resolutions",
+                f"No pictures in {folder}.\n\n"
+                "Pick the folder that holds the draft screenshots "
+                "themselves, one per resolution — not the folder above "
+                "it.")
             return
         task = TASKS["check_resolutions"].with_argument(folder)
         dialog = TaskDialog(task, self)
-        dialog.worker.line.connect(self._recognition_progress)
+        dialog.worker.line.connect(self._resolutions_progress)
         dialog.finished.connect(
             lambda _code, box=dialog: self._resolutions_finished(box))
         dialog.start()

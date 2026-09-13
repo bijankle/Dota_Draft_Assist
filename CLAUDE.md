@@ -3645,6 +3645,41 @@ credentials, and put the account at risk. Do not go there.
   **Debug ▸ Copy everything** gathers the status line, the reading, the
   recognition log and the loop timings into one paste, because four panels
   selected by hand is a chore nobody does.
+  **A LONG RUN REPORTS ITSELF, AND A CARRIAGE RETURN IS NOT REPORTING**
+  (`score_recording.step`, `find_portraits.step`, `task_dialog.PERCENT`,
+  `MainWindow._tool_progress`). "There is no ability to see what the
+  program is thinking." The resolution sweep is about a MINUTE PER
+  PICTURE across 23 pictures, and it shipped printing nothing in that
+  minute — twice over, from two different causes.
+  It had no PROGRESS protocol at all, so the dialog's bar never moved
+  and the status line never fired: the bar reads lines the tool MARKS
+  (`^PROGRESS n%`) rather than guessing at numbers in ordinary output,
+  because a run prints tables, hero names and paths and a bar driven by
+  whatever looked like a number would jump about through all of it.
+  And what it did print per picture was `[3/23] name ...` written with
+  `end=""` and erased with a carriage return. That works in a console
+  and is worse than useless where this is actually run: `tasks.Worker`
+  reads the child with `for raw in proc.stdout`, which yields LINES, so
+  a write with no newline **is not emitted at all** until the next one
+  arrives, and the erase is junk in a text box. `score_recording` has
+  carried this lesson in a comment since it was written; the second tool
+  was written without it, which is what a lesson living in one file's
+  comments buys you.
+  **THE SWEEP REPORTS FROM INSIDE ITSELF** (`hunt(tick=...)`,
+  `SWEEP_SHARE`). Reporting at each end of a minute is still a minute of
+  silence, so the 24x3 size sweep ticks per pass — and it gets 0.9 of
+  the picture's bar rather than all of it, because the refine after it
+  is real work and a bar that reaches 100% and then sits there is the
+  same silence wearing a number.
+  **AND EACH RUN NAMES ITSELF.** Two tools report through one handler,
+  so the label is the caller's: a resolution sweep announcing itself as
+  "Recognition check" is a status line lying about what is happening.
+  **ONEDRIVE REDIRECTS `Pictures`**, so `~/Pictures/Screenshots` is not
+  where screenshots are when Backup is on — the picker opened on an
+  empty folder for exactly that reason and tries the OneDrive path
+  FIRST. A folder with no pictures in it is refused before the task
+  starts, since the tool's own `SystemExit` arrives as a failed run with
+  one line in it, which is a worse way to say "wrong folder".
   **The recognition log says WHICH SCREEN it read and what it is a picture
   of.** Ten UNKNOWNs is the CORRECT answer when the pick bar is not up,
   and the log has already been read as "the crop boxes are broken" from a
