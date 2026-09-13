@@ -38,6 +38,15 @@ me snippets of what you think the 10 portraits are in each snippet."
 
     python tools/find_portraits.py <folder> [--out DIR] [--json FILE]
 
+AND WHEN IT FINDS NOTHING, ASK IT WHAT SIZES IT LOOKED AT. `--grid`
+maps the best match at every size in the APP's own 2-D search grid
+(`autocal.WIDTHS` x `autocal.HEIGHTS`) rather than this tool's 24
+widths x 3 aspects, and says whether the winner is a size the ordinary
+sweep can reach at all. Use it on one picture; it is four times the
+work.
+
+    python tools/find_portraits.py <folder> --only "1920 x 1080.png" --grid
+
 The annotated pictures ARE Valve's artwork, like the screenshots they
 come from. Attach them, never commit them.
 """
@@ -209,14 +218,64 @@ def _sweep(strip, art: dict, box_w: int, box_h: int):
     back_x = int(round(box_w * INSET))
     back_y = int(round(box_h * INSET))
     hits = []
+    # THE BEST SCORE IS REPORTED EVEN WHEN NOTHING CLEARS THE FLOOR.
+    # "Found nothing" has two quite different causes - a frame with no
+    # pick bar in it, and a pick bar at a size this sweep never tried -
+    # and they are indistinguishable from an empty list. A peak of 0.08
+    # says there is no hero art here at all; a peak of 0.62 at the very
+    # edge of the size range says there is, and the range is wrong.
+    best_raw = 0.0
     for hero_id, whole in art.items():
         found = autocal._best_at(strip, _template(whole), inner_w, inner_h)
         if found is None:
             continue
         score, (x, y) = found
+        best_raw = max(best_raw, score)
         if score >= HIT_FLOOR:
             hits.append((score, x - back_x, y - back_y, hero_id))
-    return hits
+    return hits, best_raw
+
+
+def why_not_a_bar(keep, apart: int):
+    """Why this row is not a pick bar, in a sentence, or None if it is.
+
+    THE REFUSAL IS THE EVIDENCE. `bar_shape` answered None for five
+    quite different reasons and `measure` printed one sentence for all
+    of them - "no hero portrait recognised in the top 18% of this
+    frame" - which is a claim about the PICTURE made from a fact about
+    our own rules. It is the same fault as the calibration refusal that
+    said there was no picture of the game when what was missing was our
+    own attribute name: a message about the state of the world that was
+    really about us, and one the reader cannot act on. Each rule now
+    says which rule it was and with what numbers.
+    """
+    xs = sorted(hit[1] for hit in keep)
+    if len(xs) < MIN_HITS:
+        return (f"only {len(xs)} portrait(s) stood in one row and a bar "
+                f"needs {MIN_HITS}")
+    if len(xs) > MOST_HITS:
+        return (f"{len(xs)} portraits in one row, more than the {MOST_HITS} "
+                f"a pick bar holds - a roster row, not a pick bar")
+    steps = [b - a for a, b in zip(xs, xs[1:])]
+    if not steps:
+        return "one portrait only"
+    split = steps.index(max(steps)) + 1
+    left, right = xs[:split], xs[split:]
+    if max(len(left), len(right)) > autocal.TEAM_SIZE:
+        return (f"the widest gap splits them {len(left)}/{len(right)} and a "
+                f"bank holds at most {autocal.TEAM_SIZE}")
+    # THE GAP BETWEEN THE TEAMS IS THE TELL, and it has to be clear of
+    # the ordinary spacing - in an evenly spaced run the biggest step is
+    # whatever rounding made largest, which would "split" a grid row
+    # anywhere at all.
+    others = [step for index, step in enumerate(steps)
+              if index != split - 1] or [apart]
+    typical = max(sorted(others)[len(others) // 2], 1)
+    if max(steps) < 1.35 * typical:
+        return (f"no gap between two banks: the widest step is "
+                f"{max(steps)}px against a typical {typical}px, so these "
+                f"{len(xs)} sit in one even run")
+    return None
 
 
 def bar_shape(keep, apart: int):
@@ -232,29 +291,173 @@ def bar_shape(keep, apart: int):
     So the test is the shape, and the count only orders the rows that
     pass it.
     """
-    xs = sorted(hit[1] for hit in keep)
-    if not (MIN_HITS <= len(xs) <= MOST_HITS):
+    if why_not_a_bar(keep, apart) is not None:
         return None
-    steps = [b - a for a, b in zip(xs, xs[1:])]
-    if not steps:
-        return None
-    split = steps.index(max(steps)) + 1
-    left, right = xs[:split], xs[split:]
-    if max(len(left), len(right)) > autocal.TEAM_SIZE:
-        return None
-    # THE GAP BETWEEN THE TEAMS IS THE TELL, and it has to be clear of
-    # the ordinary spacing - in an evenly spaced run the biggest step is
-    # whatever rounding made largest, which would "split" a grid row
-    # anywhere at all.
-    others = [step for index, step in enumerate(steps)
-              if index != split - 1] or [apart]
-    if max(steps) < 1.35 * max(sorted(others)[len(others) // 2], 1):
-        return None
-    return len(xs), sum(hit[0] for hit in keep)
+    return len(keep), sum(hit[0] for hit in keep)
 
 
-def hunt(grey, art: dict, note=None, tick=None):
+def map_order(cell: dict):
+    """BAR-SHAPED FIRST, then the count, then the score.
+
+    Not cosmetic. A box a third of a portrait wide matches PART of every
+    one of them and reports fourteen hits in a bar of ten, so ranking by
+    count alone puts a size that cannot be right at the top of the map -
+    which is the same mistake `bar_shape` exists to stop the sweep
+    making. `why_not_a_bar` is what tells them apart, so it decides the
+    order here too.
+    """
+    return bool(cell["bar"]), cell["row"], cell["peak"]
+
+
+def size_map(grey, art: dict, span: int, tick=None, top: int = 12) -> list:
+    """The best correlation at EVERY size, not only the ones swept.
+
+    WHY THIS EXISTS. The normal sweep tries 24 widths as a fraction of
+    the WINDOW crossed with THREE fixed aspects, and the app's own
+    `autocal.find_scale` — which found the shipped layout on a real
+    3440x1440 client — searches a strictly larger box: 19 widths as a
+    fraction of the HUD SPAN crossed with 17 INDEPENDENT heights as a
+    fraction of the frame. Those are not the same search, and the
+    difference is not academic. The live measurement says the pick tile
+    is SQUARE (slot_w 0.0525 of the span against slot_h 0.0930 of the
+    height, which is 1.00 at 16:9); the nearest aspect this tool tries
+    is 0.93, and on a 134px tile that is ten pixels out in height —
+    which, at the scale sensitivity measured for this matcher (0.99 at
+    the true size, 0.12 four pixels out), finds nothing whatever.
+
+    So this is the instrument that answers "is the portrait at a size
+    the sweep can even reach", with a number, instead of by reasoning.
+    Run it on ONE picture:
+
+        python tools/find_portraits.py <folder> --only "1920 x 1080.png"
+            --grid
+
+    It is about four times the work of one ordinary picture, which is
+    why it is not what the sweep does.
+    """
+    rows, width = grey.shape[:2]
+    band = grey[:max(16, int(rows * TOP_REACH))]
+    shrink = max(1.0, width / WORK_WIDTH)
+    small = cv2.resize(band, (int(width / shrink),
+                              max(1, int(band.shape[0] / shrink))),
+                       interpolation=cv2.INTER_AREA) if shrink > 1 else band
+
+    cells = []
+    total = len(autocal.WIDTHS) * len(autocal.HEIGHTS)
+    tried = 0
+    for width_frac in autocal.WIDTHS:
+        for height_frac in autocal.HEIGHTS:
+            tried += 1
+            if tick is not None:
+                tick(tried / total)
+            box_w = int(round(span * width_frac / shrink))
+            box_h = int(round(rows * height_frac / shrink))
+            if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
+                continue
+            hits, raw = _sweep(small, art, box_w, box_h)
+            keep = _one_row(hits, box_w)
+            cells.append({
+                "w_of_span": width_frac, "h_of_frame": height_frac,
+                "box": [box_w, box_h], "peak": round(raw, 3),
+                "row": len(keep),
+                "w_of_window": round(box_w * shrink / width, 5),
+                "aspect": round(box_w / max(1, box_h), 3),
+                "bar": keep and why_not_a_bar(keep, box_w) is None,
+            })
+    cells.sort(key=map_order, reverse=True)
+    return cells[:top]
+
+
+def print_size_map(cells: list) -> None:
+    """The map, and whether the ordinary sweep could have got there."""
+    if not cells:
+        print("  the grid tried nothing - the band is smaller than a "
+              "portrait")
+        return
+    head = ("w/span", "h/frame", "box", "aspect", "w/window", "row", "peak",
+            "bar?")
+    widths = (8, 8, 10, 7, 9, 4, 6, 5)
+    print("  " + "  ".join(h.ljust(w) for h, w in zip(head, widths)))
+    for cell in cells:
+        print("  " + "  ".join(str(c).ljust(w) for c, w in zip(
+            (f"{cell['w_of_span']:.4f}", f"{cell['h_of_frame']:.4f}",
+             f"{cell['box'][0]}x{cell['box'][1]}", f"{cell['aspect']:.2f}",
+             f"{cell['w_of_window']:.4f}", cell["row"],
+             f"{cell['peak']:.2f}", "yes" if cell["bar"] else "no"), widths)))
+    best = cells[0]
+    lo, hi = WIDTH_FRACS[0], WIDTH_FRACS[-1]
+    reach_w = lo <= best["w_of_window"] <= hi
+    box_w, box_h = best["box"]
+    # MEASURED IN PIXELS OF HEIGHT, not in aspect numbers. An aspect of
+    # 0.93 against a square tile reads as a near miss and is ten pixels
+    # out on a 134px portrait - which, at this matcher's sensitivity, is
+    # the difference between 0.99 and nothing at all.
+    near = min(ASPECTS, key=lambda a: abs(round(box_w / a) - box_h))
+    would = max(1, round(box_w / near))
+    out = abs(would - box_h)
+    close = out <= max(2, round(box_h * 0.03))
+    print(f"\n  The best cell is {box_w}x{box_h}, aspect "
+          f"{best['aspect']:.2f}, {best['w_of_window']:.4f} of the window.")
+    print(f"  The ordinary sweep tries {lo:.3f} to {hi:.3f} of the window "
+          f"({'IN range' if reach_w else 'OUT OF RANGE'}) at aspects "
+          + ", ".join(f"{a:.2f}" for a in ASPECTS)
+          + f"; the nearest of those makes it {box_w}x{would}, {out}px out "
+          + ("(close)." if close else "in height - NOT CLOSE."))
+
+
+def _diagnose(diag, peak, widest, stage: str) -> None:
+    """Say why the hunt came back with nothing, with the numbers.
+
+    THE TOOL SPENT A MINUTE ON THE PICTURE AND HAS TO SAY WHAT IT SAW.
+    A sweep that finds no bar has already measured everything needed to
+    tell the causes apart, and threw all of it away: a peak correlation
+    of 0.08 means there is no hero artwork in the top of this frame at
+    all - the wrong screen, or a pick bar further down - while a peak of
+    0.62 means there is one and the rules rejected it, and a peak at the
+    very END of the swept size range means the portrait is probably
+    outside the range rather than absent. Eighteen of twenty-two frames
+    reported one sentence for all three.
+    """
+    if diag is None:
+        return
+    score, frac, aspect, box_w, box_h = peak
+    lo, hi = WIDTH_FRACS[0], WIDTH_FRACS[-1]
+    diag.update({"stage": stage, "peak": round(score, 3), "peak_frac": frac,
+                 "peak_aspect": round(aspect, 3),
+                 "peak_box": [box_w, box_h]})
+    if widest is None or score < HIT_FLOOR:
+        why = (f"nothing in the top {TOP_REACH:.0%} of this frame looks like "
+               f"a hero portrait at any of the {len(WIDTH_FRACS)}x"
+               f"{len(ASPECTS)} sizes tried: the strongest match anywhere "
+               f"was {score:.2f}, against a floor of {HIT_FLOOR:.2f}")
+        at = frac
+    else:
+        count, at, row_aspect, row_w, row_h, row_best, refused = widest
+        diag.update({"row": count, "row_frac": at,
+                     "row_aspect": round(row_aspect, 3),
+                     "row_box": [row_w, row_h], "row_best": round(row_best, 3),
+                     "refused": refused})
+        why = (f"portraits matched but not in the shape of a pick bar: the "
+               f"best row held {count} at {at:.3f} of the width "
+               f"({row_w}x{row_h}, best {row_best:.2f}) - {refused}")
+    # AT THE END OF THE RANGE IS A DIFFERENT ANSWER, and it is the one
+    # that says what to change. The sweep can only find a size it tries.
+    if score >= HIT_FLOOR and at in (lo, hi):
+        which = "bottom" if at == lo else "top"
+        why += (f". That size is the {which} END of the range swept "
+                f"({lo:.3f} to {hi:.3f} of the window), so the real "
+                f"portraits may be outside it rather than absent")
+    if stage != "the size sweep":
+        why += f". Refused by {stage}"
+    diag["why"] = why
+
+
+def hunt(grey, art: dict, note=None, tick=None, diag=None):
     """(slot_w, slot_h, hits) in this picture's own pixels, or None.
+
+    `diag`, when given a dict, is filled with WHY it came back None -
+    see `why_not_a_bar` and `_diagnose`. A refusal that names one cause
+    for five is a refusal nobody can act on.
 
     `tick` is called with 0..1 as the size sweep walks, because that
     sweep IS the minute this tool spends on a picture: 24 widths x 3
@@ -286,6 +489,8 @@ def hunt(grey, art: dict, note=None, tick=None):
                        interpolation=cv2.INTER_AREA) if shrink > 1 else band
 
     best = None
+    peak = (0.0, 0.0, 0.0, 0, 0)      # score, frac, aspect, box_w, box_h
+    widest = None                     # the best ROW seen, bar-shaped or not
     tried = 0
     total = len(WIDTH_FRACS) * len(ASPECTS)
     for frac in WIDTH_FRACS:
@@ -301,17 +506,26 @@ def hunt(grey, art: dict, note=None, tick=None):
         box_h = int(round(box_w / aspect))
         if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
             continue
-        keep = _one_row(_sweep(small, art, box_w, box_h), box_w)
+        hits, raw = _sweep(small, art, box_w, box_h)
+        if raw > peak[0]:
+            peak = (raw, frac, aspect, box_w, box_h)
+        keep = _one_row(hits, box_w)
+        refused = why_not_a_bar(keep, box_w) if keep else "nothing matched"
+        if keep and (widest is None or len(keep) > widest[0]):
+            widest = (len(keep), frac, aspect, box_w, box_h,
+                      max(keep)[0], refused)
         if note is not None and keep:
             note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)"
-                 f"  best {max(keep)[0]:.2f}")
+                 f"  best {max(keep)[0]:.2f}"
+                 + (f"  -- {refused}" if refused else "  -- BAR"))
         # SHAPED LIKE A BAR FIRST, counted second. See `bar_shape`.
-        rank = bar_shape(keep, box_w)
-        if rank is None:
+        if refused is not None:
             continue
+        rank = bar_shape(keep, box_w)
         if best is None or rank > best[0]:
             best = (rank, box_w, box_h, keep)
     if best is None:
+        _diagnose(diag, peak, widest, "the size sweep")
         return None
     _rank, box_w, box_h, keep = best
 
@@ -334,12 +548,24 @@ def hunt(grey, art: dict, note=None, tick=None):
     # already known to be there - ten matches rather than another sweep.
     if tick is not None:
         tick(SWEEP_SHARE + (1 - SWEEP_SHARE) * 0.5)
-    exact = _one_row(
-        _sweep(band, {hid: art[hid] for _s, _x, _y, hid in keep},
-               full_w, full_h), full_w)
+    exact_hits, exact_raw = _sweep(
+        band, {hid: art[hid] for _s, _x, _y, hid in keep}, full_w, full_h)
+    if exact_raw > peak[0]:
+        peak = (exact_raw, full_w / max(1, width), full_w / max(1, full_h),
+                full_w, full_h)
+    exact = _one_row(exact_hits, full_w)
     if tick is not None:
         tick(1.0)
     if bar_shape(exact, full_w) is None:
+        # THE COARSE PASS FOUND A BAR AND THE EXACT RE-READ DID NOT,
+        # which is a different failure from never finding one and has to
+        # read as one: the size walked somewhere the portraits are not.
+        _diagnose(
+            diag, peak,
+            (len(exact), box_w / max(1, small.shape[1]), box_w / max(1, box_h),
+             full_w, full_h, max(exact)[0] if exact else 0.0,
+             why_not_a_bar(exact, full_w) if exact else "nothing matched"),
+            f"the re-read at the refined size ({full_w}x{full_h})")
         return None
     return full_w, full_h, exact
 
@@ -408,10 +634,13 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     note = (lambda line: print(line, flush=True)) if loud else None
     if strips:
         strip_of(frame, path, into)
-    found = hunt(autocal._grey(frame), art, note=note, tick=tick)
+    diag: dict = {}
+    found = hunt(autocal._grey(frame), art, note=note, tick=tick, diag=diag)
     if found is None:
-        row["why"] = (f"no hero portrait recognised in the top "
-                      f"{TOP_REACH:.0%} of this frame")
+        row["diag"] = diag
+        row["why"] = diag.get(
+            "why", f"no hero portrait recognised in the top "
+                   f"{TOP_REACH:.0%} of this frame")
         # A FAILURE WRITES ITS OWN EVIDENCE. Without the strip, "found
         # nothing" is unanswerable: it could be the sweep, the artwork,
         # or a screenshot whose pick slots are simply still empty.
@@ -821,6 +1050,44 @@ def _vertical(good: list) -> None:
               "calibration_local.json, so read CLAUDE.md first.")
 
 
+def _failures(bad: list) -> None:
+    """One line per picture that located nothing, with its own numbers.
+
+    EIGHTEEN REFUSALS ARE A PATTERN OR THEY ARE NOTHING. Read one at a
+    time they are eighteen sentences; read as a column of peaks and best
+    rows they say at once whether the frames hold no hero art (every
+    peak under the floor - the wrong screen, or a bar below the band) or
+    hold it at a size this sweep does not try (peaks high, and at the
+    end of the range).
+    """
+    if not bad:
+        return
+    print(f"\n{len(bad)} located nothing:")
+    head = ("file", "WxH", "peak", "at", "box", "best row", "why")
+    widths = (24, 11, 6, 7, 9, 9, 0)
+    print("  " + "  ".join(h.ljust(w) for h, w in zip(head, widths)))
+    floor = 0
+    for row in bad:
+        diag = row.get("diag") or {}
+        peak = diag.get("peak")
+        if peak is not None and peak < HIT_FLOOR:
+            floor += 1
+        box = diag.get("peak_box") or []
+        cells = (row["file"][:24],
+                 f"{row.get('w', '?')}x{row.get('h', '?')}",
+                 f"{peak:.2f}" if peak is not None else "-",
+                 f"{diag['peak_frac']:.3f}" if diag.get("peak_frac") else "-",
+                 f"{box[0]}x{box[1]}" if len(box) == 2 else "-",
+                 str(diag.get("row", "-")),
+                 diag.get("refused") or "nothing cleared the floor")
+        print("  " + "  ".join(str(c).ljust(w)
+                               for c, w in zip(cells, widths)))
+    if floor == len(bad):
+        print(f"  ALL {len(bad)} peaked below the {HIT_FLOOR:.2f} floor: "
+              "there is no hero artwork in the searched band of any of "
+              "them. Look at a -strip.png before changing the sweep.")
+
+
 def main() -> None:
     console.plain_output()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -842,6 +1109,12 @@ def main() -> None:
                              "not only the ones that fail")
     parser.add_argument("--loud", action="store_true",
                         help="print every size tried and what it matched")
+    parser.add_argument("--grid", action="store_true",
+                        help="instead of locating, map the best match at "
+                             "every size in the app's own 2-D search grid. "
+                             "Answers whether the portraits are at a size "
+                             "the ordinary sweep can reach. Four times the "
+                             "work, so use it with --only on one picture.")
     args = parser.parse_args()
 
     folder = Path(args.folder).expanduser()
@@ -884,7 +1157,7 @@ def main() -> None:
     # and the question being asked is whether the one that ships works
     # once the boxes are in the right place.
     lib = params = None
-    if not args.no_read:
+    if not args.no_read and not args.grid:
         params = library.load_params()
         lib = library.load(expected_hash_size=params.hash_size)
 
@@ -898,6 +1171,27 @@ def main() -> None:
     widths = (24, 11, 7, 5, 8, 7, 7, 7, 7, 6, 8, 8, 9, 8)
     print("  ".join(h.ljust(w) for h, w in zip(head, widths)))
     print("-" * (sum(widths) + 2 * len(widths)))
+
+    if args.grid:
+        for number, shot in enumerate(shots, 1):
+            done = (number - 1) / len(shots)
+            each = 1.0 / len(shots)
+            step(done, f"{shot.name}  ({number} of {len(shots)})")
+            frame = read_image(shot)
+            if frame is None:
+                print(f"{shot.name}: not an image this build can read")
+                continue
+            height, width = frame.shape[:2]
+            _left, span = hud_box(width, height)
+            print(f"\n{shot.name}  {width}x{height}  "
+                  f"aspect {width / height:.3f}  HUD span {span}")
+            cells = size_map(
+                autocal._grey(frame), art, span,
+                tick=lambda share, at=done, size=each: step(
+                    at + size * share, "mapping sizes"))
+            print_size_map(cells)
+        step(1.0, "done")
+        return
 
     rows = []
     for number, shot in enumerate(shots, 1):
@@ -945,6 +1239,7 @@ def main() -> None:
         if values:
             print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
                   f"   spread {max(values) - min(values):.5f}")
+    _failures([r for r in rows if "why" in r])
     named = sum(r.get("named", 0) for r in good)
     if any("named" in r for r in good):
         print(f"\n{named} of {10 * len(good)} slots were given a hero name.")

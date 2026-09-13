@@ -3710,6 +3710,45 @@ credentials, and put the account at risk. Do not go there.
   **A FAILED RUN IS THE ONE MOST WORTH PASTING BACK**, so the button
   asks whether there is anything to copy rather than whether the run
   succeeded.
+  **AND WHEN IT CAME BACK IT SAID ONE THING EIGHTEEN TIMES**
+  (`find_portraits.why_not_a_bar`, `_diagnose`, `_failures`). The first
+  real end-to-end run located 4 of 22 pictures, and the other eighteen
+  each printed "no hero portrait recognised in the top 18% of this
+  frame" — which is a claim about the PICTURE assembled out of a fact
+  about our own rules. `hunt` answers None for five separate reasons
+  (nothing correlated at all; fewer than `MIN_HITS` in a row; more than
+  `MOST_HITS`, which is a roster row; a bank over five; no gap between
+  two banks) and they have completely different answers: the wrong
+  screen, a bar below the searched band, a size the sweep never tries,
+  or a genuine roster row. Same fault as the calibration refusal that
+  reported no picture of the game when what was missing was our own
+  attribute name.
+  So `_sweep` reports the best raw correlation it saw EVEN BELOW
+  `HIT_FLOOR` — a peak of 0.08 says there is no hero artwork in that
+  band at all, a peak of 0.62 says there is and the rules rejected it —
+  the refusing rule names itself with its own numbers, a peak sitting at
+  either END of `WIDTH_FRACS` says outright that the swept range may be
+  the limit rather than the frame, and the summary prints one line per
+  failure so eighteen refusals read as a pattern instead of eighteen
+  sentences. None of it is new measurement: the sweep already had every
+  one of these numbers and threw them away.
+  **AND THE SWEEP SEARCHES A SMALLER BOX THAN THE APP DOES, WHICH IS
+  MEASURED RATHER THAN ARGUED** (`find_portraits.size_map`, `--grid`).
+  `autocal.find_scale` — the search that produced the shipped
+  `DraftLayout` off a real 3440x1440 client — sweeps 19 widths as a
+  fraction of the HUD SPAN against 17 INDEPENDENT heights as a fraction
+  of the frame. This tool sweeps 24 widths as a fraction of the WINDOW
+  against THREE FIXED ASPECTS, and the live measurement says the pick
+  tile is SQUARE: slot_w 0.0525 of the span against slot_h 0.0930 of the
+  height is 1.00 at 16:9, where the nearest aspect tried is 0.93 — ten
+  pixels out on a 134px tile, against a matcher measured at 0.99 on size
+  and 0.12 four pixels off it. That is a reason the sweep can find
+  nothing on the very display the app works on, and it is a HYPOTHESIS
+  until the map says so: `--grid` runs the app's own grid on one picture
+  and prints the best cell, whether it is inside the swept width range,
+  and how many PIXELS OF HEIGHT the nearest aspect would be out. Pixels,
+  not aspect numbers — 0.93 against 1.00 reads as a near miss and is the
+  whole error.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and
