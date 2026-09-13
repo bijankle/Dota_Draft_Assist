@@ -4135,7 +4135,20 @@ class MainWindow(QMainWindow):
         # broken" during a team showcase. Say which screen it is looking at
         # rather than leaving the reader to infer it from ten failures.
         state = (snap.game_state or "").replace("DOTA_GAMERULES_STATE_", "")
-        if state and state not in _DRAFT_STATE_NAMES:
+        if not state:
+            # BLANK IS THE COMMONEST CASE AND WAS THE ONE NOT COVERED.
+            # The guard here used to be `if state and ...`, so a blank
+            # one - Dota open, sitting in the menu, no match - fell
+            # through and printed ten failures with nothing saying why.
+            # That is exactly when somebody presses Copy everything, and
+            # a log that reads as ten broken crop boxes at the moment
+            # nothing is on screen is worse than no log.
+            lines.append(
+                "NOTE: the game is not in a match, so there is no pick "
+                "bar on screen — every slot reading UNKNOWN here is "
+                "RIGHT and says nothing about the crop boxes. Judge them "
+                "during hero selection.")
+        elif state not in _DRAFT_STATE_NAMES:
             lines.append(
                 f"NOTE: the game is at {state}, not the pick screen — the "
                 "pick bar is not up, so every slot reading UNKNOWN here is "

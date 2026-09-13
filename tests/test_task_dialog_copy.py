@@ -87,3 +87,25 @@ def test_a_tool_that_reports_nothing_keeps_a_spinning_bar(qapp):
 def test_copying_an_empty_log_does_not_raise(dialog, qapp):
     dialog._copy()
     assert "Copied" in dialog.copy_button.text()
+
+
+# --------------------------------------------------------------------
+# TEN UNKNOWNS AT THE MENU IS THE RIGHT ANSWER, and the log has to say
+# so. A real paste came back with eight UNKNOWN, two EMPTY and distances
+# of 84-104 against a ceiling of 51 - which reads as ten broken crop
+# boxes and was in fact Dota sitting in the menu with no pick bar on
+# screen at all.
+
+
+def test_a_blank_game_state_is_explained_in_the_recognition_log():
+    """`game_state` is BLANK when Dota is open with no match - the
+    commonest moment anybody presses Copy everything. The guard used to
+    be `if state and ...`, so blank fell straight through and printed
+    ten failures with nothing saying why."""
+    source = (ROOT / "draft_assist" / "ui" / "app.py").read_text(
+        encoding="utf-8")
+    body = source[source.index("gate score: {snap.gate_score"):]
+    body = body[:body.index("for s in read.slots")]
+    assert "if not state:" in body, (
+        "a blank game state must be explained, not skipped")
+    assert "not in a match" in body
