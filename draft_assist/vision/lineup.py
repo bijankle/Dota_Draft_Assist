@@ -47,6 +47,29 @@ MIN_PLACED_SCORE = 0.25
 MIN_MARGIN = 0.03
 TEAM_SIZE = 5
 
+# NINE LOCATED PORTRAITS STILL DETERMINE THE SIDES, and requiring ten is
+# what put a real draft on the wrong teams. `locate` found 9 of the 10 in
+# match 8996568678, `read_searched` refused the lot, and the minimap's
+# coin-flip split won instead — Axe and Storm Spirit came out on the enemy
+# team and the board scored 6/10.
+#
+# It is elimination rather than a guess, and the same elimination
+# `harvest.by_elimination` already runs: the game NAMED all ten, nine are
+# on the bar in known positions, so the tenth is the one hero left and it
+# belongs to whichever bank has four. `_banks` still refuses anything it
+# cannot read off the geometry.
+MIN_FOUND = 2 * TEAM_SIZE - 1
+
+# How much wider than one step the gap BETWEEN the banks has to be before
+# it is believed to be the bank boundary rather than a hole where a
+# portrait was missed. A missed portrait leaves a two-step hole, so the
+# threshold has to clear 2 — and the bar has room for it: on the measured
+# 16:9 layout the banks are 4.87 steps apart against a pitch of one, so a
+# hole is less than half the bank gap. Below this the reading is REFUSED,
+# never split anyway: the whole point of the fix is a wrong split asserted
+# confidently is worse than the guess it replaces.
+BANK_GAP_STEPS = 2.5
+
 
 @dataclass
 class ScreenLineup:
@@ -170,6 +193,73 @@ def read_placed(frame, hero_ids: list[int],
         note=f"matched {len(assignment)} portraits in the calibrated boxes")
 
 
+def split_banks(found: list) -> tuple[int, str]:
+    """Where the left bank ends, read off the gaps. (-1, reason) if it cannot be.
+
+    `found` is sorted by x. Within a bank the step is one pitch; between
+    the banks it is several (4.87 on the measured 16:9 layout), and a
+    portrait the search missed leaves a hole of two. So the MEDIAN step is
+    the pitch whichever of those is present — at most two of the eight or
+    nine steps are anything else — and the bank boundary is the one step
+    that clears `BANK_GAP_STEPS` of it.
+
+    Exactly one step may clear it. Two would mean either a second bank or
+    a bar this function cannot read, and inventing a boundary between them
+    is how a confident wrong answer gets made.
+    """
+    xs = [item.x for item in found]
+    steps = [b - a for a, b in zip(xs, xs[1:])]
+    if len(steps) < 2:
+        return -1, "too few portraits on the bar to find the gap between banks"
+    pitch = float(np.median(steps))
+    if pitch <= 0:
+        return -1, "the portraits are stacked at one x — this is not a pick bar"
+    wide = [i for i, step in enumerate(steps)
+            if step >= BANK_GAP_STEPS * pitch]
+    if not wide:
+        return -1, (f"no gap on the bar is {BANK_GAP_STEPS:g}x the "
+                    f"{pitch:.0f}px step, so the two banks cannot be told apart")
+    if len(wide) > 1:
+        return -1, (f"{len(wide)} gaps look like the split between banks; "
+                    "this frame is probably not a pick bar")
+    return wide[0] + 1, ""
+
+
+def _place_missing(found: list, hero_ids: list[int],
+                   split: int) -> tuple[list[int], list[int], str]:
+    """The ten hero ids in bank order, with the unlocated one eliminated in.
+
+    Nine located leaves exactly one hero unaccounted for and exactly one
+    bank holding four, so which side it is on is not a guess. WHERE in
+    that bank is: an interior hole shows as a double step and takes it,
+    and otherwise it was at one end and the end cannot be told from the
+    gaps alone. It goes last, and the note says so, because the order
+    inside a team is the one thing here a drag already fixes.
+    """
+    left = [item.hero_id for item in found[:split]]
+    right = [item.hero_id for item in found[split:]]
+    missing = [hid for hid in hero_ids
+               if hid not in {item.hero_id for item in found}]
+    if not missing:
+        return left, right, ""
+    (absent,) = missing
+    every = [item.x for item in found]
+    pitch = float(np.median([b - a for a, b in zip(every, every[1:])]))
+    short, xs = ((left, every[:split]) if len(left) < len(right)
+                 else (right, every[split:]))
+    steps = [b - a for a, b in zip(xs, xs[1:])]
+    # A missed portrait leaves a step of two pitches where there should be
+    # one; 1.5 is the midpoint between the two, and nothing else on a bank
+    # is anywhere near it.
+    holes = [i for i, step in enumerate(steps) if step >= 1.5 * pitch]
+    if len(holes) == 1:
+        short.insert(holes[0] + 1, absent)
+        return left, right, "placed the tenth in the gap it left on the bar"
+    short.append(absent)
+    return left, right, ("placed the tenth by elimination; it was at one end "
+                         "of its bank and which end cannot be read off the gaps")
+
+
 def read_searched(frame, hero_ids: list[int],
                   portraits: dict[int, np.ndarray] | None = None,
                   progress=None) -> ScreenLineup:
@@ -183,26 +273,33 @@ def read_searched(frame, hero_ids: list[int],
     art = portraits if portraits is not None else \
         autocal.base_portraits(hero_ids)
     found = autocal.locate(frame, art, progress=progress)
-    if len(found) != 2 * TEAM_SIZE:
+    if len(found) < MIN_FOUND:
         return ScreenLineup(note=(
-            f"found {len(found)} of the ten portraits on screen; all ten are "
-            "needed before the sides can be read off"))
+            f"found {len(found)} of the ten portraits on screen; "
+            f"{MIN_FOUND} are needed before the sides can be read off"))
 
-    xs = [item.x for item in found]              # locate() sorts by x
-    gaps = [b - a for a, b in zip(xs, xs[1:])]
-    split = gaps.index(max(gaps)) + 1
-    if split != TEAM_SIZE:
+    split, why = split_banks(found)
+    if split < 0:
+        return ScreenLineup(note=why)
+    sizes = (split, len(found) - split)
+    if sorted(sizes) not in ([TEAM_SIZE, TEAM_SIZE],
+                             [TEAM_SIZE - 1, TEAM_SIZE]):
         return ScreenLineup(note=(
-            f"the widest gap splits the bar {split}/{len(found) - split}, "
-            "not 5/5 — this frame is probably not a pick bar"))
+            f"the gap between banks splits the bar {sizes[0]}/{sizes[1]}, "
+            "which is not five a side — this frame is probably not a pick bar"))
+
+    left, right, placed = _place_missing(found, hero_ids, split)
+    mean = float(np.mean([item.score for item in found]))
+    note = (f"located all ten on the bar, mean confidence {mean:.2f}"
+            if len(found) == 2 * TEAM_SIZE else
+            f"located {len(found)} of the ten on the bar, mean confidence "
+            f"{mean:.2f}; {placed}")
     return ScreenLineup(
-        left=[item.hero_id for item in found[:TEAM_SIZE]],
-        right=[item.hero_id for item in found[TEAM_SIZE:]],
-        confidence=float(np.mean([item.score for item in found])),
+        left=left, right=right,
+        confidence=mean,
         how="searched",
         found=found,
-        note=f"located all ten on the bar, mean confidence "
-             f"{np.mean([item.score for item in found]):.2f}")
+        note=note)
 
 
 def read_lineup(frame, hero_ids: list[int],

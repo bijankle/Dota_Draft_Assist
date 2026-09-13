@@ -686,8 +686,21 @@ class HybridProvider:
         running: the cheap path needs calibrated boxes and the boxes were
         never calibrated. `MainWindow` picks this up and saves it, after
         which the search never runs again on this machine.
+
+        **ONLY FROM ALL TEN.** The SIDES survive a portrait the search
+        missed, because the game named all ten and the one not located is
+        the hero left over — elimination, not a guess. The GEOMETRY does
+        not: `layout_from` reads a bank's origin off the first portrait IN
+        it, so a miss at the start of a bank shifts that whole bank one
+        pitch and every box after it. A measurement is adopted when there
+        is no calibration file at all, so that would bake a shifted layout
+        into a fresh install and the cheap path would be wrong for every
+        match after it. Nine portraits answer the sides; it takes ten to
+        answer where the boxes go.
         """
-        if read.how != "searched" or not read.found:
+        from ..vision import lineup as lineup_mod
+        if (read.how != "searched"
+                or len(read.found) != 2 * lineup_mod.TEAM_SIZE):
             return
         shape = getattr(read, "frame_shape", None) or (
             snap.frame.shape[:2] if snap.frame is not None else None)
