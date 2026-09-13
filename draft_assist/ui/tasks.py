@@ -166,6 +166,22 @@ TASKS = {
               "sits - and reports whether they agree.",
         cancellable=True,
     ),
+    "map_sizes": Task(
+        key="map_sizes",
+        title="Map portrait sizes",
+        # ONE PICTURE and the app's OWN grid. The ordinary sweep tries 30
+        # widths as a fraction of the window against three fixed aspects;
+        # `autocal.find_scale`, which produced the shipped layout off a
+        # real client, sweeps 19 widths of the HUD span against 17
+        # INDEPENDENT heights. This runs the larger of the two and says
+        # whether the portraits are at a size the sweep can reach at all
+        # - in pixels of height, not in aspect numbers.
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--grid"]],
+        blurb="Measures what size the portraits actually are, on one "
+              "screenshot, against the app's own search grid. Four "
+              "minutes; use it when a sweep finds nothing.",
+        cancellable=True,
+    ),
     "update_app": Task(
         key="update_app",
         title="Update application",

@@ -478,6 +478,7 @@ class MainWindow(QMainWindow):
                   lambda: self.run_task("fix_recognition"))
         self._act(checks, "Check other screen &resolutions…",
                   self._check_resolutions)
+        self._act(checks, "&Map portrait sizes…", self._map_sizes)
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.
@@ -3139,6 +3140,17 @@ class MainWindow(QMainWindow):
         self._open_tool(
             "check_resolutions", what="results",
             start_in=self._shots_folder(), label="Resolutions")
+
+    def _map_sizes(self) -> None:
+        """The instrument for when a sweep finds nothing.
+
+        Same window, same Run and Copy results: the answer to "what do I
+        run" has been "a button" twice now, and a command line is not an
+        answer to it a third time.
+        """
+        self._open_tool(
+            "map_sizes", what="results",
+            start_in=self._shots_folder(), label="Sizes")
 
     def _open_tool(self, key: str, what: str, label: str,
                    start_in: Path | None = None) -> None:

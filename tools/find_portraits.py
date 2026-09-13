@@ -1353,6 +1353,20 @@ def main() -> None:
     print("-" * (sum(widths) + 2 * len(widths)))
 
     if args.grid:
+        # ONE PICTURE, unless you named others. The map is four times the
+        # work of an ordinary sweep because it runs the app's whole 2-D
+        # grid, and it answers a question about the SEARCH rather than
+        # about any particular screenshot - so mapping fourteen of them
+        # is an hour spent re-deriving one answer. A tall one is picked
+        # when there is one, since those are the frames with anything
+        # left to settle.
+        if not args.only and len(shots) > 1:
+            pick = tall[0] if tall else shots[0]
+            print(f"Mapping ONE picture: {pick.name}. The map answers a "
+                  f"question about the search, not about a screenshot, "
+                  f"so one is enough.")
+            print("Name another with --only if you want a different one.\n")
+            shots = [pick]
         for number, shot in enumerate(shots, 1):
             done = (number - 1) / len(shots)
             each = 1.0 / len(shots)

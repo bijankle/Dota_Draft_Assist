@@ -209,3 +209,33 @@ def test_the_app_runs_only_the_shots_that_can_vote():
     step = TASKS["check_resolutions"].steps[0]
     assert "--tall" in step
     assert step.index("--tall") > step.index("{arg}")
+
+
+def test_the_size_map_is_a_button_not_a_command_line():
+    """"I want it to be a tool in the app just like before - set it up,
+    hit run, copy results." Twice asked; a command line is not an answer
+    to it a third time."""
+    import inspect
+
+    from draft_assist.ui.app import MainWindow
+    from draft_assist.ui.tasks import TASKS
+    assert "map_sizes" in TASKS
+    step = TASKS["map_sizes"].steps[0]
+    assert "--grid" in step and "{arg}" in step
+    body = inspect.getsource(MainWindow._map_sizes)
+    assert '"map_sizes"' in body
+    assert "_open_tool" in body
+    menus = inspect.getsource(MainWindow._build_menus)
+    assert "_map_sizes" in menus
+
+
+def test_the_map_does_one_picture_unless_told_otherwise():
+    """Four times the work of a sweep, answering a question about the
+    SEARCH rather than about a screenshot - so mapping fourteen of them
+    is an hour spent re-deriving one answer."""
+    import inspect
+
+    from tools import find_portraits as fp
+    body = inspect.getsource(fp.main)
+    assert "if not args.only and len(shots) > 1:" in body
+    assert "tall[0] if tall else shots[0]" in body
