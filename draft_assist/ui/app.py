@@ -73,6 +73,7 @@ from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
 from .chrome import Dropdown, ResizeGrip, TitleBar, card
+from . import hero_picker
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
@@ -2554,6 +2555,33 @@ class MainWindow(QMainWindow):
             taken |= set(snap.left) | set(snap.right)
         return taken
 
+    def _taken_where(self) -> dict[int, str]:
+        """The same set, each hero carrying WHICH SIDE already holds it.
+
+        The picker draws this on the row it refuses, because a hero
+        silently missing from the list reads as a hero the app does not
+        know: "I typed in his name to manually add him and I couldn't
+        find [him]", about a hero who was on the board at the time.
+        Naming the side is what makes it actionable - that is the tile to
+        go and right-click.
+        """
+        taken = self._taken_heroes()
+        mine = set(self.manual.entered("ally"))
+        theirs = set(self.manual.entered("enemy"))
+        snap = self.snapshot
+        if snap is not None and not self._is_cleared(snap):
+            mine |= set(snap.left)
+            theirs |= set(snap.right)
+        where = {}
+        for hero_id in taken:
+            if hero_id in mine:
+                where[hero_id] = "already on your team"
+            elif hero_id in theirs:
+                where[hero_id] = "already on the enemy team"
+            else:
+                where[hero_id] = hero_picker.IN_DRAFT
+        return where
+
     def resolve_hero(self, text: str, exclude: set[int] | None = None):
         """Text a user typed under time pressure -> hero id, or None.
 
@@ -2587,7 +2615,7 @@ class MainWindow(QMainWindow):
                 self, "Choose hero",
                 "Download the hero data first: Settings ▸ Downloads ▸ Statistics and portraits.")
             return
-        taken = self._taken_heroes()
+        taken = self._taken_where()
         # WHAT THE TILE IS SHOWING, not `manual.allies[index]`: the two are
         # different lists (see `_clear_slot`), so editing by index opened
         # the picker on the wrong hero and then wrote the answer into an

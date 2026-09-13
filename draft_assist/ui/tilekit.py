@@ -447,6 +447,37 @@ SHIELD = (("m", 0.50, 0.00),
           ("l", 0.04, 0.16))
 
 
+def _lining_figures(font: QFont) -> None:
+    """Ask for digits that are all one height and all on the baseline.
+
+    **ALEGREYA HAS OLD-STYLE FIGURES BY DEFAULT**, which is right for
+    running prose and wrong inside a 32px mark. Measured off the face:
+    3 4 5 7 9 hang BELOW the baseline, 6 and 8 rise above it, and 0 1 2
+    sit at x-height - so the ink is 53px tall for a "1" and 64px for a
+    "5" at the same pixel size. A rank of 1 and a rank of 9 were
+    therefore drawn at different sizes and at different heights inside
+    the same heart, with nothing about the code saying why.
+    `lnum` is the OpenType feature for lining figures and Alegreya ships
+    it: every digit becomes 61-65 tall and bottoms out on the baseline.
+    It also makes the digits CAP HEIGHT rather than x-height, so 1 and 2
+    - the ranks that matter - grow about a sixth at no cost in weight.
+
+    Guarded twice. `QFont.setFeature` is Qt 6.7 and this project asks
+    only for PyQt6>=6.6, so an older install must get the old figures
+    rather than an AttributeError out of a paint handler; and a font
+    without the feature simply ignores it, which is the same outcome a
+    checkout with no `assets/fonts` already has.
+    """
+    setter = getattr(font, "setFeature", None)
+    tag = getattr(QFont, "Tag", None)
+    if setter is None or tag is None:
+        return
+    try:
+        setter(tag("lnum"), 1)
+    except (TypeError, ValueError):       # a Qt that spells it differently
+        pass
+
+
 def _paint_rank(painter: QPainter, where: QRect, rank,
                 centre: float) -> None:
     """The rank, centred on the SHAPE. Nothing when there is no rank.
@@ -475,8 +506,22 @@ def _paint_rank(painter: QPainter, where: QRect, rank,
     share = RANK_SHARE.get(len(text), RANK_SHARE[max(RANK_SHARE)])
     size = max(RANK_MIN_PX, round(where.height() * share))
     font = QFont(painter.font())
+    font.setFamilies([theme.TITLE_FAMILY, theme.BODY_FAMILY])
     font.setPixelSize(size)
+    # BLACK, NOT BOLD, at the user's request - "a bit girthier? thicker?
+    # bolder? maybe a similar looking font that is bolder". It is the
+    # SAME FAMILY one weight up: `assets/fonts/Alegreya-Black.ttf` is
+    # already bundled and already registered for the app's own name in
+    # the title bar, so this costs no new file and cannot look like a
+    # different typeface. A synthetic weight would be Qt smearing the
+    # bold face sideways, which at this size closes up the counter of an
+    # 8 - the same reason this figure is not stroked.
+    # Bold is set as well as the family for the checkout that has NO
+    # fonts folder: a missing font is normal here, and the fallback
+    # should still be as heavy as it can be.
+    font.setWeight(QFont.Weight.Black)
     font.setBold(True)
+    _lining_figures(font)
     painter.save()
     painter.setFont(font)
     painter.setPen(QPen(STROKE))
