@@ -423,6 +423,16 @@ class MainWindow(QMainWindow):
                   "How every part of the app works")
         self._act(help_menu, "Update &application…", self._update_app)
         help_menu.addSeparator()
+        # DEBUGGING LIVES UNDER HELP, at the user's request. It is still a
+        # tab of the settings window - that window owns the live view and
+        # handing a live widget between two parents is the parentless-
+        # QWidget trap this app has hit three times - but nobody looks for
+        # "debug" under Settings, and this opens it directly on that tab.
+        self._act(help_menu, "&Debug view…",
+                  lambda: self._open_settings("Debug"))
+        self._act(help_menu, "&Check hero recognition…",
+                  self._check_recognition)
+        help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.
         self.menu_search = menusearch.MenuSearch(
@@ -2959,6 +2969,54 @@ class MainWindow(QMainWindow):
         # lock any more — the window is freely resizable and remembers
         # whatever size it is closed at.
         self.showNormal() if self.isMaximized() else self.showMaximized()
+
+    def _check_recognition(self) -> None:
+        """Run the recognition check and put its report on the clipboard.
+
+        AT THE USER'S REQUEST, and the request was a fair complaint:
+        "I still don't understand why I need to manually type this
+        command into Command Prompt." They should not. Everything this
+        does was already one command - find the last recording, sweep it
+        for the pick bar, name the ten heroes, mark them against what
+        the game reported - and a command line is the wrong place to
+        keep a test of the app's own eyesight.
+
+        The report is COPIED AUTOMATICALLY when it finishes, because the
+        thing done with it is always the same: paste it back. Selecting
+        a console window by hand is the step that makes somebody not
+        bother, and this app has already learned that lesson once with
+        Debug > Copy everything.
+        """
+        task = TASKS["score_recognition"]
+        dialog = TaskDialog(task, self)
+        dialog.finished.connect(
+            lambda _code, box=dialog: self._recognition_finished(box))
+        dialog.start()
+
+    def _recognition_finished(self, dialog) -> None:
+        """Copy the report, then say in one sentence what to do with it."""
+        report = dialog.log.toPlainText().strip()
+        if not report:
+            return
+        QApplication.clipboard().setText(report)
+        self._say("Recognition report copied — paste it to Claude", 8000)
+        box = QMessageBox(self)
+        box.setWindowTitle("Recognition report")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText("The report is on your clipboard.")
+        # WHAT TO DO NEXT, because a report nobody knows what to do with
+        # is a report that sits there. Two sentences, no more: a screen
+        # says what a control DID, and the manual says how it works.
+        box.setInformativeText(
+            "Paste it into the chat (Ctrl+V).\n\n"
+            "If it names any pictures, they are in debug_out\\scored — "
+            "send those too.")
+        shown = box.addButton("Open that folder",
+                              QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is shown:
+            open_folder(DEBUG_OUT / "scored")
 
     def _open_settings(self, tab: str = "") -> None:
         """Show the settings window, building it the first time.

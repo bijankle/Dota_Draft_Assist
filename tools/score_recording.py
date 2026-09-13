@@ -272,12 +272,17 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     # it per frame made a 489-frame recording a two-hour job, which is
     # not a tool anybody runs twice.
     #
-    # THE DRAFT IS AT THE END. Frames start when recording does, so the
-    # queue and the loading screen are at the front and the full bar is
-    # at the back; the sweep therefore samples from the LAST part.
-    tail = frames[len(frames) // 2:] or frames
-    step = max(1, len(tail) // max(1, sweeps))
-    probes = tail[::step][:sweeps]
+    # ACROSS THE WHOLE RECORDING, and this corrects a wrong guess. An
+    # earlier version swept only the second half, on the reasoning that
+    # frames start when recording does so the draft must be at the end.
+    # It is not: recording stops a minute AFTER the draft, so a session
+    # runs queue -> loading -> DRAFT -> game, and the draft is in the
+    # middle. Sweeping the tail put every probe on the loading screen or
+    # in the game - where the top scoreboard carries ten hero portraits
+    # of its own, which is exactly the sort of thing that matches
+    # inconsistently.
+    step = max(1, len(frames) // max(1, sweeps))
+    probes = frames[::step][:sweeps]
     print(f"{len(frames)} frame(s); sweeping {len(probes)} of them for the "
           f"bar, then reading the rest with what it finds\n")
 
@@ -311,7 +316,32 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     # THE MEDIAN OF WHAT THE SWEEPS AGREED ON. One frame can be unlucky;
     # the spread across several is also the confidence, and it is printed
     # because a wide one means the geometry below is not to be trusted.
-    columns = list(zip(*geometries))
+    # THE BIGGEST AGREEING CLUSTER, not the median of everything. Probes
+    # land in different phases, and only the ones that saw the DRAFT can
+    # agree with each other - a loading screen and an in-game scoreboard
+    # each produce their own answer and have nothing to agree with. So
+    # geometries are grouped by whether they describe the same bar, and
+    # the largest group wins. The median of all four would be a number
+    # no frame ever measured.
+    def alike(a, b):
+        return (abs(a[0] - b[0]) <= max(6, 0.12 * a[3])
+                and abs(a[2] - b[2]) <= max(4, 0.10 * a[3])
+                and abs(a[3] - b[3]) <= max(4, 0.10 * a[3]))
+
+    groups = []
+    for item in geometries:
+        for group in groups:
+            if alike(group[0], item):
+                group.append(item)
+                break
+        else:
+            groups.append([item])
+    groups.sort(key=len)
+    agreed = groups[-1]
+    if len(agreed) < len(geometries):
+        print(f"\n  {len(agreed)} of {len(geometries)} sweeps agree with "
+              "each other; the rest saw a different screen.")
+    columns = list(zip(*agreed))
     geom = [int(np.median(column)) for column in columns]
     spread = [int(max(column) - min(column)) for column in columns]
     names = ("radiant x", "dire x", "pitch", "slot w", "top", "slot h")
@@ -328,6 +358,17 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     # wrong answers to 489 frames is a minute spent producing numbers
     # that cannot mean anything. The first version printed the spread and
     # carried on regardless, which is worse than not measuring it at all.
+    if len(agreed) < 2:
+        print("\n  REFUSING to score: no two sweeps found the same bar, so "
+              "there is\n  nothing here that two frames agree about.")
+        out.mkdir(parents=True, exist_ok=True)
+        for path in probes:
+            frame = fp.read_image(path)
+            if frame is not None:
+                fp.strip_of(frame, path, out)
+        print(f"\n  Strips written to {out} - send me one.")
+        print("  Or run with --sweeps 12 to look at more of the recording.")
+        return 1
     loose = [name for name, wide in zip(names, spread)
              if wide > max(6, 0.12 * geom[3])]
     if loose:
@@ -510,7 +551,7 @@ def main() -> None:
                              "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
-    parser.add_argument("--sweeps", type=int, default=4,
+    parser.add_argument("--sweeps", type=int, default=8,
                         help="how many frames to run the full (slow) "
                              "portrait sweep on; the rest reuse what it "
                              "finds, since the bar does not move")

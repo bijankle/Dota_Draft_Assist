@@ -88,3 +88,37 @@ def test_the_note_is_stamped_in_one_place():
     source = (ROOT / "draft_assist" / "ui" / "providers.py").read_text(
         encoding="utf-8")
     assert source.count("snap.vision_note = ") == 1
+
+
+# --------------------------------------------------------------------
+# THE RECOGNITION CHECK IS A BUTTON, at the user's request: "I still
+# don't understand why I need to manually type this command into
+# Command Prompt." They should not have to.
+
+
+def test_the_recognition_check_is_a_task_the_app_can_run():
+    from draft_assist.ui.tasks import TASKS
+    task = TASKS["score_recognition"]
+    assert any("score_recording.py" in part
+               for step in task.steps for part in step)
+
+
+def test_it_is_reachable_from_the_help_menu():
+    source = (ROOT / "draft_assist" / "ui" / "app.py").read_text(
+        encoding="utf-8")
+    head = source[source.index('help_menu = bar.addMenu'):
+                  source.index('self.help_menu = help_menu')]
+    assert "_check_recognition" in head
+    assert "Debug view" in head, "debugging was asked to live under Help"
+
+
+def test_the_report_is_copied_rather_than_left_to_be_selected():
+    """The thing done with the report is always the same - paste it back -
+    and selecting a console window by hand is the step that makes
+    somebody not bother. Same lesson as Debug > Copy everything."""
+    source = (ROOT / "draft_assist" / "ui" / "app.py").read_text(
+        encoding="utf-8")
+    body = source[source.index("def _recognition_finished"):]
+    body = body[:body.index("\n    def ")]
+    assert "clipboard().setText" in body
+    assert "toPlainText" in body

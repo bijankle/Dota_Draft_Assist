@@ -115,6 +115,19 @@ TASKS = {
                "few minutes."),
         reload_after=True,
     ),
+    # THE RECOGNITION CHECK, which is a TEST rather than maintenance.
+    # It reads the newest recording, finds the pick bar, names the ten
+    # heroes and marks itself against what the GAME reported for that
+    # match - so the whole answer is in its output and there is nothing
+    # to interpret at the console.
+    "score_recognition": Task(
+        key="score_recognition",
+        title="Check hero recognition",
+        steps=[[PY, "tools/score_recording.py", "--every", "2"]],
+        blurb="Reads the last draft this app recorded and checks the "
+              "heroes it saw against the ones the game reported.",
+        cancellable=True,
+    ),
     "update_app": Task(
         key="update_app",
         title="Update application",
