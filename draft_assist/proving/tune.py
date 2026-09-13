@@ -30,6 +30,14 @@ MAX_DISTANCE_FRACS = (0.20, 0.25, 0.30, 0.35)
 MIN_MARGIN_FRACS = (0.02, 0.04, 0.06, 0.10)
 
 
+# MEASURED ON A REAL DRAFT, not chosen. On a live 3440x1440 strategy
+# screen the ten on-screen portraits sat 40 to 66 bits (of 256) from
+# their own base art, while crops of the MENU sat 84 to 104. Anything in
+# between separates them; this leaves headroom over the worst real one
+# and stays clear of the best menu one.
+HUD_HEADROOM = 0.28
+
+
 def _load_real_portraits() -> dict[int, np.ndarray] | None:
     """Real library source images, keyed by an entry index -> (hero_id, img),
     or None when none are downloaded yet."""
@@ -130,6 +138,27 @@ def main() -> None:
               f"(+{sum(len(v) for v in (variants or {}).values())} variants).")
 
     best, detail = tune(portraits, args.frames, args.seed, variants)
+    # A CEILING TUNED HERE MUST NOT GO BELOW WHAT A REAL HUD NEEDS.
+    # The proving ground composites the BASE ART onto synthetic screens,
+    # so the portrait it searches for is byte-for-byte the template it
+    # searches with, and a very tight ceiling costs nothing. On the real
+    # HUD it costs everything: measured on a live 3440x1440 strategy
+    # screen, the ten portraits sat 40 to 66 bits from their own base art
+    # (border, team tint, the game's own resampling), and a ceiling tuned
+    # here to 51 rejected EIGHT OF TEN heroes it had identified correctly.
+    #
+    # So the tuner may tighten the MARGIN, which is what actually
+    # discriminates - real portraits cleared theirs by 30 to 62 bits
+    # while menu background cleared it by 0 to 2 - but it may not pull
+    # the distance ceiling under `HUD_HEADROOM`. It is optimising against
+    # a picture the user never sees.
+    if best.max_distance_frac < HUD_HEADROOM:
+        print(f"Keeping max_distance_frac at {HUD_HEADROOM} rather than "
+              f"the {best.max_distance_frac:.3f} this run wanted: these "
+              "screens carry no HUD border or team tint, and a real one "
+              "puts a portrait 40-66 bits from its own base art.")
+        from dataclasses import replace
+        best = replace(best, max_distance_frac=HUD_HEADROOM)
     if not args.no_save:
         save_params(best)
         print(f"Saved to {library_mod.PARAMS_FILE}")

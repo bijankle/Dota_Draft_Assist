@@ -128,6 +128,18 @@ TASKS = {
               "heroes it saw against the ones the game reported.",
         cancellable=True,
     ),
+    # THE SAME CHECK, allowed to write what it finds. Separate from the
+    # read-only one on purpose: a tool that changes a setting is a
+    # different decision from one that reports, and they should not be
+    # the same menu item.
+    "fix_recognition": Task(
+        key="fix_recognition",
+        title="Fix recognition thresholds",
+        steps=[[PY, "tools/score_recording.py", "--every", "2", "--apply"]],
+        blurb="Checks the last recorded draft, then writes the distance "
+              "and margin the heroes in it actually needed.",
+        reload_after=True,
+    ),
     "update_app": Task(
         key="update_app",
         title="Update application",

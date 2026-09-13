@@ -109,3 +109,63 @@ def test_a_blank_game_state_is_explained_in_the_recognition_log():
     assert "if not state:" in body, (
         "a blank game state must be explained, not skipped")
     assert "not in a match" in body
+
+
+# --------------------------------------------------------------------
+# THE TUNER MAY NOT REJECT HEROES IT IDENTIFIED CORRECTLY.
+#
+# Measured on a live 3440x1440 strategy screen, all ten crops matched
+# the RIGHT hero as nearest — Primal Beast, Warlock, Dragon Knight,
+# Death Prophet, Lion / Necrophos, Juggernaut, Witch Doctor, Axe,
+# Vengeful Spirit, each in its own slot — at distances of 40 to 66 bits
+# with margins of 30 to 62. Eight of the ten were thrown away by a
+# ceiling of 51 that `proving/tune.py` had written, having optimised
+# against synthetic screens where the portrait on screen IS the base art.
+
+REAL_DRAFT = [            # (distance, margin), one per slot, measured
+    (64, 32), (54, 42), (62, 36), (40, 62), (66, 30),
+    (56, 46), (60, 38), (48, 46), (56, 40), (64, 32),
+]
+REAL_MENU = [             # the same ten boxes with no match on screen
+    (84, 16), (100, 2), (100, 0), (98, 2), (102, 0),
+    (104, 0), (100, 2), (100, 2),
+]
+BITS = 256
+
+
+def accepted(rows, max_distance, min_margin):
+    return sum(1 for d, m in rows if d <= max_distance and m >= min_margin)
+
+
+def test_the_shipped_default_accepts_every_real_hero():
+    from draft_assist.vision.library import RecognitionParams
+    from dataclasses import replace
+    params = replace(RecognitionParams(), hash_size=16)
+    assert params.bits == BITS
+    assert accepted(REAL_DRAFT, params.max_distance,
+                    params.min_margin) == 10
+
+
+def test_the_tuner_cannot_pull_the_ceiling_under_a_real_hud():
+    """`HUD_HEADROOM` is the floor, and it has to clear the worst real
+    portrait. Without it the proving ground writes a ceiling that is free
+    on its own screens and rejects most of a real draft."""
+    from draft_assist.proving.tune import HUD_HEADROOM
+    floor = round(HUD_HEADROOM * BITS)
+    assert accepted(REAL_DRAFT, floor, 26) == 10, (
+        f"a ceiling of {floor} bits still rejects real heroes")
+
+
+def test_it_still_keeps_the_menu_out():
+    """Raising the ceiling must not buy wrong answers. It does not,
+    because the MARGIN is what discriminates: real portraits cleared
+    theirs by 30-62 bits and menu crops by 0-2."""
+    from draft_assist.proving.tune import HUD_HEADROOM
+    floor = round(HUD_HEADROOM * BITS)
+    assert accepted(REAL_MENU, floor, 26) == 0
+
+
+def test_the_old_tuned_ceiling_is_what_lost_the_heroes():
+    """Names the number that caused this, so the fixture stays a real
+    regression rather than an arbitrary pair of thresholds."""
+    assert accepted(REAL_DRAFT, 51, 26) == 2

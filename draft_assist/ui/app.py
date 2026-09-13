@@ -432,6 +432,8 @@ class MainWindow(QMainWindow):
                   lambda: self._open_settings("Debug"))
         self._act(help_menu, "&Check hero recognition…",
                   self._check_recognition)
+        self._act(help_menu, "&Fix recognition thresholds…",
+                  lambda: self.run_task("fix_recognition"))
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.

@@ -177,7 +177,7 @@ def key_rank(distances: dict, truth: set):
     return None, None, None
 
 
-def tune(samples: list, truth: set, params) -> None:
+def tune(samples: list, truth: set, params, apply=False) -> None:
     """Sweep the two thresholds over every slot already measured.
 
     The expensive half - locate, crop, hash - has been done once. Trying
@@ -225,13 +225,30 @@ def tune(samples: list, truth: set, params) -> None:
                min_margin == params.min_margin else "  <- best found"
         print(f"  {max_distance:>6} {min_margin:>7} {tally['right']:>7} "
               f"{tally['wrong']:>7} {tally['declined']:>9}{mark}")
-    if (best[1], best[2]) != (params.max_distance, params.min_margin):
-        print(f"\n  Settings > Advanced, or edit recognition.json: "
-              f"max_distance {best[1]}, min_margin {best[2]}")
+    if (best[1], best[2]) == (params.max_distance, params.min_margin):
+        return
+    if not apply:
+        print("\n  Run again with --apply to write these, or use "
+              "Help > Fix recognition thresholds.")
+        return
+    # WRITTEN AS FRACTIONS, because that is what the file holds and what
+    # survives a change of hash size. A ceiling in bits means something
+    # different at 64 bits than at 256.
+    from dataclasses import replace
+    fixed = replace(params,
+                    max_distance_frac=best[1] / params.bits,
+                    min_margin_frac=max(best[2], 1) / params.bits)
+    library.save_params(fixed)
+    print(f"\n  WRITTEN to {library.PARAMS_FILE}:")
+    print(f"    max_distance {best[1]} ({fixed.max_distance_frac:.3f} of "
+          f"{params.bits} bits)")
+    print(f"    min_margin   {best[2]} ({fixed.min_margin_frac:.3f})")
+    print("  The app picks these up next time it reads a frame.")
 
 
 def score(folder: Path, every: int, proofs: int, out: Path,
-          last: int = 0, sweeps: int = 4) -> int:
+          last: int = 0, sweeps: int = 4,
+          apply: bool = False) -> int:
     step(0.0, "loading the portraits")
     art = fp.load_art()
     if len(art) < 50:
@@ -477,7 +494,7 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         for name, count in wrong_heroes.most_common(8):
             print(f"    {count:>4}x  {name}")
 
-    tune(samples, truth, params)
+    tune(samples, truth, params, apply=apply)
 
     # THE BEST FRAME IS THE ONE THAT ANSWERS THE QUESTION.
     # Frames start at the BUTTON PRESS, not at the draft (see
@@ -562,6 +579,9 @@ def main() -> None:
                              "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the thresholds it recommends into the "
+                             "app's recognition settings")
     parser.add_argument("--sweeps", type=int, default=8,
                         help="how many frames to run the full (slow) "
                              "portrait sweep on; the rest reuse what it "
@@ -603,7 +623,8 @@ def main() -> None:
         library.VARIANTS_DIR = library.BASE_DIR.parent / "variants"
     out = Path(args.out) if args.out else ROOT / "debug_out" / "scored"
     raise SystemExit(score(folder, args.every, args.proof, out,
-                       last=args.last, sweeps=args.sweeps))
+                       last=args.last, sweeps=args.sweeps,
+                       apply=args.apply))
 
 
 if __name__ == "__main__":
