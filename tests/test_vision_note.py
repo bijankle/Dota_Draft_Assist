@@ -112,14 +112,34 @@ def test_it_is_reachable_from_the_help_menu():
     assert "Debug view" in head, "debugging was asked to live under Help"
 
 
-def test_the_report_is_copied_rather_than_left_to_be_selected():
-    """The thing done with the report is always the same - paste it back -
-    and selecting a console window by hand is the step that makes
-    somebody not bother. Same lesson as Debug > Copy everything."""
+def test_the_report_is_copied_by_a_BUTTON_rather_than_automatically():
+    """This REVERSES what stood here.
+
+    The rule used to be that the report copies itself when the run ends,
+    on the grounds that the thing done with it is always the same. Two
+    things killed that. It was INVISIBLE — "I don't trust that the copy
+    and paste works unless I can see the console in the app" — and then
+    it turned out never to have run at all: the copy hung off the
+    dialog's `finished` signal, which fires when a dialog is CLOSED, and
+    the dialog was never shown in the first place. "Nothing copied to
+    clipboard."
+    So the run is a button and the copy is a button, in a window that
+    shows itself: `ToolWindow`, which never touches the clipboard except
+    when pressed."""
     source = (ROOT / "draft_assist" / "ui" / "app.py").read_text(
         encoding="utf-8")
-    body = source[source.index("def _recognition_finished"):]
+    body = source[source.index("def _check_recognition"):]
     body = body[:body.index("\n    def ")]
-    assert "clipboard().setText" in body
-    assert "toPlainText" in body
+    assert "_open_tool" in body
+
+    window = (ROOT / "draft_assist" / "ui" / "tool_window.py").read_text(
+        encoding="utf-8")
+    assert "clipboard().setText" in window
+    # Pressed, never automatic: the only caller of `_copy` is the button.
+    assert window.count("self._copy()") == 1
+    assert "_finished" in window
+    finished = window[window.index("def _finished"):]
+    finished = finished[:finished.index("\n    def ")]
+    assert "clipboard" not in finished, (
+        "the end of a run must not copy on its own again")
 

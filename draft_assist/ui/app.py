@@ -3058,17 +3058,16 @@ class MainWindow(QMainWindow):
         a console window by hand is the step that makes somebody not
         bother, and this app has already learned that lesson once with
         Debug > Copy everything.
+
+        IT IS THE SAME WINDOW AS THE RESOLUTION SWEEP, and for
+        the same reason: this built a dialog, started the worker
+        and never showed it, so the run happened with nothing on
+        screen and its `finished` signal — which fires when a
+        dialog is CLOSED — never fired, so the automatic copy
+        never ran either. Two complaints, one missing `show()`.
         """
-        task = TASKS["score_recognition"]
-        dialog = TaskDialog(task, self)
-        # ON THE MAIN WINDOW'S STATUS BAR, not only in the dialog's log.
-        # The dialog can be moved behind the window or read past, and the
-        # question being asked is the simplest one there is - "is it
-        # finished yet" - which a wall of scrolling text answers badly.
-        dialog.worker.line.connect(self._recognition_progress)
-        dialog.finished.connect(
-            lambda _code, box=dialog: self._recognition_finished(box))
-        dialog.start()
+        self._open_tool("score_recognition", what="report",
+                        label="Recognition check")
 
     def _recognition_progress(self, line: str) -> None:
         self._tool_progress(line, "Recognition check")
@@ -3095,33 +3094,9 @@ class MainWindow(QMainWindow):
         # timed message in this app invisible before `_say` existed.
         self._say(f"{label} — {line[len('PROGRESS '):].strip()}", 4000)
 
-    def _recognition_finished(self, dialog) -> None:
-        """Copy the report, and say so WHERE THE REPORT IS.
-
-        It used to copy silently and then open a message box over the
-        top - "I don't trust that the copy and paste works unless I can
-        see the console in the app". Fair: a modal box that appears when
-        a run ends is the one thing standing between somebody and the
-        output they were watching, and it asserts the copy happened
-        rather than showing it. So the dialog stays up with the whole
-        transcript in it and its own Copy output button, and this only
-        adds the line saying what to do next.
-        """
-        report = dialog.log.toPlainText().strip()
-        if not report:
-            return
-        QApplication.clipboard().setText(report)
-        where = ""
-        if (DEBUG_OUT / "scored").is_dir():
-            where = "  Pictures are in debug_out\\scored."
-        dialog.summary.setText(
-            f"{dialog.summary.text()}  —  copied to the clipboard; paste "
-            f"it into the chat (Ctrl+V).{where}")
-        self._say("Recognition report copied — paste it to Claude", 8000)
-
     # WHERE WINDOWS PUTS SCREENSHOTS, and ONEDRIVE IS FIRST because it
     # REDIRECTS the folder: with Backup on, `~/Pictures/Screenshots` is
-    # not where the pictures are, `~/OneDrive/Pictures/Screenshots` is -
+    # not where the pictures are, `~/OneDrive/Pictures/Screenshots` is —
     # and the first version of this opened the picker on an empty folder
     # for exactly that reason. Each is a place to START the picker, not
     # an answer: the user's own set lives in a named subfolder of one of
@@ -3143,66 +3118,42 @@ class MainWindow(QMainWindow):
         return Path.home()
 
     def _check_resolutions(self) -> None:
-        """Does the layout read the same at every resolution?
+        """Open the window; the RUN is a button inside it.
 
-        It is the same shape as the recognition check next to it and for
-        the same reason: everything here was one command, and a command
-        prompt is the wrong place to keep a measurement of the app's own
-        eyesight. Point it at a folder of DRAFT screenshots - one per
-        resolution, which is what the 23 already taken are - and it
-        finds the ten portraits in each and reports whether the numbers
-        agree.
-
-        THE FOLDER IS ASKED FOR, not guessed at, because getting it
-        wrong is a run that finds nothing and reads as the tool being
-        broken. Windows puts screenshots in Pictures\\Screenshots, so
-        that is where the picker opens.
+        "A window pops up with a terminal / area for text, a button
+        saying run — I hit run and the button turns grey, the text
+        window shows all the thinking the program is doing and when it's
+        ready the button turns its original colour, i.e. red, and it says
+        copy results." That is `ToolWindow`, and the shape matters
+        because the version before it built a dialog, started the worker
+        and NEVER SHOWED IT: the run happened with nothing on screen and
+        nothing ever reached the clipboard.
         """
-        folder = QFileDialog.getExistingDirectory(
-            self, "Folder of draft screenshots, one per resolution",
-            str(self._shots_folder()))
-        if not folder:
-            return
-        # REFUSED HERE RATHER THAN INSIDE THE TASK. The tool exits with
-        # "No images in ..." on stderr, which arrives in the dialog as a
-        # failed run with one line in it - a worse way to say "you picked
-        # the wrong folder" than saying it before anything starts.
-        shots = [name for name in os.listdir(folder)
-                 if name.lower().endswith((".png", ".jpg", ".jpeg", ".bmp"))]
-        if not shots:
-            QMessageBox.information(
-                self, "Check other screen resolutions",
-                f"No pictures in {folder}.\n\n"
-                "Pick the folder that holds the draft screenshots "
-                "themselves, one per resolution — not the folder above "
-                "it.")
-            return
-        task = TASKS["check_resolutions"].with_argument(folder)
-        dialog = TaskDialog(task, self)
-        dialog.worker.line.connect(self._resolutions_progress)
-        dialog.finished.connect(
-            lambda _code, box=dialog: self._resolutions_finished(box))
-        dialog.start()
+        self._open_tool(
+            "check_resolutions", what="results",
+            start_in=self._shots_folder(), label="Resolutions")
 
-    def _resolutions_finished(self, dialog) -> None:
-        """Copy it, and say where the pictures are.
+    def _open_tool(self, key: str, what: str, label: str,
+                   start_in: Path | None = None) -> None:
+        """One window per tool, kept alive and SHOWN.
 
-        Same rule as the recognition check: the dialog STAYS UP with the
-        whole transcript in it - "I don't trust that the copy and paste
-        works unless I can see the console in the app" - and this only
-        adds the line saying what to do next.
+        Kept on `self` because a QDialog that goes out of scope is
+        collected with its running worker, and shown MODELESSLY because
+        these runs are minutes long and the app should still be usable
+        while one goes.
         """
-        report = dialog.log.toPlainText().strip()
-        if not report:
-            return
-        QApplication.clipboard().setText(report)
-        where = ""
-        if (DEBUG_OUT / "found").is_dir():
-            where = "  Pictures are in debug_out\\found."
-        dialog.summary.setText(
-            f"{dialog.summary.text()}  —  copied to the clipboard; paste "
-            f"it into the chat (Ctrl+V).{where}")
-        self._say("Resolution report copied — paste it to Claude", 8000)
+        from .tool_window import ToolWindow
+
+        window = ToolWindow(TASKS[key], self, start_in=start_in, what=what)
+        window.line.connect(
+            lambda text, name=label: self._tool_progress(text, name))
+        self._open_tasks.append(window)
+        window.finished.connect(
+            lambda _code, w=window: self._open_tasks.remove(w)
+            if w in self._open_tasks else None)
+        window.show()
+        window.raise_()
+        window.activateWindow()
 
     def _open_settings(self, tab: str = "") -> None:
         """Show the settings window, building it the first time.

@@ -3677,9 +3677,49 @@ credentials, and put the account at risk. Do not go there.
   **ONEDRIVE REDIRECTS `Pictures`**, so `~/Pictures/Screenshots` is not
   where screenshots are when Backup is on — the picker opened on an
   empty folder for exactly that reason and tries the OneDrive path
-  FIRST. A folder with no pictures in it is refused before the task
+  FIRST. A folder with no pictures in it is refused before the run
   starts, since the tool's own `SystemExit` arrives as a failed run with
   one line in it, which is a worse way to say "wrong folder".
+
+  **AND UNDER ALL OF THAT, THE DIALOG WAS NEVER SHOWN**
+  (`ui/tool_window.py`, `MainWindow._open_tool`). Both diagnostic checks
+  built a `TaskDialog` by hand, wired its signals and called `start()` —
+  and never `show()` or `exec()`. `run_task`, the path every other task
+  takes, does `start()` AND THEN `exec()`; these two were written beside
+  it and missed the second half. So the worker ran with nothing on
+  screen, which is the whole of "there is no ability to see what the
+  program is thinking" — and the automatic copy hung off the dialog's
+  `finished` signal, which fires when a dialog is CLOSED, so it never
+  fired either: "nothing copied to clipboard". ONE MISSING CALL, BOTH
+  COMPLAINTS, and the progress protocol fixed the round before was real
+  but was not what was being seen.
+  **SO THE RUN IS A BUTTON IN A WINDOW THAT SHOWS ITSELF**, and the
+  shape is the user's, stated verbatim: "a window pops up with a
+  terminal / area for text, a button saying run - i hit run and the
+  button turns grey, the text window shows all the thinking the program
+  is doing and when its ready the button turns its original color ie.
+  red and it says copy results". ONE button carries the whole state —
+  Run, grey "Running…", accent "Copy results" — because a window with no
+  obvious action is one nobody knows what to do with, and a window whose
+  purpose is to be WATCHED must not be able to run unwatched.
+  **NOTHING COPIES ON ITS OWN ANY MORE**, which REVERSES "the report is
+  copied rather than left to be selected". That rule was written for
+  convenience and was invisible, and invisible is what was wrong; a
+  press is the evidence. `_finished` is held to never touch the
+  clipboard.
+  **A FAILED RUN IS THE ONE MOST WORTH PASTING BACK**, so the button
+  asks whether there is anything to copy rather than whether the run
+  succeeded.
+  **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
+  — "I should be able to manually copy it". Appending keeps a selection
+  where replacing the document would drop it (the `set_log` lesson), and
+  scrolling to the end on every line drags the view out from under
+  somebody who scrolled up to read.
+  **`closeEvent` MUST NOT RAISE** (`_busy`). An exception out of a Qt
+  event handler during teardown ABORTS the process rather than raising —
+  the same family as touching a QPixmap before the QApplication — and a
+  window that cannot be closed is worse than one that closes over a run
+  it could not ask about.
   **The recognition log says WHICH SCREEN it read and what it is a picture
   of.** Ten UNKNOWNs is the CORRECT answer when the pick bar is not up,
   and the log has already been read as "the crop boxes are broken" from a

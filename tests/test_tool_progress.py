@@ -146,7 +146,9 @@ def test_the_resolution_run_is_wired_to_its_own_label():
 
     from draft_assist.ui.app import MainWindow
     body = inspect.getsource(MainWindow._check_resolutions)
-    assert "_resolutions_progress" in body
+    assert 'label="Resolutions"' in body
+    opener = inspect.getsource(MainWindow._open_tool)
+    assert "_tool_progress" in opener
 
 
 def test_the_picker_starts_where_onedrive_actually_puts_screenshots():
@@ -164,10 +166,15 @@ def test_the_picker_starts_where_onedrive_actually_puts_screenshots():
 def test_an_empty_folder_is_refused_before_the_run_starts():
     """The tool exits with "No images in ..." on stderr, which arrives
     as a FAILED run with one line in it — a worse way to say "wrong
-    folder" than saying so before anything starts."""
+    folder" than saying so before anything starts.
+
+    It lives on the WINDOW now rather than ahead of it: the folder row
+    is inside the same window as Run, so a wrong folder is corrected
+    without starting over. `tests/test_tool_window.py` drives it."""
     import inspect
 
-    from draft_assist.ui.app import MainWindow
-    body = inspect.getsource(MainWindow._check_resolutions)
-    assert "No pictures in" in body
-    assert body.index("No pictures in") < body.index("TaskDialog")
+    from draft_assist.ui.tool_window import ToolWindow
+    body = inspect.getsource(ToolWindow._choose)
+    assert "no pictures in this folder" in body
+    ready = inspect.getsource(ToolWindow._ready)
+    assert "self.folder" in ready, "Run has to be gated on having one"
