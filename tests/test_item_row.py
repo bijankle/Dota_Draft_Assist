@@ -67,10 +67,16 @@ def test_a_tile_draws_with_its_icon(icons, qapp):
 
 def test_the_reasoning_is_in_the_tooltip_not_the_strip(icons, qapp):
     """A strip that explained itself in place would be the paragraph this
-    replaced."""
+    replaced.
+
+    The "Hand-authored" signature that used to be asserted here was cut
+    at the user's request - see `reasons.item_reasons`. What the tip
+    must still carry is the REASON and the hero that triggered it.
+    """
     tip = ItemTile(advice()).toolTip()
     assert "Lion chains disables" in tip
-    assert "Hand-authored" in tip
+    assert "Lion |" in tip
+    assert "Hand-authored" not in tip
 
 
 def test_a_stale_rule_says_so(icons, qapp):

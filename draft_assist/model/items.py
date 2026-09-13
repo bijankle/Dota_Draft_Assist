@@ -124,6 +124,46 @@ def load_rules(path=RULES_FILE) -> tuple[list[Rule], dict]:
     return rules, meta
 
 
+MAX_SEVERITY = 3          # `load_rules` refuses anything else
+# The worst an item can be asked for: three maximum-severity triggers,
+# weighted 1.0 / 0.6 / 0.4. Everything above saturates by design.
+MAX_SCORE = MAX_SEVERITY * sum(STACK_WEIGHTS)
+
+
+def importance(score: float) -> int:
+    """The stacked score as a WHOLE percentage, for the tile's corner.
+
+    At the user's request: "a number in the bottom right hand corner of
+    the item that is the % importance of the recommendation, most
+    important is higher percentages". The strip has always been ORDERED
+    by this number and never printed it, so the ordering said "this one
+    first" without ever saying by how much - first of two near-equals
+    and first of a landslide looked the same.
+
+    Against `MAX_SCORE` rather than against the best item on screen,
+    for the reason the History tab's bars are drawn 0 to 100: a figure
+    scaled to whatever else is in this draft means something different
+    in every draft, and two drafts could not be compared.
+    """
+    return int(round(100 * max(0.0, min(score, MAX_SCORE)) / MAX_SCORE))
+
+
+# ONE MAXIMUM-SEVERITY TRIGGER IS EXACTLY HALF. 3.0 out of 6.0, so the
+# midpoint is not a taste: above it the item is demanded by MORE THAN
+# ONE enemy, below it by one. That is what the colour says.
+ONE_TRIGGER = importance(MAX_SEVERITY * STACK_WEIGHTS[0])
+
+
+def severity_pct(severity: int) -> int:
+    """One trigger's own severity as a percentage.
+
+    THREE VALUES ONLY - 33, 67, 100 - because severity is 1..3 and
+    "coarse by design" (see `Rule`). A finer-looking number here would
+    be precision nobody measured.
+    """
+    return int(round(100 * severity / MAX_SEVERITY))
+
+
 def stacked_score(severities: list[int]) -> float:
     """Sublinear stacking; see module docstring."""
     ordered = sorted(severities, reverse=True)

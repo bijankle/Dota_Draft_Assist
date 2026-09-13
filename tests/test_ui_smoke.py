@@ -2296,10 +2296,13 @@ def test_one_selection_at_a_time(window, qapp):
     assert not pick.focused, "two rings would be two questions"
 
 
-def test_clicking_a_suggested_item_quotes_its_hand_authored_rule(window,
-                                                                 qapp):
-    """Item rules are written in words, so this one has a real answer — and
-    it is labelled as authored rather than measured."""
+def test_clicking_a_suggested_item_quotes_its_rule(window, qapp):
+    """Item rules are written in words, so this one has a real answer.
+
+    It used to be LABELLED as authored rather than measured, and that
+    signature was cut at the user's request. What has to survive is the
+    line itself: the hero, its own percentage, then why.
+    """
     window.show()
     window.refresh()
     _settle(qapp)
@@ -2312,8 +2315,10 @@ def test_clicking_a_suggested_item_quotes_its_hand_authored_rule(window,
         from PyQt6.QtWidgets import QLabel
         text = " ".join(lbl.text() for lbl in popup.findChildren(QLabel))
         assert tile.advice.item in text
-        assert "Hand-authored" in text
+        assert "Hand-authored" not in text
         assert tile.advice.triggers[0].hero in text
+        assert f"{tile.advice.triggers[0].hero} |" in text
+        assert "%" in text
     finally:
         popup.close()
 

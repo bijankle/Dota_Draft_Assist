@@ -1829,6 +1829,24 @@ credentials, and put the account at risk. Do not go there.
   that explained itself in place would be the paragraph again. **There is
   no severity bar under the icon**: the strip is already ORDERED by
   severity, so the bar said in colour what position was already saying.
+  **BUT THERE IS A PERCENTAGE IN THE BOTTOM-RIGHT CORNER**
+  (`items.importance`, `ONE_TRIGGER`, `tilekit.paint_badge`), at the
+  user's request: "a number in the bottom right hand corner of the item
+  that is the % importance of the recommendation... exact same text
+  that is used for the synergy / counter numbers, no decimals just
+  whole number percentage". The ordering said "this one first" and
+  never by how much - first of two near-equals and first of a landslide
+  looked identical. It is `paint_badge`, the SAME implementation as the
+  figure on a pick and in a grid cell, so the two cannot drift into two
+  conventions.
+  **MEASURED AGAINST THE WORST CASE, NOT AGAINST THIS DRAFT.**
+  `MAX_SCORE` is three maximum-severity triggers under the sublinear
+  weights, so 100% is the worst an item can be asked for and the figure
+  means the same thing in every draft - the reason the History tab's
+  bars are drawn 0 to 100 rather than scaled to their own section.
+  **AND THE COLOUR'S THRESHOLD IS NOT A TASTE**: one maximum-severity
+  trigger is exactly 3.0 of 6.0, so `ONE_TRIGGER` is 50 and green means
+  MORE THAN ONE enemy is asking for this item.
   **EVERY REGION FILLS ITS OWN CARD, AND THE PICKS SET THE BOX**
   (`teams.tile_cap`, `TeamPanel._resize_tiles`, `MatrixTable.
   set_tile_width` / `_portrait_room`, `MainWindow._match_grid_portraits`).
@@ -2484,8 +2502,22 @@ credentials, and put the account at risk. Do not go there.
   what the strip is for. `side="ally"` says to read it as the pick it
   would be.
   Item rules keep their popup, and that is not an inconsistency: a rule is
-  hand-authored PROSE, quoted with "hand-authored, not measured"
-  attached, and no portrait can show a sentence.
+  hand-authored PROSE, and no portrait can show a sentence.
+  **THE "hand-authored, not measured" SIGNATURE IS GONE**, at the
+  user's request, and it REVERSES a rule held since the popup was
+  written: the label was the difference between a rule and a finding
+  and was the stated reason this popup outlived the hero one. The cost
+  is real and is not hidden - nothing in the popup now says these
+  sentences are somebody's judgement rather than a measurement. The
+  manual still does.
+  **AND A LINE IS THE HERO, ITS OWN PERCENTAGE, THEN WHY**
+  (`reasons.item_reasons`, `items.severity_pct`): "it would be simpler
+  to just say e.g. Huskar | 72%... and keep the info about why". It
+  read "Huskar (severity 3)" - a raw 1-to-3 scale nobody outside
+  `model/items.py` has a scale for, in the position the eye lands on
+  first. THREE VALUES ONLY (33, 67, 100), because severity is 1..3 and
+  coarse by design; a finer-looking number would be precision nobody
+  measured.
   Clicking a suggestion still does not ENTER it — a pick is entered by
   clicking a slot.
   **AND THE OTHER SUGGESTIONS KEEP THEIR OWN FIT.** A focused candidate
@@ -3866,6 +3898,28 @@ credentials, and put the account at risk. Do not go there.
   74 pixels where rounding is under 2%. So the height is a fraction of
   the HUD BOX and the top is undecided, and the tool now says which of
   the two is talking.
+  **AND THE GUESSED ASPECTS ARE GONE** (`WIDTH_FRACS`, `HEIGHT_FRACS`).
+  The sweep tried 30 widths as a fraction of the WINDOW crossed with
+  THREE FIXED ASPECTS - 0.93, 1.33, 1.78 - and `--grid` measured what
+  that cannot reach: on a 1024x768 screenshot the three-aspect sweep
+  could not read, every bar-shaped cell in the app's own 2-D grid sat
+  at an aspect between 1.31 and 2.03, the best at 73x36 - aspect 2.03,
+  and 0.076 of the window against a ceiling of 0.072 - with the nearest
+  tried aspect five pixels out in height on a 36px box. A list of three
+  guesses cannot be nudged into a shape nobody has measured.
+  So it is `autocal.find_scale`'s search: widths of the HUD SPAN,
+  heights an INDEPENDENT fraction of the frame. Three measured
+  departures from its numbers - heights from 0.034 rather than 0.050
+  (located frames measured 0.0350 and 0.0410, both under that floor);
+  steps of 0.006 and 0.012 rather than 0.003 and 0.006, holding the
+  cost at 100 passes against the 90 three aspects cost; and a width
+  floor of 0.028 of the SPAN rather than 0.014 of the window, which
+  also ends the 26x20 blob rows the diagnosis kept reporting as a hero
+  roster. The coarseness is safe because the map showed the peak is
+  BROAD - cells at 0.076, 0.079 and 0.082 across three heights all
+  bar-shaped at peaks of 0.81 to 0.92 - and because `_refine`'s reach
+  is now DERIVED from the grid, half a step in each axis, so what the
+  grid steps over the walk still reaches.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and

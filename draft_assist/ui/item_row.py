@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 from . import theme, tilekit
 from .flowlayout import FlowLayout
+from ..model.items import ONE_TRIGGER, importance, severity_pct
 from .item_icons import icon, why_missing
 from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 
@@ -109,12 +110,17 @@ class ItemTile(QWidget):
         self.setToolTip(self._tooltip())
 
     def _tooltip(self) -> str:
-        lines = [f"<b>{self.advice.item}</b>"]
+        # THE SAME LINE THE CALLOUT DRAWS, because two spellings of one
+        # sentence is one of them going stale. The hero, its own
+        # percentage, then why - see `reasons.item_reasons`.
+        lines = [f"<b>{self.advice.item} — "
+                 f"{importance(self.advice.score)}%</b>"]
         for trigger in self.advice.triggers:
-            lines.append(f"sev {trigger.severity} · {trigger.reason}")
+            lines.append(f"{trigger.hero} | "
+                         f"{severity_pct(trigger.severity)}% · "
+                         f"{trigger.reason}")
         if self.advice.any_stale:
             lines.append("<i>unverified this patch</i>")
-        lines.append("<i>Hand-authored rule, not measured.</i>")
         # WHY THIS ONE IS DRAWING ITS NAME. Four causes, one appearance,
         # and the tool that told them apart lost its menu item — so the
         # answer belongs on the tile somebody is already looking at.
@@ -148,6 +154,16 @@ class ItemTile(QWidget):
                                box.adjusted(0, 0, 0, -box.height() // 4),
                                self.advice.item, self.font())
 
+        # THE SAME NUMBER, IN THE SAME CORNER, AS EVERY OTHER FIGURE IN
+        # THE APP, at the user's request: "exact same text that is used
+        # for the synergy / counter numbers, no decimals just whole
+        # number percentage". `paint_badge` is that one implementation,
+        # so the figure on an item and the figure on a pick cannot drift
+        # into two conventions.
+        share = importance(self.advice.score)
+        tilekit.paint_badge(painter, box, f"{share}%",
+                            theme.GOOD if share > ONE_TRIGGER else theme.BAD,
+                            self.font())
         painter.end()
 
     def sizeHint(self) -> QSize:                # noqa: N802
