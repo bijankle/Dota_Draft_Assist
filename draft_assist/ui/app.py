@@ -3015,29 +3015,28 @@ class MainWindow(QMainWindow):
                   4000)
 
     def _recognition_finished(self, dialog) -> None:
-        """Copy the report, then say in one sentence what to do with it."""
+        """Copy the report, and say so WHERE THE REPORT IS.
+
+        It used to copy silently and then open a message box over the
+        top - "I don't trust that the copy and paste works unless I can
+        see the console in the app". Fair: a modal box that appears when
+        a run ends is the one thing standing between somebody and the
+        output they were watching, and it asserts the copy happened
+        rather than showing it. So the dialog stays up with the whole
+        transcript in it and its own Copy output button, and this only
+        adds the line saying what to do next.
+        """
         report = dialog.log.toPlainText().strip()
         if not report:
             return
         QApplication.clipboard().setText(report)
+        where = ""
+        if (DEBUG_OUT / "scored").is_dir():
+            where = "  Pictures are in debug_out\\scored."
+        dialog.summary.setText(
+            f"{dialog.summary.text()}  —  copied to the clipboard; paste "
+            f"it into the chat (Ctrl+V).{where}")
         self._say("Recognition report copied — paste it to Claude", 8000)
-        box = QMessageBox(self)
-        box.setWindowTitle("Recognition report")
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText("The report is on your clipboard.")
-        # WHAT TO DO NEXT, because a report nobody knows what to do with
-        # is a report that sits there. Two sentences, no more: a screen
-        # says what a control DID, and the manual says how it works.
-        box.setInformativeText(
-            "Paste it into the chat (Ctrl+V).\n\n"
-            "If it names any pictures, they are in debug_out\\scored — "
-            "send those too.")
-        shown = box.addButton("Open that folder",
-                              QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Close)
-        box.exec()
-        if box.clickedButton() is shown:
-            open_folder(DEBUG_OUT / "scored")
 
     def _open_settings(self, tab: str = "") -> None:
         """Show the settings window, building it the first time.

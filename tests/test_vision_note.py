@@ -122,3 +122,4 @@ def test_the_report_is_copied_rather_than_left_to_be_selected():
     body = body[:body.index("\n    def ")]
     assert "clipboard().setText" in body
     assert "toPlainText" in body
+
