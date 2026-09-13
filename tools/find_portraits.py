@@ -58,6 +58,7 @@ if str(ROOT) not in sys.path:
 from draft_assist import console                     # noqa: E402
 from draft_assist.vision import autocal              # noqa: E402
 from draft_assist.vision import library              # noqa: E402
+from draft_assist.vision import recognize            # noqa: E402
 from draft_assist.vision.layout import hud_box       # noqa: E402
 
 SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
@@ -311,7 +312,7 @@ def boxes_of(radiant_x: int, dire_x: int, pitch: int, slot_w: int,
 
 
 def measure(path: Path, into: Path, art: dict, loud=False,
-            strips=False) -> dict:
+            strips=False, lib=None, params=None) -> dict:
     frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
@@ -362,6 +363,17 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     })
     draw(frame, rects, path, into)
     slices(frame, rects, path, into)
+    if lib is not None:
+        reads = identify(frame, rects, lib, params)
+        row["read"] = [
+            {"slot": i + 1, "hero_id": r[0], "name": r[1],
+             "distance": r[3], "margin": r[4]}
+            for i, r in enumerate(reads)]
+        row["named"] = sum(1 for r in reads if r[0])
+        proof(frame, rects, reads, path, into,
+              f"{path.name}  {width}x{height}   slot {slot_w}x{slot_h}"
+              f"   pitch {pitch}   radiant x {radiant_x}   dire x {dire_x}"
+              f"   top {top}   named {row['named']}/10")
     return row
 
 
@@ -411,6 +423,127 @@ def slices(frame, rects, path: Path, into: Path) -> None:
         (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
 
 
+NAME_OF = {}          # hero id -> display name, read off the library labels
+
+
+def hero_name(label: str) -> str:
+    """'base/26_lion.png' -> 'Lion'. The library's own filenames are the
+    only hero-name list this tool needs, so there is nothing to keep in
+    step with anything."""
+    stem = Path(label).stem
+    parts = stem.split("_", 1)
+    words = (parts[1] if len(parts) > 1 else stem).replace("_", " ")
+    return words.title()
+
+
+def identify(frame, rects, lib, params):
+    """(hero id, name, reference image, distance, margin) per slot.
+
+    Uses the app's OWN recogniser rather than a second one written here.
+    Two implementations of "which hero is this" is one of them drifting,
+    and the point of this exercise is to find out whether the one the app
+    ships works once the boxes are in the right place.
+    """
+    out = []
+    for x, y, w, h in rects:
+        crop = frame[max(0, y):y + h, max(0, x):x + w]
+        if crop.size == 0:
+            out.append((None, "(off screen)", None, -1, -1))
+            continue
+        hero_id, label, distance, margin = recognize.match_crop(
+            crop, lib, params)
+        reference = None
+        guess = Path(library.PORTRAITS_DIR) / label
+        if guess.is_file():
+            reference = read_image(guess)
+        name = hero_name(label) if hero_id else f"? ({hero_name(label)})"
+        out.append((hero_id, name, reference, distance, margin))
+    return out
+
+
+def proof(frame, rects, reads, path: Path, into: Path, caption: str) -> None:
+    """ONE PICTURE THAT SHOWS THE WHOLE CHAIN, at the user's request:
+    "I want to see you flash up on the screen what the portrait locations
+    are... and provide feedback at each stage with visual images so I can
+    say - yes that is correct."
+
+    Four bands, top to bottom:
+      1  the strip that was searched, with the ten boxes on it
+      2  the ten crops, exactly as cut
+      3  what the recogniser says each one is, as ITS OWN PICTURE
+      4  the name and how confident, in words
+
+    Band 3 is the one that makes this checkable without trusting
+    anything: a crop beside the reference portrait it was matched to is
+    a comparison anybody can make by eye in a second, where a hero name
+    in a table is a claim you have to take on faith.
+    """
+    tall, pad, foot = 120, 8, 46
+    tiles = []
+    for (x, y, w, h), (hero_id, name, reference, dist, margin) in zip(
+            rects, reads):
+        crop = frame[max(0, y):y + h, max(0, x):x + w]
+        if crop.size == 0:
+            crop = np.zeros((max(1, h), max(1, w), 3), np.uint8)
+        scale = tall / max(1, crop.shape[0])
+        wide = max(1, int(crop.shape[1] * scale))
+        tiles.append((cv2.resize(crop, (wide, tall),
+                                 interpolation=cv2.INTER_NEAREST),
+                      reference, name, hero_id, dist, margin))
+
+    sheet_w = max(sum(t[0].shape[1] for t in tiles) + pad * (len(tiles) + 1),
+                  900)
+    head = frame[:max(16, int(frame.shape[0] * TOP_REACH))].copy()
+    for index, (x, y, w, h) in enumerate(rects):
+        colour = (90, 220, 90) if index < 5 else (80, 80, 240)
+        cv2.rectangle(head, (x, y), (x + w, y + h), colour, 2)
+        cv2.putText(head, str(index + 1), (x + 3, y + h - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
+    factor = sheet_w / head.shape[1]
+    head = cv2.resize(head, (sheet_w, max(1, int(head.shape[0] * factor))),
+                      interpolation=cv2.INTER_AREA)
+
+    body = tall * 2 + pad * 3 + foot
+    sheet = np.full((head.shape[0] + 34 + body, sheet_w, 3), 22, np.uint8)
+    sheet[:head.shape[0]] = head
+    cv2.putText(sheet, caption, (pad, head.shape[0] + 24),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1,
+                cv2.LINE_AA)
+
+    top = head.shape[0] + 34
+    at = pad
+    for index, (tile, reference, name, hero_id, dist, margin) in enumerate(
+            tiles):
+        wide = tile.shape[1]
+        sheet[top:top + tall, at:at + wide] = tile
+        band = top + tall + pad
+        if reference is not None and reference.size:
+            sheet[band:band + tall, at:at + wide] = cv2.resize(
+                reference, (wide, tall), interpolation=cv2.INTER_AREA)
+        else:
+            cv2.putText(sheet, "no ref", (at + 4, band + tall // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 120, 120), 1,
+                        cv2.LINE_AA)
+        # GREEN MEANS IT COMMITTED, AMBER MEANS IT DECLINED. An unknown
+        # slot is a legitimate state in this app, so it must not be drawn
+        # as the same kind of answer as a confident one.
+        colour = (90, 220, 90) if hero_id else (70, 190, 240)
+        cv2.rectangle(sheet, (at, top), (at + wide, band + tall),
+                      (90, 220, 90) if index < 5 else (80, 80, 240), 1)
+        line = band + tall + 18
+        cv2.putText(sheet, f"{index + 1}. {name[:16]}", (at + 2, line),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, colour, 1, cv2.LINE_AA)
+        cv2.putText(sheet, f"d{dist} m{margin}", (at + 2, line + 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (150, 150, 150), 1,
+                    cv2.LINE_AA)
+        at += wide + pad
+
+    into.mkdir(parents=True, exist_ok=True)
+    ok, buffer = cv2.imencode(".png", sheet)
+    if ok:
+        (into / f"{path.stem}-proof.png").write_bytes(buffer.tobytes())
+
+
 def strip_of(frame, path: Path, into: Path) -> None:
     """The band that was searched, saved as a picture.
 
@@ -457,6 +590,46 @@ def draw(frame, rects, path: Path, into: Path) -> None:
         (into / f"{path.stem}-found.png").write_bytes(buffer.tobytes())
 
 
+def _consensus(good: list) -> None:
+    """Do the 23 screenshots AGREE? That is the check that needs no eyes.
+
+    Dota lays its HUD out in fractions of a 16:9 box, so the same three
+    numbers - where a bank starts, how wide a portrait is, how far apart
+    they sit - must come out the SAME on 800x600 and on 3440x1440. The
+    resolutions are therefore not 23 separate problems; they are 23
+    independent measurements of one constant, and their spread is a
+    correctness signal on its own.
+
+    It has already earned its keep: the edge-fitting version reported a
+    spread of 0.314 on `x_of_hudbox`, which said the answers were wrong
+    before a single crop had been looked at. A right answer is a tight
+    cluster, and whatever sits outside it names the frame to open.
+    """
+    keys = ("x_of_hudbox", "slot_w_of_hudbox", "pitch_of_hudbox")
+    values = {k: [r[k] for r in good if r.get(k) is not None] for k in keys}
+    if not all(values[k] for k in keys):
+        return
+    print("\nDO THE RESOLUTIONS AGREE? (they are one constant measured "
+          f"{len(good)} times)")
+    middle = {}
+    for key in keys:
+        column = np.array(values[key], dtype=float)
+        middle[key] = float(np.median(column))
+        off = float(np.max(np.abs(column - middle[key])))
+        verdict = ("consistent" if off <= 0.01 else
+                   "loose" if off <= 0.03 else "NOT CONSISTENT")
+        print(f"  {key:<18} median {middle[key]:.4f}   worst miss "
+              f"{off:.4f}   {verdict}")
+    rogue = [(max(abs(r[k] - middle[k]) for k in keys), r["file"])
+             for r in good if all(r.get(k) is not None for k in keys)]
+    rogue.sort(reverse=True)
+    bad = [item for item in rogue if item[0] > 0.01]
+    if bad:
+        print("  frames furthest from the consensus - open these first:")
+        for off, name in bad[:6]:
+            print(f"    {off:.4f}  {name}")
+
+
 def main() -> None:
     console.plain_output()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -468,6 +641,11 @@ def main() -> None:
                              "filename to resume AFTER")
     parser.add_argument("--only", default="",
                         help="comma-separated names to do and nothing else")
+    parser.add_argument("--art", default="",
+                        help="folder of base portraits (default: the app's "
+                             "own assets/portraits/base)")
+    parser.add_argument("--no-read", action="store_true",
+                        help="locate only; do not try to name the heroes")
     parser.add_argument("--strips", action="store_true",
                         help="also save the searched band of every frame, "
                              "not only the ones that fail")
@@ -500,6 +678,8 @@ def main() -> None:
     # THE ARTWORK IS THE METHOD, so its absence is refused rather than
     # worked around. Without it this tool has nothing to recognise and
     # would fall back to guessing, which is what the edge fit was.
+    if args.art:
+        library.BASE_DIR = Path(args.art).expanduser()
     art = load_art()
     if len(art) < 50:
         raise SystemExit(
@@ -508,8 +688,18 @@ def main() -> None:
             "Open the app and run Settings > Downloads > All artwork, then "
             "try again.")
 
+    # THE APP'S OWN RECOGNISER, not a second one written here. Two
+    # implementations of "which hero is this" is one of them drifting,
+    # and the question being asked is whether the one that ships works
+    # once the boxes are in the right place.
+    lib = params = None
+    if not args.no_read:
+        params = library.load_params()
+        lib = library.load(expected_hash_size=params.hash_size)
+
     into = Path(args.out)
-    print(f"{len(art)} hero portraits loaded")
+    print(f"{len(art)} hero portraits loaded"
+          + (f", library of {len(lib)} entries" if lib else ""))
     print(f"{len(shots)} picture(s) to do in {folder}\n")
     head = ("file", "WxH", "aspect", "seen", "bar top", "slot h", "rad x",
             "dire x", "slot w", "pitch", "x/hud", "w/hud", "pitch/hud",
@@ -527,7 +717,7 @@ def main() -> None:
         print(f"[{number}/{len(shots)}] {shot.name} ...",
               end="", flush=True)
         row = measure(shot, into, art, loud=args.loud,
-                      strips=args.strips)
+                      strips=args.strips, lib=lib, params=params)
         print("\r" + " " * 60 + "\r", end="", flush=True)
         rows.append(row)
         if "why" in row:
@@ -546,6 +736,7 @@ def main() -> None:
               flush=True)
 
     good = [r for r in rows if "why" not in r]
+    _consensus(good)
     print(f"\n{len(good)} of {len(rows)} located.")
     for key in ("x_of_width", "x_of_hudbox", "slot_w_of_hudbox",
                 "pitch_of_hudbox", "y_of_window", "y_of_hudbox",
@@ -554,6 +745,9 @@ def main() -> None:
         if values:
             print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
                   f"   spread {max(values) - min(values):.5f}")
+    named = sum(r.get("named", 0) for r in good)
+    if any("named" in r for r in good):
+        print(f"\n{named} of {10 * len(good)} slots were given a hero name.")
     print(f"\nPictures -> {into}")
     print("  <name>-found.png   the ten boxes drawn on the frame")
     print("  <name>-slices.png  the ten crops, side by side, enlarged")
