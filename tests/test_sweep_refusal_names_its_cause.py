@@ -230,3 +230,59 @@ def test_the_map_ranks_a_bar_above_a_bigger_count():
     ]
     cells.sort(key=fp.map_order, reverse=True)
     assert cells[0]["box"] == [61, 38]
+
+
+# --- and the name you can actually type --------------------------------
+
+def test_a_multiplication_sign_and_an_x_name_the_same_picture():
+    """The Snipping Tool writes U+00D7 and nobody types one.
+
+    Twenty of the user's twenty-two screenshots carry it, and `--only`
+    matched the filename exactly — so the one picture worth re-running
+    could not be named at a Windows prompt. Same character, same family
+    of fault as `read_image`, one layer up.
+    """
+    assert fp.same_name("1920 × 1080.png") == fp.same_name("1920x1080.png")
+    assert fp.same_name("3440x1440.PNG") == fp.same_name("3440 X 1440.png")
+
+
+def test_two_different_pictures_still_do_not_collide():
+    assert fp.same_name("1920 × 1080.png") != fp.same_name("1920x1200.png")
+    assert fp.same_name("800 × 600.png") != fp.same_name("1800x600.png")
+
+
+# --- and only the pictures that can answer the question ---------------
+
+@pytest.mark.parametrize("w,h,votes", [
+    (800, 600, True),        # 4:3
+    (1024, 768, True),       # 4:3
+    (1280, 1024, True),      # 5:4
+    (1600, 1200, True),      # 4:3
+    (1680, 1050, True),      # 16:10
+    (1920, 1200, True),      # 16:10
+    (1280, 720, False),      # 16:9 - no vertical slack at all
+    (1366, 768, False),      # ~16:9
+    (1920, 1080, False),     # 16:9
+    (2560, 1440, False),     # 16:9
+    (3440, 1440, False),     # 21:9 - pillarboxed, still full height
+])
+def test_only_a_display_taller_than_16_9_can_settle_the_vertical(w, h, votes):
+    """Arithmetic, not preference. At 16:9 and wider the HUD box is the
+    full height, so all three vertical readings are the same number and
+    no picture can separate equal numbers."""
+    assert fp.can_vote(w, h) is votes
+
+
+def test_the_size_comes_off_the_header_without_decoding(tmp_path):
+    import cv2
+    shot = tmp_path / "1920 × 1200.png"
+    ok, buf = cv2.imencode(".png", np.full((1200, 1920, 3), 7, np.uint8))
+    assert ok
+    shot.write_bytes(buf.tobytes())
+    assert fp.size_of(shot) == (1920, 1200)
+
+
+def test_a_file_that_is_not_an_image_has_no_size(tmp_path):
+    bad = tmp_path / "notes.png"
+    bad.write_text("this is not a picture", encoding="utf-8")
+    assert fp.size_of(bad) is None

@@ -3749,6 +3749,35 @@ credentials, and put the account at risk. Do not go there.
   and how many PIXELS OF HEIGHT the nearest aspect would be out. Pixels,
   not aspect numbers — 0.93 against 1.00 reads as a near miss and is the
   whole error.
+  **AND THE PICTURE HAS TO BE NAMEABLE** (`find_portraits.same_name`).
+  The Snipping Tool writes `1920 × 1080.png` with U+00D7 and nobody
+  types one, so `--only`, which matched the filename exactly, could not
+  be given the one picture worth re-running. That is the tail of the bug
+  `read_image` exists for — twenty of the user's twenty-two screenshots
+  could not be OPENED because `cv2.imread` goes through Windows' ANSI
+  codepage and cannot see that character — one layer up: there the file
+  could not be read, here it cannot be named. `--only` and `--skip`
+  compare a normalised spelling, so `x` and `×` and any spacing name the
+  same picture.
+  **AND MOST OF THE PICTURES CANNOT ANSWER THE QUESTION, SO THEY ARE NOT
+  RUN** (`find_portraits.can_vote`, `size_of`, `--tall`), at the user's
+  request: "I don't want to be creating empirical data for all these
+  edge case resolutions, just the key ones". Twenty-two pictures at
+  about a minute each is twenty-two minutes, and fifteen of those
+  minutes were spent on 16:9-and-wider shots which are ARITHMETICALLY
+  incapable of settling the vertical — the HUD box is the full height
+  there, the slack is nought, and the three readings are the same
+  number. Only a display TALLER than 16:9 separates them. So the run
+  says what it will cost and what it can answer BEFORE it starts, and
+  `--tall` keeps only the shots that can vote: seven minutes instead of
+  twenty-two, with nothing lost. `size_of` reads a PNG's header rather
+  than decoding every file to decide which ones are worth decoding.
+  **AND THE POINT OF THE SAMPLE IS TO TEST A FORMULA, NOT TO BUILD A
+  TABLE.** `hud_box` already computes every resolution from its own two
+  numbers — `scale = min(width/16, height/9)`, centred — so no
+  resolution needs measuring for its own sake; what is unmeasured is a
+  single unknown in that formula, where the vertical slack goes on a
+  tall display. One tall frame settles it and the rest are corroboration.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and

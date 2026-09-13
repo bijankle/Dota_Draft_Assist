@@ -139,6 +139,26 @@ def step(share: float, what: str) -> None:
           flush=True)
 
 
+# THE SNIPPING TOOL WRITES A MULTIPLICATION SIGN, and nobody types one.
+# `1920 x 1080.png` and `1920 × 1080.png` name the same picture to every
+# person who ever looks at them, and only one of the two can be typed at
+# a Windows prompt without going and finding the character. This is the
+# tail of the bug `read_image` exists for: there, twenty of twenty-two
+# screenshots could not be OPENED because their names carried U+00D7;
+# here, the one picture worth re-running cannot be NAMED for the same
+# reason. Spaces go too, since a name is copied out of a table as often
+# as it is typed.
+SAME = {"\u00d7": "x", "\u2715": "x", "\u2716": "x", "\u00a0": " "}
+
+
+def same_name(name: str) -> str:
+    """One spelling of a filename, for `--only` and `--skip` to match on."""
+    text = name.strip().lower()
+    for odd, plain in SAME.items():
+        text = text.replace(odd, plain)
+    return "".join(text.split())
+
+
 def read_image(path: Path):
     """Decode from bytes - `cv2.imread` cannot open a path carrying the
     multiplication sign the Snipping Tool puts in its filenames."""
@@ -147,6 +167,47 @@ def read_image(path: Path):
     except OSError:
         return None
     return cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
+
+
+def size_of(path: Path):
+    """(width, height) from the file's HEADER, without decoding it.
+
+    Deciding WHICH pictures are worth a minute each must not itself cost
+    a decode of every picture in the folder. A PNG states its size in
+    the first 24 bytes; anything else falls back to a full read, which
+    is what the folder holds in practice anyway.
+    """
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(32)
+    except OSError:
+        return None
+    if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+        return (int.from_bytes(head[16:20], "big"),
+                int.from_bytes(head[20:24], "big"))
+    image = read_image(path)
+    if image is None or not image.size:
+        return None
+    return int(image.shape[1]), int(image.shape[0])
+
+
+def can_vote(width: int, height: int) -> bool:
+    """Can a display this shape settle the VERTICAL convention?
+
+    ONLY IF IT IS TALLER THAN 16:9, and that is arithmetic rather than a
+    preference. Dota fits the largest 16:9 box that will go in the
+    window (`layout.hud_box`, `scale = min(width/16, height/9)`), so at
+    16:9 and WIDER the box is the full height and there is no vertical
+    slack at all — the bar's top as a fraction of the window, of a 16:9
+    box hung at the top, and of one centred are then THE SAME NUMBER,
+    and a picture cannot distinguish readings that are equal. Taller
+    than 16:9 the slack is real and the three separate by up to half of
+    it, which is 56px on 1920x1200.
+
+    So a sweep over twenty 16:9 screenshots is twenty minutes spent on a
+    question none of them can answer. This is what `--tall` cuts.
+    """
+    return bool(height) and width / height < SIXTEEN_NINE - ASPECT_SLACK
 
 
 def load_art() -> dict[int, "np.ndarray"]:
@@ -1109,6 +1170,12 @@ def main() -> None:
                              "not only the ones that fail")
     parser.add_argument("--loud", action="store_true",
                         help="print every size tried and what it matched")
+    parser.add_argument("--tall", action="store_true",
+                        help="only the pictures TALLER than 16:9 - the "
+                             "only ones that can settle the vertical "
+                             "convention. At 16:9 and wider the three "
+                             "readings are arithmetically the same "
+                             "number, so those minutes buy nothing.")
     parser.add_argument("--grid", action="store_true",
                         help="instead of locating, map the best match at "
                              "every size in the app's own 2-D search grid. "
@@ -1129,15 +1196,38 @@ def main() -> None:
     # long and a console is one Ctrl+C away from losing all of it, so
     # there has to be a way back in that does not redo what is done.
     if args.only:
-        want = {n.strip().lower() for n in args.only.split(",") if n.strip()}
-        shots = [p for p in shots if p.name.lower() in want]
+        want = {same_name(n) for n in args.only.split(",") if n.strip()}
+        shots = [p for p in shots if same_name(p.name) in want]
     elif args.skip:
-        marks = [n.strip().lower() for n in args.skip.split(",") if n.strip()]
-        names = [p.name.lower() for p in shots]
+        marks = [same_name(n) for n in args.skip.split(",") if n.strip()]
+        names = [same_name(p.name) for p in shots]
         if len(marks) == 1 and marks[0] in names:
             shots = shots[names.index(marks[0]) + 1:]   # resume AFTER it
         else:
-            shots = [p for p in shots if p.name.lower() not in set(marks)]
+            shots = [p for p in shots if same_name(p.name) not in set(marks)]
+
+    # SAY WHAT THIS RUN WILL COST AND WHAT IT CAN ANSWER, before it is
+    # started rather than after. "The time to run these tests seems to
+    # be increasing dramatically" is the honest reading of a tool that
+    # spends a minute each on twenty-two pictures without ever saying
+    # that fifteen of them cannot answer the open question.
+    sizes = {p: size_of(p) for p in shots}
+    tall = [p for p in shots
+            if sizes.get(p) and can_vote(*sizes[p])]
+    print(f"{len(shots)} picture(s) in {folder}; {len(tall)} taller than "
+          f"16:9.")
+    print("Only a display taller than 16:9 can settle the vertical "
+          "convention - see `can_vote`.")
+    print(f"About a minute each: ~{len(shots)} min for all, "
+          f"~{len(tall)} min with --tall.")
+    if args.tall:
+        if not tall:
+            raise SystemExit(
+                "None of these pictures is taller than 16:9, so none of "
+                "them can settle it.\nA 4:3 (1024x768), 5:4 (1280x1024) "
+                "or 16:10 (1920x1200, 1680x1050) shot would.")
+        shots = tall
+    print()
 
     # THE ARTWORK IS THE METHOD, so its absence is refused rather than
     # worked around. Without it this tool has nothing to recognise and
@@ -1164,7 +1254,7 @@ def main() -> None:
     into = Path(args.out)
     print(f"{len(art)} hero portraits loaded"
           + (f", library of {len(lib)} entries" if lib else ""))
-    print(f"{len(shots)} picture(s) to do in {folder}\n")
+    print(f"{len(shots)} picture(s) to do\n")
     head = ("file", "WxH", "aspect", "seen", "bar top", "slot h", "rad x",
             "dire x", "slot w", "pitch", "x/hud", "w/hud", "pitch/hud",
             "y/win")
