@@ -220,7 +220,8 @@ def tune(samples: list, truth: set, params) -> None:
               f"max_distance {best[1]}, min_margin {best[2]}")
 
 
-def score(folder: Path, every: int, proofs: int, out: Path) -> int:
+def score(folder: Path, every: int, proofs: int, out: Path,
+          last: int = 0) -> int:
     art = fp.load_art()
     if len(art) < 50:
         raise SystemExit(
@@ -258,7 +259,10 @@ def score(folder: Path, every: int, proofs: int, out: Path) -> int:
         print("  Scoring will still say where the boxes landed, but not "
               "whether the heroes are right.")
 
-    frames = sorted((folder / "frames").glob("*.png"))[::max(1, every)]
+    frames = sorted((folder / "frames").glob("*.png"))
+    if last:
+        frames = frames[-last:]
+    frames = frames[::max(1, every)]
     if not frames:
         raise SystemExit(f"No frames in {folder / 'frames'}")
     print(f"\n{len(frames)} frame(s) to score\n")
@@ -345,23 +349,65 @@ def score(folder: Path, every: int, proofs: int, out: Path) -> int:
 
     tune(samples, truth, params)
 
+    # THE BEST FRAME IS THE ONE THAT ANSWERS THE QUESTION.
+    # Frames start at the BUTTON PRESS, not at the draft (see
+    # `record.FRAME_INTERVAL`), so a recording opens with the queue, the
+    # loading screen and a hero-select bar that is still filling up. An
+    # empty slot cannot match a hero, so those frames drag every average
+    # down and say nothing about whether the geometry is right. What
+    # says that is the best frame: if ONE frame reads all ten, the boxes
+    # are on the portraits and everything else here is phase.
+    graded = [item for item in worst if item[3] is not None]
+    if graded:
+        graded.sort(key=lambda item: item[0])
+        top = graded[-1]
+        spread = Counter(item[0] for item in graded)
+        print("\nPER FRAME, best first")
+        print("-" * 58)
+        print(f"  best frame              {top[0]}/10 right  ({top[1].name})")
+        print("  how many frames got each score:")
+        for got in sorted(spread, reverse=True):
+            print(f"    {got:>2}/10   {'#' * min(40, spread[got])} "
+                  f"{spread[got]}")
+        if top[0] >= 8:
+            print("  -> the boxes ARE on the portraits. The low average is "
+                  "the early frames, not the geometry.")
+        else:
+            print("  -> no frame read the board, so this is the geometry "
+                  "rather than the phase.")
+
     # PROOF SHEETS FOR THE WORST, not for the best. A sheet of a frame
     # that worked shows nothing that the tally has not already said.
-    worst.sort(key=lambda item: item[0])
     out.mkdir(parents=True, exist_ok=True)
-    made = 0
+    made = []
+    # THE BEST ONE FIRST, and it is not optional. The worst frames in a
+    # recording are the queue and the loading screen - sheets of those
+    # show an empty HUD and answer nothing. The best frame is the one
+    # that says whether this works at all.
+    if graded:
+        right, path, frame, rects, reads = graded[-1]
+        fp.proof(frame, rects, reads, path, out,
+                 f"BEST  {path.name}   {right}/10 right")
+        made.append(f"{path.stem}-proof.png  (the BEST frame, "
+                    f"{right}/10)")
+    worst.sort(key=lambda item: item[0])
     for right, path, frame, rects, reads in worst:
-        if made >= proofs:
+        if len(made) > proofs:
             break
+        if graded and path == graded[-1][1]:
+            continue
         if rects is None:
             fp.strip_of(frame, path, out)
+            made.append(f"{path.stem}-strip.png  (located nothing)")
         else:
             fp.proof(frame, rects, reads, path, out,
                      f"{path.name}   {right}/10 right")
-        made += 1
+            made.append(f"{path.stem}-proof.png  ({right}/10)")
     print(f"\nPictures -> {out}")
-    print(f"  the {made} WORST frame(s), since a sheet of one that worked "
-          "says nothing the tally has not.")
+    for line in made:
+        print(f"  {line}")
+    print("  SEND ME THE BEST ONE FIRST - it is the frame that says "
+          "whether the boxes are on the portraits.")
     return 0 if tally["located"] else 1
 
 
@@ -373,6 +419,10 @@ def main() -> None:
                              "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
+    parser.add_argument("--last", type=int, default=0,
+                        help="score only the last N frames - the draft is "
+                             "at the END of a recording, since frames "
+                             "start when recording does")
     parser.add_argument("--proof", type=int, default=3,
                         help="how many proof sheets to write")
     parser.add_argument("--art", default="")
@@ -405,7 +455,8 @@ def main() -> None:
         library.PORTRAITS_DIR = library.BASE_DIR.parent
         library.VARIANTS_DIR = library.BASE_DIR.parent / "variants"
     out = Path(args.out) if args.out else ROOT / "debug_out" / "scored"
-    raise SystemExit(score(folder, args.every, args.proof, out))
+    raise SystemExit(score(folder, args.every, args.proof, out,
+                       last=args.last))
 
 
 if __name__ == "__main__":
