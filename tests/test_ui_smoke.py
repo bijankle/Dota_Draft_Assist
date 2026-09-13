@@ -2407,9 +2407,14 @@ def test_the_history_run_stars_the_suggestions(window, qapp):
 
     window.history_tab.report = _fake_run(
         {good: (40, 26), bad: (30, 9), thin: (2, 2)})
+    # A SHARE OF THE STRIP: enough for exactly one mark, which goes to
+    # the hero ranked best on pick rate and win rate together.
+    window._apply_settings({"heart_share": max(1, 100 // len(shown))})
     _settle(qapp)
     starred = [t.hero_id for t in window.suggest_row.tiles if t.starred]
     assert starred == [good], starred
+    best = [t for t in window.suggest_row.tiles if t.hero_id == good][0]
+    assert best._star_rank == 1, "the mark carries its rank"
 
     # AND IT FOLLOWS THE TAB. Clearing the run clears the stars rather
     # than leaving the last account's answer on a strip nobody ran.
@@ -2434,24 +2439,39 @@ def test_the_stars_survive_the_strip_being_rebuilt(window, qapp):
     assert any(t.starred for t in window.suggest_row.tiles)
 
 
-def test_moving_the_bars_re_measures_rather_than_re_filtering(window, qapp):
-    """The setting is an INPUT to the ranking, not a filter over its
-    result, so a redraw with the old measurement would show the old
-    stars under the new numbers."""
+def test_moving_the_share_redraws_the_marks(window, qapp):
+    """The setting is a share of the STRIP now, so it is a cut over a
+    ranking that has not changed - the marks are drawn again rather than
+    the run being measured again.
+
+    It still has to happen on the settings change: the strip is rebuilt
+    when a PICK changes, so without it the control moves a number in a
+    file and nothing on screen until the next hero is picked, which is
+    indistinguishable from a broken setting.
+    """
     window.show()
     window.refresh()
     _settle(qapp)
     shown = [t.hero_id for t in window.suggest_row.tiles]
     window.history_tab.report = _fake_run(
         {shown[0]: (40, 26), shown[1]: (30, 9), shown[2]: (20, 14)})
+    window._apply_settings({"heart_share": max(1, 100 // len(shown))})
     _settle(qapp)
     before = {t.hero_id for t in window.suggest_row.tiles if t.starred}
 
-    window._apply_settings({"star_pick_pct": 0, "star_win_pct": 0})
+    window._apply_settings({"heart_share": 100})
     _settle(qapp)
     after = {t.hero_id for t in window.suggest_row.tiles if t.starred}
     assert after > before, (before, after)
-    assert window.settings["star_pick_pct"] == 0
+    assert window.settings["heart_share"] == 100
+
+    # THE RANKS ARE PLACES, so they start at one and never skip: two
+    # heroes share a place only when the criterion genuinely cannot
+    # separate them.
+    places = sorted(t._star_rank for t in window.suggest_row.tiles
+                    if t._star_rank)
+    assert places and places[0] == 1
+    assert places == sorted(places)
 
 
 def test_a_picked_hero_carries_no_star(window, qapp):

@@ -3091,22 +3091,23 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
-        if (self.settings.get("star_pick_pct"),
-                self.settings.get("star_win_pct")) != (
-                    before.get("star_pick_pct"), before.get("star_win_pct")):
-            # `_refresh_views` above re-applied the stars, but it applied
-            # the ones MEASURED WITH THE OLD FLOORS — the setting is an
-            # input to the ranking, not a filter over its result, so the
-            # run has to be read again.
-            self._history_run_changed(self.history_tab.report)
-        if self.settings.get("shield_pct") != before.get("shield_pct"):
-            # THE SECOND HALF OF THE SAME BUG. `_refresh_views` above
-            # re-applied whatever shields were last computed, and the bar
-            # is an input to the RANKING rather than a filter over its
-            # result - so without this the control in Settings moved a
-            # number in a file and changed nothing on screen, which is
-            # indistinguishable from the mark being broken.
-            self._recompute_shields()
+        if (self.settings.get("heart_share"),
+                self.settings.get("shield_share")) != (
+                    before.get("heart_share"), before.get("shield_share")):
+            # RE-APPLIED, NOT RE-MEASURED, and that is the change: these
+            # used to be percentile floors INSIDE the ranking, so moving
+            # one meant reading the whole History run again and
+            # recomputing every hero's standing in the field. A share of
+            # the strip is a cut over a ranking that has not changed, so
+            # the marks are simply drawn again.
+            #
+            # It still has to happen HERE. The strip is redrawn when a
+            # PICK changes, so without this the control moved a number in
+            # a file and nothing on screen until the next hero was
+            # picked - which is indistinguishable from a broken setting,
+            # and is the state the shield bar actually shipped in.
+            self.suggest_row.set_stars(self.stars, self._heart_share())
+            self.suggest_row.set_shields(self.shields, self._shield_share())
             self._refresh_views()
         chosen = self.settings.get("pair_source", pair_source())
         if chosen != pair_source():
@@ -3924,16 +3925,16 @@ class MainWindow(QMainWindow):
         # left where it is drawn.
         rows = [
             (s.hero_id, s.name, s.score,
-             f"{s.name}\nCounter Score = {s.vs_total * 100:+.2f}"
-             f"\nSynergy Score = {s.with_total * 100:+.2f}")
+             f"{s.name}\nCounter Score = {s.vs_total * 100:+.1f}"
+             f"\nSynergy Score = {s.with_total * 100:+.1f}")
             for s in self.scored[:self._how_many("suggested_picks")]
         ]
         self.suggest_row.show_heroes(rows)
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
-        self.suggest_row.set_stars(self.stars)
-        self.suggest_row.set_shields(self.shields)
+        self.suggest_row.set_stars(self.stars, self._heart_share())
+        self.suggest_row.set_shields(self.shields, self._shield_share())
 
     def _recompute_shields(self) -> None:
         """Which heroes the field struggles to counter, from the DATASET.
@@ -3946,10 +3947,13 @@ class MainWindow(QMainWindow):
         """
         from ..history import analyse as analyse_mod
 
-        bar = ui_settings.clamp_pct(self.settings.get("shield_pct", 70), 70)
         try:
+            # NO BAR PASSED. The mark is a share of the strip now, so
+            # every hero's standing comes back and the strip ranks the
+            # ones it is showing; the floor inside `shield_report` is
+            # only what its sentence counts against.
             self.shields, self.shields_note = analyse_mod.shield_report(
-                self.ds, bar)
+                self.ds)
         except Exception as bad:           # noqa: BLE001 - never fatal
             # STILL NEVER FATAL - a missing or malformed dataset must not
             # take the app down - but no longer SILENT. This swallow is
@@ -3963,6 +3967,14 @@ class MainWindow(QMainWindow):
         if window is not None:
             window.set_shield_note(self.shields_note)
 
+    def _heart_share(self) -> int:
+        """How much of the suggestion strip may carry a heart."""
+        return ui_settings.clamp_pct(self.settings.get("heart_share", 30), 30)
+
+    def _shield_share(self) -> int:
+        """How much of the suggestion strip may carry a shield."""
+        return ui_settings.clamp_pct(self.settings.get("shield_share", 30), 30)
+
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.
 
@@ -3974,13 +3986,13 @@ class MainWindow(QMainWindow):
         from ..history import stars as stars_mod
 
         matches = getattr(report, "matches", None)
-        self.stars = None if not matches else stars_mod.measure(
-            matches,
-            ui_settings.clamp_pct(self.settings.get("star_pick_pct", 70), 70),
-            ui_settings.clamp_pct(self.settings.get("star_win_pct", 50), 50))
+        # NO FLOORS. Whether a hero is marked is decided by the strip
+        # against what it is showing; what `measure` decides is only
+        # whether there is enough behind a hero to rank it at all.
+        self.stars = None if not matches else stars_mod.measure(matches)
         # The tiles are already on screen, so this is the whole update —
         # no pick changed and nothing needs re-scoring.
-        self.suggest_row.set_stars(self.stars)
+        self.suggest_row.set_stars(self.stars, self._heart_share())
         # And the row at the top says whose run it is. Same signal, same
         # moment: the star bars and the face must never describe two
         # different accounts.

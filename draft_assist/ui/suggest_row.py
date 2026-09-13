@@ -74,6 +74,8 @@ class SuggestTile(QWidget):
         self._focused = False
         self._starred = False
         self._shielded = False
+        self._star_rank = None
+        self._shield_rank = None
         self._why_shield = ""
         self._tip = tooltip or name
         self._why_star = ""
@@ -139,7 +141,14 @@ class SuggestTile(QWidget):
         figure beside it would be a third number in a corner that already
         has the fit in it.
         """
-        self._starred, self._why_star = bool(on), why
+        # A RANK, NOT A FLAG. `on` is an int (1 is the best of the
+        # suggestions on screen), or None/False for no mark - and 0 is
+        # NOT a rank, so it has to be told apart from False rather than
+        # tested for truth. Ranks count from one.
+        self._star_rank = int(on) if isinstance(on, int) and not isinstance(
+            on, bool) else None
+        self._starred = self._star_rank is not None or bool(on) is True
+        self._why_star = why
         self._refresh_tip()
         self.update()
 
@@ -152,7 +161,10 @@ class SuggestTile(QWidget):
         dataset, so it appears on heroes you have never picked - which is
         exactly where it tells you something you did not know.
         """
-        self._shielded, self._why_shield = bool(on), why
+        self._shield_rank = int(on) if isinstance(on, int) and not isinstance(
+            on, bool) else None
+        self._shielded = self._shield_rank is not None or bool(on) is True
+        self._why_shield = why
         self._refresh_tip()
         self.update()
 
@@ -172,7 +184,7 @@ class SuggestTile(QWidget):
             delta, kind, against = self._relation
             label = "With" if kind == "with" else "Vs"
             lines.append(f"{label} {against or 'the clicked hero'}"
-                         f" = {delta * 100:+.2f}")
+                         f" = {delta * 100:+.1f}")
         if self._starred and self._why_star:
             lines.append(self._why_star)
         if self._shielded and self._why_shield:
@@ -218,9 +230,9 @@ class SuggestTile(QWidget):
         # on top of the one line that says what the whole board is being
         # measured against.
         if self._starred:
-            tilekit.paint_heart(painter, box)
+            tilekit.paint_heart(painter, box, self._star_rank)
         if self._shielded:
-            tilekit.paint_shield(painter, box)
+            tilekit.paint_shield(painter, box, self._shield_rank)
         if self._focused:
             tilekit.paint_focus_ring(painter, box)
         painter.end()
@@ -356,29 +368,95 @@ class SuggestRow(QWidget):
             tile.clear_delta()
             tile.set_focused(False)
 
-    def set_stars(self, stars) -> None:
-        """Star the heroes the last History run says you are good on.
+    @staticmethod
+    def _how_many(share: int, tiles: int) -> int:
+        """How many marks a share of the strip comes to.
+
+        The setting is a PERCENTAGE OF WHAT IS ON SCREEN, at the user's
+        request - "if I set it to 50% and I have 20 suggested heroes,
+        that means I expect to have 10 heroes with hearts" - which is a
+        different question from the percentile floor it replaces. That
+        one asked "is this hero in the top 30% of every hero you have
+        ever played"; this asks "is it in the best half of the ones I am
+        looking at", and only the second changes as the board fills.
+
+        Rounded to nearest, and never nought while the share is above it:
+        a setting that is on should mark something.
+        """
+        if share <= 0 or tiles <= 0:
+            return 0
+        return max(1, min(tiles, round(tiles * share / 100.0)))
+
+    def _rank_tiles(self, scores: dict, share: int) -> dict:
+        """{hero id: rank} for the best `share`% of the tiles on screen.
+
+        RELATIVE TO THE STRIP, which is the whole point of the change and
+        the reason this lives here rather than in `history/stars.py` or
+        `analyse.py`. Neither of those knows what is being suggested; the
+        strip is the only place that does.
+
+        TIES TAKE THE BETTER RANK and both are marked, the rule
+        `rank_fraction` already follows: two heroes the criterion cannot
+        separate must not be separated by whatever `sorted` did.
+        """
+        ranked = sorted(((value, hero) for hero, value in scores.items()
+                         if value is not None), reverse=True)
+        wanted = self._how_many(share, len(self._tiles))
+        out, place, seen = {}, 0, None
+        for index, (value, hero) in enumerate(ranked, 1):
+            if value != seen:
+                place, seen = index, value
+            if place > wanted:
+                break
+            out[hero] = place
+        return out
+
+    def set_stars(self, stars, share: int = 0) -> None:
+        """Heart the best `share`% of the strip on your own history.
 
         Takes the whole `Stars` rather than a set of ids, because the
         tile wants the SENTENCE for its tooltip too, and handing the set
         one way and the reasons another is two things to keep in step.
-        None clears every star — no run loaded is not the same claim as
-        a run that starred nobody, but it draws the same, and there is
+        None clears every heart - no run loaded is not the same claim as
+        a run that marked nobody, but it draws the same, and there is
         nothing honest to put on a tile either way.
-        """
-        for tile in self._tiles:
-            on = bool(stars is not None and tile.hero_id in stars)
-            tile.set_star(on, stars.why(tile.hero_id) if on else "")
 
-    def set_shields(self, shields: dict | None) -> None:
-        """Shield the heroes the field struggles to counter.
+        A hero under `stars.MIN_GAMES` scores None and cannot be ranked
+        at all, so a short history yields fewer marks than the share asks
+        for rather than marking a hero played once.
+        """
+        if stars is None:
+            for tile in self._tiles:
+                tile.set_star(None, "")
+            return
+        ranks = self._rank_tiles(
+            {tile.hero_id: stars.score(tile.hero_id)
+             for tile in self._tiles}, share)
+        for tile in self._tiles:
+            rank = ranks.get(tile.hero_id)
+            why = stars.why(tile.hero_id) if rank else ""
+            if rank and why:
+                why = f"{why}\nMy Form Rank = {rank} of these suggestions"
+            tile.set_star(rank, why)
+
+    def set_shields(self, shields: dict | None, share: int = 0) -> None:
+        """Shield the `share`% of the strip hardest to counter.
 
         A PLAIN MAPPING rather than a `Stars`, because this one needs no
-        history object behind it: it is {hero id: sentence}, worked out
-        from the ranked dataset alone. Called AFTER `show_heroes` for the
-        same reason the hearts are - that rebuilds every tile, so a mark
-        set before it is a mark on a widget that no longer exists.
+        history object behind it: {hero id: (difficulty, sentence)},
+        worked out from the ranked dataset alone. Called AFTER
+        `show_heroes` for the same reason the hearts are - that rebuilds
+        every tile, so a mark set before it is a mark on a widget that no
+        longer exists.
         """
+        rows = shields or {}
+        ranks = self._rank_tiles(
+            {tile.hero_id: (rows[tile.hero_id][0]
+                            if tile.hero_id in rows else None)
+             for tile in self._tiles}, share)
         for tile in self._tiles:
-            why = (shields or {}).get(tile.hero_id, "")
-            tile.set_shield(bool(why), why)
+            rank = ranks.get(tile.hero_id)
+            why = rows.get(tile.hero_id, (0.0, ""))[1] if rank else ""
+            if rank and why:
+                why = f"{why}\nCounter Rank = {rank} of these suggestions"
+            tile.set_shield(rank, why)

@@ -64,25 +64,33 @@ def test_the_mark_actually_reaches_the_tiles(window, qapp):
     assert worn._why_shield, "and it says why, in the tooltip"
 
 
-def test_moving_the_bar_in_settings_RE_MEASURES(window):
-    """The second half of the same bug. The bar is an input to the
-    RANKING, not a filter over its result, so re-applying the shields
-    already computed changes nothing - the control moved a number in a
-    file and nothing on screen, which is indistinguishable from the mark
-    being broken.
+def test_moving_the_share_in_settings_REDRAWS_THE_MARKS(window):
+    """The setting is a share of the STRIP now, so it is a cut over a
+    ranking that has not changed - and the marks are simply drawn again.
 
-    Settings shows "top 30%" and stores 70, so a HIGHER stored number is
-    a STRICTER bar and must mark fewer heroes.
+    It still has to happen on the settings change. The strip is redrawn
+    when a PICK changes, so without this the control moves a number in a
+    file and nothing on screen until the next hero is picked, which is
+    indistinguishable from a broken setting and is the state the old
+    shield bar actually shipped in.
     """
-    window._apply_settings({"shield_pct": 70})
-    wide = dict(window.shields)
-    window._apply_settings({"shield_pct": 90})
-    narrow = dict(window.shields)
-    assert wide and narrow
-    assert len(narrow) < len(wide), (
-        "top 10%% must mark fewer heroes than top 30%% (%d vs %d)"
-        % (len(narrow), len(wide)))
-    assert set(narrow) <= set(wide), "and they are the same heroes"
+    marked = []
+    window.suggest_row.set_shields = lambda rows, share=0: marked.append(
+        share)
+    window.suggest_row.set_stars = lambda stars, share=0: None
+    window._apply_settings({"shield_share": 50})
+    assert marked and marked[-1] == 50, (
+        "the strip was not told the new share")
+
+
+def test_every_hero_measured_comes_back_with_its_standing(window):
+    """The report is no longer cut at a bar: the strip needs a FIGURE for
+    every hero it might be showing, because the ranking happens there."""
+    assert window.shields
+    for hero_id, row in window.shields.items():
+        share, why = row
+        assert 0.0 <= share <= 100.0
+        assert why, f"hero {hero_id} has a standing but no sentence"
 
 
 # ---- no shields must say WHICH cause ------------------------------------
@@ -104,13 +112,29 @@ def test_a_missing_dataset_says_so_rather_than_marking_nothing(qapp):
     assert "downloaded" in why.lower(), why
 
 
-def test_a_bar_nothing_can_clear_says_that_instead(qapp):
+def test_the_sentence_counts_what_it_measured(qapp):
+    """The report no longer cuts anything, so the sentence has to say how
+    MANY were measured rather than how many survived a bar - "no shields"
+    still needs to be distinguishable from "no statistics", which is the
+    whole reason this sentence exists.
+    """
     from test_hero_counters import a_dataset
     ds = a_dataset([1, 2, 3], [[0, 1, 2], [-1, 0, 1], [-2, -1, 0]])
     from draft_assist.history import analyse
-    marked, why = analyse.shield_report(ds, 100)
-    assert marked == {}
-    assert "100%" in why and "Lower the bar" in why
+    marked, why = analyse.shield_report(ds)
+    assert len(marked) == 3, "every hero measured comes back"
+    assert "3 heroes measured" in why, why
+
+
+def test_the_floor_form_still_cuts_at_a_bar(qapp):
+    """`shielded` is kept because "which heroes clear a given bar" is
+    still a real question - it is just no longer the one the strip
+    asks."""
+    from test_hero_counters import a_dataset
+    ds = a_dataset([1, 2, 3], [[0, 1, 2], [-1, 0, 1], [-2, -1, 0]])
+    from draft_assist.history import analyse
+    assert analyse.shielded(ds, 100) == {}
+    assert analyse.shielded(ds, 0)
 
 
 

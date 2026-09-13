@@ -56,10 +56,44 @@ class HeroForm:
     pick_top: float = 1.0
     win_top: float = 1.0
 
+    @property
+    def combined(self) -> float:
+        """ONE number to rank on, at the user's request: the mean of the
+        two percentiles. "The best combined score when considering
+        personal hero pick rate and personal hero win rate."
+
+        The mean rather than the product because a hero strong on one
+        axis and middling on the other should still place - a hero you
+        pick constantly at an average rate is a real answer to "what
+        should I take", and multiplying would sink it below a hero with
+        three games at 67%.
+        """
+        return (self.pick_pct + self.win_pct) / 2.0
+
+    @property
+    def eligible(self) -> bool:
+        """Enough games to mean anything. See `MIN_GAMES`."""
+        return self.games >= MIN_GAMES
+
 
 @dataclass(frozen=True)
 class Stars:
-    """The starred ids, and enough to say why on a tooltip."""
+    """Every hero the run measured, ranked, with the reasons behind it.
+
+    IT NO LONGER DECIDES WHO IS MARKED, which reverses what this class
+    used to do. The heart was a pair of percentile floors over your whole
+    history - clear both and you got one - and at the user's request it
+    is now a QUANTITY against the suggestions actually on screen: "I
+    don't want a general % cutoff, I want it to be a qty... it's a
+    relative ranking based on what's available in the suggestions."
+
+    Those are different questions and only the second can be answered
+    here-and-now, because this module has never known what the strip is
+    showing. So it hands back the SCORE for every hero and the strip
+    ranks its own tiles against each other. `heroes` survives as the set
+    that is eligible at all, since a hero with one game still cannot mean
+    "you play this and win on it".
+    """
     heroes: frozenset = field(default_factory=frozenset)
     form: dict = field(default_factory=dict)     # hero id -> HeroForm
     pick_floor: int = 0
@@ -67,6 +101,15 @@ class Stars:
 
     def __contains__(self, hero_id) -> bool:
         return hero_id in self.heroes
+
+    def score(self, hero_id):
+        """The number the strip ranks on, or None if it cannot rank this
+        hero at all. None and 0.0 are different answers: never played is
+        not the same as played and bad."""
+        row = self.form.get(hero_id)
+        if row is None or not row.eligible:
+            return None
+        return row.combined
 
     def why(self, hero_id) -> str:
         """The two lines the tile puts in its tooltip. Empty when
@@ -90,6 +133,8 @@ class Stars:
         row = self.form.get(hero_id)
         if row is None or hero_id not in self.heroes:
             return ""
+        # The RANK is added by the caller, which is the only place that
+        # knows how this hero stands among the ones actually on screen.
         # THE PERCENTILE, NOT "TOP X%", at the user's request: every bar
         # and every standing in this app now reads the same way round,
         # with a HIGH number meaning a strong hero. `pick_top` and
@@ -170,6 +215,11 @@ def measure(matches, pick_floor: int = 0, win_floor: int = 0) -> Stars:
         # 30%" quietly meant four heroes out of ten. Ties still move
         # together: they share one percentile, so a tied group is in or
         # out as a group.
+        # ELIGIBLE, not starred. Whether a mark is drawn is now decided
+        # by the strip against the suggestions on screen; what is decided
+        # here is whether there is enough behind a hero to rank it at
+        # all. The floors are still accepted and still applied when set,
+        # so a caller that wants the old behaviour can have it.
         if (games >= MIN_GAMES
                 and row.pick_pct > pick_floor / 100.0
                 and row.win_pct > win_floor / 100.0):

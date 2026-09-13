@@ -635,12 +635,20 @@ def shielded(ds, floor_pct: int = 70) -> dict:
     STRICTLY ABOVE THE FLOOR, the same rule the stars follow: standing AT
     the 70th percentile means 70% are at or below you, which is the top
     of the bottom 70% rather than the top 30%.
+
+    This is the FLOOR form and the strip no longer uses it - the mark is
+    a share of what is on screen now, so the strip takes the figures out
+    of `shield_report` and ranks them itself. Kept because "which heroes
+    clear a given bar" is still a real question, and it is what the
+    sentence under the setting counts.
     """
-    return shield_report(ds, floor_pct)[0]
+    rows, _note = shield_report(ds, floor_pct)
+    return {hero_id: why for hero_id, (share, why) in rows.items()
+            if share > float(floor_pct)}
 
 
 def shield_report(ds, floor_pct: int = 70) -> tuple:
-    """({hero id: why}, a sentence saying what happened).
+    """({hero id: (difficulty percentile, why)}, a sentence about it).
 
     NO SHIELDS HAS FOUR CAUSES AND ONE APPEARANCE, which is this app's
     most repeated bug and was this mark's own: it was computed nowhere
@@ -662,18 +670,28 @@ def shield_report(ds, floor_pct: int = 70) -> tuple:
                     "out. Re-run Settings > Downloads > Statistics.")
 
     pct = difficulty_percentiles(deltas)
-    # STRICTLY ABOVE, the same rule the stars follow: standing AT the
-    # 70th percentile means 70% are at or below you, which is the top of
-    # the bottom 70% rather than the top 30%.
-    out = {hero_id: (f"Hard to counter = {sig(deltas[hero_id])} "
+    # EVERY HERO AND ITS FIGURE, with no bar applied here at all.
+    #
+    # This used to cut the list at a percentile of the WHOLE FIELD and
+    # hand back only the survivors. At the user's request the mark is now
+    # a share of the SUGGESTIONS ON SCREEN - "it's a relative ranking
+    # based on what's available in the suggestions" - and that is a
+    # question only the strip can answer, since nothing here knows what
+    # is being suggested. So this reports the standing of every hero it
+    # measured and the strip ranks the ones it is showing.
+    #
+    # `floor_pct` survives as a REPORTING figure: the sentence under the
+    # setting still says how many heroes clear it, which is what tells a
+    # no-shields state apart from a broken one.
+    out = {hero_id: (share,
+                     f"Hard to counter = {sig(deltas[hero_id])} "
                      f"vs the field ({standing[hero_id]})")
-           for hero_id, share in pct.items() if share > float(floor_pct)}
-    if not out:
-        return out, (f"No hero is above {floor_pct}% difficulty to counter, "
-                     f"out of {len(deltas)} measured. Lower the bar to mark "
-                     "more.")
-    return out, (f"{len(out)} of {len(deltas)} heroes are above "
-                 f"{floor_pct}% difficulty to counter.")
+           for hero_id, share in pct.items()}
+    above = sum(1 for share in pct.values() if share > float(floor_pct))
+    return out, (f"{len(deltas)} heroes measured; {above} of them are "
+                 f"above {floor_pct}% difficulty to counter. The mark "
+                 "itself goes to the hardest few of whatever the strip "
+                 "is suggesting.")
 
 
 def counter_analysis(matches, ds) -> Block:

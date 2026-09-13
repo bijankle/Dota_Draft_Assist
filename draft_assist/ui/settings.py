@@ -57,24 +57,31 @@ DEFAULTS = {
     # ones that were already worth showing.
     "suggested_picks": 20,
     "suggested_items": 7,
-    # WHEN A SUGGESTION GETS A STAR: the two percentile floors a hero has
-    # to clear in the last History run, at the user's request. 70 and 50
-    # are their own worked example — "if you rank all the hero picks for
-    # that period, only the heroes that rank in the top 30% pick rate
-    # would be a candidate for the star, same goes for win rate, and if
-    # both are satisfied they get a star".
-    # PERCENTILES RATHER THAN COUNTS because the History tab's window is
-    # a dropdown: "8 games" means something quite different over six
-    # months than over two years, and these have to keep meaning the same
-    # thing when it moves. Nought is no bar on that axis.
-    "star_pick_pct": 70,
-    "star_win_pct": 50,
-    # The gold shield's bar, read the same way as the two above: stored
-    # as a percentile floor, shown as "top 30%". Ranked against EVERY
-    # hero in the game rather than against the ones you play, because
-    # counterability is a property of the hero and a percentile inside
-    # your own pool would be self-referential.
-    "shield_pct": 70,
+    # HOW MANY SUGGESTIONS GET A MARK, as a share OF THE STRIP.
+    #
+    # At the user's request, and it replaces three percentile floors:
+    # "I don't want a general % cutoff, I want it to be a qty, and this
+    # qty is the number of suggested heroes that can get the badge -
+    # still based on the criteria, but it's a relative ranking based on
+    # what's available in the suggestions." And then: "it makes sense for
+    # the setting to remain a percentage, but it will be the proportion
+    # of the suggested heroes that will get a symbol... so 50% with 20
+    # suggested heroes means 10 with hearts and 10 with shields."
+    #
+    # THE OLD KEYS ARE GONE RATHER THAN REUSED, and that is deliberate:
+    # `shield_pct: 70` meant "the top 30% of every hero in the game", and
+    # under the new reading 70 would mean "70% of the strip gets one".
+    # Keeping the name would silently double somebody's marks on the
+    # update that changed the meaning. New names, and 30 is what the old
+    # defaults came to in practice.
+    #
+    # A SHARE OF THE STRIP rather than of the whole hero pool, which is
+    # the change itself: the old question was "is this hero in the top
+    # 30% of all of them", the new one is "is it in the best few of the
+    # ones I am looking at" - and only the second moves as the board
+    # fills and the suggestions change.
+    "heart_share": 30,
+    "shield_share": 30,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather

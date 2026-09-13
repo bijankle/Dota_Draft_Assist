@@ -55,7 +55,7 @@ class ValueItem(QTableWidgetItem):
 
 def delta_item(delta: float) -> ValueItem:
     """A signed interaction term, coloured by sign. Percentage points."""
-    item = ValueItem(f"{delta * 100:+.2f}", delta)
+    item = ValueItem(f"{delta * 100:+.1f}", delta)
     # Centred both ways: the grid sits under portraits that are centred in
     # their own columns, and a left-aligned number does not line up with
     # the hero it belongs to.
@@ -105,7 +105,7 @@ CARD_MARGIN = 12
 # the two teams' borders have real background between them.
 CELL_PAD = 3
 # How big a header portrait grows on its own account. It is no longer the
-# ceiling: a column must print "+12.34" whatever the picture would have
+# ceiling: a column must print "+12.3" whatever the picture would have
 # liked to be, so where the number is wider the number wins.
 HEADER_ICON_MAX = 64
 ROW_HEADER = HEADER_ICON + 4
@@ -188,7 +188,16 @@ def _side_of(rect, which: str) -> int:
     """One edge's coordinate: x for left/right, y for top/bottom."""
     return {"top": rect.top(), "bottom": rect.bottom(),
             "left": rect.left(), "right": rect.right()}[which]
-# A cell has to hold "+12.34" without eliding, and that is wider than the
+# ONE DECIMAL PLACE, EVERYWHERE. These grids were the only figures in the
+# app printing two: `tilekit.delta_text` has always drawn "with +5.2" on a
+# tile and the team heading its "+11.2", so the same kind of number was
+# being written two ways in one window. At the user's request they are all
+# one place now - "I think just 1 decimal place is enough for the synergy
+# / counter scores, across the board". The second place was never read at
+# a glance over a running draft, and dropping it NARROWS the window: this
+# string is what `minimum_grid_width` is derived from.
+#
+# A cell has to hold "+12.3" without eliding, and that is wider than the
 # portrait above it — so the column, not the icon, sets the floor.
 # The narrowest a cell can be and still print a signed delta. It is a
 # static estimate, used for the WINDOW's floor before any table exists;
@@ -200,7 +209,7 @@ CELL_MIN = 82
 # thing on these cards that sums the row or column it sits on rather than
 # reporting one pair, and nothing on screen said so.
 SIGMA = "\u03a3"
-WIDEST_CELL = "+12.34"
+WIDEST_CELL = "+12.3"
 # A column has to fit the widest thing it can be asked to draw, and a
 # total is that: the sigma sits ahead of the digits, so measuring the bare
 # number would put "..." where the totals are.
@@ -219,7 +228,7 @@ def sigma(value: float) -> str:
     in front of it."""
     # A SPACE after it: the sigma is a word, not a sign, and set hard
     # against a "+" it read as one glyph.
-    return f"{SIGMA} {float(value) * 100:+.2f}"
+    return f"{SIGMA} {float(value) * 100:+.1f}"
 
 
 def minimum_grid_width(columns: int = 5) -> int:
@@ -808,7 +817,7 @@ class PairCellDelegate(QStyledItemDelegate):
             # An AXIS row's figure is that hero's whole triangle, so it
             # takes the sigma; a body cell is one pair and does not.
             text = (sigma(value) if index.data(PAIR_HEADER)
-                    else f"{float(value) * 100:+.2f}")
+                    else f"{float(value) * 100:+.1f}")
             tilekit.paint_badge(painter, box, text,
                                 theme.GOOD if float(value) > 0 else theme.BAD,
                                 option.font)

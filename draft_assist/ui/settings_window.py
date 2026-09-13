@@ -143,68 +143,62 @@ class GeneralPage(QWidget):
 
         layout.addWidget(_rule())
         layout.addWidget(_heading("Marks on the suggested picks"))
-        # EVERY BAR ON THIS PAGE READS THE SAME WAY NOW: a percentile, and
-        # a HIGHER number is a STRICTER bar that fewer heroes clear. At
-        # the user's request - "align both the heart and the shield to
-        # look at a high percentile as a good thing... a high percentage
-        # means less heroes make the cut and in that case the symbol will
-        # have more merit".
+        # A SHARE OF THE STRIP, not a bar against the whole hero pool.
         #
-        # The three boxes used to show `100 - stored` and say "top 30%",
-        # on the reasoning that a floor is what the rule needs and "top
-        # 30%" is what a person means. That reading broke the moment the
-        # counterability figure went on an X axis: an axis running strong
-        # to weak against a Y axis running bad to good draws a real
-        # correlation as a downward slope. So the conversion is GONE
-        # rather than moved, and the stored numbers are untouched - they
-        # were always the percentile, and only the display disagreed.
-        stars = QHBoxLayout()
-        stars.addWidget(QLabel("Pink heart: above the"))
-        self.star_pick = CountBox(
-            ui_settings.clamp_pct(settings.get("star_pick_pct", 70), 70),
-            1, 100)
-        self.star_pick.setSuffix("%")
-        self.star_pick.valueChanged.connect(self.changed)
-        stars.addWidget(self.star_pick)
-        stars.addWidget(QLabel("pick rate percentile and the"))
-        self.star_win = CountBox(
-            ui_settings.clamp_pct(settings.get("star_win_pct", 50), 50),
-            1, 100)
-        self.star_win.setSuffix("%")
-        self.star_win.valueChanged.connect(self.changed)
-        stars.addWidget(self.star_win)
-        stars.addWidget(QLabel("win rate percentile"))
-        stars.addStretch(1)
-        layout.addLayout(stars)
+        # These were three percentile floors - two for the heart, one for
+        # the shield - and at the user's request they are two shares of
+        # whatever is being suggested right now: "if I set it to 50% and
+        # I have 20 suggested heroes, that means I expect to have 10
+        # heroes with hearts and 10 heroes with shields."
+        #
+        # HIGHER IS LOOSER HERE, which is the opposite of what the bars
+        # it replaces did, so the wording has to carry it: 10% marks the
+        # best one in ten, 100% marks everything. The mark now also
+        # carries its RANK, so the number in a heart is what a bar could
+        # never say - not "this cleared a line" but "this is the best of
+        # the ones you are looking at".
+        hearts = QHBoxLayout()
+        hearts.addWidget(QLabel("Pink heart on the best"))
+        self.heart_share = CountBox(
+            ui_settings.clamp_pct(settings.get("heart_share", 30), 30),
+            0, 100)
+        self.heart_share.setSuffix("%")
+        self.heart_share.valueChanged.connect(self.changed)
+        hearts.addWidget(self.heart_share)
+        hearts.addWidget(QLabel("of the suggestions"))
+        hearts.addStretch(1)
+        layout.addLayout(hearts)
         layout.addWidget(_note(
-            "Higher is stricter: 90% marks only heroes in the best tenth "
-            "on both counts. Ranked against the heroes in the last "
-            "History run, so it follows whichever account is loaded "
-            "there. Both bars have to be cleared."))
+            "Ranked on your pick rate and win rate together, from the "
+            "last History run, so it follows whichever account is loaded "
+            "there. The number inside the heart is the rank: 1 is the "
+            "hero you play most and win most on, of the ones suggested. "
+            "Heroes with fewer than two games cannot be ranked, so a "
+            "thin history gives fewer marks than the share asks for."))
 
         shield = QHBoxLayout()
-        shield.addWidget(QLabel("Gold shield: difficulty to counter above"))
-        self.shield_pct = CountBox(
-            ui_settings.clamp_pct(settings.get("shield_pct", 70), 70),
-            1, 100)
-        self.shield_pct.setSuffix("%")
-        self.shield_pct.valueChanged.connect(self.changed)
-        shield.addWidget(self.shield_pct)
+        shield.addWidget(QLabel("Gold shield on the hardest"))
+        self.shield_share = CountBox(
+            ui_settings.clamp_pct(settings.get("shield_share", 30), 30),
+            0, 100)
+        self.shield_share.setSuffix("%")
+        self.shield_share.valueChanged.connect(self.changed)
+        shield.addWidget(self.shield_share)
+        shield.addWidget(QLabel("of the suggestions to counter"))
         shield.addStretch(1)
         layout.addLayout(shield)
         layout.addWidget(_note(
-            "Higher is stricter: 90% marks only the tenth of the pool "
-            "hardest to counter. Ranked against EVERY hero in the game, "
-            "not just the ones you play — it is a property of the hero, "
-            "so it appears on heroes you have never picked. Needs hero "
-            "statistics downloaded; see Hero Counters in the History tab "
-            "for the same figure."))
-        # WHAT THE BAR IS ACTUALLY DOING, live, under the control that
-        # sets it. "No shields" has four causes and one appearance - no
-        # statistics, a dataset with no matrix, a bar nothing can clear,
-        # and the ordinary case - and this mark has already shipped
-        # broken once looking exactly like the last of them. A count here
-        # tells a working feature from a broken one at a glance.
+            "A property of the hero rather than of you, read out of the "
+            "ranked dataset, so it appears on heroes you have never "
+            "picked. The number inside is the rank: 1 is the hardest to "
+            "counter of the ones suggested. Needs hero statistics "
+            "downloaded; see Hero Counters in the History tab for the "
+            "same figure."))
+        # WHAT THE DATA BEHIND THE SHIELD IS DOING, live, under the
+        # control. "No shields" has four causes and one appearance - no
+        # statistics, a dataset with no matrix, nothing measured, and the
+        # ordinary case - and this mark has already shipped broken once
+        # looking exactly like the last of them.
         self.shield_note = _note("")
         layout.addWidget(self.shield_note)
         layout.addStretch(1)
@@ -214,14 +208,12 @@ class GeneralPage(QWidget):
         out["pair_source"] = self.pair_source()
         out["data_reminder_days"] = ui_settings.clamp_days(
             self.reminder_days.value(), ui_settings.DATA_REMINDER_DAYS)
-        # No inversion either way now: what the box shows IS what is
-        # stored, which is what these settings always held.
-        out["star_pick_pct"] = ui_settings.clamp_pct(
-            self.star_pick.value(), 70)
-        out["star_win_pct"] = ui_settings.clamp_pct(
-            self.star_win.value(), 50)
-        out["shield_pct"] = ui_settings.clamp_pct(
-            self.shield_pct.value(), 70)
+        # What the box shows IS what is stored: the share of the strip
+        # that gets a mark.
+        out["heart_share"] = ui_settings.clamp_pct(
+            self.heart_share.value(), 30)
+        out["shield_share"] = ui_settings.clamp_pct(
+            self.shield_share.value(), 30)
         return out
 
     def pair_source(self) -> str:

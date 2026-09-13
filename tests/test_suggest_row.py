@@ -14,7 +14,8 @@ import pytest
 pytest.importorskip("PyQt6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtGui import QColor, QPixmap                     # noqa: E402
+from PyQt6.QtCore import QRect                             # noqa: E402
+from PyQt6.QtGui import QColor, QPixmap                    # noqa: E402
 from PyQt6.QtWidgets import QApplication                    # noqa: E402
 
 from draft_assist.ui import portraits, theme, tilekit       # noqa: E402
@@ -306,20 +307,20 @@ def test_every_tooltip_line_names_itself(qapp):
     """One label and one figure per line, at the user's request, so the
     numbers are read down a column rather than picked out of prose."""
     tile = SuggestTile(1, "Anti-Mage", 0.05,
-                       "Anti-Mage\nCounter Score = +6.46"
-                       "\nSynergy Score = +5.97")
+                       "Anti-Mage\nCounter Score = +6.5"
+                       "\nSynergy Score = +6.0")
     tile.set_star(True, "My Pick Rate = 40 games (top 10%)")
     assert tile.toolTip().splitlines() == [
-        "Anti-Mage", "Counter Score = +6.46", "Synergy Score = +5.97",
+        "Anti-Mage", "Counter Score = +6.5", "Synergy Score = +6.0",
         "My Pick Rate = 40 games (top 10%)"]
 
     # The relation line is labelled too, and NAMES the clicked hero: the
-    # badge has no room for it, but a line reading "with +5.20" beside
+    # badge has no room for it, but a line reading "with +5.2" beside
     # four labelled ones is the odd one out.
     tile.show_delta(0.052, "with", "Lion")
-    assert "With Lion = +5.20" in tile.toolTip()
+    assert "With Lion = +5.2" in tile.toolTip()
     tile.show_delta(-0.018, "vs", "Axe")
-    assert "Vs Axe = -1.80" in tile.toolTip()
+    assert "Vs Axe = -1.8" in tile.toolTip()
     assert "My Pick Rate" in tile.toolTip(), "the star's lines survive it"
     tile.clear_delta()
     assert "Lion" not in tile.toolTip() and "Axe" not in tile.toolTip()
@@ -327,10 +328,10 @@ def test_every_tooltip_line_names_itself(qapp):
 
 def test_a_relation_with_nobody_named_still_reads(qapp):
     """`show_delta` is reachable without a name — the tooltip says what
-    it can rather than printing "With  = +5.20"."""
+    it can rather than printing "With  = +5.2"."""
     tile = SuggestTile(1, "Anti-Mage", 0.05)
     tile.show_delta(0.052, "with")
-    assert "With the clicked hero = +5.20" in tile.toolTip()
+    assert "With the clicked hero = +5.2" in tile.toolTip()
 
 
 def test_the_row_stars_from_a_measurement(qapp):
@@ -347,9 +348,84 @@ def test_the_row_stars_from_a_measurement(qapp):
     row = SuggestRow()
     row.show_heroes([(1, "Anti-Mage", 0.05, ""), (2, "Axe", 0.04, ""),
                      (3, "Bane", 0.03, "")])
-    row.set_stars(stars_mod.measure(matches, 50, 50))
+    # A SHARE OF THE STRIP: three tiles at 34% is one mark, and it goes
+    # to the hero ranked best on pick rate and win rate together.
+    row.set_stars(stars_mod.measure(matches), 34)
     assert [t.starred for t in row.tiles] == [True, False, False]
+    assert row.tiles[0]._star_rank == 1, "the mark carries its rank"
+    assert "My Form Rank = 1" in row.tiles[0].toolTip()
+
+    # RAISING THE SHARE MARKS MORE OF THEM, in ranked order. Bane has two
+    # games so it can be ranked; Axe never won, so it ranks last.
+    row.set_stars(stars_mod.measure(matches), 100)
+    assert [t._star_rank for t in row.tiles] == [1, 3, 2]
+
+    # AND NOUGHT MARKS NOTHING, which is a share of none rather than a
+    # special case.
+    row.set_stars(stars_mod.measure(matches), 0)
+    assert [t.starred for t in row.tiles] == [False, False, False]
+    row.set_stars(stars_mod.measure(matches), 34)
     # No run loaded draws the same as a run that starred nobody, because
     # there is nothing honest to put on a tile either way.
     row.set_stars(None)
     assert not any(t.starred for t in row.tiles)
+
+
+# --------------------------------------------------------------------
+# THE MARK CARRIES ITS RANK, at the user's request: "the symbol should be
+# 20% larger and have a non-bold black number in the middle... if the
+# shield has a 1 in it, that means that out of all the suggested heroes
+# this particular hero is the hardest to counter."
+
+
+def _mark_pixels(tile_px, rank, shield=False):
+    """How much BLACK ink lands inside the mark — i.e. is there a digit.
+
+    Counted off a render rather than asserted about the code, because
+    "the number is drawn" and "the number can be read" are different
+    claims and only the second matters. At 13px the mark's own outline
+    took most of its interior and the rank came out as two stray dark
+    pixels: drawn, unreadable, and worse than absent.
+    """
+    from PyQt6.QtGui import QImage, QPainter, QColor
+    box = QRect(0, 0, tile_px, round(tile_px * 9 / 16))
+    picture = QImage(box.size(), QImage.Format.Format_ARGB32)
+    picture.fill(QColor("#202225"))
+    painter = QPainter(picture)
+    if shield:
+        tilekit.paint_shield(painter, box, rank)
+    else:
+        tilekit.paint_heart(painter, box, rank)
+    painter.end()
+    where = tilekit.star_box(box, left=shield)
+    dark = 0
+    for y in range(where.top() + 2, where.bottom() - 2):
+        for x in range(where.left() + 2, where.right() - 2):
+            colour = QColor(picture.pixel(x, y))
+            if (colour.red() < 70 and colour.green() < 70
+                    and colour.blue() < 70):
+                dark += 1
+    return dark
+
+
+@pytest.mark.parametrize("tile_px", [64, 80, 96, 132, 200])
+@pytest.mark.parametrize("shield", [False, True])
+def test_the_rank_is_legible_at_every_tile_size(qapp, tile_px, shield):
+    with_rank = _mark_pixels(tile_px, 8, shield)
+    without = _mark_pixels(tile_px, None, shield)
+    assert with_rank - without >= 6, (
+        f"{tile_px}px tile: the rank drew {with_rank - without} pixels, "
+        "which is dirt on a portrait rather than a number")
+
+
+def test_no_rank_draws_no_number(qapp):
+    """The mark still has to work with nothing to say — a hero can be
+    shown before a History run has ever been loaded."""
+    assert _mark_pixels(132, None) < _mark_pixels(132, 1)
+
+
+def test_the_mark_is_larger_than_it_was(qapp):
+    """Twenty per cent, and it is the number inside that needs it: a
+    mark only had to be NOTICED before, and now it has to be read."""
+    assert tilekit.STAR_OF_TILE == pytest.approx(0.30 * 1.2, abs=0.01)
+    assert tilekit.STAR_MAX_PX >= round(22 * 1.18)
