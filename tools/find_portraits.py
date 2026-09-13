@@ -950,6 +950,15 @@ def proof_sheet(rows: list, into: Path):
     strips = [(name, image) for name, image in rows if image is not None]
     if not strips:
         return None
+    # A BAD FIT MAKES A VERY WIDE ROW. Every crop is scaled to the same
+    # HEIGHT, so a fit that came back a quarter of the true height is
+    # blown up four times as wide - and ten of those is a row thousands
+    # of pixels across, from the one resolution whose answer is worth
+    # the least. Rows are cut to the widest SENSIBLE one so the sheet
+    # stays a picture somebody can open.
+    ceiling = int(np.median([image.shape[1] for _n, image in strips]) * 2)
+    strips = [(name, image[:, :ceiling] if image.shape[1] > ceiling
+               else image) for name, image in strips]
     width = LABEL_W + max(image.shape[1] for _n, image in strips)
     height = sum(image.shape[0] + 8 for _n, image in strips) + 8
     sheet = np.full((height, width, 3), 18, np.uint8)
@@ -961,11 +970,25 @@ def proof_sheet(rows: list, into: Path):
                     cv2.LINE_AA)
         at += image.shape[0] + 8
     into.mkdir(parents=True, exist_ok=True)
-    ok, buffer = cv2.imencode(".png", sheet)
-    if not ok:
-        return None
     where = into / SHEET_NAME
-    where.write_bytes(buffer.tobytes())
+    # NEVER FATAL, and it took a fourteen-minute run down to prove it.
+    # The sheet is the LAST thing written, after every measurement is
+    # already on screen, so a failure here must cost the picture and
+    # nothing else - the rule `Recorder` has always followed, that a
+    # full disk costs the recording and never the draft. It says what
+    # went wrong and names the exact path, because "Invalid argument"
+    # on a path nobody can see is unanswerable.
+    try:
+        ok, buffer = cv2.imencode(".png", sheet)
+        if not ok:
+            print(f"  (the proof sheet would not encode: "
+                  f"{sheet.shape[1]}x{sheet.shape[0]})")
+            return None
+        where.write_bytes(buffer.tobytes())
+    except (OSError, ValueError, cv2.error) as bad:
+        print(f"  (the proof sheet could not be written to {where!r}: "
+              f"{type(bad).__name__}: {bad})")
+        return None
     return where
 
 
@@ -1166,19 +1189,37 @@ def _scaling(good: list, middle: dict) -> None:
             "pitch", "predicted", "out")
     widths = (18, 6, 7, 10, 5, 6, 10, 5)
     print("  " + "  ".join(h.ljust(w) for h, w in zip(head, widths)))
-    worst = 0
     for row in rows:
         _left, span = hud_box(row["w"], row["h"])
         cells = [row["file"][:18], f"{span:.0f}"]
         for _name, frac_key, px_key in keys:
             want = round(middle[frac_key] * span)
             got = row[px_key]
-            worst = max(worst, abs(got - want))
             cells += [str(got), str(want), f"{got - want:+d}"]
         print("  " + "  ".join(c.ljust(w) for c, w in zip(cells, widths)))
-    print(f"  worst error anywhere: {worst}px. A law predicts a "
-          f"resolution it never saw; a lookup table needs a new number "
-          f"for each.")
+    # THE HEADLINE IS HOW MANY AGREE, not the worst single frame. One
+    # bad fit among eleven made the summary read NOT CONSISTENT while
+    # ten resolutions were being predicted to within a pixel - a true
+    # sentence that says the opposite of what the measurement shows.
+    # A median is already robust to an outlier; the VERDICT has to be
+    # too, and the outlier is named rather than averaged away.
+    errors = {}
+    for row in rows:
+        _left, span = hud_box(row["w"], row["h"])
+        errors[row["file"]] = max(
+            abs(row[px] - round(middle[frac] * span))
+            for _n, frac, px in keys)
+    agree = sorted(v for v in errors.values() if v <= SCALES_TO)
+    print(f"  {len(agree)} of {len(errors)} resolutions predicted to "
+          f"within {SCALES_TO}px"
+          + (f", worst of them {max(agree)}px." if agree else "."))
+    rogue = sorted(((v, k) for k, v in errors.items() if v > SCALES_TO),
+                   reverse=True)
+    for off, name in rogue:
+        print(f"    OUTLIER {off:>4}px  {name} - that fit disagrees with "
+              f"every other resolution, so read its row on the sheet.")
+    print("  A law predicts a resolution it never saw; a lookup table "
+          "needs a new number for each.")
 
 
 def _consensus(good: list) -> None:
@@ -1249,6 +1290,13 @@ def _consensus(good: list) -> None:
 # 16:9 to four decimal places. A shot at this aspect cannot vote on the
 # question below, because there the HUD box IS the window and the two
 # candidate readings are arithmetically the same number.
+# HOW CLOSE THE PREDICTION HAS TO BE to count as agreement. Measured:
+# on the thirteen-of-fourteen run, ten of eleven full readings came in
+# at 4px or better and the eleventh at 46px. There is no middle ground
+# in the data, which is what makes a threshold here honest rather than
+# a knob.
+SCALES_TO = 4
+
 SIXTEEN_NINE = 16 / 9
 ASPECT_SLACK = 0.01
 # A bar top measured in single figures of pixels cannot separate two

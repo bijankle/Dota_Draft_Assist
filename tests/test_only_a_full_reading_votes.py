@@ -174,17 +174,37 @@ def test_the_constant_predicts_every_resolution_in_pixels(capsys):
     assert "DOES IT FOLLOW SIMPLE MATHS?" in printed
     assert "x span" in printed
     assert "predicted" in printed
-    assert "worst error anywhere" in printed
+    assert "predicted to within" in printed
 
 
 def test_the_prediction_holds_to_a_few_pixels_on_the_real_run(capsys):
     """The eight full readings from the ten-of-fourteen run. If this
     ever needs loosening, the law has stopped being one."""
     printed = say(FULL + PARTIAL, capsys)
-    worst = [ln for ln in printed.splitlines() if "worst error" in ln]
-    assert worst, printed
-    pixels = int(worst[0].split("worst error anywhere:")[1].split("px")[0])
-    assert pixels <= 8, worst[0]
+    line = [ln for ln in printed.splitlines() if "predicted to within" in ln]
+    assert line, printed
+    got, of = int(line[0].split()[0]), int(line[0].split()[2])
+    # Seven of these eight agree to 3px. The eighth is 1440x1080, whose
+    # slot width on THAT run came back 8px narrow - and which the
+    # two-axis grid later measured at -1px. An outlier is named, never
+    # averaged in, which is the whole point of this line.
+    assert got >= of - 1, line[0]
+    assert max(0, of - got) == printed.count("OUTLIER")
+
+
+def test_one_bad_fit_does_not_make_the_headline_say_the_opposite(capsys):
+    """A single outlier among eleven made the summary read NOT
+    CONSISTENT while ten resolutions were being predicted to within a
+    pixel - a true sentence saying the opposite of the measurement."""
+    bad = frame("1440 x 900.png", 1440, 900, 10, 72, 47, 22,
+                1056, 67, 56)
+    printed = say(FULL + [bad], capsys)
+    line = [ln for ln in printed.splitlines() if "predicted to within" in ln]
+    assert line, printed
+    # The headline counts the frames that AGREE. A 46px outlier must
+    # not turn a line about ten good measurements into its opposite.
+    assert int(line[0].split()[0]) >= len(FULL) - 1
+    assert "1440 x 900.png" in printed[printed.index("OUTLIER"):]
 
 
 def test_the_partial_frames_are_not_in_the_prediction(capsys):

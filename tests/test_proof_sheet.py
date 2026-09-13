@@ -117,3 +117,34 @@ def test_a_second_run_does_not_reopen_the_first_ones_sheet():
     import inspect
     from draft_assist.ui.tool_window import ToolWindow
     assert "self.sheet = None" in inspect.getsource(ToolWindow.start)
+
+
+# --- and writing it must never take the run down -----------------------
+
+def test_a_write_that_fails_costs_the_picture_and_nothing_else(
+        tmp_path, monkeypatch, capsys):
+    """It took a fourteen-minute run down to prove this. The sheet is
+    the LAST thing written, after every measurement is already on
+    screen: the rule `Recorder` has always followed is that a full disk
+    costs the recording and never the draft."""
+    def boom(self, data):
+        raise OSError(22, "Invalid argument")
+    monkeypatch.setattr(Path, "write_bytes", boom)
+    assert fp.proof_sheet([("1920x1200", a_row(600))], tmp_path) is None
+    printed = capsys.readouterr().out
+    assert "could not be written" in printed
+    # AND IT NAMES THE PATH. "Invalid argument" on a path nobody can
+    # see is unanswerable.
+    assert "proof-sheet.png" in printed
+
+
+def test_a_runaway_row_cannot_blow_the_sheet_up(tmp_path):
+    """Every crop is scaled to one HEIGHT, so a fit that came back a
+    quarter of the true height is blown up four times as wide."""
+    rows = [("1920x1200", a_row(900)), ("1280x1024", a_row(700)),
+            ("1680x1050", a_row(30000))]
+    where = fp.proof_sheet(rows, tmp_path)
+    assert where is not None
+    sheet = cv2.imdecode(
+        np.frombuffer(where.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+    assert sheet.shape[1] < 30000
