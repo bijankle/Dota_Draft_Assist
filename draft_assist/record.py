@@ -23,6 +23,8 @@ is thousands of images that answer nothing.
 """
 
 import json
+import queue
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -35,6 +37,10 @@ from pathlib import Path
 # and by the time hero selection starts it is too late to notice.
 FRAME_INTERVAL = 2.0
 MAX_FRAMES = 600
+# HOW MANY FRAMES MAY BE WAITING TO BE WRITTEN. Small on purpose: a
+# 3440x1440 frame is fifteen megabytes in memory, and the answer to
+# falling behind is to drop one rather than to hold a queue of them.
+PENDING_FRAMES = 4
 DRAFT_STATES = ("HERO_SELECTION", "STRATEGY_TIME")
 
 
@@ -60,6 +66,11 @@ class Recorder:
     stop_reason: str = ""
     _last_frame: float = 0.0
     _errors: list[str] = field(default_factory=list)
+    # Frames are encoded and written on a WORKER — see `_ensure_writer`.
+    # A dropped frame is counted rather than waited for.
+    _dropped: int = 0
+    _writer: object = None
+    _queue: object = None
 
     @property
     def active(self) -> bool:
@@ -90,6 +101,7 @@ class Recorder:
         self.folder = folder
         self.started_at = time.monotonic()
         self.frames = self.states = 0
+        self._dropped = 0
         self.saw_draft = False
         self.left_draft_at = 0.0
         self._last_frame = 0.0
@@ -100,6 +112,9 @@ class Recorder:
     def stop(self, reason: str = "") -> Path | None:
         self.stop_reason = reason
         folder = self.folder
+        # BEFORE the meta is written, so its frame count is the truth
+        # about what is on disk rather than what was queued.
+        self._flush_frames()
         if folder is not None:
             self._write_meta(finished=True)
             # The report is written now rather than on demand so the folder
@@ -121,6 +136,7 @@ class Recorder:
                 "seconds": round(self.elapsed, 1),
                 "payloads": payloads,
                 "frames": self.frames,
+                "frames_dropped": self._dropped,
                 "states": self.states,
                 "stopped": self.stop_reason or "stopped by hand",
                 "errors": self._errors[:20],
@@ -174,16 +190,81 @@ class Recorder:
         return max(0.0, POST_DRAFT_GRACE
                    - (time.monotonic() - self.left_draft_at))
 
+    # -- the frame writer, on its own thread -----------------------------
+    #
+    # ENCODING A PNG IS NOT A PER-TICK COST. `cv2.imwrite` of a 3440x1440
+    # frame was measured at 210ms on the refresh loop, which runs four
+    # times a second - so every second frame saved stalled the draft
+    # window for the best part of a tick, and the timing table flagged
+    # `recording` as slow in three separate sessions.
+    #
+    # It is the same rule the rest of this class already follows, one
+    # step further: a failed write must never take the draft window down,
+    # and a SLOW write must never hold it up either. The queue is short
+    # and a full one DROPS the frame: frames are evidence about
+    # recognition, and evidence is worth less than the thing it is
+    # evidence about.
+
+    def _ensure_writer(self) -> None:
+        if self._writer is not None and self._writer.is_alive():
+            return
+        self._queue = queue.Queue(maxsize=PENDING_FRAMES)
+        # THE WORKER HOLDS ITS OWN REFERENCE. Reading `self._queue` from
+        # inside the thread raced with `_flush_frames` clearing it, and
+        # the worker died on `None.task_done()` - taking the rest of the
+        # session's frames with it, silently, on a daemon thread nobody
+        # was watching.
+        self._writer = threading.Thread(
+            target=self._write_frames, args=(self._queue,),
+            name="record-frames", daemon=True)
+        self._writer.start()
+
+    def _write_frames(self, pending) -> None:
+        import cv2
+        while True:
+            item = pending.get()
+            try:
+                if item is None:              # the stop sentinel
+                    return
+                path, frame = item
+                self._safe(lambda: cv2.imwrite(str(path), frame))
+            finally:
+                pending.task_done()
+
+    def _flush_frames(self, seconds: float = 3.0) -> None:
+        """Let the writer finish what it has, then stand it down.
+
+        Bounded, because a session ending must not wait on a disk: what
+        is on the queue is at most a few frames and the recording is
+        already complete without them.
+        """
+        writer, pending = self._writer, self._queue
+        self._writer, self._queue = None, None
+        if writer is None or not writer.is_alive():
+            return
+        try:
+            pending.put_nowait(None)
+        except queue.Full:
+            pass
+        writer.join(seconds)
+
     def save_frame(self, frame) -> Path | None:
         if not self.active or frame is None:
             return None
         import cv2
 
-        self.frames += 1
         self._last_frame = time.monotonic()
-        path = self.folder / "frames" / f"{self.frames:05d}.png"
-        if not self._safe(lambda: cv2.imwrite(str(path), frame)):
+        self._ensure_writer()
+        path = self.folder / "frames" / f"{self.frames + 1:05d}.png"
+        try:
+            # A COPY, because the capture session overwrites its buffer
+            # and the writer reads this after the tick has moved on -
+            # the same reason the line-up search is handed a copy.
+            self._queue.put_nowait((path, frame.copy()))
+        except queue.Full:
+            self._dropped += 1
             return None
+        self.frames += 1
         return path
 
     def log_state(self, record: dict) -> None:
