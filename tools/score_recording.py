@@ -56,6 +56,16 @@ from draft_assist.vision.phash import phash           # noqa: E402
 from tools import find_portraits as fp                # noqa: E402
 
 STRATEGY = "STRATEGY_TIME"
+# A LINE THE APP CAN READ, and a plain one a person can too. Progress was
+# printed with a carriage return so it overwrote itself in a console -
+# which does nothing whatever in the dialog's text box, where the run
+# showed as a long silence with no percentage anywhere. A prefix and a
+# newline work in both places.
+STEP = "PROGRESS"
+
+
+def step(share: float, what: str) -> None:
+    print(f"{STEP} {share:.0%}  {what}", flush=True)
 
 
 def hero_names(dataset) -> dict[str, int]:
@@ -222,6 +232,7 @@ def tune(samples: list, truth: set, params) -> None:
 
 def score(folder: Path, every: int, proofs: int, out: Path,
           last: int = 0, sweeps: int = 4) -> int:
+    step(0.0, "loading the portraits")
     art = fp.load_art()
     if len(art) < 50:
         raise SystemExit(
@@ -281,22 +292,20 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     # in the game - where the top scoreboard carries ten hero portraits
     # of its own, which is exactly the sort of thing that matches
     # inconsistently.
-    step = max(1, len(frames) // max(1, sweeps))
-    probes = frames[::step][:sweeps]
+    stride = max(1, len(frames) // max(1, sweeps))
+    probes = frames[::stride][:sweeps]
     print(f"{len(frames)} frame(s); sweeping {len(probes)} of them for the "
           f"bar, then reading the rest with what it finds\n")
 
     geometries, probe_shapes = [], None
     for number, path in enumerate(probes, 1):
-        print(f"[sweep {number}/{len(probes)}] {path.name} ...", end="",
-              flush=True)
+        step(0.05 + 0.45 * (number - 1) / max(1, len(probes)),
+             f"looking for the pick bar, frame {number} of {len(probes)}")
         frame = fp.read_image(path)
         if frame is None:
-            print("\r" + " " * 70 + "\r", end="", flush=True)
             continue
         found = fp.hunt(autocal._grey(frame), art)
         banks = fp.banks_from(found[2], found[0]) if found else None
-        print("\r" + " " * 70 + "\r", end="", flush=True)
         if found and banks:
             probe_shapes = frame.shape[:2]
             geometries.append((banks[0], banks[1], banks[2], found[0],
@@ -402,8 +411,9 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     samples = []          # one distance vector per slot, for tuning
     misplaced = 0
     for number, path in enumerate(frames, 1):
-        if number % 25 == 0 or number == len(frames):
-            print(f"  {number}/{len(frames)} ...", end="\r", flush=True)
+        if number % 20 == 0 or number == len(frames):
+            step(0.55 + 0.45 * number / max(1, len(frames)),
+                 f"reading heroes, frame {number} of {len(frames)}")
         frame = fp.read_image(path)
         if frame is None:
             tally["unreadable"] += 1
@@ -440,6 +450,7 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         tally["wrong"] += wrong
         worst.append((right, path, frame, rects, reads))
 
+    step(1.0, "done")
     print("HOW IT DID")
     print("-" * 58)
     slots = 10 * max(1, tally["located"])

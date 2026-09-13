@@ -2989,9 +2989,30 @@ class MainWindow(QMainWindow):
         """
         task = TASKS["score_recognition"]
         dialog = TaskDialog(task, self)
+        # ON THE MAIN WINDOW'S STATUS BAR, not only in the dialog's log.
+        # The dialog can be moved behind the window or read past, and the
+        # question being asked is the simplest one there is - "is it
+        # finished yet" - which a wall of scrolling text answers badly.
+        dialog.worker.line.connect(self._recognition_progress)
         dialog.finished.connect(
             lambda _code, box=dialog: self._recognition_finished(box))
         dialog.start()
+
+    def _recognition_progress(self, line: str) -> None:
+        """Show the tool's own percentage, and nothing else it prints.
+
+        The tool marks these lines itself rather than this guessing at
+        them: a run prints tables, hero names and file paths, and a
+        status bar that tried to summarise the latest of those would
+        flicker through all of it.
+        """
+        if not line.startswith("PROGRESS "):
+            return
+        # `_say` and not `showMessage`, so the state line does not
+        # overwrite it on the very next tick - which is what made every
+        # timed message in this app invisible before `_say` existed.
+        self._say(f"Recognition check — {line[len('PROGRESS '):].strip()}",
+                  4000)
 
     def _recognition_finished(self, dialog) -> None:
         """Copy the report, then say in one sentence what to do with it."""
