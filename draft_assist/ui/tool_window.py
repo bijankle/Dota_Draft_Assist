@@ -25,9 +25,11 @@ and the run is a button inside it.
 """
 
 import os
+import re
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (QApplication, QDialog, QFileDialog, QHBoxLayout,
                              QLabel, QPlainTextEdit, QProgressBar,
                              QPushButton, QVBoxLayout)
@@ -36,6 +38,10 @@ from .task_dialog import PERCENT
 from .tasks import Task, TaskWorker
 
 PICTURES = (".png", ".jpg", ".jpeg", ".bmp")
+# A MARKED LINE, the same idea as PERCENT: the tool SAYS where it put
+# the proof sheet rather than leaving us to recognise a path among the
+# folders, hero names and file names an ordinary run prints.
+SHEET = re.compile(r"^SHEET\s+(.+)$")
 
 
 def pictures_in(folder: str) -> int:
@@ -66,6 +72,7 @@ class ToolWindow(QDialog):
         self.what = what
         self.folder = ""
         self.succeeded = False
+        self.sheet: Path | None = None
         self._worker: TaskWorker | None = None
         self.setWindowTitle(task.title)
         self.setMinimumSize(820, 520)
@@ -198,6 +205,10 @@ class ToolWindow(QDialog):
                 if self.folder else self.task)
         self.log.clear()
         self.summary.hide()
+        # A SECOND RUN MUST NOT REOPEN THE FIRST ONE'S PICTURE, which
+        # would be the app confidently showing a sheet that describes a
+        # run the user has just replaced.
+        self.sheet = None
         self.progress.setRange(0, 0)          # indeterminate until told
         self._worker = TaskWorker(task, self)
         self._worker.line.connect(self._append)
@@ -217,6 +228,12 @@ class ToolWindow(QDialog):
         if following:
             bar.setValue(bar.maximum())
         self.line.emit(text)
+        marked = SHEET.match(text.strip())
+        if marked:
+            # A MARKED LINE, exactly like PROGRESS, rather than scanning
+            # ordinary output for something that looks like a path: a
+            # run prints folders, hero names and file names throughout.
+            self.sheet = Path(marked.group(1).strip())
         found = PERCENT.match(text.strip())
         if found:
             share = min(100, max(0, int(found.group(1))))
@@ -248,6 +265,30 @@ class ToolWindow(QDialog):
             self._copyable()
         else:
             self._ready()
+        self._show_sheet()
+
+    def _show_sheet(self) -> None:
+        """Open the proof sheet, if the run wrote one.
+
+        "I want you to flash up on the screen snippets of all the
+        portraits on their own for each run for each resolution." The
+        crops have been written to a folder throughout and nobody has
+        ever opened them, which is the same fault as the dialog that was
+        never shown: a thing produced where nobody is looking has not
+        been produced. It is the system viewer rather than a pane of our
+        own, because the sheet is one tall picture that wants scrolling
+        and zooming, and this window is for TEXT the user copies.
+
+        Never fatal, and never noisy: a missing file or a machine with
+        no image viewer simply leaves the path in the log.
+        """
+        sheet = getattr(self, "sheet", None)
+        if sheet is None or not Path(sheet).is_file():
+            return
+        try:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(sheet)))
+        except Exception:                      # pragma: no cover - viewer
+            pass
 
     def _copy(self) -> None:
         text = self.log.toPlainText()

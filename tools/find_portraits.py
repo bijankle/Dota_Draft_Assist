@@ -839,7 +839,7 @@ def measure(path: Path, into: Path, art: dict, loud=False,
         "boxes": rects,
     })
     draw(frame, rects, path, into)
-    slices(frame, rects, path, into)
+    row["crops"] = slices(frame, rects, path, into)
     if lib is not None:
         reads = identify(frame, rects, lib, params)
         row["read"] = [
@@ -870,7 +870,16 @@ def slices(frame, rects, path: Path, into: Path) -> None:
     Numbered 1 to 10, left bank first, on the order they are cut in - so
     a crop that is empty or doubled names its own slot.
     """
-    tall = 120
+    sheet = crop_row(frame, rects)
+    into.mkdir(parents=True, exist_ok=True)
+    ok, buffer = cv2.imencode(".png", sheet)
+    if ok:
+        (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
+    return sheet
+
+
+def crop_row(frame, rects, tall: int = 120):
+    """The ten crops of ONE picture, side by side, numbered."""
     tiles = []
     for x, y, w, h in rects:
         crop = frame[max(0, y):y + h, max(0, x):x + w]
@@ -894,10 +903,49 @@ def slices(frame, rects, path: Path, into: Path) -> None:
         cv2.putText(sheet, str(index + 1), (at + 4, tall + gap + 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, colour, 2, cv2.LINE_AA)
         at += tile.shape[1] + gap
+    return sheet
+
+
+LABEL_W = 150
+SHEET_NAME = "proof-sheet.png"
+# A MARKED LINE, like PROGRESS, so the window can act on it rather than
+# scan ordinary output for something that looks like a path.
+SHEET = "SHEET"
+
+
+def proof_sheet(rows: list, into: Path):
+    """ONE picture: every resolution's ten crops, a labelled row each.
+
+    At the user's request, and it is the only form of the answer that
+    can be checked at a glance: "if there are five different
+    resolutions, I want to show me five sets of 10 portraits that you
+    have snipped out of the example screenshots".
+
+    Per-picture `-slices.png` files have existed throughout and were no
+    use for this - fourteen files in a folder, opened one at a time, is
+    not a comparison. Stacked, a resolution whose fit is half a portrait
+    out is the one row that does not look like the others.
+    """
+    strips = [(name, image) for name, image in rows if image is not None]
+    if not strips:
+        return None
+    width = LABEL_W + max(image.shape[1] for _n, image in strips)
+    height = sum(image.shape[0] + 8 for _n, image in strips) + 8
+    sheet = np.full((height, width, 3), 18, np.uint8)
+    at = 8
+    for name, image in strips:
+        sheet[at:at + image.shape[0], LABEL_W:LABEL_W + image.shape[1]] = image
+        cv2.putText(sheet, name, (8, at + image.shape[0] // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 1,
+                    cv2.LINE_AA)
+        at += image.shape[0] + 8
     into.mkdir(parents=True, exist_ok=True)
     ok, buffer = cv2.imencode(".png", sheet)
-    if ok:
-        (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
+    if not ok:
+        return None
+    where = into / SHEET_NAME
+    where.write_bytes(buffer.tobytes())
+    return where
 
 
 NAME_OF = {}          # hero id -> display name, read off the library labels
@@ -1489,6 +1537,15 @@ def main() -> None:
             print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
                   f"   spread {max(values) - min(values):.5f}")
     _failures([r for r in rows if "why" in r])
+    # THE PROOF, IN ONE PICTURE. Written last so it carries every
+    # resolution this run located, in the order they were done.
+    where = proof_sheet([(f"{r['w']}x{r['h']}", r.get("crops"))
+                         for r in good], into)
+    if where is not None:
+        print(f"\n{SHEET} {where}")
+        print(f"  {len(good)} row(s) of ten crops, one per resolution. "
+              f"A fit half a portrait out is the row that does not look "
+              f"like the others.")
     named = sum(r.get("named", 0) for r in good)
     if any("named" in r for r in good):
         print(f"\n{named} of {10 * len(good)} slots were given a hero name.")
@@ -1500,8 +1557,12 @@ def main() -> None:
     print("CHECK THE SLICES. A fit half a portrait out still draws a tidy "
           "row of boxes; cut the crops out and it is obvious at once.")
     if args.json:
-        Path(args.json).write_text(json.dumps(rows, indent=1),
-                                   encoding="utf-8")
+        # THE CROPS ARE PIXELS, not a field. `json.dumps` cannot encode
+        # an ndarray and would take the whole report down with it at the
+        # very last line of a twenty-minute run.
+        Path(args.json).write_text(
+            json.dumps([{k: v for k, v in r.items() if k != "crops"}
+                        for r in rows], indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":

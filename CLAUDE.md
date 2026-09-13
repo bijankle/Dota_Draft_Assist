@@ -3828,6 +3828,20 @@ credentials, and put the account at risk. Do not go there.
   those were. Same rule as `_remember_measured_layout`: nine answers the
   sides, it takes ten to answer where the boxes go. The run says how
   many were set aside and why, rather than quietly averaging them in.
+  **AND THE PROOF IS ONE PICTURE, OPENED** (`proof_sheet`, `crop_row`,
+  `ToolWindow._show_sheet`, the `SHEET` marker). At the user's request:
+  "if there are five different resolutions, I want you to show me five
+  sets of 10 portraits that you have snipped out of the example
+  screenshots". A per-picture `-slices.png` has been written throughout
+  and was no use for it - fourteen files in a folder, opened one at a
+  time, is not a comparison, and NOTHING EVER OPENED THEM. That is the
+  never-shown dialog again: a thing produced where nobody is looking has
+  not been produced. So every located picture's ten crops are stacked
+  into one labelled sheet and the window opens it when the run ends, on
+  a line MARKED `SHEET` for the same reason the bar reads `PROGRESS`
+  rather than guessing at numbers. Stacked, a fit half a portrait out is
+  the one row that does not look like the others - which is the check
+  the closing advice has been asking for all along.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and
