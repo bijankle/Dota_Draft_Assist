@@ -83,26 +83,36 @@ TOP_REACH = 0.18
 # client the ten pick-bar portraits are about 90px wide - 0.026 of the
 # window - and the old range ran to 0.114, which is 392px. That slack is
 # what let the sweep report a "portrait" 343px wide starting at x=-26.
-# THE CEILING WAS BELOW THE THINGS IT FOUND. Of the four real
-# screenshots that located, TWO measured a portrait WIDER than the top
-# of this range - 0.0645 and 0.0617 of the window against a ceiling of
-# 0.0600 - and they only got there because `_refine` walks a pixel at a
-# time AFTER the grid, from a grid point that was already past the peak.
-# A frame needing more than a pixel or two of that walk is lost outright,
-# and the app's own search (`autocal.WIDTHS`) goes to 0.082 of the HUD
-# span, which on a display taller than 16:9 IS the window. The step
-# stays at 0.002 rather than widening to keep the count: matching is
-# sharply scale-sensitive (0.99 at the true size, 0.12 four pixels out),
-# so a coarser grid can step over the peak entirely. The cost is 30
-# passes instead of 24 - about a quarter more time per picture.
-WIDTH_FRACS = tuple(round(0.014 + 0.002 * i, 4) for i in range(30))
-# AND THE BAR'S PORTRAITS ARE NOT 16:9. Valve's base art is 256x144, but
-# the tile the HUD draws in the pick bar is close to SQUARE - measured
-# at roughly 90x97. Assuming the source aspect searched for a box twice
-# as wide as the thing on screen. Several are tried because this is one
-# measurement from one client, and a wrong constant here cannot be seen
-# in the output - it just never finds anything.
-ASPECTS = (0.93, 1.33, 16 / 9)
+# WIDTH AND HEIGHT ARE SWEPT INDEPENDENTLY, and MEASUREMENT says so
+# rather than reasoning. `--grid` mapped the app's own 2-D grid over a
+# real 1024x768 screenshot - one that the three-aspect sweep could not
+# read - and every bar-shaped cell it found sat at an aspect between
+# 1.31 and 2.03, the best at 73x36: aspect 2.03, and 0.076 of the
+# window, OUTSIDE a range that stopped at 0.072. The aspects tried were
+# 0.93, 1.33 and 1.78 and the nearest was five pixels out in height on a
+# 36px box. A grid of guessed aspects cannot be nudged into a shape
+# nobody has measured, so there are no guessed aspects any more.
+#
+# This is `autocal.find_scale`'s search - the one that produced the
+# shipped `DraftLayout` off a real client: widths as a fraction of the
+# HUD SPAN, heights as an INDEPENDENT fraction of the frame. Three
+# departures from its numbers, all measured:
+#   - heights start at 0.034 rather than 0.050, because located
+#     screenshots measured 0.0350 (800x600) and 0.0410 (1280x1024),
+#     both under that floor;
+#   - the steps are coarser, 0.006 and 0.012 against 0.003 and 0.006,
+#     which holds the cost at 100 passes against the 90 three aspects
+#     cost. Safe HERE, and the map is why: cells at 0.076, 0.079 and
+#     0.082 across three different heights were ALL bar-shaped at peaks
+#     of 0.81 to 0.92, so the peak is broad rather than sharp - and
+#     `_refine` is given a reach that covers half a grid step, so what
+#     the grid steps over the walk still reaches;
+#   - the floor is 0.028 of the span rather than 0.014 of the window,
+#     which also ends a whole class of nonsense: a 26x20 box matches
+#     texture everywhere, and rows of twenty such blobs were what the
+#     old diagnosis kept reporting as a hero roster.
+WIDTH_FRACS = tuple(round(0.028 + 0.006 * i, 4) for i in range(10))
+HEIGHT_FRACS = tuple(round(0.034 + 0.012 * i, 4) for i in range(10))
 # How much of one picture's progress the coarse size sweep accounts for.
 # Measured rather than guessed: the sweep is 72 passes over every hero
 # and the refine that follows is a handful over one, so the sweep is
@@ -501,23 +511,20 @@ def print_size_map(cells: list) -> None:
              f"{cell['peak']:.2f}", "yes" if cell["bar"] else "no"), widths)))
     best = cells[0]
     lo, hi = WIDTH_FRACS[0], WIDTH_FRACS[-1]
-    reach_w = lo <= best["w_of_window"] <= hi
+    low_h, high_h = HEIGHT_FRACS[0], HEIGHT_FRACS[-1]
+    in_w = lo <= best["w_of_span"] <= hi
+    in_h = low_h <= best["h_of_frame"] <= high_h
     box_w, box_h = best["box"]
-    # MEASURED IN PIXELS OF HEIGHT, not in aspect numbers. An aspect of
-    # 0.93 against a square tile reads as a near miss and is ten pixels
-    # out on a 134px portrait - which, at this matcher's sensitivity, is
-    # the difference between 0.99 and nothing at all.
-    near = min(ASPECTS, key=lambda a: abs(round(box_w / a) - box_h))
-    would = max(1, round(box_w / near))
-    out = abs(would - box_h)
-    close = out <= max(2, round(box_h * 0.03))
     print(f"\n  The best cell is {box_w}x{box_h}, aspect "
-          f"{best['aspect']:.2f}, {best['w_of_window']:.4f} of the window.")
-    print(f"  The ordinary sweep tries {lo:.3f} to {hi:.3f} of the window "
-          f"({'IN range' if reach_w else 'OUT OF RANGE'}) at aspects "
-          + ", ".join(f"{a:.2f}" for a in ASPECTS)
-          + f"; the nearest of those makes it {box_w}x{would}, {out}px out "
-          + ("(close)." if close else "in height - NOT CLOSE."))
+          f"{best['aspect']:.2f}, {best['w_of_span']:.4f} of the HUD span "
+          f"by {best['h_of_frame']:.4f} of the frame.")
+    print(f"  The ordinary sweep tries widths {lo:.3f} to {hi:.3f} of the "
+          f"span ({'IN range' if in_w else 'OUT OF RANGE'}) and heights "
+          f"{low_h:.3f} to {high_h:.3f} of the frame "
+          f"({'IN range' if in_h else 'OUT OF RANGE'}).")
+    if in_w and in_h:
+        print("  So the sweep can reach it. If it still finds nothing the "
+              "fault is in what is KEPT, not in where it looked.")
 
 
 def miss_rank(row):
@@ -568,7 +575,8 @@ def _diagnose(diag, peak, nearest, stage: str) -> None:
     if nearest is None or score < HIT_FLOOR:
         why = (f"nothing in the top {TOP_REACH:.0%} of this frame looks like "
                f"a hero portrait at any of the {len(WIDTH_FRACS)}x"
-               f"{len(ASPECTS)} sizes tried: the strongest match anywhere "
+               f"{len(HEIGHT_FRACS)} sizes tried: the strongest match "
+               f"anywhere "
                f"was {score:.2f}, against a floor of {HIT_FLOOR:.2f}")
         at = frac
     else:
@@ -633,9 +641,14 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
     peak = (0.0, 0.0, 0.0, 0, 0)      # score, frac, aspect, box_w, box_h
     nearest = None                    # the row that came CLOSEST to a bar
     tried = 0
-    total = len(WIDTH_FRACS) * len(ASPECTS)
+    total = len(WIDTH_FRACS) * len(HEIGHT_FRACS)
+    # WIDTHS OF THE HUD SPAN, heights of the FRAME - `autocal`'s own
+    # units, so the two searches are one search. At 16:9 and taller the
+    # span IS the window; only wider than 16:9 do they differ, and there
+    # the pillarboxing is exactly what the span accounts for.
+    _left, span = hud_box(width, rows)
     for frac in WIDTH_FRACS:
-      for aspect in ASPECTS:
+      for height_frac in HEIGHT_FRACS:
         tried += 1
         if tick is not None:
             # THE COARSE SWEEP IS NOT THE WHOLE JOB, so it does not get
@@ -643,8 +656,9 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
             # are real work too, and a bar that hits 100% and then sits
             # there is the same silence wearing a number.
             tick(SWEEP_SHARE * tried / total)
-        box_w = int(round(frac * small.shape[1]))
-        box_h = int(round(box_w / aspect))
+        box_w = int(round(span * frac / shrink))
+        box_h = int(round(rows * height_frac / shrink))
+        aspect = box_w / max(1, box_h)
         if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
             continue
         hits, raw = _sweep(small, art, box_w, box_h)
@@ -686,9 +700,16 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
     full_w = max(12, int(round(box_w * scale)))
     full_h = max(10, int(round(box_h * scale)))
     anchor = _template(art[max(keep)[3]])
+    # REACH HALF A GRID STEP, at least. The grid is deliberately coarse -
+    # 0.006 of the span and 0.012 of the frame - so the true size can sit
+    # up to half a step from the nearest cell in either axis, and a walk
+    # that cannot cross that gap turns the coarseness into a miss.
+    step_w = 0.5 * (WIDTH_FRACS[1] - WIDTH_FRACS[0]) * span
+    step_h = 0.5 * (HEIGHT_FRACS[1] - HEIGHT_FRACS[0]) * rows
+    reach = max(3, int(scale) + 2, int(step_w) + 1, int(step_h) + 1)
     inner_w, inner_h, _score = autocal._refine(
         band, anchor, max(8, int(full_w * (1 - 2 * INSET))),
-        max(8, int(full_h * (1 - 2 * INSET))), reach=max(3, int(scale) + 2))
+        max(8, int(full_h * (1 - 2 * INSET))), reach=reach)
     full_w = int(round(inner_w / (1 - 2 * INSET)))
     full_h = int(round(inner_h / (1 - 2 * INSET)))
 

@@ -83,7 +83,7 @@ def test_the_hunt_reports_while_it_sweeps(tool):
             ).astype("uint8")
     seen = []
     tool.hunt(grey, art, tick=seen.append)
-    sweep = len(tool.WIDTH_FRACS) * len(tool.ASPECTS)
+    sweep = len(tool.WIDTH_FRACS) * len(tool.HEIGHT_FRACS)
     assert len(seen) >= sweep, (
         f"{len(seen)} reports for {sweep} passes — the sweep is silent")
     assert seen == sorted(seen), "progress went backwards"
@@ -100,7 +100,7 @@ def test_the_sweep_does_not_claim_the_whole_bar(tool):
             ).astype("uint8")
     seen = []
     tool.hunt(grey, art, tick=seen.append)
-    sweep = len(tool.WIDTH_FRACS) * len(tool.ASPECTS)
+    sweep = len(tool.WIDTH_FRACS) * len(tool.HEIGHT_FRACS)
     assert seen[sweep - 1] == pytest.approx(tool.SWEEP_SHARE, abs=1e-6)
 
 

@@ -203,18 +203,31 @@ def test_the_map_says_whether_the_sweep_could_have_reached_its_best(capsys):
          "peak": 0.81, "row": 10, "w_of_window": 0.0390, "aspect": 1.0,
          "bar": True}])
     printed = capsys.readouterr().out
-    assert "IN range" in printed
-    # The nearest aspect the sweep tries is 0.93 against a square tile,
-    # which on a 50px box is 4px out in height - and the map must say so
-    # in pixels rather than leaving an aspect number to be interpreted.
-    assert "NOT CLOSE" in printed
-    assert "50x54" in printed
+    # Both axes are answered, because the sweep now has two of them.
+    assert printed.count("IN range") == 2
+    assert "OUT OF RANGE" not in printed
+    # And it says what that MEANS, rather than leaving it to be worked
+    # out: a reachable size that still finds nothing is a different bug.
+    assert "the fault is in what is KEPT" in printed
 
 
 def test_a_best_outside_the_swept_widths_is_called_out(capsys):
     fp.print_size_map([
-        {"w_of_span": 0.0820, "h_of_frame": 0.0920, "box": [79, 50],
-         "peak": 0.77, "row": 9, "w_of_window": 0.0820, "aspect": 1.58,
+        {"w_of_span": 0.2000, "h_of_frame": 0.0920, "box": [190, 50],
+         "peak": 0.77, "row": 9, "w_of_window": 0.2000, "aspect": 3.8,
+         "bar": True}])
+    printed = capsys.readouterr().out
+    assert "OUT OF RANGE" in printed
+    assert "the fault is in what is KEPT" not in printed
+
+
+def test_a_best_outside_the_swept_heights_is_called_out_too(capsys):
+    """Two axes, two ways to be out of reach. The height was the one
+    that could not be expressed at all while the sweep used fixed
+    aspects, and it is the one the map found."""
+    fp.print_size_map([
+        {"w_of_span": 0.0520, "h_of_frame": 0.3000, "box": [50, 160],
+         "peak": 0.77, "row": 9, "w_of_window": 0.0520, "aspect": 0.31,
          "bar": True}])
     printed = capsys.readouterr().out
     assert "OUT OF RANGE" in printed
@@ -305,9 +318,32 @@ def test_the_swept_widths_reach_past_every_portrait_yet_measured():
     assert min(fp.WIDTH_FRACS) <= min(measured)
 
 
-def test_the_step_stays_fine_enough_for_a_scale_sensitive_matcher():
-    """0.99 at the true size, 0.12 four pixels out — a coarser grid can
-    step over the peak, so widening the range must not widen the step."""
-    steps = {round(b - a, 4)
-             for a, b in zip(fp.WIDTH_FRACS, fp.WIDTH_FRACS[1:])}
-    assert steps == {0.002}
+def test_the_grid_is_even_in_both_axes():
+    """An uneven grid has a blind spot nobody can predict."""
+    for frac in (fp.WIDTH_FRACS, fp.HEIGHT_FRACS):
+        steps = {round(b - a, 4) for a, b in zip(frac, frac[1:])}
+        assert len(steps) == 1, steps
+
+
+def test_the_refine_reaches_half_a_grid_step():
+    """0.99 at the true size, 0.12 four pixels out. The grid is coarse
+    on purpose - two axes at the cost of one - so the walk after it MUST
+    be able to cross half a step, or the coarseness is a miss."""
+    import inspect
+    body = inspect.getsource(fp.hunt)
+    assert "0.5 * (WIDTH_FRACS[1] - WIDTH_FRACS[0])" in body
+    assert "0.5 * (HEIGHT_FRACS[1] - HEIGHT_FRACS[0])" in body
+    assert "int(step_w) + 1" in body and "int(step_h) + 1" in body
+
+
+def test_the_widths_are_of_the_hud_span_like_the_apps_own_search():
+    """`autocal.find_scale` measures widths against the HUD span. Two
+    units for one quantity is one of them being wrong on an ultrawide."""
+    import inspect
+    assert "hud_box(width, rows)" in inspect.getsource(fp.hunt)
+
+
+def test_there_are_no_guessed_aspects_left():
+    """The map found bar-shaped fits at aspects from 1.31 to 2.03. A
+    list of three cannot be nudged into a shape nobody has measured."""
+    assert not hasattr(fp, "ASPECTS")
