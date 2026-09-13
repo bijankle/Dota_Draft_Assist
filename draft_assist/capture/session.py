@@ -231,10 +231,25 @@ class CaptureSession:
         keeping the stabiliser's memory would let the old answer win the
         vote against the new frame for another few ticks.
         """
+        self.forget_reading()
+        self._detect_now = True
+
+    def forget_reading(self) -> None:
+        """Throw away the picks read off the screen, keeping the session.
+
+        Two callers, and they mean the same thing by it: Detect all, where
+        the user is saying the board and the screen disagree, and a NEW
+        MATCH, where the board belongs to a game that is over.
+
+        The thirty-second timer below says in its own comment what it is
+        for - "thirty seconds of not-the-draft-screen is a different
+        game" - and a match id is that answer outright, with no wait. It
+        had to wait, and a real session opened on the previous match's ten
+        heroes for the first nine seconds of a new draft.
+        """
         self.state.last_read = None
         self.state.last_read_raw = None
         self._stabilizer.reset()
-        self._detect_now = True
 
     def _consume_detect_now(self) -> bool:
         asked, self._detect_now = self._detect_now, False

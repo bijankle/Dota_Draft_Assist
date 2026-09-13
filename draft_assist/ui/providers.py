@@ -492,6 +492,9 @@ class HybridProvider:
         # Set by a successful search so the UI can save the geometry it
         # measured: one search calibrates the boxes for good.
         self.measured_layout = None
+        # The last match the screen was read for. A new one is the only
+        # unambiguous "this board is over" the app gets — see `_new_match`.
+        self._match = ""
 
     # The Debug tab and the capture menu reach for these.
     @property
@@ -745,7 +748,43 @@ class HybridProvider:
             require(snap.game_state in DRAFTING_STATES
                     if snap.game_state else None)
 
+        self._new_match(snap)
         return self._add_screen(snap, self.vision.poll())
+
+    # Dota reports "0" for the match id outside a match, so an id is only
+    # a new match when it is a real one. Blank is Dota saying nothing,
+    # which is never evidence that anything ended.
+    @staticmethod
+    def _real_match(match_id: str) -> bool:
+        return bool(match_id) and match_id != "0"
+
+    def _new_match(self, snap) -> None:
+        """A new match id means the screen's picks belong to a dead game.
+
+        The capture session forgets its reading after thirty seconds of
+        not-the-draft-screen, and that timer says in its own comment what
+        it is standing in for: "thirty seconds of not-the-draft-screen is
+        a different game". The match id IS that, with no wait — and the
+        wait is not free. A real session opened on the PREVIOUS match's
+        full ten heroes and showed them for the first nine seconds of a
+        new draft, which is nine seconds of advice about a board that no
+        longer existed, at the one moment the first pick is being made.
+
+        Only the screen's memory goes. Everything else keyed to a match
+        already keys on it: `_sight`, `_searched` and `_search_done` are
+        all looked up by `(match, the ten)`, and `GsiProvider` clears its
+        own minimap latch on the same change.
+        """
+        if not self._real_match(snap.match_id):
+            return
+        if snap.match_id == self._match:
+            return
+        was, self._match = self._match, snap.match_id
+        if not was:
+            return                  # the first match of the session
+        forget = getattr(self.session, "forget_reading", None)
+        if forget is not None:
+            forget()
 
     def _add_screen(self, snap, screen):
         """Fold what the SCREEN saw into what the game already said.
