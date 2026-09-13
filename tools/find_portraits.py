@@ -1083,11 +1083,34 @@ def _consensus(good: list) -> None:
     cluster, and whatever sits outside it names the frame to open.
     """
     keys = ("x_of_hudbox", "slot_w_of_hudbox", "pitch_of_hudbox")
+    # ONLY A FULL READING VOTES, and the two that were not full were
+    # wrecking the verdict on their own. `banks_from` takes a bank's
+    # origin off the FIRST portrait it found in it, so a frame that
+    # located five of ten has its bank starts, its pitch and its top
+    # edge read off whichever five those were - the same reason
+    # `_remember_measured_layout` refuses to save a layout from nine.
+    # On the run that found ten of fourteen, the eight full readings
+    # agreed to a spread of 0.0028 on the pitch and 0.0066 on the slot
+    # width; adding the two five-portrait frames took those to 0.0400
+    # and 0.0413 and turned every verdict into NOT CONSISTENT. A
+    # partial fit is not a quieter measurement, it is a different one.
+    whole = [r for r in good
+             if r.get("heroes") == 2 * autocal.TEAM_SIZE]
+    partial = len(good) - len(whole)
+    if not whole:
+        print("\nNo frame located all ten portraits, so there is nothing "
+              "here that can be called a measurement.")
+        return
+    good = whole
     values = {k: [r[k] for r in good if r.get(k) is not None] for k in keys}
     if not all(values[k] for k in keys):
         return
     print("\nDO THE RESOLUTIONS AGREE? (they are one constant measured "
           f"{len(good)} times)")
+    if partial:
+        print(f"  {partial} frame(s) located fewer than ten and do not "
+              f"vote - a bank's origin is read off the first portrait "
+              f"found in it, so a partial fit measures something else.")
     middle = {}
     for key in keys:
         column = np.array(values[key], dtype=float)
@@ -1175,22 +1198,54 @@ def _vertical(good: list) -> None:
         print("  Add one shot at 16:10 (1920x1200, 1680x1050, 1440x900) "
               "or 4:3 (1600x1200, 1280x960) and run this again.")
         return
-    spreads = {}
+    spreads, impossible = {}, {}
     for label, y_key, h_key in pairs:
         worst = 0.0
         for key in (y_key, h_key):
             column = np.array([r[key] for r in usable], dtype=float)
             worst = max(worst, float(np.max(column) - np.min(column)))
         spreads[label] = worst
-        print(f"  measured against {label:<22} spread {worst:.5f}")
-    order = sorted(spreads, key=spreads.get)
-    best, runner_up = order[0], order[1]
+        # A READING THAT PUTS THE BAR ABOVE THE TOP OF THE HUD BOX IS
+        # NOT A LOOSE MEASUREMENT, IT IS A REFUTED MODEL. A negative y
+        # says the portraits are outside the box the model claims Dota
+        # draws them in, which no amount of sample can rescue - so it is
+        # struck out rather than ranked. This is what finally kills the
+        # letterboxed candidate: on real 4:3 and 16:10 screenshots it
+        # lands at -0.20 of the HUD box's height.
+        low = float(np.min(np.array([r[y_key] for r in usable],
+                                    dtype=float)))
+        if low < -0.005:
+            impossible[label] = low
+        print(f"  measured against {label:<22} spread {worst:.5f}"
+              + (f"   IMPOSSIBLE: puts the bar {abs(low):.4f} ABOVE the "
+                 f"top of that box" if low < -0.005 else ""))
     print(f"  {len(taller)} of {len(usable)} pictures are taller than "
           "16:9, so the readings are genuinely different here.")
-    if spreads[runner_up] < 2 * spreads[best] or spreads[best] > 0.02:
-        print("  NO VERDICT: the leaders are too close to separate, or the "
-              "best of them is still loose. Do not change anything on this.")
+    order = [label for label in sorted(spreads, key=spreads.get)
+             if label not in impossible]
+    if not order:
+        print("  NO VERDICT: every candidate puts the bar outside its own "
+              "box, so the fits are wrong before the models are.")
         return
+    if len(order) == 1:
+        print(f"  -> only {order[0]} survives; the others put the bar "
+              f"outside their own box.")
+        _name_the_winner(order[0])
+        return
+    best, runner_up = order[0], order[1]
+    if spreads[runner_up] < 2 * spreads[best] or spreads[best] > 0.02:
+        print("  NO VERDICT between the survivors: the leaders are too "
+              "close to separate, or the best is still loose.")
+        if impossible:
+            print("     What IS settled is the struck-out model above - "
+                  "and that was the only one that would have missed the "
+                  "portraits.")
+        return
+    _name_the_winner(best)
+
+
+def _name_the_winner(best: str) -> None:
+    """What to do about the model that won."""
     print(f"  -> the bar is measured against {best}.")
     if best == "the WINDOW's height":
         print("     That is what `SlotRect.to_pixels` already does, so "

@@ -3806,6 +3806,28 @@ credentials, and put the account at risk. Do not go there.
   at the same 0.002 step - widening the step to keep the count would
   step over the peak, since matching is 0.99 at the true size and 0.12
   four pixels out.
+  **AND THE LETTERBOXED MODEL IS DEAD, WHICH IS THE WHOLE POINT OF THE
+  EXERCISE** (`_vertical`, `_name_the_winner`, `_consensus`). Ten of
+  fourteen real screenshots located, 94 of 100 slots correctly named,
+  and on the eight that found all ten the readings are: the bar's top
+  as a fraction of the WINDOW spread 0.0019, of a TOP-HUNG 16:9 box
+  0.0031, and of a CENTRED one **-0.2028 to -0.0491**. Negative. The
+  letterboxed candidate puts the pick bar ABOVE the top of the very box
+  it claims Dota draws it in, on every frame, which is not a loose
+  measurement but a refuted model - so it is struck out rather than
+  ranked. That was the only one of the three that would have missed the
+  portraits; the two survivors differ by 4px on 1920x1200 and the tool
+  still declines between them, which costs nothing.
+  **ONLY A FULL READING VOTES.** Both verdicts on that run were decided
+  by the two frames that had located FIVE portraits rather than ten:
+  with them the slot width read NOT CONSISTENT (spread 0.0413) and the
+  vertical read NO VERDICT; without them the eight agree to 0.0066 on
+  the slot width and 0.0028 on the pitch. `banks_from` reads a bank's
+  origin off the FIRST portrait it found in it, so a half-located frame
+  measures its start, its pitch and its top edge from whichever five
+  those were. Same rule as `_remember_measured_layout`: nine answers the
+  sides, it takes ten to answer where the boxes go. The run says how
+  many were set aside and why, rather than quietly averaging them in.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and
