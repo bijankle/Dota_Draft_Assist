@@ -90,7 +90,12 @@ CASES = [
     ("1920x1080", 1920, 1080, 184, 1096, 128, 120, 6),
     ("1280x1024", 1280, 1024, 122, 731, 86, 80, 4),
     ("3440x1440", 3440, 1440, 686, 1902, 172, 160, 8),
-    ("800x600",   800,  600,   76,  457, 54, 50, 3),
+    # Sized from the REAL measurement rather than invented: on a real
+    # client a pick portrait is 0.026 to 0.035 of the window's width,
+    # and this case used to say 0.0625 - wider than the bar has ever
+    # been, which quietly required the sweep to keep searching sizes
+    # that do not occur.
+    ("800x600",   800,  600,   70,  494, 48, 44, 3),
 ]
 
 

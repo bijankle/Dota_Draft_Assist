@@ -70,19 +70,19 @@ WORK_WIDTH = 960          # the hunt runs on a picture this wide
 TOP_REACH = 0.18
 # A portrait's width as a share of the WINDOW's width. Wide, because the
 # whole question is what this actually is on each aspect ratio.
-WIDTH_FRACS = tuple(round(0.022 + 0.004 * i, 4) for i in range(24))
+# MEASURED OFF A REAL STRATEGY SCREEN, not assumed. On a 3440x1440
+# client the ten pick-bar portraits are about 90px wide - 0.026 of the
+# window - and the old range ran to 0.114, which is 392px. That slack is
+# what let the sweep report a "portrait" 343px wide starting at x=-26.
+WIDTH_FRACS = tuple(round(0.014 + 0.002 * i, 4) for i in range(24))
+# AND THE BAR'S PORTRAITS ARE NOT 16:9. Valve's base art is 256x144, but
+# the tile the HUD draws in the pick bar is close to SQUARE - measured
+# at roughly 90x97. Assuming the source aspect searched for a box twice
+# as wide as the thing on screen. Several are tried because this is one
+# measurement from one client, and a wrong constant here cannot be seen
+# in the output - it just never finds anything.
+ASPECTS = (0.93, 1.33, 16 / 9)
 PORTRAIT_ASPECT = autocal.PORTRAIT_ASPECT
-# How well a portrait must match before it counts as found. Higher than
-# `autocal.MIN_SCORE` (0.35) on purpose: that one is applied when the ten
-# heroes are already KNOWN, so a weak best-of-ten is still informative.
-# Here 126 templates are swept against a frame that holds ten of them, so
-# 116 of every 126 matches are wrong by construction and the floor is
-# what keeps them out.
-# MEASURED RATHER THAN CHOSEN, and it turns out to matter far less than
-# it looks. Sweeping a strip at 0.45 and at 0.30 produces the SAME ten
-# positions: the work is done by "the row carrying the most distinct
-# hits", not by the floor. It is kept low enough not to throw away a
-# portrait the HUD has knocked about.
 HIT_FLOOR = 0.30
 MIN_HITS = 4              # fewer than this is not a pick bar
 # A BANK IS FIVE. Ten is the whole bar, so a row carrying more than this
@@ -253,8 +253,9 @@ def hunt(grey, art: dict, note=None):
 
     best = None
     for frac in WIDTH_FRACS:
+      for aspect in ASPECTS:
         box_w = int(round(frac * small.shape[1]))
-        box_h = int(round(box_w / PORTRAIT_ASPECT))
+        box_h = int(round(box_w / aspect))
         if box_w < 12 or box_h < 10 or box_h >= small.shape[0]:
             continue
         keep = _one_row(_sweep(small, art, box_w, box_h), box_w)

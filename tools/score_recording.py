@@ -52,10 +52,17 @@ from draft_assist.history import store as _store      # noqa: E402
 import numpy as np                                  # noqa: E402
 
 from draft_assist.vision import autocal, library      # noqa: E402
+from draft_assist.config import CALIBRATION_FILE      # noqa: E402
+from draft_assist.vision.layout import load_layout    # noqa: E402
 from draft_assist.vision.phash import phash           # noqa: E402
 from tools import find_portraits as fp                # noqa: E402
 
 STRATEGY = "STRATEGY_TIME"
+# How much slack to leave above the worst hero a recording actually
+# needed. One draft is one sample: the next has a different border, an
+# arcana, or a hero whose base art is older, and a ceiling cut to fit
+# this one exactly will reject it.
+HEADROOM = 0.06
 # A LINE THE APP CAN READ, and a plain one a person can too. Progress was
 # printed with a carriage return so it overwrote itself in a console -
 # which does nothing whatever in the dialog's text box, where the run
@@ -234,10 +241,21 @@ def tune(samples: list, truth: set, params, apply=False) -> None:
     # WRITTEN AS FRACTIONS, because that is what the file holds and what
     # survives a change of hash size. A ceiling in bits means something
     # different at 64 bits than at 256.
+    # WITH HEADROOM, or this repeats the fault it exists to fix. The
+    # sweep returns the TIGHTEST thresholds that score this recording
+    # best, and a ceiling cut to exactly the worst hero in one draft
+    # fails on the next one - a different border, an arcana, a hero whose
+    # base art is older. That is precisely how `proving/tune.py` wrote a
+    # 51 that rejected eight of ten real heroes: it was optimal on the
+    # sample it saw.
     from dataclasses import replace
+    from draft_assist.proving.tune import HUD_HEADROOM
+    ceiling = max(best[1] + round(HEADROOM * params.bits),
+                  round(HUD_HEADROOM * params.bits))
     fixed = replace(params,
-                    max_distance_frac=best[1] / params.bits,
+                    max_distance_frac=min(1.0, ceiling / params.bits),
                     min_margin_frac=max(best[2], 1) / params.bits)
+    best = (best[0], ceiling, best[2], best[3])
     library.save_params(fixed)
     print(f"\n  WRITTEN to {library.PARAMS_FILE}:")
     print(f"    max_distance {best[1]} ({fixed.max_distance_frac:.3f} of "
@@ -248,7 +266,7 @@ def tune(samples: list, truth: set, params, apply=False) -> None:
 
 def score(folder: Path, every: int, proofs: int, out: Path,
           last: int = 0, sweeps: int = 4,
-          apply: bool = False) -> int:
+          apply: bool = False, sweep: bool = False) -> int:
     step(0.0, "loading the portraits")
     art = fp.load_art()
     if len(art) < 50:
@@ -293,131 +311,158 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     if not frames:
         raise SystemExit(f"No frames in {folder / 'frames'}")
 
-    # LOCATE ONCE, IDENTIFY MANY. The pick bar does not move during a
-    # match, and locating it is the whole cost - a full sweep of 126
-    # heroes at two dozen sizes is about twenty seconds a frame, where
-    # identifying ten crops in boxes already known is milliseconds. Doing
-    # it per frame made a 489-frame recording a two-hour job, which is
-    # not a tool anybody runs twice.
+    # THE APP'S OWN CROP BOXES, because they are already right.
     #
-    # ACROSS THE WHOLE RECORDING, and this corrects a wrong guess. An
-    # earlier version swept only the second half, on the reasoning that
-    # frames start when recording does so the draft must be at the end.
-    # It is not: recording stops a minute AFTER the draft, so a session
-    # runs queue -> loading -> DRAFT -> game, and the draft is in the
-    # middle. Sweeping the tail put every probe on the loading screen or
-    # in the game - where the top scoreboard carries ten hero portraits
-    # of its own, which is exactly the sort of thing that matches
-    # inconsistently.
-    stride = max(1, len(frames) // max(1, sweeps))
-    probes = frames[::stride][:sweeps]
-    print(f"{len(frames)} frame(s); sweeping {len(probes)} of them for the "
-          f"bar, then reading the rest with what it finds\n")
+    # This tool was built around a portrait SWEEP, on the assumption that
+    # the calibrated boxes were landing off the bar. A live strategy
+    # screen settled it the other way: all ten boxes produced the RIGHT
+    # hero as nearest match, in their own slots, in order. The boxes were
+    # never the problem - a distance ceiling was throwing the answers
+    # away afterwards.
+    #
+    # The sweep, meanwhile, is the part that does not work on a real
+    # frame. On that same recording it reported a 343x183 portrait
+    # starting at x=-26 on a 3440-wide screen, where a real one is about
+    # 165x95, and no two probes agreed. So the default is the
+    # calibration the app actually uses, and scoring here now measures
+    # THE THING THE APP DOES rather than a second implementation of it.
+    # `--sweep` still runs the hunt, for a machine with no calibration
+    # or to test the hunt itself.
+    layout = None
+    rects = None
+    probes, geometries, agreed = [], [], []
+    probe_shapes = None
+    if not sweep:
+        layout = load_layout()
+        print("using the app's own calibrated crop boxes "
+              f"({CALIBRATION_FILE.name if CALIBRATION_FILE.exists() else 'built-in defaults'})")
+    else:
+        # LOCATE ONCE, IDENTIFY MANY. The pick bar does not move during a
+        # match, and locating it is the whole cost - a full sweep of 126
+        # heroes at two dozen sizes is about twenty seconds a frame, where
+        # identifying ten crops in boxes already known is milliseconds. Doing
+        # it per frame made a 489-frame recording a two-hour job, which is
+        # not a tool anybody runs twice.
+        #
+        # ACROSS THE WHOLE RECORDING, and this corrects a wrong guess. An
+        # earlier version swept only the second half, on the reasoning that
+        # frames start when recording does so the draft must be at the end.
+        # It is not: recording stops a minute AFTER the draft, so a session
+        # runs queue -> loading -> DRAFT -> game, and the draft is in the
+        # middle. Sweeping the tail put every probe on the loading screen or
+        # in the game - where the top scoreboard carries ten hero portraits
+        # of its own, which is exactly the sort of thing that matches
+        # inconsistently.
+        stride = max(1, len(frames) // max(1, sweeps))
+        probes = frames[::stride][:sweeps]
+        print(f"{len(frames)} frame(s); sweeping {len(probes)} of them for the "
+              f"bar, then reading the rest with what it finds\n")
 
-    geometries, probe_shapes = [], None
-    for number, path in enumerate(probes, 1):
-        step(0.05 + 0.45 * (number - 1) / max(1, len(probes)),
-             f"looking for the pick bar, frame {number} of {len(probes)}")
-        frame = fp.read_image(path)
-        if frame is None:
-            continue
-        found = fp.hunt(autocal._grey(frame), art)
-        banks = fp.banks_from(found[2], found[0]) if found else None
-        if found and banks:
-            probe_shapes = frame.shape[:2]
-            geometries.append((banks[0], banks[1], banks[2], found[0],
-                               banks[3], found[1]))
-            print(f"  swept {path.name}: slot {found[0]}x{found[1]}, "
-                  f"pitch {banks[2]}, radiant x {banks[0]}, "
-                  f"dire x {banks[1]}, top {banks[3]}", flush=True)
-        else:
-            print(f"  swept {path.name}: no bar found", flush=True)
-
-    if not geometries:
-        raise SystemExit(
-            "\nNo frame in this recording showed a pick bar the sweep could "
-            "find.\nRun with --sweeps 12 to try more of them, or send me "
-            "a -strip.png from debug_out.")
-
-    # THE MEDIAN OF WHAT THE SWEEPS AGREED ON. One frame can be unlucky;
-    # the spread across several is also the confidence, and it is printed
-    # because a wide one means the geometry below is not to be trusted.
-    # THE BIGGEST AGREEING CLUSTER, not the median of everything. Probes
-    # land in different phases, and only the ones that saw the DRAFT can
-    # agree with each other - a loading screen and an in-game scoreboard
-    # each produce their own answer and have nothing to agree with. So
-    # geometries are grouped by whether they describe the same bar, and
-    # the largest group wins. The median of all four would be a number
-    # no frame ever measured.
-    def alike(a, b):
-        return (abs(a[0] - b[0]) <= max(6, 0.12 * a[3])
-                and abs(a[2] - b[2]) <= max(4, 0.10 * a[3])
-                and abs(a[3] - b[3]) <= max(4, 0.10 * a[3]))
-
-    groups = []
-    for item in geometries:
-        for group in groups:
-            if alike(group[0], item):
-                group.append(item)
-                break
-        else:
-            groups.append([item])
-    groups.sort(key=len)
-    agreed = groups[-1]
-    if len(agreed) < len(geometries):
-        print(f"\n  {len(agreed)} of {len(geometries)} sweeps agree with "
-              "each other; the rest saw a different screen.")
-    columns = list(zip(*agreed))
-    geom = [int(np.median(column)) for column in columns]
-    spread = [int(max(column) - min(column)) for column in columns]
-    names = ("radiant x", "dire x", "pitch", "slot w", "top", "slot h")
-    print(f"\nGEOMETRY from {len(geometries)} sweep(s)")
-    print("-" * 58)
-    for name, value, wide in zip(names, geom, spread):
-        flag = "" if wide <= 2 else ("  <- sweeps disagree by "
-                                     f"{wide}px")
-        print(f"  {name:<12} {value:>6}{flag}")
-    # A GEOMETRY THE SWEEPS DISAGREE ABOUT IS NOT A GEOMETRY. The bar
-    # does not move during a match, so four sweeps of one recording must
-    # give four nearly identical answers; a wide spread means each sweep
-    # locked onto something different, and applying the median of four
-    # wrong answers to 489 frames is a minute spent producing numbers
-    # that cannot mean anything. The first version printed the spread and
-    # carried on regardless, which is worse than not measuring it at all.
-    if len(agreed) < 2:
-        print("\n  REFUSING to score: no two sweeps found the same bar, so "
-              "there is\n  nothing here that two frames agree about.")
-        out.mkdir(parents=True, exist_ok=True)
-        for path in probes:
+        geometries, probe_shapes = [], None
+        for number, path in enumerate(probes, 1):
+            step(0.05 + 0.45 * (number - 1) / max(1, len(probes)),
+                 f"looking for the pick bar, frame {number} of {len(probes)}")
             frame = fp.read_image(path)
-            if frame is not None:
-                fp.strip_of(frame, path, out)
-        print(f"\n  Strips written to {out} - send me one.")
-        print("  Or run with --sweeps 12 to look at more of the recording.")
-        return 1
-    loose = [name for name, wide in zip(names, spread)
-             if wide > max(6, 0.12 * geom[3])]
-    if loose:
-        print(f"\n  REFUSING to score with this: {', '.join(loose)} "
-              "disagree across the sweeps.")
-        print("  Four sweeps of one match must agree - the bar does not")
-        print("  move. Each found something different, so none found it.")
-        out.mkdir(parents=True, exist_ok=True)
-        wrote = []
-        for path in probes:
-            frame = fp.read_image(path)
-            if frame is not None:
-                fp.strip_of(frame, path, out)
-                wrote.append(f"{path.stem}-strip.png")
-        print(f"\n  Written to {out}:")
-        for name in wrote:
-            print(f"    {name}")
-        print("\n  SEND ME ONE OF THESE. It is the band that was searched,")
-        print("  and it is the one thing that settles what is up there.")
-        return 1
+            if frame is None:
+                continue
+            found = fp.hunt(autocal._grey(frame), art)
+            banks = fp.banks_from(found[2], found[0]) if found else None
+            if found and banks:
+                probe_shapes = frame.shape[:2]
+                geometries.append((banks[0], banks[1], banks[2], found[0],
+                                   banks[3], found[1]))
+                print(f"  swept {path.name}: slot {found[0]}x{found[1]}, "
+                      f"pitch {banks[2]}, radiant x {banks[0]}, "
+                      f"dire x {banks[1]}, top {banks[3]}", flush=True)
+            else:
+                print(f"  swept {path.name}: no bar found", flush=True)
 
-    radiant_x, dire_x, pitch, slot_w, top, slot_h = geom
-    rects = fp.boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
+        if not geometries:
+            raise SystemExit(
+                "\nNo frame in this recording showed a pick bar the sweep could "
+                "find.\nRun with --sweeps 12 to try more of them, or send me "
+                "a -strip.png from debug_out.")
+
+        # THE MEDIAN OF WHAT THE SWEEPS AGREED ON. One frame can be unlucky;
+        # the spread across several is also the confidence, and it is printed
+        # because a wide one means the geometry below is not to be trusted.
+        # THE BIGGEST AGREEING CLUSTER, not the median of everything. Probes
+        # land in different phases, and only the ones that saw the DRAFT can
+        # agree with each other - a loading screen and an in-game scoreboard
+        # each produce their own answer and have nothing to agree with. So
+        # geometries are grouped by whether they describe the same bar, and
+        # the largest group wins. The median of all four would be a number
+        # no frame ever measured.
+        def alike(a, b):
+            return (abs(a[0] - b[0]) <= max(6, 0.12 * a[3])
+                    and abs(a[2] - b[2]) <= max(4, 0.10 * a[3])
+                    and abs(a[3] - b[3]) <= max(4, 0.10 * a[3]))
+
+        groups = []
+        for item in geometries:
+            for group in groups:
+                if alike(group[0], item):
+                    group.append(item)
+                    break
+            else:
+                groups.append([item])
+        groups.sort(key=len)
+        agreed = groups[-1]
+        if len(agreed) < len(geometries):
+            print(f"\n  {len(agreed)} of {len(geometries)} sweeps agree with "
+                  "each other; the rest saw a different screen.")
+        columns = list(zip(*agreed))
+        geom = [int(np.median(column)) for column in columns]
+        spread = [int(max(column) - min(column)) for column in columns]
+        names = ("radiant x", "dire x", "pitch", "slot w", "top", "slot h")
+        print(f"\nGEOMETRY from {len(geometries)} sweep(s)")
+        print("-" * 58)
+        for name, value, wide in zip(names, geom, spread):
+            flag = "" if wide <= 2 else ("  <- sweeps disagree by "
+                                         f"{wide}px")
+            print(f"  {name:<12} {value:>6}{flag}")
+        # A GEOMETRY THE SWEEPS DISAGREE ABOUT IS NOT A GEOMETRY. The bar
+        # does not move during a match, so four sweeps of one recording must
+        # give four nearly identical answers; a wide spread means each sweep
+        # locked onto something different, and applying the median of four
+        # wrong answers to 489 frames is a minute spent producing numbers
+        # that cannot mean anything. The first version printed the spread and
+        # carried on regardless, which is worse than not measuring it at all.
+        if len(agreed) < 2:
+            print("\n  REFUSING to score: no two sweeps found the same bar, so "
+                  "there is\n  nothing here that two frames agree about.")
+            out.mkdir(parents=True, exist_ok=True)
+            for path in probes:
+                frame = fp.read_image(path)
+                if frame is not None:
+                    fp.strip_of(frame, path, out)
+            print(f"\n  Strips written to {out} - send me one.")
+            print("  Or run with --sweeps 12 to look at more of the recording.")
+            return 1
+        loose = [name for name, wide in zip(names, spread)
+                 if wide > max(6, 0.12 * geom[3])]
+        if loose:
+            print(f"\n  REFUSING to score with this: {', '.join(loose)} "
+                  "disagree across the sweeps.")
+            print("  Four sweeps of one match must agree - the bar does not")
+            print("  move. Each found something different, so none found it.")
+            out.mkdir(parents=True, exist_ok=True)
+            wrote = []
+            for path in probes:
+                frame = fp.read_image(path)
+                if frame is not None:
+                    fp.strip_of(frame, path, out)
+                    wrote.append(f"{path.stem}-strip.png")
+            print(f"\n  Written to {out}:")
+            for name in wrote:
+                print(f"    {name}")
+            print("\n  SEND ME ONE OF THESE. It is the band that was searched,")
+            print("  and it is the one thing that settles what is up there.")
+            return 1
+
+        radiant_x, dire_x, pitch, slot_w, top, slot_h = geom
+        rects = fp.boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
+
 
     frames = frames[::max(1, every)]
     print(f"\nreading {len(frames)} frame(s) with those boxes\n")
@@ -435,9 +480,14 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         if frame is None:
             tally["unreadable"] += 1
             continue
-        if probe_shapes and frame.shape[:2] != probe_shapes:
-            # A frame a different size from the one measured is a
-            # different window, and the boxes do not describe it.
+        if layout is not None:
+            # SlotRect is a fraction of the 16:9 HUD BOX, so the pixels
+            # are worked out per frame rather than once - which is also
+            # what makes a recording at a different resolution readable.
+            height, width = frame.shape[:2]
+            rects = [rect.to_pixels(width, height) for rect in layout.slots()]
+        elif probe_shapes and frame.shape[:2] != probe_shapes:
+            # A swept geometry describes one window size only.
             tally["wrong size"] += 1
             continue
         reads = fp.identify(frame, rects, lib, params)
@@ -579,6 +629,9 @@ def main() -> None:
                              "if you leave it out")
     parser.add_argument("--every", type=int, default=4,
                         help="score one frame in every N (default 4)")
+    parser.add_argument("--sweep", action="store_true",
+                        help="hunt for the pick bar instead of using the "
+                             "app's calibrated crop boxes")
     parser.add_argument("--apply", action="store_true",
                         help="write the thresholds it recommends into the "
                              "app's recognition settings")
@@ -624,7 +677,7 @@ def main() -> None:
     out = Path(args.out) if args.out else ROOT / "debug_out" / "scored"
     raise SystemExit(score(folder, args.every, args.proof, out,
                        last=args.last, sweeps=args.sweeps,
-                       apply=args.apply))
+                       apply=args.apply, sweep=args.sweep))
 
 
 if __name__ == "__main__":
