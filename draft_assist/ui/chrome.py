@@ -725,6 +725,27 @@ class Dropdown(QComboBox):
     other list.
     """
 
+    def stepBy(self, steps: int) -> None:            # noqa: N802 - Qt naming
+        """Step, and DO NOT leave the number selected afterwards.
+
+        QSpinBox selects its whole text on every step, so clicking an
+        arrow leaves the digits sitting in a highlight block - "I don't
+        like that when I toggle the up / down arrow the entry ends up
+        being highlighted, it doesn't look good". That selection is for
+        a keyboard user about to retype the value; it makes no sense
+        after a click on an arrow, where the value has just been set.
+
+        In `stepBy` rather than in the arrow handler, so it holds for
+        every way of stepping there is - the painted arrows, the keyboard
+        arrows, Page Up - since a rule that covers only the one somebody
+        complained about is a rule with a hole in it.
+        """
+        super().stepBy(steps)
+        cursor = self.lineEdit()
+        if cursor is not None:
+            cursor.deselect()
+            cursor.setCursorPosition(len(cursor.text()))
+
     def wheelEvent(self, event) -> None:            # noqa: N802 - Qt naming
         event.ignore()
 

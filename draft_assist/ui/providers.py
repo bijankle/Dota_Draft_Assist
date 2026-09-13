@@ -732,7 +732,17 @@ class HybridProvider:
             require(snap.game_state in DRAFTING_STATES
                     if snap.game_state else None)
 
-        screen = self.vision.poll()
+        return self._add_screen(snap, self.vision.poll())
+
+    def _add_screen(self, snap, screen):
+        """Fold what the SCREEN saw into what the game already said.
+
+        Its own method because it is the half that can be tested without
+        a Dota window or a GSI listener - and because the bug it exists
+        to prevent (your own hero disappearing when a team-mate picked)
+        was invisible from the outside and obvious once this could be
+        driven directly.
+        """
         # Always carry the frame and the read: the Debug tab is how a
         # recognition problem gets diagnosed, and it must show what the app
         # is looking at even when the picks came from somewhere else.
@@ -750,12 +760,45 @@ class HybridProvider:
         if snap.lineup_source:
             return snap                      # the game told us outright
 
+        # WHAT THE GAME ALREADY SAID, KEPT. During HERO_SELECTION the feed
+        # names exactly one hero - YOURS, once you have locked it in - and
+        # that is not a line-up, so `lineup_source` is empty and the guard
+        # above does not fire. Everything below then REPLACED snap.left
+        # with the screen's reading, and a real draft went:
+        #
+        #     5.6s   none    allies=Rubick          the game named you
+        #    17.3s   screen  allies=Disruptor       Rubick GONE
+        #    33.3s   screen  allies=Disruptor, Rubick   back, 16s later
+        #
+        # The user watched their own hero vanish the moment a team-mate
+        # picked, and it only returned when recognition happened to see
+        # Rubick's portrait too - a quarter of the draft later.
+        #
+        # This is not the "never blended" rule giving way. That rule is
+        # about LINE-UPS, where two complete answers disagreeing must not
+        # be averaged into a third nobody reported. Here the game has not
+        # reported a line-up; it has stated ONE FACT, and the screen
+        # failing to see that hero is a gap in the screen rather than a
+        # contradiction of the game.
+        # THE GAME'S ALONE, with the hand-entered ones taken back out.
+        # `snap.left` at this point is already game+manual, so keeping it
+        # whole put TYPED heroes ahead of the screen - inverting the
+        # documented order, which is game > screen > hand entry. Caught
+        # by a test that had asserted that order for years.
+        typed_ally = set(self.manual.entered("ally"))
+        typed_enemy = set(self.manual.entered("enemy"))
+        known_allies = [hero for hero in snap.left if hero not in typed_ally]
+        known_enemies = [hero for hero in snap.right
+                         if hero not in typed_enemy]
+
         read = screen.read
         if read is None:
             return snap
 
         radiant, dire = read.team_ids("radiant"), read.team_ids("dire")
         if not radiant and not dire:
+            # Nothing seen. `snap.left` still holds what the game said,
+            # which is the whole point of not having overwritten it.
             return snap
         # my_team is what makes the banks mean ally and enemy. Without it
         # the sides are still a question, so say so rather than pick one.
@@ -767,10 +810,22 @@ class HybridProvider:
             snap.sides_known = False
             allies, enemies = radiant, dire
 
+        # THE GAME'S IN FRONT, then the screen, then hand entry - the
+        # order `merge` already uses, one source deeper.
+        allies = merge(known_allies, allies)
+        # AND A HERO THE GAME CALLS YOURS IS NEVER ON THE OTHER SIDE.
+        # Recognition can put a portrait in the wrong bank; the feed
+        # saying which hero is yours cannot be wrong about that, so the
+        # enemy list gives way rather than the board showing one hero
+        # twice.
+        enemies = [hero for hero in merge(known_enemies, enemies)
+                   if hero not in known_allies]
+
         snap.left = merge(allies, self.manual.entered("ally"))
         snap.right = merge(enemies, self.manual.entered("enemy"))
         snap.unknown = read.unknown_count()
-        snap.lineup_source = "screen"
+        snap.lineup_source = ("screen" if not known_allies and not known_enemies
+                              else "game data + screen")
         snap.needs_manual = len(snap.left) + len(snap.right) < 9
         snap.mode = "forced" if self.forced else (
             "draft" if snap.game_state or snap.left or snap.right else "idle")

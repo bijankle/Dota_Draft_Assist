@@ -323,20 +323,25 @@ STAR_POINTS = 5
 # A share of the tile's SHORT side, so it is the same size on a wide
 # strip tile and a narrow one, and capped so full-screening the window
 # does not put a badge the size of the portrait on it.
-# THE MARK'S SIZE. Twenty per cent up when the rank went inside it, and
-# ten per cent again now that the rank is legible-sized: a number has to
-# be read where a symbol only had to be noticed.
-STAR_OF_TILE = 0.40
+# THE MARK'S SIZE, up 20% when the rank went inside it and 10% twice
+# since. The second of those is what "make the number 10% bigger"
+# actually comes to: the digit is already at the largest SHARE a heart
+# can hold - going bold cost width, so that ceiling came DOWN from 0.66
+# to 0.67 for one digit and 0.58 to 0.56 for two - so the only way left
+# to grow the number is to grow what it sits in.
+STAR_OF_TILE = 0.44
 # A FLOOR THAT CAN HOLD A DIGIT. Rendered and counted: at 13px the mark's
 # own outline took most of its interior and the rank came out as two
 # stray dark pixels - drawn, unreadable, and worse than absent because it
 # looks like dirt on the portrait.
-STAR_MIN_PX = 18
-STAR_MAX_PX = 29
+STAR_MIN_PX = 20
+STAR_MAX_PX = 32
 STAR_INSET = 3
-# THE RANK, drawn in the middle. BLACK AND NOT BOLD, at the user's
-# request - everything else on a tile is bold, so the one place that has
-# to read as a label rather than a figure is the place that is not.
+# THE RANK, drawn in the middle. BLACK AND BOLD: it was asked for not
+# bold first and then bold once it was on screen at size, which is the
+# right way round - a thin glyph inside a solid pink heart reads as a
+# smudge, and weight is what this app uses for legibility everywhere
+# else it is read at a glance.
 #
 # A SHARE PER SHAPE, because their interiors are not the same. Measured
 # by filling each path and looking: the biggest square centred on the
@@ -356,7 +361,7 @@ STAR_INSET = 3
 # could take 1.00 for a single digit. They share anyway, so that a 1 in
 # a heart and a 1 in a shield are the same size - the two marks are the
 # same box, and a reader comparing them should not see two conventions.
-RANK_SHARE = {1: 0.66, 2: 0.58}
+RANK_SHARE = {1: 0.67, 2: 0.56}
 RANK_MIN_PX = 8
 # WHERE THE MIDDLE OF EACH SHAPE ACTUALLY IS, as a share of its box, and
 # neither is the box's own centre - "I want it smack bang in the middle
@@ -471,7 +476,7 @@ def _paint_rank(painter: QPainter, where: QRect, rank,
     size = max(RANK_MIN_PX, round(where.height() * share))
     font = QFont(painter.font())
     font.setPixelSize(size)
-    font.setBold(False)
+    font.setBold(True)
     painter.save()
     painter.setFont(font)
     painter.setPen(QPen(STROKE))
@@ -479,9 +484,14 @@ def _paint_rank(painter: QPainter, where: QRect, rank,
     # descent for glyphs this string does not have, so centring on it
     # sits a digit visibly high inside a small mark.
     ink = QFontMetricsF(font).tightBoundingRect(text)
+    # THE MIDDLE IN FLOAT, NEVER `QRect.center()`. That returns an
+    # INTEGER and biases low - for a 200px box it answers 99, which is
+    # 0.495 rather than 0.500 - so every digit sat about one per cent
+    # left of the mark. Small, and visible: "it's still a little left".
+    middle_x = where.left() + where.width() / 2.0
     middle_y = where.top() + where.height() * centre
     painter.drawText(
-        QPointF(where.center().x() - ink.width() / 2.0 - ink.left(),
+        QPointF(middle_x - ink.width() / 2.0 - ink.left(),
                 middle_y + ink.height() / 2.0), text)
     painter.restore()
 

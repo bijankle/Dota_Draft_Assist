@@ -181,6 +181,21 @@ def clamp_count(value, fallback: int) -> int:
     return max(1, min(MAX_SHOWN, number))
 
 
+def clamp_marks(value, fallback: int) -> int:
+    """How many suggestions carry a mark: 0 to MAX_SHOWN.
+
+    Separate from `clamp_count` because NOUGHT IS A REAL ANSWER here and
+    is not for a strip: a strip showing nothing is a card with a hole in
+    it, where wanting no hearts is ordinary. `clamp_count` floors at one
+    for that reason, and reusing it quietly turned "no marks" into "one".
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(0, min(MAX_SHOWN, number))
+
+
 def clamp_days(value, fallback: int) -> int:
     """Whole days between 0 (never ask) and MAX_REMINDER_DAYS."""
     try:

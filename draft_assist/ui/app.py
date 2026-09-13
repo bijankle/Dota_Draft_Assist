@@ -3817,41 +3817,37 @@ class MainWindow(QMainWindow):
         return row
 
     def _badge_box(self, key: str):
-        """The count beside a mark. Nought is none; the ceiling is the
-        number of suggestions, since a mark nobody can be given is a
-        setting that appears not to work."""
+        """The count beside a mark. Nought is none.
+
+        NO CEILING TIED TO THE SUGGESTION COUNT, at the user's request -
+        "remove the 5 cap on the heart and shield qty, as now I have the
+        filter here". The two boxes sit beside the suggestion count on
+        the same row, so the relationship is visible rather than needing
+        enforcing, and a ceiling that moved under the cursor as the strip
+        re-cut was worse than a number that is simply larger than it can
+        be used. The strip still caps what it DRAWS - it cannot mark a
+        tile that is not there - so a big number is harmless.
+        """
         box = chrome.CountBox(
-            ui_settings.clamp_count(self.settings.get(key, 3), 3),
+            ui_settings.clamp_marks(self.settings.get(key, 3), 3),
             0, ui_settings.MAX_SHOWN)
         box.setToolTip(
             "How many of the suggestions carry this mark. The number "
             "inside each one is its rank, so 1 is the best of them.\n"
-            "Never more than there are suggestions.")
+            "Nought turns the mark off.")
         box.valueChanged.connect(lambda value, k=key: self._set_count(k, value))
         self.count_boxes[key] = box
         return box
 
-    def _cap_badge_boxes(self) -> None:
-        """Hold the two marks' ceilings at the number of suggestions.
-
-        The suggestion count is itself a setting AND can be nought,
-        meaning "as many as fit on one row" - so the ceiling is whatever
-        `_how_many` resolves to now, re-applied whenever that changes.
-        `setMaximum` clamps the value with it, and the strip caps again
-        at paint time because a row that wrapped may hold fewer than the
-        setting asked for.
-        """
-        shown = max(1, self._how_many("suggested_picks")
-                    or len(self.suggest_row.tiles) or 1)
-        for key in ("heart_count", "shield_count"):
-            box = self.count_boxes.get(key)
-            if box is not None and box.maximum() != shown:
-                box.setMaximum(shown)
-
     def _set_count(self, key: str, value: int) -> None:
         if self.settings.get(key) == value:
             return
-        self.settings[key] = ui_settings.clamp_count(value, value)
+        # THE MARKS MAY BE NOUGHT and the strips may not: a strip showing
+        # nothing is a card with a hole in it, where no marks is a
+        # perfectly ordinary thing to want.
+        clamp = (ui_settings.clamp_marks if key.endswith("_count")
+                 else ui_settings.clamp_count)
+        self.settings[key] = clamp(value, value)
         ui_settings.save(self.settings)
         self._refresh_views()
 
@@ -4022,9 +4018,6 @@ class MainWindow(QMainWindow):
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
-        # The ceiling follows the number of suggestions, which is itself
-        # a setting and can be "as many as fit".
-        self._cap_badge_boxes()
         self.suggest_row.set_stars(self.stars, self._heart_count())
         self.suggest_row.set_shields(self.shields, self._shield_count())
 
@@ -4061,11 +4054,11 @@ class MainWindow(QMainWindow):
 
     def _heart_count(self) -> int:
         """How many suggestions may carry a heart."""
-        return ui_settings.clamp_count(self.settings.get("heart_count", 3), 3)
+        return ui_settings.clamp_marks(self.settings.get("heart_count", 3), 3)
 
     def _shield_count(self) -> int:
         """How many suggestions may carry a shield."""
-        return ui_settings.clamp_count(self.settings.get("shield_count", 3), 3)
+        return ui_settings.clamp_marks(self.settings.get("shield_count", 3), 3)
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.

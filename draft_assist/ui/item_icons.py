@@ -42,6 +42,22 @@ def _resolve(name: str) -> str | None:
     if key in slugs:
         return key
     prefixed = [s for s in slugs if s.startswith(key)]
+    # A RECIPE IS NOT A CANDIDATE. Valve publishes the scroll that builds
+    # an item as an item of its own - "Eul's Scepter Recipe" beside
+    # "Eul's Scepter of Divinity" - so a rule saying "Eul's Scepter" is a
+    # prefix of TWO and was refused as ambiguous, which is this
+    # resolver working exactly as designed and still drawing no icon.
+    #
+    # It is not ambiguous in any sense that matters: nothing advises you
+    # to buy a recipe, so the two were never both answers to the
+    # question. Dropping them is also general - most items have a recipe,
+    # so any future rule named by its short form would have hit this.
+    #
+    # Measured against the whole file: Eul's was the ONLY one of the 24
+    # items the rules name that could not resolve, and this resolves it.
+    real = [s for s in prefixed if "recipe" not in s]
+    if len(real) == 1:
+        return real[0]
     return prefixed[0] if len(prefixed) == 1 else None
 
 

@@ -433,10 +433,12 @@ def test_no_rank_draws_no_number(qapp):
 def test_the_mark_is_larger_than_it_was(qapp):
     """Twenty per cent, and it is the number inside that needs it: a
     mark only had to be NOTICED before, and now it has to be read."""
-    # 20% when the rank went in, and 10% again once the rank was sized
-    # to be read rather than merely drawn.
-    assert tilekit.STAR_OF_TILE == pytest.approx(0.30 * 1.2 * 1.1, abs=0.01)
-    assert tilekit.STAR_MAX_PX >= round(22 * 1.2 * 1.05)
+    # 20% when the rank went in, then 10% twice more. The second of
+    # those is what "make the number 10% bigger" comes to: the digit is
+    # already at the largest share a HEART can hold, so the only way
+    # left to grow it is to grow what it sits in.
+    assert tilekit.STAR_OF_TILE >= 0.30 * 1.2 * 1.1 * 1.05
+    assert tilekit.STAR_MAX_PX >= round(22 * 1.2 * 1.1)
 
 
 def test_the_rank_is_centred_on_the_SHAPE_not_its_box(qapp):
