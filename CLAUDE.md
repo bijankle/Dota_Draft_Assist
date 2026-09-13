@@ -257,7 +257,25 @@ credentials, and put the account at risk. Do not go there.
    None`: when the game says a draft is on there is nothing to probe for,
    and when it says one is not, that is an answer.
 
-   **Going idle no longer throws the reading away** (`FORGET_AFTER`, 30s).
+   **A NEW MATCH ID ENDS THE PREVIOUS BOARD, AND IT DOES NOT WAIT THIRTY
+  SECONDS** (`HybridProvider._new_match`, `CaptureSession.
+  forget_reading`). At 0.0s of the recording for match 8996568678 the
+  board carried a full ten heroes from the game BEFORE it and held them
+  for nine seconds — the first pick of the new draft, made against advice
+  about a board that no longer existed. `FORGET_AFTER` says in its own
+  comment what it is standing in for ("thirty seconds of
+  not-the-draft-screen is a different game"), and the match id is that,
+  stated by Dota rather than inferred from a stopwatch. The timer stays
+  for when there is no game feed to say so.
+  Three guards on what counts as a change, each of them a way to wipe a
+  board that is still live: **matchid "0" is what Dota reports outside a
+  match** and "" is it saying nothing, so neither is a new match, and the
+  FIRST id of a session is not one either — there is no previous board to
+  be stale. It fires once per match, never once per tick, or it would
+  delete a reading as fast as it was made. Only the SCREEN's memory goes:
+  everything else belonging to a match is already keyed on it.
+
+  **Going idle no longer throws the reading away** (`FORGET_AFTER`, 30s).
    Deactivating used to null `last_read` and reset the stabiliser, so four
    missed gate checks — four seconds — deleted every pick the app had
    already read. That is what "it found four heroes and then showed none"
@@ -359,10 +377,44 @@ credentials, and put the account at risk. Do not go there.
     correlations, milliseconds) and **searched** hunts each across the top
     strip at unknown scale (`autocal.locate`, hundreds of correlations), so
     the search runs at most ONCE PER MATCH and the result is latched per
-    (match, the ten). Anything short of ten confident distinct heroes in
-    two banks of five returns `ok is False` with a reason and the caller
-    keeps the guess it had — a wrong split asserted confidently is worse
-    than a guess the user is already correcting.
+    (match, the ten). Anything it cannot read off two banks of five
+    returns `ok is False` with a reason and the caller keeps the guess it
+    had — a wrong split asserted confidently is worse than a guess the
+    user is already correcting.
+
+    **NINE LOCATED PORTRAITS SETTLE IT, and requiring ten put a real
+    draft on the wrong teams** (`lineup.split_banks`, `_place_missing`,
+    `MIN_FOUND`). Match 8996568678: the placed path failed, the search
+    found 9 of the 10, `read_searched` refused the lot, and the minimap's
+    coin flip won — Axe and Storm Spirit advised against as enemies while
+    standing on the user's own team, the board scoring 6/10. The ninth
+    portrait was never the problem. The game NAMES all ten, so nine
+    located leaves exactly one hero and exactly one bank of four, and
+    which side it is on follows by elimination — the same elimination
+    `harvest.by_elimination` runs against the library, and it cannot
+    invert.
+    **WHAT HAD TO BE ESTABLISHED IS THE GEOMETRY.** The old split took
+    the widest gap, which is the bank boundary only while every portrait
+    is present: a missed one leaves a hole of TWO pitches. On the
+    measured 16:9 bar the banks are **4.87 pitches apart** against a hole
+    of 2, so the two are distinguishable — `split_banks` takes the MEDIAN
+    step as the pitch (at most two of the eight or nine steps are
+    anything else) and believes a boundary only at `BANK_GAP_STEPS` of
+    it. **Exactly one gap may clear that bar**; two means a frame this
+    cannot read, and it is REFUSED rather than split anyway. EIGHT is
+    still refused — one missing is elimination, two is a guess about
+    which bank each went to.
+    WHERE in its bank the tenth goes is a weaker answer and the note says
+    which was used: an interior miss leaves a double step and takes it,
+    and at the END of a bank the gaps cannot say which end, so it goes
+    last. That only affects tile order, which a drag already fixes.
+    **BUT THE MEASURED LAYOUT STILL NEEDS ALL TEN**
+    (`_remember_measured_layout`). `autocal.layout_from` reads a bank's
+    origin off the first portrait IN it, so a miss at the start of a bank
+    shifts that whole bank one pitch and every box after it — and a
+    measurement is adopted outright when there is no calibration file,
+    which would bake that into a fresh install. Nine answers the sides;
+    it takes ten to answer where the boxes go.
 
     **The search runs on a WORKER, and it calibrates on the way out.**
     Measured on a real 3440x1440 session it took **25.6 seconds inside one
