@@ -169,3 +169,67 @@ def test_the_old_tuned_ceiling_is_what_lost_the_heroes():
     """Names the number that caused this, so the fixture stays a real
     regression rather than an arbitrary pair of thresholds."""
     assert accepted(REAL_DRAFT, 51, 26) == 2
+
+
+# --------------------------------------------------------------------
+# A SECOND REAL DRAFT, and it moved the numbers. Zeus and Viper came in
+# at d=76 - eight bits from the MENU population, which starts at 84. So
+# the distance ceiling has almost nothing left to separate with, and the
+# MARGIN is what does the work: real portraits clear theirs by 20 to 48,
+# menu crops by 0 to 2.
+
+SECOND_DRAFT = [          # (distance, margin) per slot, measured
+    (68, 30), (52, 44), (60, 38), (76, 20), (68, 30),
+    (76, 24), (54, 42), (60, 34), (52, 48), (46, 42),
+]
+
+
+def test_the_operating_point_accepts_both_real_drafts():
+    from tools.score_recording import CEILING_CAP, MARGIN_FLOOR
+    ceiling = round(CEILING_CAP * BITS)
+    margin = round(MARGIN_FLOOR * BITS)
+    assert accepted(REAL_DRAFT, ceiling, margin) == 10
+    assert accepted(SECOND_DRAFT, ceiling, margin) == 10
+
+
+def test_it_still_rejects_every_menu_crop():
+    from tools.score_recording import CEILING_CAP, MARGIN_FLOOR
+    assert accepted(REAL_MENU, round(CEILING_CAP * BITS),
+                    round(MARGIN_FLOOR * BITS)) == 0
+
+
+def test_neither_threshold_separates_them_alone():
+    """The honest shape of it, and worth a test because a wrong story
+    here leads to the wrong fix later. Distance populations are eight
+    bits apart, margin populations four - so the ceiling and the floor
+    are a CONJUNCTION, not one doing the work with the other along for
+    the ride."""
+    from tools.score_recording import CEILING_CAP, MARGIN_FLOOR
+    real = REAL_DRAFT + SECOND_DRAFT
+    ceiling = round(CEILING_CAP * BITS)
+    margin = round(MARGIN_FLOOR * BITS)
+
+    # The ceiling alone would pass every real hero AND keep the menu out,
+    # but only by eight bits.
+    assert max(d for d, _m in real) < min(d for d, _m in REAL_MENU)
+    assert min(d for d, _m in REAL_MENU) - max(d for d, _m in real) <= 10
+
+    # The margin alone would NOT: a menu crop has come within four bits
+    # of the worst real hero, so it cannot be the sole guard either.
+    assert min(m for _d, m in real) - max(m for _d, m in REAL_MENU) <= 6
+
+    # Together they hold, which is the only claim being made.
+    assert accepted(real, ceiling, margin) == 20
+    assert accepted(REAL_MENU, ceiling, margin) == 0
+
+
+def test_a_tie_goes_to_the_bigger_margin():
+    """A recording of one good draft holds no wrong answers, so every
+    margin scores the same and the sweep used to take whichever it met
+    first - which wrote a margin of 1 and threw away the second guard
+    entirely. The tie-break has to prefer the safer setting, because the
+    sample cannot show the value of something it never tests."""
+    source = (ROOT / "tools" / "score_recording.py").read_text(
+        encoding="utf-8")
+    body = source[source.index("def tune("):source.index("def score(")]
+    assert "min_margin, -max_distance" in body

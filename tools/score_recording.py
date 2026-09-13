@@ -63,6 +63,25 @@ STRATEGY = "STRATEGY_TIME"
 # arcana, or a hero whose base art is older, and a ceiling cut to fit
 # this one exactly will reject it.
 HEADROOM = 0.06
+# TWO LIMITS, BOTH MEASURED ACROSS TWO REAL DRAFTS AND ONE MENU.
+#
+#   on-screen portraits   distance 40-76   margin 20-62
+#   menu background       distance 84-104  margin  0-16
+#
+# NEITHER IS COMFORTABLE AND BOTH ARE NEEDED. The distance populations
+# are eight bits apart and the margin populations only four, so this is
+# not a case of one threshold doing the work - it is the CONJUNCTION.
+# Every menu crop is excluded by the ceiling (the closest sits at 84,
+# against a real worst of 76), and the margin floor is the second guard
+# for the day a crop lands closer than any menu crop yet has.
+#
+# The narrowness is worth keeping in mind: a hero whose base art is
+# older than its in-game portrait could cross 84, and there would be
+# nothing left to separate it with. If that happens the answer is a
+# better library entry - `harvest.py` learning the on-screen crop - and
+# not a looser ceiling.
+CEILING_CAP = 0.32        # 82 of 256: over every real hero, under every menu crop
+MARGIN_FLOOR = 0.05       # 13 of 256: under every real hero, over every menu crop
 # A LINE THE APP CAN READ, and a plain one a person can too. Progress was
 # printed with a carriage return so it overwrote itself in a console -
 # which does nothing whatever in the dialog's text box, where the run
@@ -220,7 +239,17 @@ def tune(samples: list, truth: set, params, apply=False) -> None:
             # A WRONG SLOT COSTS MORE THAN A DECLINED ONE, which is this
             # app's oldest rule: "silent about one slot beats wrong about
             # one slot". So the score charges four for a wrong answer.
-            rank = tally["right"] - 4 * tally["wrong"]
+            #
+            # AND A TIE GOES TO THE SAFER SETTING. A recording of one
+            # good draft contains no wrong answers at all, so every
+            # margin from 0 upwards scores identically and the sweep
+            # picked whichever it met first - which is how it wrote a
+            # margin of 1, throwing away the only thing that actually
+            # separates a hero from a crop of menu background. Ties now
+            # prefer the BIGGER margin, then the tighter ceiling: the
+            # sample cannot show the value of a guard it never tests.
+            rank = (tally["right"] - 4 * tally["wrong"],
+                    min_margin, -max_distance)
             if best is None or rank > best[0]:
                 best = (rank, max_distance, min_margin, tally)
     for max_distance, min_margin in (
@@ -252,10 +281,17 @@ def tune(samples: list, truth: set, params, apply=False) -> None:
     from draft_assist.proving.tune import HUD_HEADROOM
     ceiling = max(best[1] + round(HEADROOM * params.bits),
                   round(HUD_HEADROOM * params.bits))
+    # CAPPED, because headroom in the wrong direction is not safety. The
+    # real and menu distance populations are only eight bits apart, so a
+    # ceiling padded past `CEILING_CAP` starts admitting crops of nothing
+    # - and those are exactly the slots that come out WRONG rather than
+    # merely unread.
+    ceiling = min(ceiling, round(CEILING_CAP * params.bits))
+    margin = max(best[2], round(MARGIN_FLOOR * params.bits))
     fixed = replace(params,
                     max_distance_frac=min(1.0, ceiling / params.bits),
-                    min_margin_frac=max(best[2], 1) / params.bits)
-    best = (best[0], ceiling, best[2], best[3])
+                    min_margin_frac=margin / params.bits)
+    best = (best[0], ceiling, margin, best[3])
     library.save_params(fixed)
     print(f"\n  WRITTEN to {library.PARAMS_FILE}:")
     print(f"    max_distance {best[1]} ({fixed.max_distance_frac:.3f} of "
