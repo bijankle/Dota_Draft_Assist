@@ -348,23 +348,29 @@ def test_the_row_stars_from_a_measurement(qapp):
     row = SuggestRow()
     row.show_heroes([(1, "Anti-Mage", 0.05, ""), (2, "Axe", 0.04, ""),
                      (3, "Bane", 0.03, "")])
-    # A SHARE OF THE STRIP: three tiles at 34% is one mark, and it goes
-    # to the hero ranked best on pick rate and win rate together.
-    row.set_stars(stars_mod.measure(matches), 34)
+    # A COUNT: one mark, and it goes to the hero ranked best on pick
+    # rate and win rate together.
+    row.set_stars(stars_mod.measure(matches), 1)
     assert [t.starred for t in row.tiles] == [True, False, False]
     assert row.tiles[0]._star_rank == 1, "the mark carries its rank"
     assert "My Form Rank = 1" in row.tiles[0].toolTip()
 
-    # RAISING THE SHARE MARKS MORE OF THEM, in ranked order. Bane has two
-    # games so it can be ranked; Axe never won, so it ranks last.
-    row.set_stars(stars_mod.measure(matches), 100)
+    # RAISING THE COUNT MARKS MORE OF THEM, in ranked order. Bane has
+    # two games so it can be ranked; Axe never won, so it ranks last.
+    row.set_stars(stars_mod.measure(matches), 3)
     assert [t._star_rank for t in row.tiles] == [1, 3, 2]
 
-    # AND NOUGHT MARKS NOTHING, which is a share of none rather than a
+    # AND NOUGHT MARKS NOTHING, which is a count of none rather than a
     # special case.
     row.set_stars(stars_mod.measure(matches), 0)
     assert [t.starred for t in row.tiles] == [False, False, False]
-    row.set_stars(stars_mod.measure(matches), 34)
+
+    # A COUNT ABOVE THE NUMBER OF TILES IS CAPPED, never an error: "make
+    # sure that the number can't be larger than the number of suggested
+    # heroes".
+    row.set_stars(stars_mod.measure(matches), 99)
+    assert sum(1 for t in row.tiles if t.starred) == 3
+    row.set_stars(stars_mod.measure(matches), 1)
     # No run loaded draws the same as a run that starred nobody, because
     # there is nothing honest to put on a tile either way.
     row.set_stars(None)
@@ -427,5 +433,76 @@ def test_no_rank_draws_no_number(qapp):
 def test_the_mark_is_larger_than_it_was(qapp):
     """Twenty per cent, and it is the number inside that needs it: a
     mark only had to be NOTICED before, and now it has to be read."""
-    assert tilekit.STAR_OF_TILE == pytest.approx(0.30 * 1.2, abs=0.01)
-    assert tilekit.STAR_MAX_PX >= round(22 * 1.18)
+    # 20% when the rank went in, and 10% again once the rank was sized
+    # to be read rather than merely drawn.
+    assert tilekit.STAR_OF_TILE == pytest.approx(0.30 * 1.2 * 1.1, abs=0.01)
+    assert tilekit.STAR_MAX_PX >= round(22 * 1.2 * 1.05)
+
+
+def test_the_rank_is_centred_on_the_SHAPE_not_its_box(qapp):
+    """"I want it smack bang in the middle of the symbol." Neither of
+    these shapes has its mass in the middle of the rectangle drawn round
+    it: a heart is wide at the top and tapers to a point, so its centre
+    of area sits ABOVE the box's. Both earlier attempts were wrong and in
+    OPPOSITE directions - the heart centred on the box (5% low), the
+    shield on a guessed 0.82-height body (7% high) - which is why these
+    are measured rather than nudged.
+    """
+    from PyQt6.QtGui import QImage, QPainter, QColor
+    from PyQt6.QtCore import QPointF
+    for shield, want in ((False, tilekit.HEART_CENTRE),
+                         (True, tilekit.SHIELD_CENTRE)):
+        side = 200
+        picture = QImage(side, side, QImage.Format.Format_ARGB32)
+        picture.fill(QColor("white"))       # nothing dark but the digit
+        box = QRect(0, 0, side, side)
+        shape = tilekit._shape(box, tilekit.SHIELD if shield
+                               else tilekit.HEART)
+        painter = QPainter(picture)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.fillPath(shape, QColor("red"))
+        tilekit._paint_rank(painter, box, 8, want)
+        painter.end()
+        rows = [y for y in range(side)
+                for x in range(side)
+                if QColor(picture.pixel(x, y)).red() < 80
+                and QColor(picture.pixel(x, y)).green() < 80]
+        middle = (min(rows) + max(rows)) / 2 / side
+        assert abs(middle - want) <= 0.03, (
+            f"{'shield' if shield else 'heart'}: digit centred at "
+            f"{middle:.3f}, the shape's middle is {want}")
+
+
+@pytest.mark.parametrize("rank", [1, 8, 12, 20])
+def test_the_rank_stays_inside_the_shape(qapp, rank):
+    """Sized by rendering and counting the ink that escapes the outline.
+    Two-digit ranks are real - twenty suggestions means ranks to 20 - and
+    one share big enough for "20" would have left "1" far smaller than
+    the doubling that was asked for, so the size follows the DIGITS."""
+    from PyQt6.QtGui import QImage, QPainter, QColor
+    from PyQt6.QtCore import QPointF
+    for shield, centre in ((False, tilekit.HEART_CENTRE),
+                           (True, tilekit.SHIELD_CENTRE)):
+        side = 200
+        picture = QImage(side, side, QImage.Format.Format_ARGB32)
+        picture.fill(QColor("white"))
+        box = QRect(0, 0, side, side)
+        shape = tilekit._shape(box, tilekit.SHIELD if shield
+                               else tilekit.HEART)
+        painter = QPainter(picture)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.fillPath(shape, QColor("red"))
+        tilekit._paint_rank(painter, box, rank, centre)
+        painter.end()
+        ink = outside = 0
+        for y in range(side):
+            for x in range(side):
+                colour = QColor(picture.pixel(x, y))
+                if colour.red() < 80 and colour.green() < 80:
+                    ink += 1
+                    if not shape.contains(QPointF(x + 0.5, y + 0.5)):
+                        outside += 1
+        assert ink > 0, "no digit drawn"
+        assert outside <= max(4, ink * 0.01), (
+            f"{'shield' if shield else 'heart'} rank {rank}: {outside} of "
+            f"{ink} pixels fell outside the mark")

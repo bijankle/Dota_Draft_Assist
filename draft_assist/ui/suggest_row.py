@@ -369,26 +369,20 @@ class SuggestRow(QWidget):
             tile.set_focused(False)
 
     @staticmethod
-    def _how_many(share: int, tiles: int) -> int:
-        """How many marks a share of the strip comes to.
+    def _how_many(count: int, tiles: int) -> int:
+        """How many marks to give out, capped by what is on screen.
 
-        The setting is a PERCENTAGE OF WHAT IS ON SCREEN, at the user's
-        request - "if I set it to 50% and I have 20 suggested heroes,
-        that means I expect to have 10 heroes with hearts" - which is a
-        different question from the percentile floor it replaces. That
-        one asked "is this hero in the top 30% of every hero you have
-        ever played"; this asks "is it in the best half of the ones I am
-        looking at", and only the second changes as the board fills.
-
-        Rounded to nearest, and never nought while the share is above it:
-        a setting that is on should mark something.
+        A COUNT, at the user's request - "the number should be a QTY" -
+        and it replaces a share of the strip, which replaced a percentile
+        floor over the whole hero pool. The cap is the point of the
+        change: "make sure that the number can't be larger than the
+        number of suggested heroes", because a mark nobody can be given
+        is a setting that appears not to work.
         """
-        if share <= 0 or tiles <= 0:
-            return 0
-        return max(1, min(tiles, round(tiles * share / 100.0)))
+        return max(0, min(int(count), int(tiles)))
 
-    def _rank_tiles(self, scores: dict, share: int) -> dict:
-        """{hero id: rank} for the best `share`% of the tiles on screen.
+    def _rank_tiles(self, scores: dict, count: int) -> dict:
+        """{hero id: rank} for the best `count` tiles on screen.
 
         RELATIVE TO THE STRIP, which is the whole point of the change and
         the reason this lives here rather than in `history/stars.py` or
@@ -401,7 +395,7 @@ class SuggestRow(QWidget):
         """
         ranked = sorted(((value, hero) for hero, value in scores.items()
                          if value is not None), reverse=True)
-        wanted = self._how_many(share, len(self._tiles))
+        wanted = self._how_many(count, len(self._tiles))
         out, place, seen = {}, 0, None
         for index, (value, hero) in enumerate(ranked, 1):
             if value != seen:
@@ -411,8 +405,8 @@ class SuggestRow(QWidget):
             out[hero] = place
         return out
 
-    def set_stars(self, stars, share: int = 0) -> None:
-        """Heart the best `share`% of the strip on your own history.
+    def set_stars(self, stars, count: int = 0) -> None:
+        """Heart the best `count` of the strip on your own history.
 
         Takes the whole `Stars` rather than a set of ids, because the
         tile wants the SENTENCE for its tooltip too, and handing the set
@@ -422,7 +416,7 @@ class SuggestRow(QWidget):
         nothing honest to put on a tile either way.
 
         A hero under `stars.MIN_GAMES` scores None and cannot be ranked
-        at all, so a short history yields fewer marks than the share asks
+        at all, so a short history yields fewer marks than the count asks
         for rather than marking a hero played once.
         """
         if stars is None:
@@ -431,7 +425,7 @@ class SuggestRow(QWidget):
             return
         ranks = self._rank_tiles(
             {tile.hero_id: stars.score(tile.hero_id)
-             for tile in self._tiles}, share)
+             for tile in self._tiles}, count)
         for tile in self._tiles:
             rank = ranks.get(tile.hero_id)
             why = stars.why(tile.hero_id) if rank else ""
@@ -439,8 +433,8 @@ class SuggestRow(QWidget):
                 why = f"{why}\nMy Form Rank = {rank} of these suggestions"
             tile.set_star(rank, why)
 
-    def set_shields(self, shields: dict | None, share: int = 0) -> None:
-        """Shield the `share`% of the strip hardest to counter.
+    def set_shields(self, shields: dict | None, count: int = 0) -> None:
+        """Shield the `count` of the strip hardest to counter.
 
         A PLAIN MAPPING rather than a `Stars`, because this one needs no
         history object behind it: {hero id: (difficulty, sentence)},
@@ -453,7 +447,7 @@ class SuggestRow(QWidget):
         ranks = self._rank_tiles(
             {tile.hero_id: (rows[tile.hero_id][0]
                             if tile.hero_id in rows else None)
-             for tile in self._tiles}, share)
+             for tile in self._tiles}, count)
         for tile in self._tiles:
             rank = ranks.get(tile.hero_id)
             why = rows.get(tile.hero_id, (0.0, ""))[1] if rank else ""

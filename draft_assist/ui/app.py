@@ -36,7 +36,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QSize,
                           QT_VERSION_STR, Qt, QTimer)
-from PyQt6.QtGui import QAction, QColor, QImage, QKeySequence, QPixmap
+from PyQt6.QtGui import (QAction, QColor, QImage, QKeySequence,
+                         QPainter, QPixmap)
 from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QDialog, QFrame,
                              QHBoxLayout, QLabel,
@@ -96,6 +97,38 @@ ROLE_LABELS = [("(no role)", None), ("Carry (1)", "carry"), ("Mid (2)", "mid"),
 # in one place, so the two cannot drift apart.
 ROLE_BY_LABEL = {"Pos 1": "carry", "Pos 2": "mid", "Pos 3": "offlane",
                  "Pos 4": "soft_support", "Pos 5": "hard_support"}
+
+
+class MarkLabel(QWidget):
+    """A heart or a shield, drawn at label size beside its count box.
+
+    THE MARK IS ITS OWN LABEL. Two count boxes on one heading row need
+    telling apart, and the thing they set is a picture - so the picture
+    is the word. It also cannot go stale the way "Hearts:" would if the
+    mark ever changed shape or colour, since it is the same painter the
+    tiles use.
+    """
+
+    SIDE = 22
+
+    def __init__(self, shield: bool, parent=None):
+        super().__init__(parent)
+        self._shield = shield
+        self.setFixedSize(self.SIDE, self.SIDE)
+        self.setToolTip("Gold shield: hardest to counter of the suggestions"
+                        if shield else
+                        "Pink heart: your best of the suggestions")
+
+    def paintEvent(self, event) -> None:   # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        # The painters inset their mark inside the box they are handed,
+        # so it is grown by the inset to come out at label size.
+        grown = self.rect().adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
+                                     tilekit.STAR_INSET, tilekit.STAR_INSET)
+        if self._shield:
+            tilekit.paint_shield(painter, grown)
+        else:
+            tilekit.paint_heart(painter, grown)
 
 
 def open_folder(path: Path) -> None:
@@ -847,8 +880,7 @@ class MainWindow(QMainWindow):
         # advice about the board: first which hero to take, then what to
         # build against what is already there.
         self.count_boxes = {}
-        picks_card, playy = card(
-            "Suggested picks", self._count_box("suggested_picks"))
+        picks_card, playy = card("Suggested picks", self._picks_controls())
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
             self._on_suggestion_clicked)
@@ -3091,9 +3123,9 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
-        if (self.settings.get("heart_share"),
-                self.settings.get("shield_share")) != (
-                    before.get("heart_share"), before.get("shield_share")):
+        if (self.settings.get("heart_count"),
+                self.settings.get("shield_count")) != (
+                    before.get("heart_count"), before.get("shield_count")):
             # RE-APPLIED, NOT RE-MEASURED, and that is the change: these
             # used to be percentile floors INSIDE the ranking, so moving
             # one meant reading the whole History run again and
@@ -3106,8 +3138,8 @@ class MainWindow(QMainWindow):
             # a file and nothing on screen until the next hero was
             # picked - which is indistinguishable from a broken setting,
             # and is the state the shield bar actually shipped in.
-            self.suggest_row.set_stars(self.stars, self._heart_share())
-            self.suggest_row.set_shields(self.shields, self._shield_share())
+            self.suggest_row.set_stars(self.stars, self._heart_count())
+            self.suggest_row.set_shields(self.shields, self._shield_count())
             self._refresh_views()
         chosen = self.settings.get("pair_source", pair_source())
         if chosen != pair_source():
@@ -3759,6 +3791,63 @@ class MainWindow(QMainWindow):
         self.count_boxes[key] = box
         return box
 
+    def _picks_controls(self) -> QWidget:
+        """How many suggestions, and how many of them get each mark.
+
+        ALL THREE ON THE HEADING, at the user's request: "it makes sense
+        to have the number of shields / hearts setting to be right next
+        to the quantity dropdown for number of hero suggestions, and this
+        should be the same kind of entry field."
+
+        Which is the rule this row already followed for the first of
+        them - a number you tune by looking at the result belongs beside
+        the result, not two menus away in Settings - so the two badge
+        counts MOVE here rather than being repeated. Two places to read
+        one setting is two places for it to go stale.
+        """
+        row = QWidget()
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(6)
+        line.addWidget(self._count_box("suggested_picks"))
+        for key, shield in (("heart_count", False), ("shield_count", True)):
+            line.addSpacing(6)
+            line.addWidget(MarkLabel(shield, row))
+            line.addWidget(self._badge_box(key))
+        return row
+
+    def _badge_box(self, key: str):
+        """The count beside a mark. Nought is none; the ceiling is the
+        number of suggestions, since a mark nobody can be given is a
+        setting that appears not to work."""
+        box = chrome.CountBox(
+            ui_settings.clamp_count(self.settings.get(key, 3), 3),
+            0, ui_settings.MAX_SHOWN)
+        box.setToolTip(
+            "How many of the suggestions carry this mark. The number "
+            "inside each one is its rank, so 1 is the best of them.\n"
+            "Never more than there are suggestions.")
+        box.valueChanged.connect(lambda value, k=key: self._set_count(k, value))
+        self.count_boxes[key] = box
+        return box
+
+    def _cap_badge_boxes(self) -> None:
+        """Hold the two marks' ceilings at the number of suggestions.
+
+        The suggestion count is itself a setting AND can be nought,
+        meaning "as many as fit on one row" - so the ceiling is whatever
+        `_how_many` resolves to now, re-applied whenever that changes.
+        `setMaximum` clamps the value with it, and the strip caps again
+        at paint time because a row that wrapped may hold fewer than the
+        setting asked for.
+        """
+        shown = max(1, self._how_many("suggested_picks")
+                    or len(self.suggest_row.tiles) or 1)
+        for key in ("heart_count", "shield_count"):
+            box = self.count_boxes.get(key)
+            if box is not None and box.maximum() != shown:
+                box.setMaximum(shown)
+
     def _set_count(self, key: str, value: int) -> None:
         if self.settings.get(key) == value:
             return
@@ -3933,8 +4022,11 @@ class MainWindow(QMainWindow):
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
-        self.suggest_row.set_stars(self.stars, self._heart_share())
-        self.suggest_row.set_shields(self.shields, self._shield_share())
+        # The ceiling follows the number of suggestions, which is itself
+        # a setting and can be "as many as fit".
+        self._cap_badge_boxes()
+        self.suggest_row.set_stars(self.stars, self._heart_count())
+        self.suggest_row.set_shields(self.shields, self._shield_count())
 
     def _recompute_shields(self) -> None:
         """Which heroes the field struggles to counter, from the DATASET.
@@ -3967,13 +4059,13 @@ class MainWindow(QMainWindow):
         if window is not None:
             window.set_shield_note(self.shields_note)
 
-    def _heart_share(self) -> int:
-        """How much of the suggestion strip may carry a heart."""
-        return ui_settings.clamp_pct(self.settings.get("heart_share", 30), 30)
+    def _heart_count(self) -> int:
+        """How many suggestions may carry a heart."""
+        return ui_settings.clamp_count(self.settings.get("heart_count", 3), 3)
 
-    def _shield_share(self) -> int:
-        """How much of the suggestion strip may carry a shield."""
-        return ui_settings.clamp_pct(self.settings.get("shield_share", 30), 30)
+    def _shield_count(self) -> int:
+        """How many suggestions may carry a shield."""
+        return ui_settings.clamp_count(self.settings.get("shield_count", 3), 3)
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.
@@ -3992,7 +4084,7 @@ class MainWindow(QMainWindow):
         self.stars = None if not matches else stars_mod.measure(matches)
         # The tiles are already on screen, so this is the whole update —
         # no pick changed and nothing needs re-scoring.
-        self.suggest_row.set_stars(self.stars, self._heart_share())
+        self.suggest_row.set_stars(self.stars, self._heart_count())
         # And the row at the top says whose run it is. Same signal, same
         # moment: the star bars and the face must never describe two
         # different accounts.

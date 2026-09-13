@@ -64,8 +64,8 @@ def test_the_mark_actually_reaches_the_tiles(window, qapp):
     assert worn._why_shield, "and it says why, in the tooltip"
 
 
-def test_moving_the_share_in_settings_REDRAWS_THE_MARKS(window):
-    """The setting is a share of the STRIP now, so it is a cut over a
+def test_moving_the_count_REDRAWS_THE_MARKS(window):
+    """The setting is a COUNT over the strip now, so it is a cut over a
     ranking that has not changed - and the marks are simply drawn again.
 
     It still has to happen on the settings change. The strip is redrawn
@@ -75,12 +75,12 @@ def test_moving_the_share_in_settings_REDRAWS_THE_MARKS(window):
     shield bar actually shipped in.
     """
     marked = []
-    window.suggest_row.set_shields = lambda rows, share=0: marked.append(
-        share)
-    window.suggest_row.set_stars = lambda stars, share=0: None
-    window._apply_settings({"shield_share": 50})
-    assert marked and marked[-1] == 50, (
-        "the strip was not told the new share")
+    window.suggest_row.set_shields = lambda rows, count=0: marked.append(
+        count)
+    window.suggest_row.set_stars = lambda stars, count=0: None
+    window._apply_settings({"shield_count": 5})
+    assert marked and marked[-1] == 5, (
+        "the strip was not told the new count")
 
 
 def test_every_hero_measured_comes_back_with_its_standing(window):

@@ -2407,9 +2407,9 @@ def test_the_history_run_stars_the_suggestions(window, qapp):
 
     window.history_tab.report = _fake_run(
         {good: (40, 26), bad: (30, 9), thin: (2, 2)})
-    # A SHARE OF THE STRIP: enough for exactly one mark, which goes to
-    # the hero ranked best on pick rate and win rate together.
-    window._apply_settings({"heart_share": max(1, 100 // len(shown))})
+    # ONE MARK, which goes to the hero ranked best on pick rate and win
+    # rate together.
+    window._apply_settings({"heart_count": 1})
     _settle(qapp)
     starred = [t.hero_id for t in window.suggest_row.tiles if t.starred]
     assert starred == [good], starred
@@ -2439,8 +2439,8 @@ def test_the_stars_survive_the_strip_being_rebuilt(window, qapp):
     assert any(t.starred for t in window.suggest_row.tiles)
 
 
-def test_moving_the_share_redraws_the_marks(window, qapp):
-    """The setting is a share of the STRIP now, so it is a cut over a
+def test_moving_the_count_redraws_the_marks(window, qapp):
+    """The setting is a COUNT over the strip now, so it is a cut over a
     ranking that has not changed - the marks are drawn again rather than
     the run being measured again.
 
@@ -2455,15 +2455,15 @@ def test_moving_the_share_redraws_the_marks(window, qapp):
     shown = [t.hero_id for t in window.suggest_row.tiles]
     window.history_tab.report = _fake_run(
         {shown[0]: (40, 26), shown[1]: (30, 9), shown[2]: (20, 14)})
-    window._apply_settings({"heart_share": max(1, 100 // len(shown))})
+    window._apply_settings({"heart_count": 1})
     _settle(qapp)
     before = {t.hero_id for t in window.suggest_row.tiles if t.starred}
 
-    window._apply_settings({"heart_share": 100})
+    window._apply_settings({"heart_count": 3})
     _settle(qapp)
     after = {t.hero_id for t in window.suggest_row.tiles if t.starred}
     assert after > before, (before, after)
-    assert window.settings["heart_share"] == 100
+    assert window.settings["heart_count"] == 3
 
     # THE RANKS ARE PLACES, so they start at one and never skip: two
     # heroes share a place only when the criterion genuinely cannot

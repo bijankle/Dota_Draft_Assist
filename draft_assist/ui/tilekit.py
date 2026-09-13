@@ -323,24 +323,53 @@ STAR_POINTS = 5
 # A share of the tile's SHORT side, so it is the same size on a wide
 # strip tile and a narrow one, and capped so full-screening the window
 # does not put a badge the size of the portrait on it.
-# TWENTY PER CENT LARGER, at the user's request, and the reason is the
-# number now inside it: a rank has to be read, where the old mark only
-# had to be noticed. All three numbers move together so the mark keeps
-# its shape at every tile size.
-STAR_OF_TILE = 0.36
-# A FLOOR THAT CAN HOLD A DIGIT. Rendered and counted: at 13px the
-# mark's own outline takes most of its interior and the rank came out
-# as two stray dark pixels - drawn, unreadable, and worse than absent
-# because it looks like dirt on the portrait. 16 is the smallest that
-# leaves an 8px digit somewhere to be.
-STAR_MIN_PX = 16
-STAR_MAX_PX = 26
+# THE MARK'S SIZE. Twenty per cent up when the rank went inside it, and
+# ten per cent again now that the rank is legible-sized: a number has to
+# be read where a symbol only had to be noticed.
+STAR_OF_TILE = 0.40
+# A FLOOR THAT CAN HOLD A DIGIT. Rendered and counted: at 13px the mark's
+# own outline took most of its interior and the rank came out as two
+# stray dark pixels - drawn, unreadable, and worse than absent because it
+# looks like dirt on the portrait.
+STAR_MIN_PX = 18
+STAR_MAX_PX = 29
 STAR_INSET = 3
-# The rank, drawn in the middle. BLACK AND NOT BOLD, at the user's
+# THE RANK, drawn in the middle. BLACK AND NOT BOLD, at the user's
 # request - everything else on a tile is bold, so the one place that has
 # to read as a label rather than a figure is the place that is not.
-RANK_OF_MARK = 0.52
+#
+# A SHARE PER SHAPE, because their interiors are not the same. Measured
+# by filling each path and looking: the biggest square centred on the
+# heart's middle covers 56% of its box, the shield's 68%. One number for
+# both would either waste the shield or push the heart's digit through
+# the taper at the bottom.
+# A SHARE PER NUMBER OF DIGITS, and ONE pair for both shapes.
+#
+# Sized by rendering and counting the ink that escapes the outline, not
+# by eye: 0.66 puts a single digit at almost exactly TWICE the area it
+# had, which is what was asked for, and two digits need 0.58 to stay
+# inside. Rank 1 is the one that matters and it is a single digit, so
+# sizing per rank rather than globally is what buys the doubling - one
+# share big enough for "20" would have left "1" at 1.55x.
+#
+# The HEART sets both numbers because it is the tighter shape; a shield
+# could take 1.00 for a single digit. They share anyway, so that a 1 in
+# a heart and a 1 in a shield are the same size - the two marks are the
+# same box, and a reader comparing them should not see two conventions.
+RANK_SHARE = {1: 0.66, 2: 0.58}
 RANK_MIN_PX = 8
+# WHERE THE MIDDLE OF EACH SHAPE ACTUALLY IS, as a share of its box, and
+# neither is the box's own centre - "I want it smack bang in the middle
+# of the symbol". Computed by filling the path and taking the centre of
+# area: a heart is wide at the top and tapers to a point, so its mass
+# sits ABOVE the middle of the rectangle drawn round it.
+#
+# Both previous attempts were wrong and in OPPOSITE directions, which is
+# why this is measured rather than nudged: the heart was centred on the
+# box (0.500, so 5% low) and the shield on a guessed 0.82-height body
+# (0.410, so 7% high).
+HEART_CENTRE = 0.447
+SHIELD_CENTRE = 0.485
 
 
 def star_box(box: QRect, left: bool = False) -> QRect:
@@ -413,8 +442,9 @@ SHIELD = (("m", 0.50, 0.00),
           ("l", 0.04, 0.16))
 
 
-def _paint_rank(painter: QPainter, where: QRect, rank) -> None:
-    """The rank, centred in the mark. Nothing when there is no rank.
+def _paint_rank(painter: QPainter, where: QRect, rank,
+                centre: float) -> None:
+    """The rank, centred on the SHAPE. Nothing when there is no rank.
 
     WHY A NUMBER IS IN HERE AT ALL, at the user's request: "if the shield
     has a 1 in it, that means that out of all the suggested heroes this
@@ -423,16 +453,22 @@ def _paint_rank(painter: QPainter, where: QRect, rank) -> None:
     heroes actually on screen, which is the thing a reader is choosing
     between.
 
+    `centre` is where the shape's middle is, as a share of its box -
+    never 0.5, because neither of these shapes has its mass in the middle
+    of the rectangle drawn round it.
+
     Not stroked, unlike every other figure in this app. The halo exists
     to separate a number from whatever is behind it, and what is behind
     this one is a solid pink heart or a solid gold shield - the contrast
-    is already there, and an outline at this size closes up the
-    counters of an 8.
+    is already there, and an outline at this size closes up the counters
+    of an 8.
     """
     if rank is None:
         return
     text = str(rank)
-    size = max(RANK_MIN_PX, round(where.height() * RANK_OF_MARK))
+    # BY HOW MANY DIGITS IT HAS. See `RANK_SHARE`.
+    share = RANK_SHARE.get(len(text), RANK_SHARE[max(RANK_SHARE)])
+    size = max(RANK_MIN_PX, round(where.height() * share))
     font = QFont(painter.font())
     font.setPixelSize(size)
     font.setBold(False)
@@ -443,9 +479,10 @@ def _paint_rank(painter: QPainter, where: QRect, rank) -> None:
     # descent for glyphs this string does not have, so centring on it
     # sits a digit visibly high inside a small mark.
     ink = QFontMetricsF(font).tightBoundingRect(text)
+    middle_y = where.top() + where.height() * centre
     painter.drawText(
         QPointF(where.center().x() - ink.width() / 2.0 - ink.left(),
-                where.center().y() + ink.height() / 2.0), text)
+                middle_y + ink.height() / 2.0), text)
     painter.restore()
 
 
@@ -463,7 +500,7 @@ def paint_heart(painter: QPainter, box: QRect, rank=None) -> None:
     where = star_box(box)
     _stamp(painter, _shape(where, HEART), theme.HEART_PINK,
            where.width() * 0.22)
-    _paint_rank(painter, where, rank)
+    _paint_rank(painter, where, rank, HEART_CENTRE)
 
 
 def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
@@ -481,12 +518,7 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     where = star_box(box, left=True)
     _stamp(painter, _shape(where, SHIELD), FOCUS_COLOUR,
            where.width() * 0.20)
-    # A SHIELD'S MIDDLE IS NOT ITS BOX'S MIDDLE. The point at the bottom
-    # takes about a fifth of the height and carries no width to speak of,
-    # so a digit centred on the rectangle sits low and crowds the tip.
-    body = QRect(where.left(), where.top(), where.width(),
-                 round(where.height() * 0.82))
-    _paint_rank(painter, body, rank)
+    _paint_rank(painter, where, rank, SHIELD_CENTRE)
 
 
 def delta_text(delta: float, kind: str | None = None) -> str:

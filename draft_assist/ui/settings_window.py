@@ -143,62 +143,23 @@ class GeneralPage(QWidget):
 
         layout.addWidget(_rule())
         layout.addWidget(_heading("Marks on the suggested picks"))
-        # A SHARE OF THE STRIP, not a bar against the whole hero pool.
-        #
-        # These were three percentile floors - two for the heart, one for
-        # the shield - and at the user's request they are two shares of
-        # whatever is being suggested right now: "if I set it to 50% and
-        # I have 20 suggested heroes, that means I expect to have 10
-        # heroes with hearts and 10 heroes with shields."
-        #
-        # HIGHER IS LOOSER HERE, which is the opposite of what the bars
-        # it replaces did, so the wording has to carry it: 10% marks the
-        # best one in ten, 100% marks everything. The mark now also
-        # carries its RANK, so the number in a heart is what a bar could
-        # never say - not "this cleared a line" but "this is the best of
-        # the ones you are looking at".
-        hearts = QHBoxLayout()
-        hearts.addWidget(QLabel("Pink heart on the best"))
-        self.heart_share = CountBox(
-            ui_settings.clamp_pct(settings.get("heart_share", 30), 30),
-            0, 100)
-        self.heart_share.setSuffix("%")
-        self.heart_share.valueChanged.connect(self.changed)
-        hearts.addWidget(self.heart_share)
-        hearts.addWidget(QLabel("of the suggestions"))
-        hearts.addStretch(1)
-        layout.addLayout(hearts)
+        # THE COUNTS LIVE ON THE STRIP, not here, at the user's request:
+        # "it makes sense to have the number of shields / hearts setting
+        # to be right next to the quantity dropdown for number of hero
+        # suggestions." Which is the rule the suggestion count itself
+        # already followed - a number you tune by looking at the result
+        # belongs beside the result - so they MOVED rather than being
+        # repeated. What is left here is the one thing the strip cannot
+        # show: whether there is any data behind the shield at all.
         layout.addWidget(_note(
-            "Ranked on your pick rate and win rate together, from the "
-            "last History run, so it follows whichever account is loaded "
-            "there. The number inside the heart is the rank: 1 is the "
-            "hero you play most and win most on, of the ones suggested. "
-            "Heroes with fewer than two games cannot be ranked, so a "
-            "thin history gives fewer marks than the share asks for."))
-
-        shield = QHBoxLayout()
-        shield.addWidget(QLabel("Gold shield on the hardest"))
-        self.shield_share = CountBox(
-            ui_settings.clamp_pct(settings.get("shield_share", 30), 30),
-            0, 100)
-        self.shield_share.setSuffix("%")
-        self.shield_share.valueChanged.connect(self.changed)
-        shield.addWidget(self.shield_share)
-        shield.addWidget(QLabel("of the suggestions to counter"))
-        shield.addStretch(1)
-        layout.addLayout(shield)
-        layout.addWidget(_note(
-            "A property of the hero rather than of you, read out of the "
-            "ranked dataset, so it appears on heroes you have never "
-            "picked. The number inside is the rank: 1 is the hardest to "
-            "counter of the ones suggested. Needs hero statistics "
-            "downloaded; see Hero Counters in the History tab for the "
-            "same figure."))
-        # WHAT THE DATA BEHIND THE SHIELD IS DOING, live, under the
-        # control. "No shields" has four causes and one appearance - no
-        # statistics, a dataset with no matrix, nothing measured, and the
-        # ordinary case - and this mark has already shipped broken once
-        # looking exactly like the last of them.
+            "How many suggestions carry a heart or a shield is set on "
+            "the Draft tab, beside the two marks themselves. The number "
+            "inside each one is its rank among the suggestions, so 1 is "
+            "the best of them."))
+        # WHAT THE DATA BEHIND THE SHIELD IS DOING. "No shields" has four
+        # causes and one appearance - no statistics, a dataset with no
+        # matrix, nothing measured, and the ordinary case - and this mark
+        # has already shipped broken once looking exactly like the last.
         self.shield_note = _note("")
         layout.addWidget(self.shield_note)
         layout.addStretch(1)
@@ -208,12 +169,6 @@ class GeneralPage(QWidget):
         out["pair_source"] = self.pair_source()
         out["data_reminder_days"] = ui_settings.clamp_days(
             self.reminder_days.value(), ui_settings.DATA_REMINDER_DAYS)
-        # What the box shows IS what is stored: the share of the strip
-        # that gets a mark.
-        out["heart_share"] = ui_settings.clamp_pct(
-            self.heart_share.value(), 30)
-        out["shield_share"] = ui_settings.clamp_pct(
-            self.shield_share.value(), 30)
         return out
 
     def pair_source(self) -> str:

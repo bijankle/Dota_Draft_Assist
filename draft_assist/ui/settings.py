@@ -80,8 +80,16 @@ DEFAULTS = {
     # 30% of all of them", the new one is "is it in the best few of the
     # ones I am looking at" - and only the second moves as the board
     # fills and the suggestions change.
-    "heart_share": 30,
-    "shield_share": 30,
+    # A COUNT, not a share, at the user's request - "I think a number
+    # makes more sense... the number should be a QTY". Capped at however
+    # many heroes are actually being suggested, since a mark that cannot
+    # be given to anybody is a setting that does nothing.
+    #
+    # THE KEYS CHANGE AGAIN, for the reason they changed last time: a
+    # stored 30 meant "30% of the strip" and would now mean "thirty
+    # heroes", which is more than the strip can ever hold.
+    "heart_count": 3,
+    "shield_count": 3,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather
