@@ -397,6 +397,18 @@ def measure(path: Path, into: Path, art: dict, loud=False,
         "y_of_window": round(top / height, 5),
         "y_of_hudbox": round(top / (span / (16 / 9)), 5) if span else None,
         "slot_h_of_window": round(slot_h / height, 5),
+        "slot_h_of_hudbox": round(slot_h / (span / (16 / 9)), 5)
+        if span else None,
+        # THE THIRD MODEL, and the only one that hurts. The two above
+        # differ by the bar's own fraction of the slack - 4px for the
+        # top edge on 1920x1200 - which is nothing. If Dota instead
+        # LETTERBOXES a 16:9 HUD into a taller display, the bar starts
+        # half the slack down, which is 56px there: most of a portrait,
+        # and the boxes miss. Measured, because guessing which of these
+        # three is right is what CLAUDE.md says not to do.
+        "y_of_hudbox_centred": round(
+            (top - (height - span / (16 / 9)) / 2) / (span / (16 / 9)), 5)
+        if span else None,
         "boxes": rects,
     })
     draw(frame, rects, path, into)
@@ -666,6 +678,100 @@ def _consensus(good: list) -> None:
         print("  frames furthest from the consensus - open these first:")
         for off, name in bad[:6]:
             print(f"    {off:.4f}  {name}")
+    _vertical(good)
+
+
+# 16:9 to four decimal places. A shot at this aspect cannot vote on the
+# question below, because there the HUD box IS the window and the two
+# candidate readings are arithmetically the same number.
+SIXTEEN_NINE = 16 / 9
+ASPECT_SLACK = 0.01
+
+
+def _vertical(good: list) -> None:
+    """WHICH WAY IS `y` MEASURED? The one thing about the layout that has
+    never been settled, and the only thing standing between this app and
+    the resolutions it has not been used at.
+
+    `SlotRect.to_pixels` reads `y` and `slot_h` as fractions of the
+    WINDOW height. Horizontally the HUD is known to pillarbox - measured
+    on a real 3440x1440 client - and if Dota scales its HUD by WIDTH,
+    which pillarboxing implies, then the vertical should be a fraction
+    of the HUD BOX's height instead. On 16:9 the two are the same number
+    and nothing can tell them apart. On 1920x1200 they are 60px apart,
+    which is most of a portrait.
+
+    CLAUDE.md says to settle it with a real frame rather than by
+    reasoning, and these screenshots ARE real frames at nine different
+    aspects. The bar is one constant, so whichever reading is the same
+    across aspects is the one Dota uses - and the loser will be spread
+    by exactly the letterboxing it failed to account for.
+
+    THREE candidates, not two, and the third is the one that matters.
+    Window-height and top-hung-HUD differ only by the bar's own fraction
+    of the vertical slack - 4px for the top edge on 1920x1200, which
+    nobody would notice. A LETTERBOXED HUD starts half the slack down,
+    56px there, which misses the portraits outright.
+
+    It REFUSES rather than guesses when the sample cannot answer: every
+    shot at 16:9 makes all three readings identical, so a verdict from
+    that set would be an arithmetic identity wearing the clothes of a
+    measurement. So does a display WIDER than 16:9 - there the HUD box
+    is the full height and the slack is nought - which is why the user's
+    own 3440x1440 has never been able to settle this.
+    """
+    pairs = (
+        ("the WINDOW's height", "y_of_window", "slot_h_of_window"),
+        ("a HUD BOX hung at the TOP", "y_of_hudbox", "slot_h_of_hudbox"),
+        ("a HUD BOX CENTRED (letterboxed)", "y_of_hudbox_centred",
+         "slot_h_of_hudbox"),
+    )
+    usable = [r for r in good
+              if all(r.get(k) is not None
+                     for _label, *ks in pairs for k in ks)]
+    if len(usable) < 2:
+        return
+    print("\nIS THE BAR'S TOP A FRACTION OF THE WINDOW, OR OF THE HUD BOX?")
+    # TALLER THAN 16:9 IS THE ONLY THING THAT VOTES. At 16:9 the HUD box
+    # is the window; WIDER than 16:9 it is pillarboxed horizontally and
+    # still the full height, so the vertical slack is nought there too
+    # and all three readings collapse to one number. That is exactly why
+    # the user's own 3440x1440 has never been able to settle this, and
+    # why a set of ultrawide shots must be refused rather than answered.
+    taller = [r for r in usable
+              if r["aspect"] < SIXTEEN_NINE - ASPECT_SLACK]
+    if not taller:
+        print("  UNDECIDABLE from this set: no picture is TALLER than "
+              "16:9, and only those can tell the readings apart - at "
+              "16:9 and wider the HUD box is the full height of the "
+              "window, so all three are the same number by arithmetic.")
+        print("  Add one shot at 16:10 (1920x1200, 1680x1050, 1440x900) "
+              "or 4:3 (1600x1200, 1280x960) and run this again.")
+        return
+    spreads = {}
+    for label, y_key, h_key in pairs:
+        worst = 0.0
+        for key in (y_key, h_key):
+            column = np.array([r[key] for r in usable], dtype=float)
+            worst = max(worst, float(np.max(column) - np.min(column)))
+        spreads[label] = worst
+        print(f"  measured against {label:<22} spread {worst:.5f}")
+    order = sorted(spreads, key=spreads.get)
+    best, runner_up = order[0], order[1]
+    print(f"  {len(taller)} of {len(usable)} pictures are taller than "
+          "16:9, so the readings are genuinely different here.")
+    if spreads[runner_up] < 2 * spreads[best] or spreads[best] > 0.02:
+        print("  NO VERDICT: the leaders are too close to separate, or the "
+              "best of them is still loose. Do not change anything on this.")
+        return
+    print(f"  -> the bar is measured against {best}.")
+    if best == "the WINDOW's height":
+        print("     That is what `SlotRect.to_pixels` already does, so "
+              "nothing needs changing and every resolution is covered.")
+    else:
+        print("     That is NOT what `SlotRect.to_pixels` does today. "
+              "Changing it silently invalidates every saved "
+              "calibration_local.json, so read CLAUDE.md first.")
 
 
 def main() -> None:

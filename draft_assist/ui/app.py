@@ -464,10 +464,20 @@ class MainWindow(QMainWindow):
         # "debug" under Settings, and this opens it directly on that tab.
         self._act(help_menu, "&Debug view…",
                   lambda: self._open_settings("Debug"))
-        self._act(help_menu, "&Check hero recognition…",
+        # ONE SUBMENU, because three siblings that all say "check what
+        # the app is seeing" are one idea said three times - the same
+        # argument that collapsed Update / Fetch / Fetch. Help is capped
+        # at seven items deliberately ("the menu bar stays small"), and
+        # the third of these was what took it to eight. The search box
+        # reads the COMMAND LIST rather than the menu, so nesting them
+        # costs nothing in findability.
+        checks = help_menu.addMenu("&Recognition checks")
+        self._act(checks, "&Check hero recognition…",
                   self._check_recognition)
-        self._act(help_menu, "&Fix recognition thresholds…",
+        self._act(checks, "&Fix recognition thresholds…",
                   lambda: self.run_task("fix_recognition"))
+        self._act(checks, "Check other screen &resolutions…",
+                  self._check_resolutions)
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.
@@ -3099,6 +3109,57 @@ class MainWindow(QMainWindow):
             f"{dialog.summary.text()}  —  copied to the clipboard; paste "
             f"it into the chat (Ctrl+V).{where}")
         self._say("Recognition report copied — paste it to Claude", 8000)
+
+    SHOTS = Path.home() / "Pictures" / "Screenshots"
+
+    def _check_resolutions(self) -> None:
+        """Does the layout read the same at every resolution?
+
+        It is the same shape as the recognition check next to it and for
+        the same reason: everything here was one command, and a command
+        prompt is the wrong place to keep a measurement of the app's own
+        eyesight. Point it at a folder of DRAFT screenshots - one per
+        resolution, which is what the 23 already taken are - and it
+        finds the ten portraits in each and reports whether the numbers
+        agree.
+
+        THE FOLDER IS ASKED FOR, not guessed at, because getting it
+        wrong is a run that finds nothing and reads as the tool being
+        broken. Windows puts screenshots in Pictures\\Screenshots, so
+        that is where the picker opens.
+        """
+        start = self.SHOTS if self.SHOTS.is_dir() else Path.home()
+        folder = QFileDialog.getExistingDirectory(
+            self, "Folder of draft screenshots, one per resolution",
+            str(start))
+        if not folder:
+            return
+        task = TASKS["check_resolutions"].with_argument(folder)
+        dialog = TaskDialog(task, self)
+        dialog.worker.line.connect(self._recognition_progress)
+        dialog.finished.connect(
+            lambda _code, box=dialog: self._resolutions_finished(box))
+        dialog.start()
+
+    def _resolutions_finished(self, dialog) -> None:
+        """Copy it, and say where the pictures are.
+
+        Same rule as the recognition check: the dialog STAYS UP with the
+        whole transcript in it - "I don't trust that the copy and paste
+        works unless I can see the console in the app" - and this only
+        adds the line saying what to do next.
+        """
+        report = dialog.log.toPlainText().strip()
+        if not report:
+            return
+        QApplication.clipboard().setText(report)
+        where = ""
+        if (DEBUG_OUT / "found").is_dir():
+            where = "  Pictures are in debug_out\\found."
+        dialog.summary.setText(
+            f"{dialog.summary.text()}  —  copied to the clipboard; paste "
+            f"it into the chat (Ctrl+V).{where}")
+        self._say("Resolution report copied — paste it to Claude", 8000)
 
     def _open_settings(self, tab: str = "") -> None:
         """Show the settings window, building it the first time.

@@ -140,6 +140,24 @@ TASKS = {
               "and margin the heroes in it actually needed.",
         reload_after=True,
     ),
+    # THE RESOLUTION QUESTION, and it is a MEASUREMENT rather than a
+    # setting. The layout is fractions of the 16:9 HUD box, so every 16:9
+    # resolution shares one calibration and a wider one is handled by
+    # `hud_box` - confirmed on a real 3440x1440 client. What has never
+    # been settled is the VERTICAL on a display TALLER than 16:9, where
+    # `y` being a fraction of the window and a fraction of the HUD box
+    # are 60px apart on 1920x1200. CLAUDE.md says to settle it with real
+    # frames rather than by reasoning, and the screenshots the user
+    # already took - one per resolution - are exactly that.
+    "check_resolutions": Task(
+        key="check_resolutions",
+        title="Check other screen resolutions",
+        steps=[[PY, "tools/find_portraits.py", "{arg}"]],
+        blurb="Finds the ten portraits in a folder of draft screenshots "
+              "and reports whether the layout reads the same at every "
+              "resolution in it.",
+        cancellable=True,
+    ),
     "update_app": Task(
         key="update_app",
         title="Update application",
