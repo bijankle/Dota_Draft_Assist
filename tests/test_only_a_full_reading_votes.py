@@ -31,7 +31,7 @@ def frame(name, w, h, seen, top, slot_h, rad, dire, slot_w, pitch):
     hud_h = span / (16 / 9)
     return {
         "file": name, "w": w, "h": h, "aspect": round(w / h, 4),
-        "heroes": seen,
+        "heroes": seen, "bar_top_px": top, "slot_h_px": slot_h,
         "x_of_hudbox": round(rad / span, 5),
         "slot_w_of_hudbox": round(slot_w / span, 5),
         "pitch_of_hudbox": round(pitch / span, 5),
@@ -95,7 +95,7 @@ def test_the_letterboxed_model_is_struck_out_as_impossible(capsys):
 def test_the_window_reading_is_not_struck_out(capsys):
     printed = say(FULL + PARTIAL, capsys)
     window = [ln for ln in printed.splitlines()
-              if "WINDOW's height" in ln and "spread" in ln]
+              if "WINDOW's height" in ln and "height " in ln]
     assert window and "IMPOSSIBLE" not in window[0], window
 
 
@@ -125,3 +125,39 @@ def test_every_full_frame_puts_the_bar_inside_the_window(row):
 @pytest.mark.parametrize("row", FULL)
 def test_and_the_letterboxed_model_puts_it_outside_the_box(row):
     assert row["y_of_hudbox_centred"] < 0
+
+
+# --- and the two vertical quantities are reported apart ---------------
+
+def test_the_top_and_the_height_are_printed_separately(capsys):
+    """Folded together with a max(), the run printed a verdict telling
+    the reader to change `SlotRect.to_pixels` - on evidence that was
+    entirely the height's."""
+    printed = say(FULL + PARTIAL, capsys)
+    window = [ln for ln in printed.splitlines() if "WINDOW's height" in ln]
+    assert window and "top " in window[0] and "height " in window[0]
+
+
+def test_a_bar_top_of_a_few_pixels_is_called_out_as_undecidable(capsys):
+    """4 to 7 pixels: one pixel of rounding is 14% to 25% of it."""
+    printed = say(FULL + PARTIAL, capsys)
+    assert "PIXELS" in printed
+    assert "the HEIGHT decides this" in printed
+
+
+def test_the_height_is_what_decides_it_on_these_frames(capsys):
+    """Measured: the portrait height against the HUD box spreads 0.0044
+    where against the window it spreads 0.0137 - three times tighter.
+    The bar top says the opposite and is too coarse to be heard."""
+    printed = say(FULL + PARTIAL, capsys)
+    assert "HUD BOX hung at the TOP" in printed
+    verdict = [ln for ln in printed.splitlines() if "-> the bar" in ln]
+    assert verdict, printed
+    assert "HUD BOX hung at the TOP" in verdict[0]
+
+
+def test_a_coarse_top_does_not_stop_the_impossible_model_being_struck():
+    """Striking out a model is about SIGN, not about spread, so it must
+    survive the height taking over the decision."""
+    for row in FULL:
+        assert row["y_of_hudbox_centred"] < 0

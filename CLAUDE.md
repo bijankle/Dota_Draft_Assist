@@ -3842,6 +3842,30 @@ credentials, and put the account at risk. Do not go there.
   rather than guessing at numbers. Stacked, a fit half a portrait out is
   the one row that does not look like the others - which is the check
   the closing advice has been asking for all along.
+  **AND IT WORKED THE FIRST TIME IT RAN.** Ten rows, and the user read
+  them in one look: "1440 x 900 failed and so did 800 x 600 - the rest
+  seem fine". Those are EXACTLY the two frames `_consensus` had already
+  set aside for having located five portraits rather than ten, so the
+  rule and the eye agree - which is the first time anything in this
+  exercise has been confirmed from the pixels rather than argued from a
+  table. On that run the horizontal came out CONSISTENT on all three
+  measures for the first time: x 0.0099, slot width 0.0057, pitch
+  0.0019.
+  **THE BAR'S TOP AND THE PORTRAIT'S HEIGHT ARE REPORTED APART, because
+  only one of them can decide anything** (`TOP_IS_COARSE`). Folded
+  together with a `max()`, the verdict printed "the bar is measured
+  against a HUD BOX hung at the TOP - that is NOT what
+  `SlotRect.to_pixels` does today", which is an instruction to change
+  the app, on evidence that was entirely the HEIGHT's: the bar's top is
+  4 to 7 PIXELS down on these frames, so one pixel of rounding is 14%
+  to 25% of the whole reading and it cannot separate models that differ
+  by less. Measured apart: the top spreads 0.0019 against the window
+  and 0.0031 against the HUD box (too coarse to hear), while the
+  portrait HEIGHT spreads 0.0137 against the window and **0.0044
+  against the HUD box** - three times tighter, on a quantity of 46 to
+  74 pixels where rounding is under 2%. So the height is a fraction of
+  the HUD BOX and the top is undecided, and the tool now says which of
+  the two is talking.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and

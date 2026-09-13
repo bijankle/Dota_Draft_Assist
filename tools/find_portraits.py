@@ -1184,6 +1184,11 @@ def _consensus(good: list) -> None:
 # candidate readings are arithmetically the same number.
 SIXTEEN_NINE = 16 / 9
 ASPECT_SLACK = 0.01
+# A bar top measured in single figures of pixels cannot separate two
+# models: rounding alone moves it further than they differ. Measured -
+# on the ten-of-fourteen run the tops ran 4 to 7 pixels while the
+# portrait heights ran 46 to 74.
+TOP_IS_COARSE = 20
 
 
 def _vertical(good: list) -> None:
@@ -1246,13 +1251,27 @@ def _vertical(good: list) -> None:
         print("  Add one shot at 16:10 (1920x1200, 1680x1050, 1440x900) "
               "or 4:3 (1600x1200, 1280x960) and run this again.")
         return
+    # THE TWO QUANTITIES ARE REPORTED APART, because only one of them
+    # can decide anything. The bar's TOP is 4 to 7 pixels down on these
+    # frames, so a single pixel of rounding is 14% to 25% of the whole
+    # reading and it cannot separate two models that differ by less
+    # than that. The portrait's HEIGHT is 46 to 74 pixels, where
+    # rounding is under 2%. Folding them together with a max() hid
+    # which one was talking - and the run that did so printed a verdict
+    # telling the reader to change `SlotRect.to_pixels`, on evidence
+    # that was entirely the height's.
+    tops = [r["bar_top_px"] for r in usable if r.get("bar_top_px")]
+    coarse = tops and max(tops) < TOP_IS_COARSE
     spreads, impossible = {}, {}
     for label, y_key, h_key in pairs:
-        worst = 0.0
-        for key in (y_key, h_key):
+        parts = {}
+        for what, key in (("top", y_key), ("height", h_key)):
             column = np.array([r[key] for r in usable], dtype=float)
-            worst = max(worst, float(np.max(column) - np.min(column)))
-        spreads[label] = worst
+            parts[what] = float(np.max(column) - np.min(column))
+        # The DECIDING spread is the height's when the top is too few
+        # pixels to mean anything, and the worse of the two otherwise.
+        spreads[label] = (parts["height"] if coarse
+                          else max(parts.values()))
         # A READING THAT PUTS THE BAR ABOVE THE TOP OF THE HUD BOX IS
         # NOT A LOOSE MEASUREMENT, IT IS A REFUTED MODEL. A negative y
         # says the portraits are outside the box the model claims Dota
@@ -1264,11 +1283,16 @@ def _vertical(good: list) -> None:
                                     dtype=float)))
         if low < -0.005:
             impossible[label] = low
-        print(f"  measured against {label:<22} spread {worst:.5f}"
+        print(f"  measured against {label:<22} "
+              f"top {parts['top']:.5f}  height {parts['height']:.5f}"
               + (f"   IMPOSSIBLE: puts the bar {abs(low):.4f} ABOVE the "
                  f"top of that box" if low < -0.005 else ""))
     print(f"  {len(taller)} of {len(usable)} pictures are taller than "
           "16:9, so the readings are genuinely different here.")
+    if coarse:
+        print(f"  The bar's top is only {min(tops)}-{max(tops)} PIXELS "
+              f"down, so one pixel of rounding is a large share of it: "
+              f"the HEIGHT decides this, not the top.")
     order = [label for label in sorted(spreads, key=spreads.get)
              if label not in impossible]
     if not order:
