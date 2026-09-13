@@ -78,9 +78,10 @@ def test_nothing_matching_at_all_names_the_peak_and_the_floor():
 def test_a_row_that_was_refused_is_reported_as_such_not_as_nothing_seen():
     diag: dict = {}
     fp._diagnose(diag, (0.71, 0.03, 0.93, 29, 31),
-                 (7, 0.03, 0.93, 29, 31, 0.71, "no gap between two banks"),
+                 ((True, -3, 0.71), 7, 0.03, 0.93, 29, 31, 0.71,
+                  "no gap between two banks"),
                  "the size sweep")
-    assert "best row held 7" in diag["why"]
+    assert "NEAREST MISS was 7" in diag["why"]
     assert "no gap between two banks" in diag["why"]
     # And it must NOT say the frame holds no portraits, which is the
     # sentence every one of these used to get.
@@ -90,8 +91,8 @@ def test_a_row_that_was_refused_is_reported_as_such_not_as_nothing_seen():
 def test_a_peak_at_the_end_of_the_range_says_the_range_may_be_the_limit():
     diag: dict = {}
     fp._diagnose(diag, (0.66, fp.WIDTH_FRACS[-1], 0.93, 58, 62),
-                 (6, fp.WIDTH_FRACS[-1], 0.93, 58, 62, 0.66, "too few"),
-                 "the size sweep")
+                 ((True, -4, 0.66), 6, fp.WIDTH_FRACS[-1], 0.93, 58, 62,
+                  0.66, "too few"), "the size sweep")
     assert "END of the range" in diag["why"]
     assert f"{fp.WIDTH_FRACS[-1]:.3f}" in diag["why"]
 
@@ -100,14 +101,16 @@ def test_a_peak_in_the_middle_of_the_range_makes_no_such_claim():
     middle = fp.WIDTH_FRACS[len(fp.WIDTH_FRACS) // 2]
     diag: dict = {}
     fp._diagnose(diag, (0.66, middle, 0.93, 40, 43),
-                 (6, middle, 0.93, 40, 43, 0.66, "too few"), "the size sweep")
+                 ((True, -4, 0.66), 6, middle, 0.93, 40, 43, 0.66,
+                  "too few"), "the size sweep")
     assert "END of the range" not in diag["why"]
 
 
 def test_the_refined_re_read_failing_is_its_own_answer():
     diag: dict = {}
     fp._diagnose(diag, (0.9, 0.05, 0.93, 96, 103),
-                 (4, 0.05, 0.93, 96, 103, 0.9, "only 4 in a row"),
+                 ((True, -6, 0.9), 4, 0.05, 0.93, 96, 103, 0.9,
+                  "only 4 in a row"),
                  "the re-read at the refined size (101x98)")
     assert "101x98" in diag["why"]
 
@@ -286,3 +289,25 @@ def test_a_file_that_is_not_an_image_has_no_size(tmp_path):
     bad = tmp_path / "notes.png"
     bad.write_text("this is not a picture", encoding="utf-8")
     assert fp.size_of(bad) is None
+
+
+# --- the swept range has to contain what the tool itself measures -----
+
+def test_the_swept_widths_reach_past_every_portrait_yet_measured():
+    """Two of the four real screenshots that located measured a portrait
+    WIDER than the old 0.060 ceiling — 0.0645 and 0.0617 of the window.
+    They arrived there only because `_refine` walks past the grid, from
+    a grid point already beyond the peak. The grid has to contain them."""
+    measured = (0.0645, 0.0617, 0.0563, 0.0362)
+    assert max(fp.WIDTH_FRACS) > max(measured), (
+        f"ceiling {max(fp.WIDTH_FRACS)} is under a measured "
+        f"{max(measured)}")
+    assert min(fp.WIDTH_FRACS) <= min(measured)
+
+
+def test_the_step_stays_fine_enough_for_a_scale_sensitive_matcher():
+    """0.99 at the true size, 0.12 four pixels out — a coarser grid can
+    step over the peak, so widening the range must not widen the step."""
+    steps = {round(b - a, 4)
+             for a, b in zip(fp.WIDTH_FRACS, fp.WIDTH_FRACS[1:])}
+    assert steps == {0.002}

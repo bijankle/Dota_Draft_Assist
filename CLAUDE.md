@@ -3778,6 +3778,34 @@ credentials, and put the account at risk. Do not go there.
   resolution needs measuring for its own sake; what is unmeasured is a
   single unknown in that formula, where the vertical slack goes on a
   tall display. One tall frame settles it and the rest are corroboration.
+  **THE PICK BAR IS NOT THE BIGGEST ROW ON THE SCREEN** (`_rows`,
+  `best_bar`, `miss_rank`). `_one_row` returned the MOST POPULOUS row
+  and `bar_shape` was only ever handed that one - so the shape test
+  could reject a bad row and never promote the right one, which is the
+  opposite of what its own docstring says it is for ("ranking by most
+  distinct heroes is what lost to the hero grid; SHAPE can tell them
+  apart"). Every anchor row is offered now and the caller picks by
+  shape.
+  **AND THE DIAGNOSIS WAS REPORTING NOISE AS A HERO GRID.** The sweep
+  tries boxes from 0.014 of the width up, and a 26x20 box matches
+  texture everywhere, so the most populous row over ALL sizes is always
+  one of the smallest boxes. Ten real screenshots therefore reported
+  "19/20/21/22 portraits in one row - a roster row, not a pick bar",
+  which reads as a statement about the picture and was a statement about
+  the smallest box in our own grid; it sent a whole round of analysis
+  down a blind alley before the arithmetic caught it (26x20 pixels,
+  where a portrait at 1920 is about 101). `miss_rank` reports the
+  NEAREST MISS instead - inside the count gate first, then nearest ten,
+  then by mean score - so the line reads "8 at 96x51, split 2/6", which
+  is a lead.
+  **AND THE SWEPT CEILING WAS BELOW THE PORTRAITS IT FOUND.** Two of the
+  four screenshots that located measured 0.0645 and 0.0617 of the window
+  against a `WIDTH_FRACS` ceiling of 0.0600; they arrived there only
+  because `_refine` walks a pixel at a time after the grid, starting
+  from a grid point already past the peak. The range runs to 0.072 now,
+  at the same 0.002 step - widening the step to keep the count would
+  step over the peak, since matching is 0.99 at the true size and 0.12
+  four pixels out.
   **AND THE LOG ONLY FOLLOWS THE TAIL WHEN IT IS ALREADY AT THE TAIL**
   — "I should be able to manually copy it". Appending keeps a selection
   where replacing the document would drop it (the `set_log` lesson), and

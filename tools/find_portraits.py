@@ -83,7 +83,19 @@ TOP_REACH = 0.18
 # client the ten pick-bar portraits are about 90px wide - 0.026 of the
 # window - and the old range ran to 0.114, which is 392px. That slack is
 # what let the sweep report a "portrait" 343px wide starting at x=-26.
-WIDTH_FRACS = tuple(round(0.014 + 0.002 * i, 4) for i in range(24))
+# THE CEILING WAS BELOW THE THINGS IT FOUND. Of the four real
+# screenshots that located, TWO measured a portrait WIDER than the top
+# of this range - 0.0645 and 0.0617 of the window against a ceiling of
+# 0.0600 - and they only got there because `_refine` walks a pixel at a
+# time AFTER the grid, from a grid point that was already past the peak.
+# A frame needing more than a pixel or two of that walk is lost outright,
+# and the app's own search (`autocal.WIDTHS`) goes to 0.082 of the HUD
+# span, which on a display taller than 16:9 IS the window. The step
+# stays at 0.002 rather than widening to keep the count: matching is
+# sharply scale-sensitive (0.99 at the true size, 0.12 four pixels out),
+# so a coarser grid can step over the peak entirely. The cost is 30
+# passes instead of 24 - about a quarter more time per picture.
+WIDTH_FRACS = tuple(round(0.014 + 0.002 * i, 4) for i in range(30))
 # AND THE BAR'S PORTRAITS ARE NOT 16:9. Valve's base art is 256x144, but
 # the tile the HUD draws in the pick bar is close to SQUARE - measured
 # at roughly 90x97. Assuming the source aspect searched for a box twice
@@ -224,26 +236,31 @@ def load_art() -> dict[int, "np.ndarray"]:
     return out
 
 
-def _one_row(hits, apart: int):
-    """The single best ROW of hits, strongest first, one per position.
+def _rows(hits, apart: int):
+    """EVERY candidate row of hits, most populous first.
 
-    Two constraints, and both are facts about a pick bar rather than
-    tuning. Ten portraits stand on ONE line, so hits at different heights
-    are not ten heroes, they are one hero matched well and nine matched
-    somewhere else; the row carrying the most distinct heroes wins. And
-    two heroes cannot occupy the same place, so a second template landing
-    on one already kept is that same portrait matched by the wrong hero -
-    which is the normal case when 126 templates are swept over a frame
-    holding ten of them.
+    THE PICK BAR IS NOT THE BIGGEST ROW ON A HERO SELECTION SCREEN, and
+    keeping only the biggest is what threw ten of fourteen real
+    screenshots away. Each reported "portraits matched but not in the
+    shape of a pick bar: the best row held 19/20/21/22 ... a roster row,
+    not a pick bar", at peaks of 0.89 to 0.93 — the tool found the hero
+    GRID, said so correctly, and gave up on the picture without ever
+    looking at the bar standing above it.
 
-    An earlier version suppressed on x OR y, which let a hit at the same
-    x and a different y through as a separate hero and reported thirteen
-    portraits in a bar of ten.
+    `bar_shape` was written for exactly this — "ranking by most distinct
+    heroes is what lost to the hero grid ... SHAPE can tell them apart"
+    — and it was applied one step too late: the row was already chosen
+    by COUNT before the shape was consulted, so the shape test could
+    only ever reject the winner, never promote the right one.
+
+    So the anchors are all returned and the caller picks by shape. Rows
+    are de-duplicated by their x positions, since two anchors a pixel
+    apart describe one row.
     """
     if not hits:
         return []
     tolerance = max(2, int(apart * 0.15))
-    best = None
+    out, seen = [], set()
     for anchor in sorted({hit[2] for hit in hits}):
         kept = []
         for hit in sorted(hits, reverse=True):
@@ -251,10 +268,47 @@ def _one_row(hits, apart: int):
                 continue
             if all(abs(hit[1] - other[1]) >= apart * 0.7 for other in kept):
                 kept.append(hit)
-        rank = (len(kept), sum(hit[0] for hit in kept))
-        if best is None or rank > best[0]:
-            best = (rank, kept)
-    return best[1] if best else []
+        if not kept:
+            continue
+        key = tuple(sorted(hit[1] for hit in kept))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(kept)
+    out.sort(key=lambda row: (len(row), sum(hit[0] for hit in row)),
+             reverse=True)
+    return out
+
+
+def best_bar(hits, apart: int):
+    """The best BAR-SHAPED row and its rank, or None. See `_rows`."""
+    best = None
+    for row in _rows(hits, apart):
+        rank = bar_shape(row, apart)
+        if rank is not None and (best is None or rank > best[0]):
+            best = (rank, row)
+    return best
+
+
+def _one_row(hits, apart: int):
+    """The single most populous row. See `_rows`.
+
+    Kept for the DIAGNOSIS - "the best row held 22" is a fact about the
+    picture worth printing - and never for choosing the bar.
+
+    Two constraints inside a row, and both are facts about a pick bar
+    rather than tuning. Ten portraits stand on ONE line, so hits at
+    different heights are not ten heroes. And two heroes cannot occupy
+    the same place, so a second template landing on one already kept is
+    that same portrait matched by the wrong hero - the normal case when
+    126 templates are swept over a frame holding ten of them.
+
+    An earlier version suppressed on x OR y, which let a hit at the same
+    x and a different y through as a separate hero and reported thirteen
+    portraits in a bar of ten.
+    """
+    rows = _rows(hits, apart)
+    return rows[0] if rows else []
 
 
 def _template(art, inset: float = INSET):
@@ -466,7 +520,32 @@ def print_size_map(cells: list) -> None:
           + ("(close)." if close else "in height - NOT CLOSE."))
 
 
-def _diagnose(diag, peak, widest, stage: str) -> None:
+def miss_rank(row):
+    """How close a row came to being a PICK BAR, for the diagnosis.
+
+    THE BIGGEST ROW IS NOT THE NEAREST MISS, and reporting it as one
+    sent this analysis down a blind alley. The sweep tries boxes from
+    0.014 of the width upward, and a 26x20 box matches texture
+    everywhere — so the most populous row over all sizes is always one
+    of the smallest boxes, carrying twenty-odd hits that are not
+    portraits at all. Ten real screenshots reported exactly that, and
+    `why_not_a_bar` dutifully called each one "a roster row, not a pick
+    bar", which reads as a statement about the PICTURE and was a
+    statement about the smallest box in our own grid.
+
+    So the diagnosis reports the row that came CLOSEST to being a bar:
+    inside the count gate first, then near ten, then by mean score. On
+    the same run that is the difference between "22 portraits in one row
+    at 26x20" and "8 at 96x51, split 2/6" — the second is a lead and the
+    first is noise wearing a number.
+    """
+    count = len(row)
+    inside = MIN_HITS <= count <= MOST_HITS
+    mean = sum(hit[0] for hit in row) / max(1, count)
+    return (inside, -abs(count - 2 * autocal.TEAM_SIZE), mean)
+
+
+def _diagnose(diag, peak, nearest, stage: str) -> None:
     """Say why the hunt came back with nothing, with the numbers.
 
     THE TOOL SPENT A MINUTE ON THE PICTURE AND HAS TO SAY WHAT IT SAW.
@@ -486,20 +565,21 @@ def _diagnose(diag, peak, widest, stage: str) -> None:
     diag.update({"stage": stage, "peak": round(score, 3), "peak_frac": frac,
                  "peak_aspect": round(aspect, 3),
                  "peak_box": [box_w, box_h]})
-    if widest is None or score < HIT_FLOOR:
+    if nearest is None or score < HIT_FLOOR:
         why = (f"nothing in the top {TOP_REACH:.0%} of this frame looks like "
                f"a hero portrait at any of the {len(WIDTH_FRACS)}x"
                f"{len(ASPECTS)} sizes tried: the strongest match anywhere "
                f"was {score:.2f}, against a floor of {HIT_FLOOR:.2f}")
         at = frac
     else:
-        count, at, row_aspect, row_w, row_h, row_best, refused = widest
+        (_rank, count, at, row_aspect, row_w, row_h, row_best,
+         refused) = nearest
         diag.update({"row": count, "row_frac": at,
                      "row_aspect": round(row_aspect, 3),
                      "row_box": [row_w, row_h], "row_best": round(row_best, 3),
                      "refused": refused})
         why = (f"portraits matched but not in the shape of a pick bar: the "
-               f"best row held {count} at {at:.3f} of the width "
+               f"NEAREST MISS was {count} in a row at {at:.3f} of the width "
                f"({row_w}x{row_h}, best {row_best:.2f}) - {refused}")
     # AT THE END OF THE RANGE IS A DIFFERENT ANSWER, and it is the one
     # that says what to change. The sweep can only find a size it tries.
@@ -551,7 +631,7 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
 
     best = None
     peak = (0.0, 0.0, 0.0, 0, 0)      # score, frac, aspect, box_w, box_h
-    widest = None                     # the best ROW seen, bar-shaped or not
+    nearest = None                    # the row that came CLOSEST to a bar
     tried = 0
     total = len(WIDTH_FRACS) * len(ASPECTS)
     for frac in WIDTH_FRACS:
@@ -570,23 +650,30 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
         hits, raw = _sweep(small, art, box_w, box_h)
         if raw > peak[0]:
             peak = (raw, frac, aspect, box_w, box_h)
+        # SHAPED LIKE A BAR FIRST, counted second — and across EVERY row
+        # in the frame, not only the most populous one. On a hero
+        # selection screen the biggest row is the roster grid, and the
+        # bar is a shorter row above it. See `_rows`.
+        found_bar = best_bar(hits, box_w)
         keep = _one_row(hits, box_w)
         refused = why_not_a_bar(keep, box_w) if keep else "nothing matched"
-        if keep and (widest is None or len(keep) > widest[0]):
-            widest = (len(keep), frac, aspect, box_w, box_h,
-                      max(keep)[0], refused)
+        for row in _rows(hits, box_w):
+            why = why_not_a_bar(row, box_w)
+            rank = miss_rank(row)
+            if nearest is None or rank > nearest[0]:
+                nearest = (rank, len(row), frac, aspect, box_w, box_h,
+                           max(row)[0], why)
         if note is not None and keep:
             note(f"    {frac:.3f}  box {box_w}x{box_h}  {len(keep)} hit(s)"
                  f"  best {max(keep)[0]:.2f}"
-                 + (f"  -- {refused}" if refused else "  -- BAR"))
-        # SHAPED LIKE A BAR FIRST, counted second. See `bar_shape`.
-        if refused is not None:
+                 + ("  -- BAR" if found_bar else f"  -- {refused}"))
+        if found_bar is None:
             continue
-        rank = bar_shape(keep, box_w)
+        rank, row = found_bar
         if best is None or rank > best[0]:
-            best = (rank, box_w, box_h, keep)
+            best = (rank, box_w, box_h, row)
     if best is None:
-        _diagnose(diag, peak, widest, "the size sweep")
+        _diagnose(diag, peak, nearest, "the size sweep")
         return None
     _rank, box_w, box_h, keep = best
 
@@ -614,17 +701,20 @@ def hunt(grey, art: dict, note=None, tick=None, diag=None):
     if exact_raw > peak[0]:
         peak = (exact_raw, full_w / max(1, width), full_w / max(1, full_h),
                 full_w, full_h)
-    exact = _one_row(exact_hits, full_w)
+    exact_bar = best_bar(exact_hits, full_w)
+    exact = exact_bar[1] if exact_bar else _one_row(exact_hits, full_w)
     if tick is not None:
         tick(1.0)
-    if bar_shape(exact, full_w) is None:
+    if exact_bar is None:
         # THE COARSE PASS FOUND A BAR AND THE EXACT RE-READ DID NOT,
         # which is a different failure from never finding one and has to
         # read as one: the size walked somewhere the portraits are not.
         _diagnose(
             diag, peak,
-            (len(exact), box_w / max(1, small.shape[1]), box_w / max(1, box_h),
-             full_w, full_h, max(exact)[0] if exact else 0.0,
+            (miss_rank(exact) if exact else (False, -99, 0.0),
+             len(exact), box_w / max(1, small.shape[1]),
+             box_w / max(1, box_h), full_w, full_h,
+             max(exact)[0] if exact else 0.0,
              why_not_a_bar(exact, full_w) if exact else "nothing matched"),
             f"the re-read at the refined size ({full_w}x{full_h})")
         return None
