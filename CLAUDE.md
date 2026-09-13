@@ -70,6 +70,33 @@ credentials, and put the account at risk. Do not go there.
    the top edge. Calibration nudges are fractional too, and are edited live
    in Debug ▸ Live with the boxes drawn on the picture.
 
+   **"THE VERTICAL NEEDS NO CORRECTION" IS TRUE AT 16:9 AND WIDER, AND
+   UNVERIFIED BELOW IT** (`find_portraits._vertical`, Help ▸ Recognition
+   checks ▸ Check other screen resolutions). On a display TALLER than
+   16:9 there are THREE candidates, not two: the bar's top as a fraction
+   of the WINDOW's height (what `SlotRect.to_pixels` does), of a 16:9 HUD
+   box hung at the TOP, or of one CENTRED — letterboxed. The first two
+   differ by the bar's own share of the vertical slack, **4px on
+   1920x1200**, which nobody would notice. The letterboxed one differs by
+   HALF THE SLACK, **56px**, which misses the portraits outright. That
+   third model is the whole reason this is worth measuring.
+   **ONLY A DISPLAY TALLER THAN 16:9 CAN VOTE.** At 16:9 the HUD box IS
+   the window, and WIDER than 16:9 it is pillarboxed horizontally while
+   staying the full height — so the vertical slack is nought in both and
+   all three readings collapse to one number. That is precisely why
+   3440x1440, which SETTLED the horizontal, could never settle this. A
+   sample with no taller-than-16:9 shot is REFUSED, naming the
+   resolutions that would answer it, rather than reporting an arithmetic
+   identity as a measurement; so is one where the two leaders are too
+   close to separate.
+   The 23 screenshots already taken — one per resolution, in
+   `Pictures\Screenshots` — are the sample. `measure` emits all three
+   readings per shot, and the one that is CONSTANT across aspects is the
+   one Dota uses; the losers are spread by exactly the letterboxing they
+   failed to account for. Changing the convention would silently
+   invalidate every saved `calibration_local.json`, so the tool reports
+   and does not write.
+
    **When measuring fails, the user DRAWS it** (`ui/calibrate.py`,
    `ui/framebox.py`, `autocal.measure_bank` / `layout_from_banks`). Six
    numbers, each a fraction of the HUD box rather than of the window, is
@@ -659,6 +686,26 @@ credentials, and put the account at risk. Do not go there.
   hand entry, so the next payload brings it straight back — and the status
   bar says so, because doing nothing silently is indistinguishable from
   being broken.
+- **A HERO ALREADY IN THE DRAFT IS SHOWN AND REFUSED, NEVER DELETED**
+  (`ui/hero_picker.py`, `_taken_where`). The duplicate rule stands and
+  `_taken_heroes` is still its one source — but it used to be enforced
+  by leaving that hero OUT of the picker's list, and an absence explains
+  nothing: "I typed in his name to manually add him and I couldn't find
+  [him]", about Mars, who was on the board at the time. An empty list is
+  indistinguishable from the app never having heard of that hero, and
+  that is exactly how it was read. The row now STAYS, dimmed and
+  unselectable, saying WHICH TEAM already holds it, and the dialog names
+  the way out — a picker cannot take a hero off the board, so it points
+  at the tile to right-click. A filter matching nothing says so rather
+  than showing a blank box.
+  Two details decide it. The filter matches the HERO'S NAME off
+  `ToolTipRole`, never the row's drawn text, or "team" would match half
+  the list and the reason would become part of what has to be typed. And
+  Enter SKIPS a refused row for the next real one, so "mar" with Mars
+  drafted takes Marci rather than quietly doing nothing.
+  Same rule as the item tile that names WHY its icon is missing, and as
+  the status line saying a hero came from the game: doing nothing
+  silently is indistinguishable from being broken.
 - **The draft panel refuses duplicates, and everything about a pick is on
   the pick.** A hero already in the draft cannot be entered again on either
   side — `_taken_heroes()` is the single source for that. Right-clicking a
@@ -2522,6 +2569,40 @@ credentials, and put the account at risk. Do not go there.
   mark on a portrait disappears into whatever is behind it. Drawn UNDER
   the focus ring, since the ring is the one line saying what the whole
   board is measured against.
+  **THE RANK DIGIT IS BLACK, NOT BOLD** (`tilekit._paint_rank`,
+  `_lining_figures`), at the user's request — "a bit girthier? thicker?
+  bolder? maybe a similar looking font that is bolder". It is the SAME
+  FAMILY one weight up: `assets/fonts/Alegreya-Black.ttf` is already
+  bundled and already registered for the app's own name in the title
+  bar, so it costs no new file and cannot read as a different typeface.
+  Measured rather than eyeballed: **+29% to +35% ink** at the same pixel
+  size, in a box 1–2px wider, with no digit spilling its shape at any
+  tile size or rank.
+  **AND ALEGREYA HAS OLD-STYLE FIGURES, which is the defect that found.**
+  3 4 5 7 9 hang BELOW the baseline, 6 and 8 rise above it, and 0 1 2 sit
+  at x-height — so the ink is 53px tall for a "1" and 64px for a "5" at
+  one size, and a rank of 1 and a rank of 9 were drawn at different sizes
+  and different heights inside the same heart. `lnum` is the OpenType
+  feature for lining figures and Alegreya ships it: one height, one
+  baseline, and CAP height rather than x-height, so ranks 1 and 2 — the
+  ones that matter — grow about a sixth for free. Guarded twice, since
+  `QFont.setFeature` is Qt 6.7 and this project asks only for PyQt6>=6.6:
+  an older install must get the old figures rather than an AttributeError
+  out of a paint handler.
+  **THE FAMILY IS NAMED RATHER THAN INHERITED, and that is what kept the
+  defect hidden.** `_paint_rank` took its family from `painter.font()`,
+  so a bare-QImage test drew in the default sans — which has lining
+  figures — while the app, where the painter's font comes from the
+  stylesheet, drew in Alegreya and got the old-style ones. The defect was
+  real on screen and invisible to a test of the mark. Same lesson as
+  every other mark here being painted rather than typed.
+  **AND CENTRING IS MEASURED BY ALPHA, NOT BY A THRESHOLD.** The mark is
+  at most `STAR_MAX_PX` (32) across, so counting a pixel as in or out
+  quantises the answer to 3%, while Qt positions the glyph to a fraction
+  of a pixel and carries the remainder in the ANTIALIASING — which is
+  what the eye integrates. Weighted that way the change IMPROVED it:
+  horizontally 0.481–0.530 before, 0.489–0.508 after.
+
   **AND THE REASON IS A TOOLTIP.** The star's job is to be seen without
   being read; a figure beside it would be a third number in a corner
   that already has the fit in it.

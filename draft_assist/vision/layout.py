@@ -58,7 +58,17 @@ def hud_box(width: int, height: int) -> tuple[float, float]:
     exactly two places: the shipped defaults transferring to a display
     nobody has calibrated on, and the search region — and `BAR_FRACTION`
     is deliberately loose enough to hold the bar under either reading.
-    Settle it with a real 16:10 frame, not with reasoning.
+    Settle it with a real 16:10 frame, not with reasoning — and there is
+    now a button that does exactly that from frames already on disk:
+    Help > Recognition checks > Check other screen resolutions
+    (`find_portraits._vertical`). It weighs THREE candidates, not two:
+    this function's reading, a 16:9 HUD box hung at the TOP of a taller
+    display, and one CENTRED. The first two differ by 4px on 1920x1200
+    and the third by 56px, so only the third would actually miss the
+    portraits. Only a display TALLER than 16:9 can tell them apart — at
+    16:9 and wider the vertical slack is nought and all three are the
+    same number — which is why the confirmed 3440x1440 measurement above
+    says nothing whatever about this.
     """
     if not width or not height:
         return 0.0, float(width)
