@@ -193,3 +193,19 @@ def test_the_check_is_a_button_rather_than_a_command(tool):
     filled = task.with_argument("/some/folder")
     assert any("/some/folder" in part
                for step in filled.steps for part in step)
+
+
+def test_the_app_runs_only_the_shots_that_can_vote():
+    """The in-app check passes `--tall`.
+
+    This check exists to settle where the vertical slack goes on a
+    display taller than 16:9. At 16:9 and wider there is no slack, so
+    the three candidate readings are the same number and no picture can
+    separate equal numbers — twenty-two minutes to answer a question
+    seven of the pictures can answer. The cut is visible in the output:
+    the run prints how many it kept and why.
+    """
+    from draft_assist.ui.tasks import TASKS
+    step = TASKS["check_resolutions"].steps[0]
+    assert "--tall" in step
+    assert step.index("--tall") > step.index("{arg}")

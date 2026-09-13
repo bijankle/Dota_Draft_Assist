@@ -154,11 +154,26 @@ def test_the_resolution_run_is_wired_to_its_own_label():
 def test_the_picker_starts_where_onedrive_actually_puts_screenshots():
     """OneDrive REDIRECTS the Pictures folder, so `~/Pictures/
     Screenshots` is not where they are when Backup is on — which is why
-    the first version opened on an empty folder."""
+    the first version opened on an empty folder.
+
+    The order is the whole content of this setting, so it is the order
+    that is checked rather than one index: every OneDrive path ahead of
+    its plain twin, and the SAMPLE's own folder ahead of the parent that
+    holds every screenshot this machine has ever taken.
+    """
     from draft_assist.ui.app import MainWindow
-    assert MainWindow.SHOT_FOLDERS[0] == (
-        "OneDrive", "Pictures", "Screenshots")
-    assert ("Pictures", "Screenshots") in MainWindow.SHOT_FOLDERS
+    folders = MainWindow.SHOT_FOLDERS
+    assert ("OneDrive", "Pictures", "Screenshots") in folders
+    assert ("Pictures", "Screenshots") in folders
+    for parts in folders:
+        if parts[0] == "OneDrive":
+            plain = parts[1:]
+            if plain in folders:
+                assert folders.index(parts) < folders.index(plain), parts
+    for parts in folders:
+        parent = parts[:-1]
+        if len(parts) > 1 and parent in folders:
+            assert folders.index(parts) < folders.index(parent), parts
     # Never raises, whatever exists on this machine.
     assert isinstance(MainWindow._shots_folder(), Path)
 

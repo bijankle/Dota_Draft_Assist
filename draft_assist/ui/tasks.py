@@ -152,10 +152,18 @@ TASKS = {
     "check_resolutions": Task(
         key="check_resolutions",
         title="Check other screen resolutions",
-        steps=[[PY, "tools/find_portraits.py", "{arg}"]],
-        blurb="Finds the ten portraits in a folder of draft screenshots "
-              "and reports whether the layout reads the same at every "
-              "resolution in it.",
+        # `--tall` BECAUSE THE OTHERS CANNOT ANSWER IT. This check exists
+        # to settle where the vertical slack goes on a display taller
+        # than 16:9, and at 16:9 and wider there IS no slack - the three
+        # readings are the same number and no picture separates equal
+        # numbers (`find_portraits.can_vote`). A minute each over
+        # twenty-two shots is twenty-two minutes to answer with seven.
+        # The run says how many it kept and why, so the cut is visible
+        # in the output rather than silent.
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--tall"]],
+        blurb="Finds the ten portraits in draft screenshots taller than "
+              "16:9 - the only shapes that can settle where the pick bar "
+              "sits - and reports whether they agree.",
         cancellable=True,
     ),
     "update_app": Task(

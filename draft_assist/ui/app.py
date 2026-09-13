@@ -3103,6 +3103,13 @@ class MainWindow(QMainWindow):
     # these ("All Resolutions - Dota 2"), and guessing at subfolder
     # names is how a picker opens somewhere surprising.
     SHOT_FOLDERS = (
+        # THE SAMPLE HAS ITS OWN FOLDER, and the picker should open IN it
+        # rather than one level above it. A folder with no pictures in it
+        # is refused before the run starts, so opening on the parent -
+        # which holds every screenshot this machine has ever taken - is
+        # the one place a wrong pick costs a twenty-minute run.
+        ("OneDrive", "Pictures", "Screenshots", "All Resolutions - Dota 2"),
+        ("Pictures", "Screenshots", "All Resolutions - Dota 2"),
         ("OneDrive", "Pictures", "Screenshots"),
         ("Pictures", "Screenshots"),
         ("OneDrive", "Pictures"),
