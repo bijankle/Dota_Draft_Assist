@@ -14,6 +14,7 @@ import numpy as np
 from ..capture.window import DOTA_TITLE
 from ..gsi.state import DRAFTING_STATES
 from ..data.store import Dataset
+from ..vision.library import EMPTY_SLOT
 from ..vision.recognize import DraftRead
 from .demo import DemoDraft
 from .manual import ManualDraft, merge
@@ -71,6 +72,13 @@ class Snapshot:
     # of them. A fault the user can fix, so the banner says so — see
     # `_resolve_sides_by_sight`.
     crop_boxes_wrong: bool = False
+    # WHAT THE VISION PIPELINE IS DOING, for the status line. With the
+    # game feed filling the slots at strategy time, nothing on screen
+    # distinguished "recognition read the board" from "recognition never
+    # ran" - and the portrait search takes SECONDS on a worker, which is
+    # long enough to close the app during: "I may close it before it's
+    # done". A long job with no sign of life reads as a hung one.
+    vision_note: str = ""
 
 
 class DemoProvider:
@@ -480,6 +488,7 @@ class HybridProvider:
         self._search_lock = threading.Lock()
         self._search_done: dict[tuple, object] = {}
         self._search_running: tuple | None = None
+        self._search_at: float = 0.0        # 0..1, for the status line
         # Set by a successful search so the UI can save the geometry it
         # measured: one search calibrates the boxes for good.
         self.measured_layout = None
@@ -594,6 +603,7 @@ class HybridProvider:
             if self._search_running is not None or key in self._searched:
                 return None
             self._search_running = key
+            self._search_at = 0.0
             self._searched.add(key)
         # The capture session overwrites its frame buffer, so the worker
         # gets a copy of its own rather than a view that changes underneath
@@ -609,14 +619,64 @@ class HybridProvider:
         cost the reading, never the app."""
         from ..vision import lineup as lineup_mod
         try:
-            found = lineup_mod.read_lineup(frame, ten, layout,
-                                           allow_search=True)
+            found = lineup_mod.read_lineup(
+                frame, ten, layout, allow_search=True,
+                progress=lambda share: setattr(self, "_search_at",
+                                               float(share)))
         except Exception as exc:                # noqa: BLE001 - see above
             found = lineup_mod.ScreenLineup(note=f"search failed: {exc}")
         found.frame_shape = frame.shape[:2]
         with self._search_lock:
             self._search_done[key] = found
             self._search_running = None
+            self._search_at = 1.0
+
+    def vision_note(self, snap) -> str:
+        """One short phrase: what the screen reader is doing right now.
+
+        THREE STATES, and they are told apart because they fail for
+        different reasons. A SEARCH is the slow one - seconds, on a
+        worker - and it is the only thing here worth a percentage.
+        Ordinary recognition is milliseconds a tick, so what matters
+        there is how much of the board it got. And vision being switched
+        off is neither of those and must not read as a failure.
+
+        This exists because at strategy time the GAME fills the slots,
+        so a board full of heroes says nothing whatever about whether
+        recognition ran - and the one job that takes long enough to
+        interrupt had nothing on screen at all.
+        """
+        # `self.vision is None` is how this class says vision is off.
+        # An earlier draft asked for `use_vision`, which nothing defines -
+        # the same trap as `frame_of` reaching for a `last_frame` no
+        # provider ever had, and it raised on every tick.
+        if self.vision is None:
+            return ""
+        with self._search_lock:
+            running = self._search_running is not None
+            share = self._search_at
+        if running:
+            return f"reading portraits {share:.0%}"
+        # NOTHING HERE MAY RAISE. This is one cosmetic segment of the
+        # status line, written four times a second from inside the
+        # refresh loop - so a shape it did not expect must cost the
+        # sentence, never the tick. `read` is whatever a provider chose
+        # to publish, which is not always a `DraftRead`.
+        read = snap.read or snap.read_raw
+        slots = getattr(read, "slots", None) if read is not None else None
+        if not slots:
+            return "screen: not reading"
+        total = len(slots)
+        known = sum(1 for slot in slots
+                    if getattr(slot, "hero_id", None) is not None
+                    and getattr(slot, "hero_id", None) != EMPTY_SLOT)
+        # DONE IS SAID OUTRIGHT. "10/10" is the same shape as "3/10" at a
+        # glance, and the whole point is being able to tell without
+        # counting whether it is safe to close the window.
+        if known == total:
+            return f"screen: all {total} read"
+        return f"screen: {known}/{total} read"
+
 
     def _remember_measured_layout(self, read, snap) -> None:
         """A successful SEARCH has already measured the crop boxes.
@@ -641,6 +701,18 @@ class HybridProvider:
             self.measured_layout = result
 
     def poll(self) -> Snapshot:
+        """Stamped in ONE place, because `_poll` has five exits.
+
+        Setting the note at each return is five chances to add a sixth
+        and forget - and the one that got forgotten would be a state
+        where the line silently says nothing, which is exactly the
+        failure this field exists to remove.
+        """
+        snap = self._poll()
+        snap.vision_note = self.vision_note(snap)
+        return snap
+
+    def _poll(self) -> Snapshot:
         snap = self.gsi.poll()
         if self.vision is None:
             return snap

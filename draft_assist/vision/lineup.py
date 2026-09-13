@@ -171,8 +171,8 @@ def read_placed(frame, hero_ids: list[int],
 
 
 def read_searched(frame, hero_ids: list[int],
-                  portraits: dict[int, np.ndarray] | None = None
-                  ) -> ScreenLineup:
+                  portraits: dict[int, np.ndarray] | None = None,
+                  progress=None) -> ScreenLineup:
     """Hunt each of the ten across the top strip, no calibration needed.
 
     This is the expensive path — the scale grid in `autocal.find_scale` is
@@ -182,7 +182,7 @@ def read_searched(frame, hero_ids: list[int],
         return ScreenLineup(note="need a frame and exactly ten named heroes")
     art = portraits if portraits is not None else \
         autocal.base_portraits(hero_ids)
-    found = autocal.locate(frame, art)
+    found = autocal.locate(frame, art, progress=progress)
     if len(found) != 2 * TEAM_SIZE:
         return ScreenLineup(note=(
             f"found {len(found)} of the ten portraits on screen; all ten are "
@@ -208,8 +208,8 @@ def read_searched(frame, hero_ids: list[int],
 def read_lineup(frame, hero_ids: list[int],
                 layout: DraftLayout | None = None,
                 allow_search: bool = True,
-                portraits: dict[int, np.ndarray] | None = None
-                ) -> ScreenLineup:
+                portraits: dict[int, np.ndarray] | None = None,
+                progress=None) -> ScreenLineup:
     """Cheap path, then the expensive one if it is allowed and needed."""
     if layout is not None:
         placed = read_placed(frame, hero_ids, layout, portraits)
@@ -219,7 +219,8 @@ def read_lineup(frame, hero_ids: list[int],
         placed = ScreenLineup(note="no calibration to place boxes with")
     if not allow_search:
         return placed
-    searched = read_searched(frame, hero_ids, portraits)
+    searched = read_searched(frame, hero_ids, portraits,
+                             progress=progress)
     if searched.ok:
         return searched
     return ScreenLineup(note=f"{placed.note}; then {searched.note}")

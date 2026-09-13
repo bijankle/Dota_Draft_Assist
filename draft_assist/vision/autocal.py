@@ -52,6 +52,9 @@ HEIGHTS = tuple(round(0.050 + 0.006 * i, 4) for i in range(17))
 TOP_FRACTION = max(BAR_FRACTION, max(HEIGHTS) * 1.5)
 MIN_SCORE = 0.35
 MIN_FOUND = 8
+# How much of `locate` is spent in `find_scale` - measured at roughly
+# two thirds, and only used to make a progress bar honest.
+SCALE_SHARE = 0.65
 # The coarse scale grid runs on a strip decimated to about this width. The
 # grid only has to find the NEIGHBOURHOOD; `_refine` walks in from there at
 # full resolution, so nothing is lost and the search stops being measured
@@ -162,7 +165,16 @@ def find_scale(strip, templates, span: int, frame_height: int):
                    reach=max(3, shrink))
 
 
-def locate(frame, portraits: dict[int, np.ndarray]) -> list[Located]:
+def locate(frame, portraits: dict[int, np.ndarray],
+           progress=None) -> list[Located]:
+    """Find each named hero on the top strip.
+
+    `progress` is called with a fraction 0..1 as it goes. This runs on a
+    worker and takes SECONDS, and with the game feed filling the slots
+    at the same time there was nothing anywhere saying it was running -
+    "I may close it before it's done". A long job with no sign of life
+    is indistinguishable from a hung one.
+    """
     height, width = frame.shape[:2]
     _left, span = hud_box(width, height)
     strip = _grey(frame)[:max(1, int(height * TOP_FRACTION)), :]
@@ -171,14 +183,23 @@ def locate(frame, portraits: dict[int, np.ndarray]) -> list[Located]:
     if not greys:
         return []
 
+    if progress:
+        progress(0.0)
     probes = [greys[hid] for hid in list(greys)[:2]]
     scale = find_scale(strip, probes, int(span), height)
     if scale is None:
         return []
+    # The scale grid is most of the work - hundreds of correlations
+    # against ten per-hero passes - so it is most of the bar.
+    if progress:
+        progress(SCALE_SHARE)
     box_w, box_h, _score = scale
 
     out = []
-    for hero_id, template in greys.items():
+    for number, (hero_id, template) in enumerate(greys.items(), 1):
+        if progress:
+            progress(SCALE_SHARE
+                     + (1.0 - SCALE_SHARE) * number / max(1, len(greys)))
         hit = _best_at(strip, template, box_w, box_h)
         if hit is None:
             continue

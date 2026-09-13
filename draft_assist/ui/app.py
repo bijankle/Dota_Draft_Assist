@@ -1783,6 +1783,14 @@ class MainWindow(QMainWindow):
                 "as administrator, or copy the config in by hand.")
             return
 
+        # WHAT THE SCREEN READER IS DOING. At strategy time the game
+        # fills the slots itself, so a full board said nothing about
+        # whether recognition had run - and the portrait search takes
+        # seconds on a worker with nothing on screen to say so, which is
+        # long enough to close the app in the middle of.
+        note = getattr(snap, "vision_note", "")
+        if note:
+            parts.append(note)
         server = getattr(self.provider, "server", None)
         if server is not None:
             server.token = result.token
