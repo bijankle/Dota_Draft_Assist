@@ -321,6 +321,34 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         flag = "" if wide <= 2 else ("  <- sweeps disagree by "
                                      f"{wide}px")
         print(f"  {name:<12} {value:>6}{flag}")
+    # A GEOMETRY THE SWEEPS DISAGREE ABOUT IS NOT A GEOMETRY. The bar
+    # does not move during a match, so four sweeps of one recording must
+    # give four nearly identical answers; a wide spread means each sweep
+    # locked onto something different, and applying the median of four
+    # wrong answers to 489 frames is a minute spent producing numbers
+    # that cannot mean anything. The first version printed the spread and
+    # carried on regardless, which is worse than not measuring it at all.
+    loose = [name for name, wide in zip(names, spread)
+             if wide > max(6, 0.12 * geom[3])]
+    if loose:
+        print(f"\n  REFUSING to score with this: {', '.join(loose)} "
+              "disagree across the sweeps.")
+        print("  Four sweeps of one match must agree - the bar does not")
+        print("  move. Each found something different, so none found it.")
+        out.mkdir(parents=True, exist_ok=True)
+        wrote = []
+        for path in probes:
+            frame = fp.read_image(path)
+            if frame is not None:
+                fp.strip_of(frame, path, out)
+                wrote.append(f"{path.stem}-strip.png")
+        print(f"\n  Written to {out}:")
+        for name in wrote:
+            print(f"    {name}")
+        print("\n  SEND ME ONE OF THESE. It is the band that was searched,")
+        print("  and it is the one thing that settles what is up there.")
+        return 1
+
     radiant_x, dire_x, pitch, slot_w, top, slot_h = geom
     rects = fp.boxes_of(radiant_x, dire_x, pitch, slot_w, top, slot_h)
 
