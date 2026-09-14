@@ -70,56 +70,63 @@ credentials, and put the account at risk. Do not go there.
    drawn on the picture, so a bad reading can be diagnosed — they are a
    readout rather than something anybody is expected to set.
 
-   **AND THE VERTICAL IS THE SAME BOX, WHICH REVERSES "THE VERTICAL AXIS
-   NEEDS NO CORRECTION"** (`SlotRect.to_pixels`, `autocal`'s three
-   pixels-to-fractions conversions, `tests/test_vertical_is_the_hud_box.
-   py`). `y` and `slot_h` were read as fractions of the FRAME's height.
-   That is identical at 16:9 and at every aspect WIDER than it — the HUD
-   box is the full height there — and wrong on anything TALLER, which is
-   16:10, 4:3 and 5:4. Three independent things agree and the second is
-   the one that settles it:
-   * **The measurement.** Across the user's own screenshots the portrait
-     height spread 0.0137 against the window and **0.0044 against the HUD
-     box**, three times tighter, on a quantity of 46 to 74 pixels where a
-     pixel of rounding is under 2%. This file already recorded that as "a
-     real finding, deliberately NOT acted on".
-   * **THE ARITHMETIC, and it is not a judgement call.** The pick tile is
-     SQUARE — `slot_w` 0.0525 of the span against `slot_h` 0.0930 of the
-     height is 1.00 at 16:9, measured on a real 3440x1440 client. A
-     portrait cannot change shape because the monitor did; Dota scales
-     its HUD uniformly. Read against the window the crop box came out
-     **42x56 on 800x600** and 76x84 on 1440x900; against the HUD box it
-     is 42x42 and 76x75.
-   * **The symptom.** Matching scores 0.99 at the true size and 0.12 four
-     pixels out, so a box **33% too tall** is not a near miss — and
-     800x600 was the one resolution that located NOTHING, while 1440x900,
-     11% out, located its ten and fitted them wrong. Those are exactly
-     the two the user asked to have working.
-   Nothing changes at 16:9 or wider, which is every display this app has
-   run on, so it cannot regress a working setup. **The inverse had to
-   move with it**: `autocal` divides by the box height now for the same
-   reason `to_pixels` multiplies by it, or a measurement taken on a 16:10
-   client would be stored under a convention nothing renders it with.
+   **AND THE VERTICAL IS THE WINDOW'S HEIGHT, AND AN ATTEMPT TO MOVE IT
+   ONTO THE HUD BOX WAS REVERTED AGAINST THE USER'S OWN SCREENSHOTS**
+   (`SlotRect.to_pixels`, `autocal`'s three pixels-to-fractions
+   conversions, `tests/test_the_crop_boxes.py`). `y` and `slot_h` were
+   read as fractions of the 16:9 box for one round, on three arguments —
+   a measurement, an arithmetic claim, and a test — and the proof sheet
+   over the user's own 22 screenshots showed every row cropping the
+   player NAME strip at every resolution, where 20 of the 22 had been
+   landing on portraits. "It has regressed heavily."
 
-   **AND IT IS CHECKED END TO END, not as arithmetic about fractions**
-   (`tests/test_reads_every_resolution.py`). The test DRAWS a pick bar
-   the way Dota lays one out — square portraits, sized off the HUD box —
-   and hands it to `lineup.read_placed` with the shipped `DraftLayout`.
-   Reading `y` and `slot_h` against the frame instead, the same frames
-   come back:
+   **THE TEST WAS CIRCULAR AND IS WHY IT SHIPPED.**
+   `tests/test_reads_every_resolution.py` DREW its own pick bar at
+   `round(layout.y * box_h)` and then asserted `lineup.read_placed`
+   could read it with that same layout — the convention under test
+   placed the thing being tested, so it passed at every resolution under
+   whichever convention was in the code. It is DELETED, along with
+   `tests/test_vertical_is_the_hud_box.py`, which was arithmetic about
+   fractions asserting the same thing. What replaces them is
+   `tests/test_the_crop_boxes.py`, whose last test SCANS the suite and
+   fails if any test positions artwork from a `DraftLayout`'s own
+   fractions and then asks `read_placed` to find it. A synthetic bar is
+   evidence about our own arithmetic and nothing else — which this file
+   said in its own words ("a synthetic bar cannot be evidence about
+   Dota's real artwork") one paragraph after citing it as the evidence.
 
-       1920x1080   0.995 -> 0.995   (nothing changes at 16:9)
-       1440x900    0.517 -> 0.993   located ten and fitted them wrong
-       1920x1200   0.510 -> 0.995
-       1024x768    REFUSED -> 1.000
-       800x600     REFUSED -> 1.000  located nothing at all
+   **AND THE MEASUREMENT SAID LESS THAN WAS DONE WITH IT.** It is still
+   a real finding and it is still deliberately NOT acted on: across the
+   user's screenshots the portrait HEIGHT spread 0.0137 against the
+   window and **0.0044 against the HUD box**, three times tighter. But
+   the bar's TOP — which is `y`, the number that decides whether a crop
+   is on a portrait at all — spread **0.0019 against the window and
+   0.0031 against the box**, so it is undecided and if anything favours
+   the window. `y` was never covered by that measurement, and it was
+   moved anyway. The arithmetic claim (the pick tile is square, measured
+   at 3440x1440) is an inference at every other aspect, not a reading.
 
-   0.517 against a `MIN_PLACED_SCORE` of 0.25 is what "the crops are
-   half a portrait out" looks like from inside the matcher, and the two
-   4:3 shapes did not clear the floor at all. The remaining confirmation
-   is a sweep over the user's own screenshots on their own machine —
-   this is a synthetic bar, and a synthetic bar cannot be evidence about
-   Dota's real artwork.
+   Nothing moves at 16:9 or wider, where the HUD box IS the full height —
+   which is also why 3440x1440, the frame that SETTLED the horizontal
+   from real artwork, can say nothing whatever about this. The four
+   shapes it does move are 16:10, 4:3 and 5:4:
+
+       resolution    the window (shipped)   the HUD-box try
+       1920x1080     y= 36  h=100           y= 36  h=100
+       3440x1440     y= 48  h=134           y= 48  h=134
+       1920x1200     y= 40  h=112           y= 36  h=100
+       1440x900      y= 30  h= 84           y= 27  h= 75
+       1024x768      y= 25  h= 71           y= 19  h= 54
+       800x600       y= 20  h= 56           y= 15  h= 42
+       1280x1024     y= 34  h= 95           y= 24  h= 67
+
+   **800x600 AND 1440x900 REMAIN GENUINELY OPEN** — the search locates
+   nothing on one and locates ten and fits them wrong on the other — and
+   they are NOT a licence to move the twenty that work. An end-to-end
+   read test earns its place back here when it can draw its portraits at
+   pixel positions MEASURED off real screenshots (`tools/find_portraits.
+   py <folder> --boxes-only` produces them) rather than computed from
+   the layout it is checking.
 
    **THE LETTERBOXED MODEL IS REFUTED** (`find_portraits._vertical`,
    run as `python tools/find_portraits.py <folder>`; there is no menu
@@ -4291,9 +4298,16 @@ credentials, and put the account at risk. Do not go there.
   and 0.0031 against the HUD box (too coarse to hear), while the
   portrait HEIGHT spreads 0.0137 against the window and **0.0044
   against the HUD box** - three times tighter, on a quantity of 46 to
-  74 pixels where rounding is under 2%. So the height is a fraction of
-  the HUD BOX and the top is undecided, and the tool now says which of
-  the two is talking.
+  74 pixels where rounding is under 2%. So the HEIGHT leans to the HUD
+  box and the TOP is undecided, and the tool now says which of the two
+  is talking.
+  **THAT LEAN IS A MEASUREMENT, NOT A CONVENTION, and acting on it as
+  one cost a working app for a round** - see the crop-box note above.
+  `slot_h` is a fraction of the WINDOW in the shipped layout along with
+  `y`, because `y` is what decides whether a crop is on a portrait at
+  all and the top is precisely the reading this tool cannot hear.
+  Moving the height alone would also unsquare the tile, which is the
+  arithmetic the same change was argued from.
   **AND THE GUESSED ASPECTS ARE GONE** (`WIDTH_FRACS`, `HEIGHT_FRACS`).
   The sweep tried 30 widths as a fraction of the WINDOW crossed with
   THREE FIXED ASPECTS - 0.93, 1.33, 1.78 - and `--grid` measured what

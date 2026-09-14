@@ -94,46 +94,45 @@ class SlotRect:
     h: float
 
     def to_pixels(self, width: int, height: int) -> tuple[int, int, int, int]:
-        """Fractions to pixels, anchored to Dota's 16:9 HUD box — BOTH axes.
+        """Fractions to pixels: HORIZONTAL against Dota's 16:9 HUD box.
 
         Dota lays its HUD out in a 16:9 area centred horizontally, and on a
         wider display it pillarboxes that area rather than stretching it —
         so on 3440x1440 the ten portraits occupy the middle 2560 pixels and
         a fraction of the FULL width lands hundreds of pixels off.
 
-        **THE VERTICAL IS THE SAME BOX, and it used to be the WINDOW.**
-        This read `y` and `h` as fractions of the frame's height, which is
-        identical at 16:9 and at every aspect WIDER than it — the HUD box
-        is the full height there — and wrong on anything TALLER. It is the
-        one thing the resolution sweep was built to settle, and three
-        independent things now agree:
+        **THE VERTICAL IS THE WINDOW'S HEIGHT, AND AN ATTEMPT TO MAKE IT
+        THE HUD BOX WAS REVERTED AGAINST REAL ARTWORK.** That change read
+        `y` and `h` as fractions of the 16:9 box, on three arguments: a
+        measurement that the portrait HEIGHT sits tighter against the box
+        (0.0044 against 0.0137), an arithmetic claim that the pick tile is
+        square, and a test that passed at every resolution.
 
-        * **The measurement.** Over the user's own screenshots the portrait
-          height spread 0.0137 against the window and **0.0044 against the
-          HUD box** — three times tighter, on a quantity of 46 to 74 pixels
-          where a pixel of rounding is under 2%.
-        * **The arithmetic, which is the one that settles it.** The pick
-          tile is SQUARE: `slot_w` 0.0525 of the span against `slot_h`
-          0.0930 of the height is 1.00 at 16:9, measured on a real
-          3440x1440 client. A portrait cannot change shape because the
-          monitor did — Dota scales its HUD uniformly. Read against the
-          window, the box came out 42x56 on 800x600 and 76x84 on 1440x900;
-          against the HUD box it is 42x42 and 76x75.
-        * **The symptom.** Matching scores 0.99 at the true size and 0.12
-          four pixels out. A box **33% too tall** is not a near miss, and
-          800x600 was the resolution that located nothing at all while
-          1440x900, 11% out, located its ten and fitted them wrong.
+        **The test was circular and is the reason this shipped.** It drew
+        its own pick bar at `round(layout.y * box_h)` and then asserted the
+        app could read it — the convention under test used to place the
+        thing being tested, so it could not fail. A synthetic bar is
+        evidence about our own arithmetic and nothing else.
 
-        Nothing changes at 16:9 or wider, which is every display this app
-        has actually run on — so this cannot regress a working setup. Only
-        16:10, 4:3 and 5:4 move, and they moved onto the portraits.
+        The real sheet, over the user's own 22 screenshots, is the
+        evidence: under the WINDOW the boxes land on the portraits at 20
+        of 22 resolutions, and under the HUD box they land on the player
+        NAME strip at all of them. Twenty working traded for two.
+
+        What the measurement actually said is narrower than what was done
+        with it, and it says so itself: the portrait HEIGHT is tighter
+        against the HUD box, while the bar's TOP is UNDECIDED and if
+        anything favours the window (0.0019 against 0.0031). `y` was never
+        covered by it. The two open failures — 800x600 and 1440x900 — are
+        still open, and are not a licence to move the eighteen that work.
         """
         left, span = hud_box(width, height)
-        # The HUD box is 16:9, so its height follows from its width. On
-        # 16:9 and wider this IS `height`; below it, it is less.
-        box_h = span / HUD_ASPECT
-        return (round(left + self.x * span), round(self.y * box_h),
-                round(self.w * span), round(self.h * box_h))
+        # HORIZONTAL against the HUD box, which IS settled — 3440x1440
+        # put the portraits in the middle 2560 pixels and a fraction of
+        # the full width landed 440px off. VERTICAL against the window,
+        # which is what the real screenshots say.
+        return (round(left + self.x * span), round(self.y * height),
+                round(self.w * span), round(self.h * height))
 
 
 @dataclass
