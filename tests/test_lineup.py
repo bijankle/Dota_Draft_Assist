@@ -11,6 +11,7 @@ import time
 import numpy as np
 import pytest
 
+from draft_assist.gsi.state import STATE_STRATEGY as STRATEGY
 from draft_assist.proving.synth import procedural_portrait
 from draft_assist.vision import lineup
 from draft_assist.vision.layout import DraftLayout
@@ -161,7 +162,8 @@ def test_the_minimap_and_the_screen_settle_the_split_together(monkeypatch):
             # The minimap's guess: ten right heroes, split the wrong way.
             return Snapshot(left=TEN[5:], right=TEN[:5], my_team="radiant",
                             lineup_source="minimap", sides_certain=False,
-                            match_id="42", sides_known=True)
+                            match_id="42", sides_known=True,
+                            game_state=STRATEGY)
 
     class FakeSession:
         layout = DraftLayout()
@@ -185,7 +187,8 @@ def test_the_minimap_and_the_screen_settle_the_split_together(monkeypatch):
     # Playing Dire flips which bank is yours, and nothing else.
     gsi.poll = lambda: Snapshot(left=TEN[5:], right=TEN[:5], my_team="dire",
                                 lineup_source="minimap", sides_certain=False,
-                                match_id="43", sides_known=True)
+                                match_id="43", sides_known=True,
+                                game_state=STRATEGY)
     snap = provider.poll()
     assert snap.left == TEN[5:] and snap.right == TEN[:5]
 
@@ -200,7 +203,8 @@ def test_a_screen_that_cannot_be_read_leaves_the_guess_alone(monkeypatch):
         def poll(self):
             return Snapshot(left=TEN[5:], right=TEN[:5], my_team="radiant",
                             lineup_source="minimap", sides_certain=False,
-                            match_id="42", sides_known=True)
+                            match_id="42", sides_known=True,
+                            game_state=STRATEGY)
 
     class FakeSession:
         layout = DraftLayout()
@@ -243,7 +247,8 @@ def _hybrid(frame, layout=None, monkeypatch=None):
         def poll(self):
             return Snapshot(left=TEN[5:], right=TEN[:5], my_team="radiant",
                             lineup_source="minimap", sides_certain=False,
-                            match_id="42", sides_known=True)
+                            match_id="42", sides_known=True,
+                            game_state=STRATEGY)
 
     class FakeSession:
         pass

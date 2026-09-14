@@ -1602,12 +1602,21 @@ class MainWindow(QMainWindow):
         # recording's notes and nowhere else, so a real draft was read two
         # slots out of ten for eighty seconds with nothing on screen
         # saying why.
+        #
+        # AND THE BUTTON IS THE AUTOMATIC ROUTE, at the user's request —
+        # "I thought the latest system is all automatic???". It is, and
+        # this strip was the one place that did not say so: it sent them
+        # to drag two rectangles over the client by hand, which is the
+        # fallback for when measuring fails rather than the first thing to
+        # try. The app can measure the boxes off this very frame, because
+        # what raised the banner is exactly what measuring needs — a
+        # picture of the bar with all ten heroes named by the game.
         if snap is not None and getattr(snap, "crop_boxes_wrong", False):
             self._show_banner(
                 "<b>The app cannot find the pick portraits on your "
                 "screen.</b> Picks will be read late or not at all until "
-                "the crop boxes are calibrated.",
-                "Fix the crop boxes", self._calibrate)
+                "the crop boxes are measured.",
+                "Measure the boxes", self._measure_from_banner)
             return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
         # works. A fresh install has neither, and the statistics need a
@@ -1768,14 +1777,6 @@ class MainWindow(QMainWindow):
             self._say(note, 8000)
             self.reload_backend()
             self._update_first_run_banner()
-
-    def _open_calibration(self) -> None:
-        """Settings > Debug > Live, where the boxes are drawn on the frame.
-
-        The one place the crop boxes can be fixed, and six clicks deep
-        from a banner that exists because somebody has to fix them.
-        """
-        self._open_settings("Debug")
 
     def _open_manual(self, section: str | bool = "") -> None:
         """The manual, built once and kept.
@@ -2692,7 +2693,42 @@ class MainWindow(QMainWindow):
             widget.blockSignals(False)
         self.provider.set_forced(on)
 
-    def _measure_calibration(self) -> None:
+    def _cal_note(self, text: str, seconds: int = 12000) -> None:
+        """One sentence about the crop boxes, said in both places.
+
+        `cal_label` is dim text beside the Measure button in Debug ▸ Live,
+        which is exactly where somebody who pressed that button is looking
+        — and nowhere near somebody who pressed the BANNER. The sentence
+        is the same either way, so it goes to both rather than the banner
+        path measuring for a minute and reporting into a panel two menus
+        deep that nobody has open.
+        """
+        self.cal_label.setText(text)
+        self._say(text, seconds)
+
+    def _measure_from_banner(self, *_ignored) -> None:
+        """The banner's button: measure the boxes off the frame in hand.
+
+        THE SAME CODE AS THE MEASURE BUTTON, deliberately. What raised
+        this strip is precisely what measuring needs — a picture of the
+        pick bar with all ten heroes named by the game — so the answer to
+        "the app cannot find the portraits" is to go and find them, not
+        to hand somebody two rectangles to drag over the client.
+        `_calibrate` is still there for when measuring cannot (File ▸
+        Calibrate pick boxes), and the note says what stopped it.
+
+        The flag lives on the snapshot that raised the banner, so a
+        success has to clear it here. The next tick builds a fresh one and
+        would clear it anyway, but a strip that stays up after the thing
+        it is about has been fixed reads as the fix not having worked.
+        """
+        if self._measure_calibration():
+            snap = self.snapshot
+            if snap is not None:
+                snap.crop_boxes_wrong = False
+        self._update_first_run_banner(self.snapshot)
+
+    def _measure_calibration(self) -> bool:
         """Measure the crop boxes from a frame whose heroes the game named.
 
         This is the only way this project can calibrate: the person who
@@ -2706,36 +2742,36 @@ class MainWindow(QMainWindow):
         heroes = list(getattr(snap, "left", [])) + list(
             getattr(snap, "right", [])) if snap else []
         if frame is None:
-            self.cal_label.setText(
+            self._cal_note(
                 "no frame — is Dota running in borderless windowed mode?")
-            return
+            return False
         if len(heroes) < 8:
-            self.cal_label.setText(
+            self._cal_note(
                 "the game has not named enough heroes yet — try this during "
                 "strategy time, when all ten are known")
-            return
+            return False
 
         from ..vision import autocal
         portraits = autocal.base_portraits(heroes)
         if len(portraits) < 8:
-            self.cal_label.setText(
+            self._cal_note(
                 "portraits are not downloaded — run "
                 "Settings ▸ Downloads ▸ Statistics and portraits first")
-            return
+            return False
 
         self.measure_button.setEnabled(False)
-        self.cal_label.setText("measuring… (about a minute)")
+        self._cal_note("measuring… (about a minute)")
         QApplication.processEvents()
         try:
             result = autocal.calibrate(frame, portraits, self.layout_spec)
         except Exception as exc:                 # never take the app down
-            self.cal_label.setText(f"measuring failed: {exc}")
+            self._cal_note(f"measuring failed: {exc}")
             self.measure_button.setEnabled(True)
-            return
+            return False
         self.measure_button.setEnabled(True)
         if not result.ok:
-            self.cal_label.setText(result.note)
-            return
+            self._cal_note(result.note)
+            return False
         self.layout_spec = result.layout
         for field, spin in self.cal_spins.items():
             spin.blockSignals(True)
@@ -2743,7 +2779,8 @@ class MainWindow(QMainWindow):
             spin.blockSignals(False)
         self._set_calibration("y", result.layout.y)      # push and redraw
         self._save_calibration()
-        self.cal_label.setText(f"{result.note} — saved")
+        self._cal_note(f"{result.note} — saved")
+        return True
 
     def _learn_unknown_portrait(self, snap) -> None:
         """Teach the library the one portrait it could not match.

@@ -70,6 +70,22 @@ MIN_FOUND = 2 * TEAM_SIZE - 1
 # confidently is worse than the guess it replaces.
 BANK_GAP_STEPS = 2.5
 
+# HOW MANY BOXES HAVE TO HOLD A NAMED HERO BEFORE THE BOXES THEMSELVES ARE
+# BELIEVED. `read_placed` refuses unless ALL TEN land, which is right for a
+# LINE-UP — a permutation with one hero guessed is a wrong team — and is a
+# terrible test of the geometry. One hero wearing a persona, an arcana or a
+# set the library has no picture of fails its box while the other nine sail
+# through, and the refusal that comes out of that used to raise a banner
+# reading "the app cannot find the pick portraits on your screen". Nine of
+# them had just been found.
+#
+# So the count is carried and the two causes are told apart by it. The
+# boxes are one rigid set at one pitch, so a whole bank's worth of them
+# landing on portraits the game named is not something a wrong geometry
+# does by accident: below that, the calibration is the suspect; at or above
+# it, the ARTWORK is, and the variant harvester is what answers that.
+BOXES_PROVE_THE_GEOMETRY = TEAM_SIZE
+
 
 @dataclass
 class ScreenLineup:
@@ -84,6 +100,15 @@ class ScreenLineup:
     # boxes: it has already measured every portrait's position and size,
     # and throwing that away means paying for it again next match.
     found: list = field(default_factory=list)
+    # How many crop boxes held a hero the game had already named. Carried
+    # on a REFUSAL as well as on a reading, because it is the only thing
+    # that separates "the boxes are off the portraits" from "one hero is
+    # wearing artwork we have never seen".
+    matched: int = 0
+    # The definite verdict on the calibration, and the only one this app
+    # ever gets. Set by `read_placed` alone, which is the one place that
+    # knows both what it was looking for and how much of it it found.
+    boxes_wrong: bool = False
 
     @property
     def ok(self) -> bool:
@@ -121,8 +146,9 @@ def _score(crop, template) -> float:
     return float(result[0][0])
 
 
-def _assign(scores: np.ndarray, hero_ids: list[int]) -> list[int] | None:
-    """Best consistent slot -> hero assignment, greedily.
+def _assign(scores: np.ndarray,
+            hero_ids: list[int]) -> tuple[list[int] | None, int]:
+    """Best consistent slot -> hero assignment, greedily, and how far it got.
 
     Greedy rather than optimal (Hungarian) on purpose: with ten heroes that
     are actually on screen the score matrix is strongly diagonal once
@@ -131,6 +157,13 @@ def _assign(scores: np.ndarray, hero_ids: list[int]) -> list[int] | None:
     check below rejects the whole reading anyway, which is the outcome we
     want — an ambiguous board should produce nothing, not a plausible
     permutation.
+
+    THE COUNT IS RETURNED EVEN WHEN THE READING IS REFUSED, and it is not
+    bookkeeping: greedy takes the strongest pair first, so the pairs placed
+    before it gave up are the confident ones, and how many of those there
+    were is what tells a bad crop box from a hero in a costume. A reading
+    that stops at nine has found nine portraits exactly where the
+    calibration said they would be.
     """
     remaining = scores.copy()
     placed: dict[int, int] = {}
@@ -139,15 +172,15 @@ def _assign(scores: np.ndarray, hero_ids: list[int]) -> list[int] | None:
                                       remaining.shape)
         best = remaining[slot, hero]
         if best < MIN_PLACED_SCORE:
-            return None
+            return None, len(placed)
         # The runner-up for this same slot, among heroes still unclaimed.
         rivals = np.delete(remaining[slot], hero)
         if rivals.size and best - float(rivals.max()) < MIN_MARGIN:
-            return None
+            return None, len(placed)
         placed[int(slot)] = hero_ids[int(hero)]
         remaining[slot, :] = -np.inf
         remaining[:, hero] = -np.inf
-    return [placed[i] for i in range(len(hero_ids))]
+    return [placed[i] for i in range(len(hero_ids))], len(placed)
 
 
 def read_placed(frame, hero_ids: list[int],
@@ -173,23 +206,35 @@ def read_placed(frame, hero_ids: list[int],
     for row, rect in enumerate(slots):
         x, y, w, h = rect.to_pixels(width, height)
         if x < 0 or y < 0 or x + w > width or y + h > height:
-            return ScreenLineup(note=(
+            # No doubt to weigh here: a box off the edge of the picture
+            # cannot be on a portrait whatever the artwork looks like.
+            return ScreenLineup(boxes_wrong=True, note=(
                 "the crop boxes fall outside the frame — calibration is off"))
         crop = picture[y:y + h, x:x + w]
         for col, hid in enumerate(ordered):
             scores[row, col] = _score(crop, greys[hid])
 
-    assignment = _assign(scores, ordered)
+    assignment, matched = _assign(scores, ordered)
     if assignment is None:
-        return ScreenLineup(note=(
-            "the ten heroes could not be told apart in the crop boxes — "
-            "the boxes are probably not on the portraits"))
+        # TWO CAUSES, ONE REFUSAL, and they want opposite answers. Boxes
+        # that are off the bar match nothing; boxes that are exactly right
+        # still refuse when ONE hero is wearing a persona, an arcana or a
+        # set the library has no picture of — and that is the normal case
+        # the variant harvester exists for, not a calibration fault.
+        if matched >= BOXES_PROVE_THE_GEOMETRY:
+            return ScreenLineup(matched=matched, note=(
+                f"{matched} of the ten matched in the calibrated boxes, so "
+                "the boxes are on the pick bar — the rest are wearing "
+                "portraits the library does not have yet"))
+        return ScreenLineup(matched=matched, boxes_wrong=True, note=(
+            f"only {matched} of the ten heroes could be found in the crop "
+            "boxes — the boxes are probably not on the portraits"))
     return ScreenLineup(
         left=assignment[:TEAM_SIZE], right=assignment[TEAM_SIZE:],
         confidence=float(np.mean([
             scores[i, ordered.index(hid)]
             for i, hid in enumerate(assignment)])),
-        how="placed",
+        how="placed", matched=matched,
         note=f"matched {len(assignment)} portraits in the calibrated boxes")
 
 

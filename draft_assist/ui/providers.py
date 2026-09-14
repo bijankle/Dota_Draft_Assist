@@ -584,6 +584,17 @@ class HybridProvider:
 
         if snap.frame is None:
             return None
+        # THE BAR HAS TO BE ON THE SCREEN BEFORE IT CAN BE READ OFF IT.
+        # The minimap's ten are LATCHED for the match, so this method goes
+        # on being called through PRE_GAME and the whole game — with the
+        # draft bar long gone and the in-game top bar in its place, which
+        # is a different size at different coordinates. Every one of those
+        # ticks failed, and each one raised a banner saying the app could
+        # not find the pick portraits: perfectly true, and about a screen
+        # that has none. Dota draws the pick bar in the drafting states
+        # and that is the only place this question can be asked.
+        if snap.game_state not in DRAFTING_STATES:
+            return None
         layout = getattr(getattr(self.vision, "session", None), "layout", None)
         placed = lineup_mod.read_lineup(snap.frame, ten, layout,
                                         allow_search=False)
@@ -598,8 +609,12 @@ class HybridProvider:
         # boxes, so this is raised where the user will see it rather than
         # left in the recording's notes, which is where it sat while a
         # real draft read two of ten slots for eighty seconds.
-        if placed.note and ("not on the portraits" in placed.note
-                            or "outside the frame" in placed.note):
+        #
+        # `read_placed` decides it, not a search of its own message for a
+        # phrase: it is the one place that knows how many boxes DID hold a
+        # hero the game named, and nine of ten matching is a hero in a
+        # costume rather than a calibration fault.
+        if placed.boxes_wrong:
             snap.crop_boxes_wrong = True
 
         with self._search_lock:

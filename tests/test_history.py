@@ -757,3 +757,38 @@ def test_the_bundled_map_names_items_with_no_run_and_no_network(tmp_path,
     for hero_item in (41, 63, 110, 116, 141, 178, 259, 277):
         assert bundled.get(hero_item), hero_item
     assert not any(str(v).startswith("Item ") for v in bundled.values())
+
+
+def test_the_time_bands_are_named_the_way_people_say_them():
+    """Asked for twice: "3pm to 6pm" rather than "15:00 to 17:59".
+
+    A 24-hour clock and an inclusive end are how a computer writes a
+    range; nobody says "I play from 18:00 to 20:59".
+    """
+    from draft_assist.history.analyse import TOD_ORDER
+
+    assert len(TOD_ORDER) == 8
+    assert TOD_ORDER[5] == "3pm to 6pm"
+    assert TOD_ORDER[0] == "12am to 3am", "midnight is 12am, never 0am"
+    assert TOD_ORDER[7] == "9pm to 12am", "and so is the far end of the day"
+    assert TOD_ORDER[4] == "12pm to 3pm", "noon is 12pm, never 0pm"
+    assert not any(":" in band for band in TOD_ORDER)
+    # Each band ends where the next begins, so the day is covered once.
+    for band, nxt in zip(TOD_ORDER, TOD_ORDER[1:]):
+        assert band.split(" to ")[1] == nxt.split(" to ")[0]
+
+
+def test_a_match_lands_in_the_band_that_holds_its_hour():
+    from datetime import datetime
+
+    from draft_assist.history.analyse import SPLITS, TOD_ORDER
+
+    key = SPLITS["tod"][0]
+
+    class When:
+        def __init__(self, hour):
+            self.when = datetime(2024, 1, 1, hour, 30)
+
+    assert key(When(0)) == TOD_ORDER[0]
+    assert key(When(15)) == "3pm to 6pm"
+    assert key(When(23)) == TOD_ORDER[7]

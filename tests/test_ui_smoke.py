@@ -3978,21 +3978,7 @@ def test_bad_crop_boxes_are_a_banner_not_a_note_in_a_recording(qapp,
         win._update_first_run_banner(snap)
         said = win.banner_label.text()
         assert "pick portraits" in said, said
-        assert win.banner_button.text() == "Fix the crop boxes"
-    finally:
-        win.close()
-
-
-def test_the_crop_box_banner_opens_the_one_place_they_are_drawn(qapp,
-                                                                monkeypatch):
-    """Six clicks deep from a banner that exists to send you there."""
-    win = make_window(qapp, demo_dataset())
-    opened = []
-    try:
-        monkeypatch.setattr(win, "_open_settings",
-                            lambda tab=None: opened.append(tab))
-        win._open_calibration()
-        assert opened == ["Debug"]
+        assert win.banner_button.text() == "Measure the boxes"
     finally:
         win.close()
 

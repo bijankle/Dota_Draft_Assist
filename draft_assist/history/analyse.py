@@ -35,7 +35,24 @@ MIN_SAMPLE = 10         # refuse to analyse a sample smaller than this
 # group walks only its own hero's matches, so the total work is one pass
 # over the sample however many heroes that is.
 
-TOD_ORDER = [f"{h:02d}:00 to {h + 2:02d}:59" for h in range(0, 24, 3)]
+
+
+def _oclock(hour: int) -> str:
+    """How a person says an hour: 3pm, never 15:00.
+
+    At the user's request, twice. The bands read "03:00 to 05:59", which
+    is a 24-hour clock and an inclusive end nobody speaks — "I play in the
+    evening", not "I play from 18:00 to 20:59". Hour 24 is midnight the
+    other way round, so it wraps to 12am rather than printing 0am.
+    """
+    hour %= 24
+    return f"{hour % 12 or 12}{'am' if hour < 12 else 'pm'}"
+
+
+# Three-hour bands, named by the two ends rather than by the last minute
+# inside them: "3pm to 6pm" is one band and "6pm to 9pm" is the next, and
+# nobody reads the shared 6pm as belonging to both.
+TOD_ORDER = [f"{_oclock(h)} to {_oclock(h + 3)}" for h in range(0, 24, 3)]
 LEN_ORDER = ["Under 25 min", "25 to 35 min", "35 to 45 min", "Over 45 min"]
 POS_ORDER = ["1st game", "2nd game", "3rd game", "4th game", "5th game",
              "6th game or later"]
