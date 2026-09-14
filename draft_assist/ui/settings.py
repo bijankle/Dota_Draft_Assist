@@ -137,15 +137,19 @@ DEFAULTS = {
     # all about it: ONE dialog when the app opens, and nothing on screen
     # for the fortnight before that. Zero turns it off.
     "data_reminder_days": DATA_REMINDER_DAYS,
-    # The placeholder ad slot. ON, because that is where the owner left
-    # it — no network is touched and no ad network is wired in; what it
-    # reserves is the SPACE a banner would take.
-    # OFF, at the user's request, and the slot is now the ACCOUNT ROW
-    # instead (see `adslot` / the History header). This file's notes have
-    # claimed "off by default" for a while and this dict said True - the
-    # drift came in when DEFAULTS was reseeded from the owner's own
-    # settings file, which had ads switched on at the time.
-    "ads_enabled": False,
+    # `ads_enabled` was here and is GONE with the slot it switched. A key
+    # left in DEFAULTS is not inert: this dict is the WRITE FILTER, so a
+    # dead one is a line written into everybody's settings file for ever.
+    # WHICH ROLES A SUGGESTION HAS TO HAVE, as a LIST of Valve's role
+    # names — empty means no filter, which is the default. Remembered
+    # between runs like the mark count beside it, at the user's request:
+    # "i want the suggest hero tick boxes to be remembered from previous
+    # state just like for shield / heart count".
+    # A LIST rather than a dict of every role, because the set of roles is
+    # Valve's and not ours: a name this app has never heard of is simply
+    # not ticked, where a dict would carry a dead key into everybody's
+    # file for ever — which is what DEFAULTS being the write filter means.
+    "pick_roles": [],
     "portrait_scale": 1.0,
     "number_scale": 1.0,
     # The size the window opens at, and the size it is closed at is
@@ -158,6 +162,13 @@ DEFAULTS = {
     # overlay was removed, and DEFAULTS is the write filter, so a dead key
     # is a line written to everybody's settings file for ever.
     "window_w": 940,
+    # STILL THE OWNER'S OWN 998, which is what fits a 1080p screen.
+    # It was briefly raised to 1150 to stop the Draft tab overflowing
+    # once the roles card was added — that was treating a symptom. The
+    # tab is in a scroll area now and the two advice strips declare the
+    # height their wrap needs, so a window shorter than the content
+    # scrolls instead of cropping, and a default taller than the
+    # commonest monitor would have been its own bug.
     "window_h": 998,
     # And WHERE it opens, at the user's request: "I don't like that when
     # I close and reopen the app it doesn't open in the location where I
@@ -184,6 +195,22 @@ def clamp_count(value, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return max(1, min(MAX_SHOWN, number))
+
+
+def clean_roles(value) -> list[str]:
+    """Whatever was in the file, as role names this app still knows.
+
+    A hand-edited file, or one written when Valve scored a role it no
+    longer does, must not be able to filter the suggestion strip down to
+    nothing with a name nothing can satisfy. Unknown names are dropped and
+    the order is Valve's own, so the ticks read in the same order as the
+    Roles card above them however the file happened to be written.
+    """
+    from ..model.roles import ROLES
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    wanted = {str(name) for name in value}
+    return [role for role in ROLES if role in wanted]
 
 
 def clamp_marks(value, fallback: int) -> int:
@@ -236,7 +263,10 @@ def load(path: Path | None = None) -> dict:
     # every caller shares — the History tab writing a table's sort order
     # would edit DEFAULTS itself, and the next fresh load would come back
     # carrying it as though it had always been the default.
-    settings = {k: (dict(v) if isinstance(v, dict) else v)
+    # LISTS ARE COPIED TOO, for the reason the dicts are: `pick_roles` is
+    # a list, and one shared object would let a tick edit DEFAULTS itself.
+    settings = {k: (dict(v) if isinstance(v, dict)
+                    else list(v) if isinstance(v, list) else v)
                 for k, v in DEFAULTS.items()}
     if path.exists():
         try:

@@ -46,10 +46,6 @@ SWITCHES = (
     ("auto_record", "Record every draft automatically",
      "Starts a recording when hero selection begins and stops a minute "
      "after the draft ends. Nothing to press."),
-    ("ads_enabled", "Show ads above the draft",
-     "A banner strip above the two team panels, there the whole time the "
-     "app is open. Off by default, and off takes no room at all: it is a "
-     "strip of the screen the app exists to show."),
 )
 
 

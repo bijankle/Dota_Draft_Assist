@@ -208,6 +208,19 @@ class ItemRow(QWidget):
         # a strip you do not read at a glance, which is the one thing it is
         # for. Past the width it has been given the tiles go to a new row.
         self.row = FlowLayout(self, spacing=8)
+        # AND THE WIDGET HAS TO DECLARE THAT IT WRAPS, or the layout
+        # above it never asks. `FlowLayout` answers `hasHeightForWidth`
+        # and `heightForWidth` correctly — but Qt only consults a child's
+        # heightForWidth when the child's SIZE POLICY says it has one, and
+        # the default policy does not. So the strip reported no minimum
+        # height at all, a parent short of room compressed it to whatever
+        # was left, and the tiles that no longer fitted were laid out
+        # BELOW the strip's own bottom edge, where nothing draws them.
+        # Latent for as long as the tab happened to fit; the Roles card
+        # made the column taller than the window and it showed up at once.
+        policy = self.sizePolicy()
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
         self.message = QLabel("")
         self.message.setProperty("dim", True)
         self.row.addWidget(self.message)

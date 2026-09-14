@@ -95,8 +95,6 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "newest": ("update", "latest"),
     "reset": ("clear", "default"),
     "clear": ("reset", "empty"),
-    "ad": ("ads", "advert", "banner"),
-    "advert": ("ads", "banner"),
     "theme": ("colour", "color", "appearance"),
     "colour": ("theme", "appearance"),
     "color": ("theme", "appearance"),

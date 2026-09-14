@@ -232,7 +232,7 @@ SECTIONS: tuple = (
             ("Downloads", "The rank brackets, and every artwork and "
                           "statistics download as its own button."),
             ("Game data", "Installing Dota's config file, and Diagnose."),
-            ("Appearance", "The app icon, and the ad slot switch."),
+            ("Appearance", "The app icon."),
             ("Advanced", "Which site supplies the pairwise numbers, and "
                          "the capture sources."),
             ("Debug", "What the app is reading right now, the "

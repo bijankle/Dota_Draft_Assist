@@ -66,13 +66,42 @@ credentials, and put the account at risk. Do not go there.
    the middle 2560 pixels; `layout.hud_box()` supplies that offset and every
    `SlotRect.to_pixels` goes through it. Treating them as fractions of the
    full width put the crop boxes 440px left of the portraits on a real
-   ultrawide session. The vertical axis needs no correction — the bar hugs
-   the top edge. The numbers are shown in Debug ▸ Live with the boxes
+   ultrawide session. The numbers are shown in Debug ▸ Live with the boxes
    drawn on the picture, so a bad reading can be diagnosed — they are a
    readout rather than something anybody is expected to set.
 
-   **"THE VERTICAL NEEDS NO CORRECTION" IS TRUE AT 16:9 AND WIDER, AND
-   THE LETTERBOXED MODEL IS NOW REFUTED** (`find_portraits._vertical`,
+   **AND THE VERTICAL IS THE SAME BOX, WHICH REVERSES "THE VERTICAL AXIS
+   NEEDS NO CORRECTION"** (`SlotRect.to_pixels`, `autocal`'s three
+   pixels-to-fractions conversions, `tests/test_vertical_is_the_hud_box.
+   py`). `y` and `slot_h` were read as fractions of the FRAME's height.
+   That is identical at 16:9 and at every aspect WIDER than it — the HUD
+   box is the full height there — and wrong on anything TALLER, which is
+   16:10, 4:3 and 5:4. Three independent things agree and the second is
+   the one that settles it:
+   * **The measurement.** Across the user's own screenshots the portrait
+     height spread 0.0137 against the window and **0.0044 against the HUD
+     box**, three times tighter, on a quantity of 46 to 74 pixels where a
+     pixel of rounding is under 2%. This file already recorded that as "a
+     real finding, deliberately NOT acted on".
+   * **THE ARITHMETIC, and it is not a judgement call.** The pick tile is
+     SQUARE — `slot_w` 0.0525 of the span against `slot_h` 0.0930 of the
+     height is 1.00 at 16:9, measured on a real 3440x1440 client. A
+     portrait cannot change shape because the monitor did; Dota scales
+     its HUD uniformly. Read against the window the crop box came out
+     **42x56 on 800x600** and 76x84 on 1440x900; against the HUD box it
+     is 42x42 and 76x75.
+   * **The symptom.** Matching scores 0.99 at the true size and 0.12 four
+     pixels out, so a box **33% too tall** is not a near miss — and
+     800x600 was the one resolution that located NOTHING, while 1440x900,
+     11% out, located its ten and fitted them wrong. Those are exactly
+     the two the user asked to have working.
+   Nothing changes at 16:9 or wider, which is every display this app has
+   run on, so it cannot regress a working setup. **The inverse had to
+   move with it**: `autocal` divides by the box height now for the same
+   reason `to_pixels` multiplies by it, or a measurement taken on a 16:10
+   client would be stored under a convention nothing renders it with.
+
+   **THE LETTERBOXED MODEL IS REFUTED** (`find_portraits._vertical`,
    run as `python tools/find_portraits.py <folder>`; there is no menu
    item for it any more). On a display TALLER than
    16:9 there are THREE candidates, not two: the bar's top as a fraction
@@ -1909,50 +1938,141 @@ credentials, and put the account at risk. Do not go there.
   one that then had to be noticed and stopped. Demo writes ten random
   heroes into the MANUAL slots instead: nothing outlives the press, and
   Clear all empties it like any other hand entry.
-- **The ad slot is a PLACEHOLDER and it is off by default**
-  (`ui/adslot.py`, `ui_settings.ads_enabled`). No network is touched and no
-  ad network is wired in; what exists is the SPACE an ad would take on the
-  schedule it would appear on, five seconds in every fifteen, above the two
-  team panels — so "what does the window look like with this in it" can be
-  answered now and living with it for an evening is something the owner can
-  try before committing.
-  **The creative is a REAL ad unit**: 728x90, the IAB leaderboard, which is
-  the size a banner slot is actually sold as — the layout is worth testing
-  against the real thing rather than a placeholder that turns out to be the
-  wrong shape. It is CENTRED in a full-width slot rather than stretched,
-  because a leaderboard is a fixed-size creative wherever it is served, and
-  it fits inside the window's own ~1464px floor.
-  **ON MEANS ON: the banner is up the whole time**, at the user's request.
-  It began as five seconds in every fifteen, which was worse in both
-  directions — an ad that appears out of nothing mid-draft pulls the eye
-  at exactly the wrong moment, and one that is always there is furniture
-  after ten minutes. There is no timer in the widget at all now.
-  **It reserves its height while ads are ON and NONE while they are off.**
-  A banner that came and went while pushing the ten picks up and down
-  would be a board that moves under the cursor mid-draft, which is how a
-  pick gets misclicked. With the feature switched off there is nothing to
-  hold still for, and reserving the space anyway was a strip of dead
-  window above the draft for something nobody turned on.
-  **THE CREATIVE IS PAINTED, and it is nobody's real advertisement**
-  (`adslot.leaderboard`). A genuine banner off the web is somebody's
-  copyrighted artwork, and this repository carries no artwork that is not
-  its own — the same rule that keeps Valve's portraits out of it. So the
-  slot is filled by a house creative drawn in code for a product that does
-  not exist: brand, headline, one line of copy, a call to action and the
-  "Ad" marker every network requires, at the right size and with the right
-  amount of noise beside a draft. The copy is ELIDED against the button's
-  left edge rather than positioned by hand, because a line of copy running
-  under the call to action is the one mistake a real banner never makes
-  and the one a fixed x position makes as soon as the wording changes.
-  Whatever eventually fills it must fetch on its own timer, off the draft
-  path — the live loop still never makes network calls.
-  **THE REVENUE PLAN DEPENDS ON THE WEB VERSION, which is parked.** The ad
-  networks worth using (AdSense and the rest) serve into WEB PAGES and
-  their terms are written that way; there is no supported path for a
-  PyQt desktop window, and embedding a browser view to get around that is
-  the kind of thing that gets an account closed rather than paid. So this
-  slot is the layout and the switch, and nothing beyond that can be honest
-  until there is a page to serve into.
+- **THE AD SLOT IS GONE**, at the user's request — "remove the ad stuff
+  all together". It was the SPACE a banner would take, above the two team
+  panels, with a house creative painted in code (nobody's copyrighted
+  artwork) at the real 728x90 leaderboard size, so that living with one
+  for an evening could be tried before committing. It was tried and left
+  switched off, and its own note already said why it could never be more
+  than that: the ad networks worth using serve into WEB PAGES and their
+  terms are written that way, there is no supported path for a PyQt
+  window, and embedding a browser view to get round that is what gets an
+  account closed rather than paid. A switch nobody will turn on is a
+  widget, a setting, a stylesheet rule and a painted creative to keep
+  working for ever. `ads_enabled` went from `DEFAULTS` with it: that dict
+  is the WRITE FILTER, so a dead key is a line written into everybody's
+  settings file for ever.
+
+- **THE ROLES CARD IS VALVE'S OWN RATINGS, SUMMED PER TEAM**
+  (`model/roles.py`, `model/hero_roles.json`, `ui/rolebar.py`), at the
+  user's request, and it sits between the ten picks and the advice about
+  them. The board says WHICH ten heroes and the two grids say how the
+  pairs interact; neither answers what a drafter asks out loud — have we
+  got a front line, who initiates, are we all squishy — and the game
+  already scores exactly that.
+  **THE NUMBERS ARE THE GAME'S.** `npc_heroes.txt` carries a "Role" list
+  and a parallel "Rolelevels" list of 0-to-3 scores per hero, which is
+  what the hero-selection UI draws its own bars from. Nothing in this app
+  rates a hero; it adds up what Dota already says.
+  **EIGHT ROLES, NOT NINE, AND THAT WAS MEASURED.** Every list anybody
+  writes down includes JUNGLER — the user's did, quoting another
+  assistant. Valve's data does not: "Jungler" appears **zero times** in
+  the whole hero file, and OpenDota's `constants/heroes`, built
+  independently from the same source, lists the same eight. Reconciled
+  against the client's own pick-menu filter strings, four of those
+  filters have no scored data behind them at all — **Jungler, Lane
+  Support, Offlaner and Solo Mid** — and nothing that IS scored is
+  missing from the UI. They are lane and position filters, or leftovers;
+  there is no 0-to-3 number behind any of them. A ninth column would be a
+  permanent run of zeros under a heading, which says "no hero in Dota
+  jungles" rather than "Valve stopped scoring this".
+  **THE TABLE IS BUNDLED**, the same bar `item_names.json` clears: 127
+  heroes of nine small integers, eight kilobytes, factual game data
+  rather than anybody's artwork. Parsed from Valve's own file — and the
+  FIRST parse read it wrong in a way worth recording, because it looked
+  right: it took `text.index('"npc_dota_hero_lion"')`, and heroes name
+  each other in fields like `LastHitChallengeRival`, so Lion's roles were
+  read out of BANE's block and 18 heroes came back unrated. Match the
+  block HEADER, never the first mention.
+  **THE SHARE IS OUT OF WHAT COULD HAVE BEEN PICKED**, which is what
+  makes a 2v5 board readable: three picks can score at most 9 on one
+  role, so 6 of 9 reads the same as a full team's 10 of 15. Comparing raw
+  sums would say the team with more picks is better at everything, which
+  is true and useless. **A hero with no rating is left out of BOTH
+  halves** — the rule unknown slots already follow, and the alternative
+  reports a team as WORSE at every role for having picked a hero the
+  bundled file has not been cut for yet.
+  **EVERY PILL IS THE FRAME'S GOLD**, at the user's request, and that
+  REVERSES a red/green rule asked for one message earlier (green where
+  that side led the role, red where it trailed, mirrored across the two
+  halves). Gold is already the app's "this one" colour rather than a
+  judgement — the window border, the focus ring and the suggestion star
+  all wear it. **The lead is still computed and still carried**
+  (`PillRow.lead`, and the tooltip says which side is ahead), so
+  colouring by it again is one line in `_colour`: that is the point of
+  not deleting arithmetic the moment it stops being drawn.
+  **THE GROUP COUNT FOLLOWS THE WIDTH** — "you can actually make them
+  multi column if they are very narrow.... e.g. 6 rows make it 3 x 2".
+  One column of eight was 294px tall in a window whose default height is
+  998 and used a third of the width. It fits as many groups across as the
+  width allows, and **never one with no roles in it**: eight roles across
+  five groups is two each and the fifth got nothing, which drew a pair of
+  headings over thin air. Caught by rendering the tab and looking at it.
+  **EACH GROUP CARRIES ITS OWN PAIR OF HEADINGS**, because side by side
+  one group's right-hand pills sit next to the next group's left-hand
+  ones and one pair across the top would leave nothing saying the run in
+  the middle is two different teams.
+  **AND THE CARD'S HEIGHT IS PAID FOR BY EVERYTHING BELOW IT**, which is
+  what turned up the oldest bug in this family — see the strips note.
+
+- **AND EIGHT TICKS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT OF**
+  (`MainWindow._role_filter` / `_has_roles`, `ui_settings.pick_roles` /
+  `clean_roles`), at the user's request and beside the mark counts on
+  the Suggested picks heading. It is the other half of the Roles card:
+  that one says what the draft HAS, these cut the strip to heroes that
+  answer it — "the user looks at the team attributes, figures out what
+  lacking and ticks the suggested hero filters". It has a second use
+  they named: "if you are always support you dont want to see anythign
+  that has 0 support attribution".
+  **TWO ROWS OF FOUR**, as asked, which is exactly eight — and that is a
+  clean grid only because Valve scores EIGHT roles. A ninth (Jungler,
+  which has no hero data at all) would have made it a 3x3 with a dead
+  corner.
+  **TICKING TWO MEANS BOTH, not either.** "Heroes that contain non-zero
+  attributes in the ticked departments" is the narrower reading and it
+  is the one that makes this a tool: ticking Durable and Initiator to
+  find the hero who is both is a question worth asking, where "either"
+  is barely a filter once two are on.
+  **THE FILTER RUNS BEFORE THE COUNT IS CUT.** Taking the top twenty and
+  then dropping the ones that miss would show however many of the top
+  twenty happened to qualify — a different answer, and a worse one: with
+  Durable ticked it could show two heroes while the list held forty
+  more.
+  **A HERO WITH NO FIGURES FAILS A FILTER AND PASSES NO FILTER.** The
+  strip is being cut to heroes that ANSWER something and "we do not
+  know" is not an answer — so a hero added in a patch before the bundled
+  table is next cut is only ever missing from a FILTERED strip.
+  **AND A FILTER MATCHING NOTHING SAYS SO**, naming the roles it was
+  asked for: an empty strip is indistinguishable from the app having
+  stopped working, which is the hero picker's refused-rows lesson.
+  Remembered between runs like the mark count beside it, as a LIST of
+  role names — `clean_roles` drops any the game no longer scores, so a
+  hand-edited file cannot cut the strip to nothing with a name nothing
+  can satisfy, and `load` copies lists as well as dicts or one shared
+  object would let a tick edit `DEFAULTS` itself.
+
+- **A WRAPPING STRIP HAS TO DECLARE THAT IT WRAPS**
+  (`suggest_row`, `item_row`, `QSizePolicy.setHeightForWidth`).
+  `FlowLayout` answers `hasHeightForWidth` and `heightForWidth`
+  correctly and always has — but Qt only consults a child's
+  `heightForWidth` when the CHILD'S SIZE POLICY says it has one, and the
+  default policy does not. So both strips reported no minimum height at
+  all, a parent short of room compressed them to whatever was left, and
+  the tiles that no longer fitted were laid out BELOW the strip's own
+  bottom edge where nothing draws them. Latent for as long as the Draft
+  tab happened to fit; the roles card made the column taller than the
+  window and ten of twenty suggestions vanished.
+  **AND THE DRAFT TAB IS IN A SCROLL AREA NOW**, which is the other half
+  of it. An honest minimum is the WINDOW's minimum, so declaring it took
+  the floor to 894px — a window a 1366x768 laptop cannot open, which is
+  exactly what `_scrolling` was written for when the Debug tab did the
+  same thing. Inside it the page asks for nothing: at any ordinary size
+  there is nothing to scroll, and on a short screen the tab scrolls
+  instead of hiding its last row of tiles. The default window height was
+  briefly raised to 1150 to dodge the crop and is back at the owner's own
+  998 — that was treating a symptom, and a default taller than the
+  commonest monitor would have been its own bug.
+
 - **There is no hero-entry bar.** Typing a pick, the ally/enemy toggle and
   Undo are gone at the user's request; a pick is entered by clicking a slot
   and using the picker. `_taken_heroes()` still refuses duplicates.

@@ -39,7 +39,7 @@ from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QRect, QSize,
 from PyQt6.QtGui import (QAction, QColor, QImage, QKeySequence,
                          QPainter, QPen, QPixmap)
 from PyQt6.QtWidgets import (QApplication, QCheckBox,
-                             QDialog, QFrame,
+                             QDialog, QFrame, QGridLayout,
                              QHBoxLayout, QLabel,
                              QFileDialog,
                              QMainWindow, QMenuBar, QMessageBox,
@@ -60,12 +60,13 @@ from ..data.store import Dataset
 from ..timing import LOOP
 from ..vision import harvest
 from ..model import items as items_mod
+from ..model import roles as roles_mod
 from ..model import scoring
 from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
-from . import accountrow, adslot, menusearch
+from . import accountrow, menusearch, rolebar
 from . import chrome
 from . import ornate
 from . import reasons
@@ -859,14 +860,16 @@ class MainWindow(QMainWindow):
         # in the app reasons in those terms — and only the PANELS' seating
         # changes: the two grid cards below them are pinned, synergies
         # left and counters right, whichever side the user is on.
-        # The ad slot sits ABOVE the two team panels, at the top of the
-        # content: on, it pushes nothing sideways; off, it is a strip of
-        # nothing rather than a gap that opens and closes under the cursor
-        # (see `ui/adslot.py`).
-        self.ad_slot = adslot.AdSlot()
-        self.ad_slot.set_enabled(bool(self.settings.get("ads_enabled", False)))
-        outer.addWidget(self.ad_slot)
-
+        # THE AD SLOT IS GONE, at the user's request — "remove the ad
+        # stuff all together". It was the SPACE a banner would take, on a
+        # timer, above the two team panels, so that living with one for an
+        # evening could be tried before committing to it. It was tried and
+        # switched off, and the honest reading of its own note is that the
+        # decision was already made: the ad networks worth using serve
+        # into WEB PAGES, there is no supported path for a PyQt window,
+        # and this app has no page to serve into. A switch nobody will
+        # turn on is a widget, a setting, a stylesheet rule and a painted
+        # creative to keep working for ever.
         # WHOSE HISTORY THE NUMBERS ARE FOR, at the user's request, in the
         # slot the ad used to have to itself - and the ad now defaults
         # OFF, so on an ordinary install this row IS the top of the
@@ -905,6 +908,18 @@ class MainWindow(QMainWindow):
         # width it was given, and the strips below follow it.
         self.team_panels["ally"].tile_resized.connect(self._resize_strips)
         outer.addLayout(teams_row)
+
+        # WHAT THE TWO LINE-UPS ARE MADE OF, between the board and the
+        # advice about it, at the user's request. It reads in the same
+        # direction as everything else on this tab: the ten picks are the
+        # subject, this says what they add up to, and the suggestions
+        # below answer what to do about it. Valve's own 0-to-3 role
+        # ratings, normalised by how many picks each side has made so a
+        # 3v5 board is still a comparison (`model/roles.py`).
+        roles_card, rlay = card("Roles")
+        self.role_bar = rolebar.RoleBar()
+        rlay.addWidget(self.role_bar)
+        outer.addWidget(roles_card)
 
         # The board is the top of the screen and everything under it is
         # advice about the board: first which hero to take, then what to
@@ -967,7 +982,19 @@ class MainWindow(QMainWindow):
         # less. Now every card is its own height and the slack is slack.
         outer.addStretch(1)
 
-        tabs.addTab(draft_widget, "Draft")
+        # IN A SCROLL AREA, which the Debug tab has needed for a while
+        # and this one now does too. A QTabWidget's minimum is its TALLEST
+        # page, and the Draft tab has grown: ten picks, the roles card,
+        # two wrapping advice strips and two grids. The strips also began
+        # declaring the height their wrap actually needs (`suggest_row`,
+        # `item_row`) — without that they were silently cropped — and a
+        # widget's honest minimum is the WINDOW's minimum, which took the
+        # floor to 894px. That is a window a 1366x768 laptop cannot open.
+        # Inside a scroll area the page asks for nothing, so the floor is
+        # back and nothing is ever cut off: at any ordinary size there is
+        # nothing to scroll, and on a short screen the tab scrolls instead
+        # of hiding its last row of tiles.
+        tabs.addTab(_scrolling(draft_widget), "Draft")
 
         # ----- History tab: one account's match history, measured.
         # It used to be the ranked list of every hero NOT in this game,
@@ -2878,7 +2905,6 @@ class MainWindow(QMainWindow):
 
         self.auto_record_check.setChecked(
             bool(self.settings.get("auto_record", True)))
-        self.ad_slot.set_enabled(bool(self.settings.get("ads_enabled", False)))
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
@@ -3042,6 +3068,9 @@ class MainWindow(QMainWindow):
         enemy_colour = theme.GOOD if mine == "Dire" else theme.BAD
         for grid in (self.synergy_matrix, self.matchup_matrix):
             grid.set_team_colours(ally_colour, enemy_colour)
+        # The Roles card names its two halves from the same answer, so a
+        # heading there can never disagree with the panel above it.
+        self.role_bar.set_sides(mine, theirs)
         # The player's five go to the side they actually belong to, rather
         # than always sitting on the left: Radiant is the left bank of
         # Dota's own pick bar, so a panel on the left labelled Dire would
@@ -3286,6 +3315,7 @@ class MainWindow(QMainWindow):
         # gone: Suggested picks is its head, "Why this score" reads terms
         # off it, and the item advice is filtered by the same roles.
         self.scored = scoring.score_all(self.ds, draft)
+        self.role_bar.show_draft(draft.allies, draft.enemies)
         self._update_matrices(draft)
         # AFTER the grids are filled, not only on a window resize. Their
         # section count is what they can fit a portrait into, and it is
@@ -3567,7 +3597,74 @@ class MainWindow(QMainWindow):
         line.addSpacing(6)
         line.addWidget(MarkLabel(None, row))
         line.addWidget(self._badge_box("mark_count"))
+        line.addSpacing(10)
+        line.addWidget(self._role_filter(row))
         return row
+
+    def _role_filter(self, parent) -> QWidget:
+        """Eight ticks: only suggest heroes Valve scores in these roles.
+
+        AT THE USER'S REQUEST, and the point of it is the card above:
+        "the user looks at the team attributes, figures out what's
+        lacking and ticks the suggested hero filters". It is the other
+        half of the Roles card — that one says what the draft is short
+        of, and this one cuts the strip to heroes that answer it. It has
+        a second use they named too: "if you are always support you don't
+        want to see anything that has 0 support attribution".
+
+        **TWO ROWS OF FOUR**, as asked, which is exactly eight — and that
+        is the shape only because Valve scores EIGHT roles. The nine
+        everybody lists includes Jungler, which has no hero data behind
+        it at all (see `model/roles.py`), and a 3x3 with a dead corner is
+        what a ninth would have cost.
+
+        **TICKING TWO MEANS BOTH**, not either: the strip is cut to
+        heroes scored in EVERY ticked role. "Heroes that contain non-zero
+        attributes in the ticked departments" is the narrower reading and
+        it is the one that makes the control a tool — ticking Durable and
+        Initiator to find the hero who is both is a question worth
+        asking, where "either" is barely a filter at all once two are on.
+
+        It is BESIDE the mark counts rather than in Settings for the
+        reason those moved there: a control you set by looking at the
+        result belongs beside the result.
+        """
+        from ..model.roles import ROLES
+
+        box = QWidget(parent)
+        grid = QGridLayout(box)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(0)
+        wanted = set(ui_settings.clean_roles(self.settings.get("pick_roles")))
+        self.role_ticks: dict[str, chrome.TickBox] = {}
+        for index, role in enumerate(ROLES):
+            tick = chrome.TickBox(role, box)
+            tick.setToolTip(
+                f"Only suggest heroes Dota scores in {role}.\n"
+                "Several ticked means a hero has to have all of them.")
+            # SET BEFORE IT IS WIRED: restoring what the file said is not
+            # the user ticking it, and an unblocked restore would write
+            # the settings file on every start and re-cut the strip
+            # before the strip exists.
+            tick.setChecked(role in wanted)
+            tick.toggled.connect(self._roles_picked)
+            grid.addWidget(tick, index % 2, index // 2)
+            self.role_ticks[role] = tick
+        return box
+
+    def _roles_picked(self, _checked: bool = False) -> None:
+        """Remember the ticks and re-cut the strip."""
+        picked = [role for role, tick in self.role_ticks.items()
+                  if tick.isChecked()]
+        if picked == list(self.settings.get("pick_roles", [])):
+            return
+        self.settings["pick_roles"] = picked
+        ui_settings.save(self.settings)
+        # The strip is only redrawn when a PICK changes, so without this
+        # the new filter would sit in the file until the next hero was
+        # picked — the same trap the count boxes carry a note about.
+        self._refresh_views()
 
     def _badge_box(self, key: str):
         """The count beside a mark. Nought is none.
@@ -3761,18 +3858,54 @@ class MainWindow(QMainWindow):
         # total and its two parts in one line, and the total is already
         # the badge on the tile. So the parts are named and the sum is
         # left where it is drawn.
+        # FILTERED BEFORE IT IS CUT. Taking the top twenty and then
+        # dropping the ones that miss the filter would show however many
+        # of the top twenty happened to qualify — which is a different
+        # answer, and a worse one: with Durable ticked it could show two
+        # heroes while the list held forty more.
+        wanted = self._picked_roles()
+        ranked = [s for s in self.scored if self._has_roles(s.hero_id, wanted)]
         rows = [
             (s.hero_id, s.name, s.score,
              f"{s.name}\nCounter Score = {s.vs_total * 100:+.1f}"
              f"\nSynergy Score = {s.with_total * 100:+.1f}")
-            for s in self.scored[:self._how_many("suggested_picks")]
+            for s in ranked[:self._how_many("suggested_picks")]
         ]
-        self.suggest_row.show_heroes(rows)
+        # A FILTER MATCHING NOTHING SAYS SO. An empty strip is
+        # indistinguishable from the app having stopped working, which is
+        # the lesson the hero picker's refused rows already carry.
+        self.suggest_row.show_heroes(rows, empty=(
+            "No hero left in the draft is scored in "
+            f"{' + '.join(wanted)} — untick one to widen it."
+            if wanted and not rows else ""))
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
         self.suggest_row.set_stars(self.stars, self._heart_count())
         self.suggest_row.set_shields(self.shields, self._shield_count())
+
+    def _picked_roles(self) -> list[str]:
+        """Which role ticks are on, in Valve's own order."""
+        ticks = getattr(self, "role_ticks", None)
+        if not ticks:
+            return []
+        return [role for role, tick in ticks.items() if tick.isChecked()]
+
+    @staticmethod
+    def _has_roles(hero_id: int, wanted: list[str]) -> bool:
+        """Does this hero score NON-ZERO in every role that is ticked?
+
+        A hero the bundled table has no figures for at all fails a filter
+        rather than passing it: the strip is being cut to heroes that
+        ANSWER something, and "we do not know" is not an answer. With
+        nothing ticked there is no filter and every hero is through, so a
+        hero added in a patch is only ever missing from a filtered strip.
+        """
+        if not wanted:
+            return True
+        levels = roles_mod.levels_for(hero_id)
+        return bool(levels) and all(levels.get(role, 0) > 0
+                                    for role in wanted)
 
     def _recompute_shields(self) -> None:
         """Which heroes the field struggles to counter, from the DATASET.

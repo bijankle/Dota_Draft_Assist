@@ -1,11 +1,10 @@
 """Whose history the analysis is for, across the top of the Draft tab.
 
-IT SITS WHERE THE AD SLOT SITS, at the user's request, and the ad now
-defaults OFF - so on an ordinary install this row is the first thing at
-the top of the content. The reasoning is the ad's own, inverted: reserving
-a strip for something nobody turned on was dead window, and this is
-something there IS always an answer for, so it earns the height the
-placeholder never did.
+IT IS THE FIRST THING AT THE TOP OF THE CONTENT, at the user's request.
+It took the strip a placeholder ad slot used to hold, and outlived it: the
+reasoning is that slot's own, inverted. Reserving height for something
+nobody had turned on was dead window; this row always has an answer in it,
+so it earns the height the placeholder never did.
 
 ALWAYS SHOWN, also at the user's request, including before any account has
 been measured - it reads as a prompt then, and clicking it opens the

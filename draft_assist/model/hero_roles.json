@@ -1,0 +1,747 @@
+{
+"1": {
+"Carry": 3,
+"Escape": 3,
+"Nuker": 1
+},
+"10": {
+"Carry": 3,
+"Disabler": 1,
+"Durable": 2,
+"Escape": 3,
+"Nuker": 1
+},
+"100": {
+"Disabler": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"101": {
+"Disabler": 1,
+"Nuker": 3,
+"Support": 2
+},
+"102": {
+"Carry": 1,
+"Durable": 2,
+"Support": 2
+},
+"103": {
+"Disabler": 1,
+"Durable": 1,
+"Initiator": 2,
+"Nuker": 1
+},
+"104": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 1,
+"Initiator": 1,
+"Nuker": 1
+},
+"105": {
+"Disabler": 1,
+"Nuker": 3
+},
+"106": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 3,
+"Initiator": 1,
+"Nuker": 1
+},
+"107": {
+"Disabler": 1,
+"Durable": 1,
+"Escape": 2,
+"Initiator": 1,
+"Nuker": 2
+},
+"108": {
+"Disabler": 1,
+"Durable": 1,
+"Escape": 2,
+"Nuker": 1,
+"Support": 1
+},
+"109": {
+"Carry": 3,
+"Nuker": 1,
+"Pusher": 2
+},
+"11": {
+"Carry": 2,
+"Nuker": 3
+},
+"110": {
+"Disabler": 1,
+"Escape": 2,
+"Initiator": 2,
+"Nuker": 3,
+"Support": 2
+},
+"111": {
+"Disabler": 2,
+"Escape": 1,
+"Nuker": 3,
+"Support": 3
+},
+"112": {
+"Disabler": 2,
+"Nuker": 1,
+"Support": 3
+},
+"113": {
+"Carry": 3,
+"Escape": 3,
+"Nuker": 1
+},
+"114": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 2,
+"Initiator": 1
+},
+"119": {
+"Disabler": 1,
+"Escape": 2,
+"Nuker": 2,
+"Support": 2
+},
+"12": {
+"Carry": 2,
+"Escape": 2,
+"Nuker": 1,
+"Pusher": 1
+},
+"120": {
+"Carry": 2,
+"Disabler": 1,
+"Durable": 1,
+"Escape": 2,
+"Initiator": 2,
+"Nuker": 2
+},
+"121": {
+"Disabler": 2,
+"Escape": 1,
+"Nuker": 2,
+"Support": 2
+},
+"123": {
+"Disabler": 1,
+"Escape": 2,
+"Nuker": 2,
+"Support": 2
+},
+"126": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 3,
+"Nuker": 2
+},
+"128": {
+"Disabler": 1,
+"Escape": 1,
+"Nuker": 3,
+"Support": 1
+},
+"129": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 3,
+"Initiator": 2
+},
+"13": {
+"Disabler": 3,
+"Escape": 3,
+"Initiator": 3,
+"Nuker": 2
+},
+"131": {
+"Disabler": 1,
+"Escape": 2,
+"Nuker": 2,
+"Support": 2
+},
+"135": {
+"Carry": 1,
+"Durable": 2
+},
+"136": {
+"Carry": 1,
+"Disabler": 1,
+"Escape": 1,
+"Initiator": 2,
+"Support": 1
+},
+"137": {
+"Disabler": 2,
+"Durable": 3,
+"Initiator": 3
+},
+"138": {
+"Carry": 3,
+"Disabler": 1,
+"Nuker": 2
+},
+"14": {
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"145": {
+"Carry": 3,
+"Disabler": 1,
+"Escape": 2
+},
+"15": {
+"Carry": 2,
+"Durable": 2,
+"Nuker": 1,
+"Pusher": 1
+},
+"155": {
+"Disabler": 1,
+"Durable": 2,
+"Support": 3
+},
+"16": {
+"Disabler": 2,
+"Escape": 2,
+"Initiator": 3,
+"Nuker": 2,
+"Support": 1
+},
+"17": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 3,
+"Initiator": 1,
+"Nuker": 2
+},
+"18": {
+"Carry": 2,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"19": {
+"Carry": 3,
+"Disabler": 1,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 2,
+"Pusher": 2
+},
+"2": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 3,
+"Initiator": 3
+},
+"20": {
+"Disabler": 2,
+"Escape": 1,
+"Initiator": 2,
+"Nuker": 1,
+"Support": 3
+},
+"21": {
+"Carry": 1,
+"Disabler": 1,
+"Escape": 1,
+"Nuker": 1,
+"Support": 1
+},
+"22": {
+"Carry": 1,
+"Nuker": 3
+},
+"23": {
+"Carry": 2,
+"Disabler": 2,
+"Durable": 1,
+"Initiator": 2,
+"Nuker": 1,
+"Support": 1
+},
+"25": {
+"Carry": 1,
+"Disabler": 1,
+"Nuker": 3,
+"Support": 1
+},
+"26": {
+"Disabler": 3,
+"Initiator": 2,
+"Nuker": 3,
+"Support": 2
+},
+"27": {
+"Disabler": 3,
+"Initiator": 1,
+"Nuker": 2,
+"Pusher": 3,
+"Support": 2
+},
+"28": {
+"Carry": 2,
+"Disabler": 1,
+"Durable": 2,
+"Escape": 1,
+"Initiator": 2
+},
+"29": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 3,
+"Initiator": 3,
+"Nuker": 1
+},
+"3": {
+"Disabler": 3,
+"Durable": 1,
+"Nuker": 1,
+"Support": 2
+},
+"30": {
+"Disabler": 1,
+"Nuker": 2,
+"Support": 3
+},
+"31": {
+"Nuker": 2,
+"Support": 3
+},
+"32": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 2
+},
+"33": {
+"Disabler": 2,
+"Initiator": 2,
+"Pusher": 2
+},
+"34": {
+"Carry": 1,
+"Nuker": 3,
+"Pusher": 2
+},
+"35": {
+"Carry": 3,
+"Nuker": 1
+},
+"36": {
+"Carry": 1,
+"Disabler": 1,
+"Durable": 1,
+"Nuker": 2
+},
+"37": {
+"Disabler": 1,
+"Initiator": 2,
+"Support": 1
+},
+"38": {
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"39": {
+"Carry": 1,
+"Escape": 3,
+"Nuker": 3
+},
+"4": {
+"Carry": 1,
+"Disabler": 1,
+"Initiator": 1,
+"Nuker": 1
+},
+"40": {
+"Disabler": 1,
+"Initiator": 1,
+"Nuker": 1,
+"Pusher": 1,
+"Support": 2
+},
+"41": {
+"Carry": 2,
+"Disabler": 2,
+"Durable": 1,
+"Escape": 1,
+"Initiator": 3
+},
+"42": {
+"Carry": 2,
+"Disabler": 2,
+"Durable": 3,
+"Initiator": 1,
+"Support": 1
+},
+"43": {
+"Carry": 1,
+"Disabler": 1,
+"Nuker": 1,
+"Pusher": 3
+},
+"44": {
+"Carry": 3,
+"Escape": 1
+},
+"45": {
+"Nuker": 2,
+"Pusher": 2
+},
+"46": {
+"Carry": 2,
+"Escape": 1
+},
+"47": {
+"Carry": 1,
+"Disabler": 1,
+"Durable": 2,
+"Initiator": 1
+},
+"48": {
+"Carry": 2,
+"Nuker": 2,
+"Pusher": 1
+},
+"49": {
+"Carry": 2,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 1,
+"Nuker": 1,
+"Pusher": 3
+},
+"5": {
+"Disabler": 2,
+"Nuker": 2,
+"Support": 3
+},
+"50": {
+"Disabler": 1,
+"Nuker": 1,
+"Support": 3
+},
+"51": {
+"Disabler": 2,
+"Durable": 1,
+"Initiator": 3,
+"Nuker": 1
+},
+"52": {
+"Carry": 1,
+"Disabler": 1,
+"Nuker": 3,
+"Pusher": 3,
+"Support": 1
+},
+"53": {
+"Carry": 1,
+"Escape": 1,
+"Nuker": 1,
+"Pusher": 3
+},
+"54": {
+"Carry": 2,
+"Disabler": 1,
+"Durable": 2,
+"Escape": 1
+},
+"55": {
+"Disabler": 1,
+"Escape": 1,
+"Initiator": 1
+},
+"56": {
+"Carry": 2,
+"Escape": 3,
+"Pusher": 1
+},
+"57": {
+"Durable": 1,
+"Nuker": 1,
+"Support": 2
+},
+"58": {
+"Disabler": 1,
+"Durable": 1,
+"Pusher": 2,
+"Support": 2
+},
+"59": {
+"Carry": 2,
+"Durable": 2,
+"Initiator": 1
+},
+"6": {
+"Carry": 2,
+"Disabler": 1,
+"Pusher": 1
+},
+"60": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"61": {
+"Carry": 1,
+"Escape": 3,
+"Nuker": 1,
+"Pusher": 3
+},
+"62": {
+"Escape": 2,
+"Nuker": 1
+},
+"63": {
+"Carry": 2,
+"Escape": 3
+},
+"64": {
+"Disabler": 1,
+"Nuker": 2,
+"Pusher": 2,
+"Support": 1
+},
+"65": {
+"Disabler": 2,
+"Escape": 1,
+"Initiator": 3
+},
+"66": {
+"Pusher": 2,
+"Support": 2
+},
+"67": {
+"Carry": 3,
+"Durable": 1,
+"Escape": 1
+},
+"68": {
+"Disabler": 1,
+"Nuker": 1,
+"Support": 2
+},
+"69": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 2,
+"Nuker": 1
+},
+"7": {
+"Disabler": 2,
+"Initiator": 3,
+"Nuker": 1,
+"Support": 1
+},
+"70": {
+"Carry": 2,
+"Disabler": 1,
+"Durable": 1
+},
+"71": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 2,
+"Escape": 1,
+"Initiator": 2
+},
+"72": {
+"Carry": 3,
+"Disabler": 1,
+"Nuker": 1
+},
+"73": {
+"Carry": 2,
+"Disabler": 1,
+"Durable": 2,
+"Initiator": 1,
+"Nuker": 1,
+"Support": 1
+},
+"74": {
+"Carry": 1,
+"Disabler": 2,
+"Escape": 1,
+"Nuker": 3,
+"Pusher": 1
+},
+"75": {
+"Carry": 1,
+"Disabler": 2,
+"Initiator": 2,
+"Nuker": 1,
+"Support": 1
+},
+"76": {
+"Carry": 2,
+"Disabler": 1,
+"Nuker": 2
+},
+"77": {
+"Carry": 2,
+"Durable": 1,
+"Escape": 1,
+"Pusher": 3
+},
+"78": {
+"Carry": 1,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 3,
+"Nuker": 1
+},
+"79": {
+"Disabler": 2,
+"Initiator": 1,
+"Nuker": 1,
+"Support": 2
+},
+"8": {
+"Carry": 2,
+"Escape": 1,
+"Pusher": 1
+},
+"80": {
+"Carry": 2,
+"Durable": 1,
+"Pusher": 3
+},
+"81": {
+"Carry": 3,
+"Disabler": 2,
+"Durable": 2,
+"Initiator": 1,
+"Pusher": 2
+},
+"82": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 2,
+"Initiator": 1,
+"Nuker": 2,
+"Pusher": 1
+},
+"83": {
+"Disabler": 1,
+"Durable": 1,
+"Escape": 1,
+"Initiator": 2,
+"Support": 3
+},
+"84": {
+"Disabler": 2,
+"Durable": 1,
+"Initiator": 1,
+"Nuker": 2,
+"Support": 2
+},
+"85": {
+"Disabler": 1,
+"Durable": 2,
+"Nuker": 1,
+"Support": 2
+},
+"86": {
+"Disabler": 1,
+"Nuker": 1,
+"Support": 2
+},
+"87": {
+"Disabler": 2,
+"Initiator": 1,
+"Nuker": 1,
+"Support": 2
+},
+"88": {
+"Disabler": 2,
+"Escape": 1,
+"Initiator": 2,
+"Nuker": 2
+},
+"89": {
+"Carry": 3,
+"Disabler": 2,
+"Escape": 1,
+"Initiator": 1,
+"Pusher": 2,
+"Support": 1
+},
+"9": {
+"Carry": 1,
+"Disabler": 1,
+"Escape": 2,
+"Nuker": 1,
+"Support": 1
+},
+"90": {
+"Disabler": 1,
+"Nuker": 2,
+"Support": 3
+},
+"91": {
+"Escape": 2,
+"Nuker": 1,
+"Support": 3
+},
+"92": {
+"Disabler": 1,
+"Durable": 1,
+"Nuker": 2,
+"Pusher": 1,
+"Support": 1
+},
+"93": {
+"Carry": 2,
+"Disabler": 1,
+"Escape": 3,
+"Nuker": 1
+},
+"94": {
+"Carry": 3,
+"Disabler": 1,
+"Durable": 1
+},
+"95": {
+"Carry": 3,
+"Disabler": 1,
+"Durable": 1,
+"Pusher": 2
+},
+"96": {
+"Disabler": 1,
+"Durable": 3,
+"Escape": 1,
+"Initiator": 3,
+"Nuker": 1
+},
+"97": {
+"Disabler": 2,
+"Escape": 1,
+"Initiator": 3,
+"Nuker": 1
+},
+"98": {
+"Durable": 2,
+"Escape": 2,
+"Nuker": 3
+},
+"99": {
+"Carry": 2,
+"Durable": 3,
+"Initiator": 1,
+"Nuker": 1
+}
+}

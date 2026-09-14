@@ -3545,105 +3545,13 @@ def test_a_full_board_leaves_the_two_grids_the_same_size(window, qapp):
         f"{synergy.table.height()} vs {counters.table.height()}"
 
 
-def test_the_ad_slot_is_a_switch_and_reserves_nothing_while_it_is_off(qapp):
-    """It ships ON now, because that is where the owner left it and the
-    defaults are their own setup — but the SWITCH is what matters and it
-    still has to work in both directions. Nothing is fetched either way:
-    the slot is a painted placeholder for a banner that does not exist,
-    and off means it takes no room at all rather than reserving a strip.
-
-    OFF BY DEFAULT, at the user's request. This dict said True while the
-    notes claimed otherwise - drift from when DEFAULTS was reseeded off
-    the owner's own settings file, which had ads on at the time."""
-    from draft_assist.ui import settings as ui_settings
-    from draft_assist.ui.adslot import AdSlot
-    assert ui_settings.DEFAULTS["ads_enabled"] is False
-    slot = AdSlot()
-    assert not slot.showing
-    slot.set_enabled(True)
-    assert slot.showing, "on means on, from the moment it is switched on"
-    slot.set_enabled(False)
-    assert not slot.showing
-    slot.close()
-
-
-def test_an_ad_that_is_on_stays_on(qapp):
-    """It began as five seconds in every fifteen, which was worse in both
-    directions: an ad that appears out of nothing mid-draft pulls the eye
-    at exactly the wrong moment. At the user's request it is constant —
-    off is off, and on is a strip that never moves."""
-    from draft_assist.ui import adslot
-    slot = adslot.AdSlot()
-    slot.set_enabled(True)
-    tall = slot.height()
-    assert tall == adslot.HEIGHT
-    assert slot.creative.pixmap() is not None
-    assert not slot.creative.pixmap().isNull(), "an empty slot is not an ad"
-    # Nothing on a clock: no timer anywhere on the widget to turn it over.
-    from PyQt6.QtCore import QTimer
-    assert not slot.findChildren(QTimer), "the cycle is gone"
-    assert slot.showing and slot.height() == tall
-    slot.close()
-
-
-def test_ads_switched_off_cost_no_window_at_all(qapp):
-    """A strip of dead window above the draft for a switched-off feature
-    is worse than either state."""
-    from draft_assist.ui import adslot
-    slot = adslot.AdSlot()
-    assert slot.height() == 0, "off by default, so it must take no room"
-    slot.set_enabled(True)
-    assert slot.height() == adslot.HEIGHT
-    slot.set_enabled(False)
-    assert slot.height() == 0
-    slot.close()
-
-
-def test_the_creative_is_a_real_ad_unit(qapp):
-    """728x90, the IAB leaderboard — the size a banner slot is actually
-    sold as, so the layout is tested against the real thing. Centred in a
-    full-width slot rather than stretched: a leaderboard is a fixed-size
-    creative wherever it is served."""
-    from draft_assist.ui import adslot
-    slot = adslot.AdSlot()
-    slot.set_enabled(True)
-    assert (slot.creative.width(), slot.creative.height()) == \
-        (adslot.AD_WIDTH, adslot.AD_HEIGHT)
-    slot.resize(3440, adslot.HEIGHT)
-    _settle(qapp)
-    assert slot.creative.width() == adslot.AD_WIDTH, "it stretched"
-    # And the creative itself is that unit, drawn rather than downloaded:
-    # a real banner off the web is somebody's copyrighted artwork, and
-    # this repository carries nobody else's.
-    art = adslot.leaderboard()
-    assert (art.width(), art.height()) == (adslot.AD_WIDTH, adslot.AD_HEIGHT)
-    picture = art.toImage()
-    colours = {picture.pixelColor(x, y).name()
-               for y in range(0, picture.height(), 3)
-               for x in range(0, picture.width(), 3)}
-    assert len(colours) > 20, "a flat rectangle is not a creative"
-    assert adslot.AD_ACCENT in colours, "no call to action on it"
-    slot.close()
-
-
-def test_the_leaderboard_fits_at_the_narrowest_the_window_goes(window, qapp):
-    """A creative wider than the window's own floor would be one the app
-    can never actually show."""
-    from draft_assist.ui import adslot
-    window.show()
-    window.refresh()
-    _settle(qapp)
-    assert adslot.AD_WIDTH < window.minimumSizeHint().width()
-
-
-def test_the_ad_setting_reaches_the_slot(window):
-    """A tick box that does not move the thing it names is not a setting."""
-    window.settings["ads_enabled"] = True
-    window.ad_slot.set_enabled(True)
-    assert window.ad_slot._enabled
-    window.settings["ads_enabled"] = False
-    window.ad_slot.set_enabled(False)
-    assert not window.ad_slot._enabled
+# THE SIX AD TESTS THAT STOOD HERE ARE GONE WITH THE FEATURE, at the
+# user's request — "remove the ad stuff all together". They held that the
+# slot reserved nothing while off, that it stayed up rather than blinking
+# on a timer, that the creative was a real 728x90 leaderboard drawn in
+# code rather than anybody's copyrighted banner, and that it fitted at
+# the window's own minimum width. All true, and all about a placeholder
+# for revenue that needs a WEB PAGE this app does not have.
 
 
 def test_the_window_is_freely_resizable_and_remembers_its_size(qapp,

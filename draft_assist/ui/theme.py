@@ -432,16 +432,6 @@ QFrame[card="true"] {{
     border: 1px solid {BORDER};
     border-radius: 8px;
 }}
-/* The advertising slot. It keeps its height whether or not an ad is in
-   it — a banner that appears and disappears while pushing the ten picks
-   up and down is a board that moves under the cursor mid-draft. */
-QWidget#adSlot {{ background: transparent; border: none; }}
-QLabel#adCreative {{ background: transparent; border: none; color: {TEXT_DIM}; }}
-QWidget#adSlot[live="true"] QLabel#adCreative {{
-    background: {BG_ELEVATED};
-    border: 1px dashed {BORDER};
-    border-radius: 8px;
-}}
 QFrame[banner="true"] {{
     background: #3d3524;
     border: 1px solid {WARN};

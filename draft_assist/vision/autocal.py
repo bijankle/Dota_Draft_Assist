@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from .layout import DraftLayout, hud_box
+from .layout import HUD_ASPECT, DraftLayout, hud_box
 
 # How far down the frame the pick bar can reach, as a fraction of its
 # height. It hugs the top edge — measured at 6.0% on a real 3440x1440
@@ -235,12 +235,18 @@ def layout_from(found: list[Located], width: int, height: int,
     if pitch <= 0:
         return Calibration(found=found, note="portraits overlap; no pitch")
 
+    # THE VERTICAL IS A FRACTION OF THE HUD BOX, exactly as
+    # `SlotRect.to_pixels` reads it back. Dividing by the frame's height
+    # instead would store a measurement taken on a 16:10 or 4:3 display
+    # under a convention nothing renders it with. On 16:9 and wider these
+    # are the same number.
+    box_h = span / HUD_ASPECT
     layout = DraftLayout(
         radiant_x=(banks[0][0] - left) / span,
         dire_x=(banks[1][0] - left) / span,
-        y=float(np.median([i.y for i in found])) / height,
+        y=float(np.median([i.y for i in found])) / box_h,
         slot_w=float(np.median([i.w for i in found])) / span,
-        slot_h=float(np.median([i.h for i in found])) / height,
+        slot_h=float(np.median([i.h for i in found])) / box_h,
         pitch=pitch / span,
         role_dy=base.role_dy, role_h=base.role_h,
     )
@@ -439,12 +445,18 @@ def layout_from_banks(frame, first, second, base: DraftLayout | None = None):
     # one measurement made twice; averaging halves the error in a drag.
     pitch = (lpitch + rpitch) / 2.0
     slot_w = (lw + rw) / 2.0
+    # THE VERTICAL IS A FRACTION OF THE HUD BOX, exactly as
+    # `SlotRect.to_pixels` reads it back. Dividing by the frame's height
+    # instead would store a measurement taken on a 16:10 or 4:3 display
+    # under a convention nothing renders it with. On 16:9 and wider these
+    # are the same number.
+    box_h = span / HUD_ASPECT
     layout = DraftLayout(
         radiant_x=(lx - left_edge) / span,
         dire_x=(rx - left_edge) / span,
-        y=ly / height,
+        y=ly / box_h,
         slot_w=slot_w / span,
-        slot_h=lh / height,
+        slot_h=lh / box_h,
         pitch=pitch / span,
         role_dy=base.role_dy, role_h=base.role_h,
     )
@@ -763,12 +775,18 @@ def find_banks(frame, base: DraftLayout | None = None):
         return None, "the portraits' top and bottom edges could not be found"
     top, slot_h = vertical
 
+    # THE VERTICAL IS A FRACTION OF THE HUD BOX, exactly as
+    # `SlotRect.to_pixels` reads it back. Dividing by the frame's height
+    # instead would store a measurement taken on a 16:10 or 4:3 display
+    # under a convention nothing renders it with. On 16:9 and wider these
+    # are the same number.
+    box_h = span / HUD_ASPECT
     layout = DraftLayout(
         radiant_x=start / span,
         dire_x=dire_x / span,
-        y=top / height,
+        y=top / box_h,
         slot_w=slot_w / span,
-        slot_h=slot_h / height,
+        slot_h=slot_h / box_h,
         pitch=pitch / span,
         role_dy=base.role_dy, role_h=base.role_h,
     )
