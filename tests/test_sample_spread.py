@@ -86,12 +86,11 @@ def test_one_is_allowed_but_is_a_single_point(folder):
     assert len(fp.spread_over_spans(shots, sizes, 1)) == 1
 
 
-def test_the_app_asks_for_five(folder):
-    from draft_assist.ui.tasks import TASKS
-    step = TASKS["check_resolutions"].steps[0]
-    assert "--sample" in step
-    assert step[step.index("--sample") + 1] == "5"
-    assert "--tall" in step
+# `test_the_app_asks_for_five` stood here and asserted that the in-app
+# task passed `--tall --sample 5`. There is no in-app task any more — the
+# recognition instruments were removed at the user's request — so what
+# five buys is tested against `spread_over_spans` itself, above, rather
+# than against a command line that no longer exists.
 
 
 def test_naming_a_picture_outright_beats_the_sample():

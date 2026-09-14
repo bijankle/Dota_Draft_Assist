@@ -136,16 +136,16 @@ def run_checks(server=None, port: int | None = None) -> list[Check]:
             "GSI port owned by this app", False,
             f"127.0.0.1:{port} is held by another process",
             "Another copy of this app is probably running. Close every "
-            "other copy, then use Capture > Use game data (GSI). Two copies "
-            "cannot share the port: one receives everything and the other "
-            "receives nothing."))
+            "other copy, then restart this one. Two copies cannot share "
+            "the port: one receives everything and the other receives "
+            "nothing."))
     else:
         checks.append(Check(
             "Listener accepting connections", listening,
             f"127.0.0.1:{port} {'is' if listening else 'is not'} accepting "
             "connections",
-            "" if listening else "Switch the source back to game data: "
-                                 "Capture > Use game data (GSI)."))
+            "" if listening else "Turn game data back on: Settings > "
+                                 "Game data > Use game data (GSI)."))
 
     # 6. Is Dota even running?
     from ..capture.window import DOTA_TITLE, find_dota_window_title

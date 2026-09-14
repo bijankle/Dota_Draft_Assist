@@ -58,10 +58,11 @@ def hud_box(width: int, height: int) -> tuple[float, float]:
     exactly two places: the shipped defaults transferring to a display
     nobody has calibrated on, and the search region — and `BAR_FRACTION`
     is deliberately loose enough to hold the bar under either reading.
-    Settle it with a real 16:10 frame, not with reasoning — and there is
-    now a button that does exactly that from frames already on disk:
-    Help > Recognition checks > Check other screen resolutions
-    (`find_portraits._vertical`). It weighs THREE candidates, not two:
+    Settle it with a real 16:10 frame, not with reasoning — and it has
+    been, by `tools/find_portraits.py` run over a folder of the user's own
+    screenshots (`find_portraits._vertical`; there is no menu item for it
+    any more, since it was an instrument rather than a feature). It weighs
+    THREE candidates, not two:
     this function's reading, a 16:9 HUD box hung at the TOP of a taller
     display, and one CENTRED. The first two differ by 4px on 1920x1200
     and the third by 56px, so only the third would actually miss the
@@ -69,6 +70,15 @@ def hud_box(width: int, height: int) -> tuple[float, float]:
     16:9 and wider the vertical slack is nought and all three are the
     same number — which is why the confirmed 3440x1440 measurement above
     says nothing whatever about this.
+
+    THE CENTRED MODEL IS REFUTED, measured rather than argued. Over the
+    user's own screenshots the bar's top read 0.0019 spread as a fraction
+    of the WINDOW, 0.0031 against a top-hung HUD box, and **-0.2028 to
+    -0.0491 against a centred one** — negative, on every frame: it puts
+    the pick bar above the top of the box it claims Dota draws it in. That
+    was the only one of the three that would have missed the portraits.
+    The two survivors differ by 4px on 1920x1200 and are still not
+    separated, which costs nothing.
     """
     if not width or not height:
         return 0.0, float(width)

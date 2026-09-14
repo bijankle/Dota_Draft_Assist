@@ -182,51 +182,14 @@ def test_the_measurement_reports_both_readings(tool):
         assert f'"{key}"' in source
 
 
-def test_the_check_is_a_button_rather_than_a_command(tool):
-    """"I still don't understand why I need to manually type this
-    command into Command Prompt." """
-    from draft_assist.ui.tasks import TASKS
-    task = TASKS["check_resolutions"]
-    assert any("find_portraits.py" in part
-               for step in task.steps for part in step)
-    assert any("{arg}" in part for step in task.steps for part in step)
-    filled = task.with_argument("/some/folder")
-    assert any("/some/folder" in part
-               for step in filled.steps for part in step)
-
-
-def test_the_app_runs_only_the_shots_that_can_vote():
-    """The in-app check passes `--tall`.
-
-    This check exists to settle where the vertical slack goes on a
-    display taller than 16:9. At 16:9 and wider there is no slack, so
-    the three candidate readings are the same number and no picture can
-    separate equal numbers — twenty-two minutes to answer a question
-    seven of the pictures can answer. The cut is visible in the output:
-    the run prints how many it kept and why.
-    """
-    from draft_assist.ui.tasks import TASKS
-    step = TASKS["check_resolutions"].steps[0]
-    assert "--tall" in step
-    assert step.index("--tall") > step.index("{arg}")
-
-
-def test_the_size_map_is_a_button_not_a_command_line():
-    """"I want it to be a tool in the app just like before - set it up,
-    hit run, copy results." Twice asked; a command line is not an answer
-    to it a third time."""
-    import inspect
-
-    from draft_assist.ui.app import MainWindow
-    from draft_assist.ui.tasks import TASKS
-    assert "map_sizes" in TASKS
-    step = TASKS["map_sizes"].steps[0]
-    assert "--grid" in step and "{arg}" in step
-    body = inspect.getsource(MainWindow._map_sizes)
-    assert '"map_sizes"' in body
-    assert "_open_tool" in body
-    menus = inspect.getsource(MainWindow._build_menus)
-    assert "_map_sizes" in menus
+# THE THREE TESTS THAT STOOD HERE WERE ABOUT BUTTONS, and the buttons
+# are gone: Help > Recognition checks and its four items went at the
+# user's request — "all of those were used to refine the software, once
+# its done i dont nteed them". What they asserted was that the sweep was
+# reachable without a command line, that the in-app run passed `--tall`,
+# and that the size map was a button too. The TOOL is unchanged and every
+# test of what it measures is still below; `--tall`, `--sample` and
+# `--grid` are now typed at a console by whoever is measuring.
 
 
 def test_the_map_does_one_picture_unless_told_otherwise():

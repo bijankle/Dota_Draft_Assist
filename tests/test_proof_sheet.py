@@ -90,37 +90,6 @@ def test_the_json_report_never_carries_pixels(tmp_path):
 
 # --- and the window opens it -------------------------------------------
 
-def test_the_window_reads_the_marked_line():
-    from draft_assist.ui.tool_window import SHEET
-    found = SHEET.match(r"SHEET C:\Users\Bij\debug_out\found\proof-sheet.png")
-    assert found
-    assert found.group(1).endswith("proof-sheet.png")
-
-
-def test_an_ordinary_line_is_not_mistaken_for_one():
-    from draft_assist.ui.tool_window import SHEET
-    assert SHEET.match("Pictures -> C:\\Users\\Bij\\debug_out\\found") is None
-    assert SHEET.match("  <name>-slices.png   the ten crops") is None
-
-
-def test_a_missing_file_is_not_an_error(tmp_path):
-    """Never fatal: a machine with no image viewer, or a sheet that was
-    not written, leaves the path in the log and nothing else."""
-    import inspect
-    from draft_assist.ui.tool_window import ToolWindow
-    body = inspect.getsource(ToolWindow._show_sheet)
-    assert "is_file()" in body
-    assert "except Exception" in body
-
-
-def test_a_second_run_does_not_reopen_the_first_ones_sheet():
-    import inspect
-    from draft_assist.ui.tool_window import ToolWindow
-    assert "self.sheet = None" in inspect.getsource(ToolWindow.start)
-
-
-# --- and writing it must never take the run down -----------------------
-
 def test_a_write_that_fails_costs_the_picture_and_nothing_else(
         tmp_path, monkeypatch, capsys):
     """It took a fourteen-minute run down to prove this. The sheet is

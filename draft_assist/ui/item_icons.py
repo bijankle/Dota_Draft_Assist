@@ -67,10 +67,10 @@ def why_missing(name: str) -> str:
     A MISSING ICON HAS FOUR CAUSES AND ONE APPEARANCE — the download
     404'd, the rules name an item OpenDota does not list, the name
     matches two icons and is refused rather than guessed at, or the file
-    will not decode — and the picture cannot say which. That is what
-    `tools/check_item_icons.py` was written for, and it has no menu item
-    any more, so the answer goes where somebody looking at the blank tile
-    already is: its tooltip.
+    will not decode — and the picture cannot say which. A console tool
+    used to answer that; it has been deleted, because this does the same
+    set arithmetic and puts the answer where somebody looking at the
+    blank tile already is: its tooltip.
     """
     key = slug(name)
     slugs = _slugs()

@@ -106,8 +106,8 @@ def main() -> None:
     if before is None:
         raise SystemExit(
             f"Nothing is listening on port {args.port}.\n"
-            "Start the app first, and make sure its source is game data "
-            "(Capture > Use game data).")
+            "Start the app first, and make sure game data is ticked "
+            "(Settings > Game data).")
     print(f"App is listening (accepted {before.get('accepted', 0)} payloads "
           f"so far).")
     print("Watch the Draft tab. Ctrl+C to stop.\n")
@@ -124,8 +124,8 @@ def main() -> None:
                 except urllib.error.URLError as exc:
                     raise SystemExit(
                         f"\nCould not reach the app on port {args.port}: "
-                        f"{exc}\nIs it running, and is the source set to "
-                        "game data (Capture > Use game data)?")
+                        f"{exc}\nIs it running, and is game data ticked "
+                        "(Settings > Game data)?")
             if not args.loop:
                 break
             print("  --- looping ---")

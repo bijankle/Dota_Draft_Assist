@@ -67,12 +67,14 @@ credentials, and put the account at risk. Do not go there.
    `SlotRect.to_pixels` goes through it. Treating them as fractions of the
    full width put the crop boxes 440px left of the portraits on a real
    ultrawide session. The vertical axis needs no correction — the bar hugs
-   the top edge. Calibration nudges are fractional too, and are edited live
-   in Debug ▸ Live with the boxes drawn on the picture.
+   the top edge. The numbers are shown in Debug ▸ Live with the boxes
+   drawn on the picture, so a bad reading can be diagnosed — they are a
+   readout rather than something anybody is expected to set.
 
    **"THE VERTICAL NEEDS NO CORRECTION" IS TRUE AT 16:9 AND WIDER, AND
-   UNVERIFIED BELOW IT** (`find_portraits._vertical`, Help ▸ Recognition
-   checks ▸ Check other screen resolutions). On a display TALLER than
+   THE LETTERBOXED MODEL IS NOW REFUTED** (`find_portraits._vertical`,
+   run as `python tools/find_portraits.py <folder>`; there is no menu
+   item for it any more). On a display TALLER than
    16:9 there are THREE candidates, not two: the bar's top as a fraction
    of the WINDOW's height (what `SlotRect.to_pixels` does), of a 16:9 HUD
    box hung at the TOP, or of one CENTRED — letterboxed. The first two
@@ -97,128 +99,47 @@ credentials, and put the account at risk. Do not go there.
    invalidate every saved `calibration_local.json`, so the tool reports
    and does not write.
 
-   **When measuring fails, the user DRAWS it** (`ui/calibrate.py`,
-   `ui/framebox.py`, `autocal.measure_bank` / `layout_from_banks`). Six
-   numbers, each a fraction of the HUD box rather than of the window, is
-   not something anyone can convert "the boxes are 135 pixels left of the
-   portraits" into — the user could see exactly what was wrong and had no
-   way to say it, which is where "how the fuck do I calibrate these
-   boxes" came from. ONE BOX ROUND EACH BANK, either order, and the rest
-   is measured.
+   **NOBODY DRAWS THE BOXES ANY MORE**, at the user's request: "i dont
+   see the point in having the portrait box vision box feature at all...
+   my plan now is to have the automatic detection work so the user never
+   needs to draw out these vision pboxes". This REMOVES a feature this
+   file used to spend two pages on — `ui/calibrate.py` (two frameless
+   always-on-top rectangles dragged over the live Dota client, File ▸
+   Calibrate pick boxes), the in-picture drag in Debug ▸ Live, "Use a
+   saved picture…", and the whole banner rung that sent people to them.
+   All of it is deleted, along with `FrameView`'s rubber band, its
+   widget-pixels-to-frame-pixels mapping and its `boxed` signal.
 
-   **AND IT IS AN ACTION ON THE GAME, NOT A DRAG IN A DEBUG PANEL**
-   (`ui/calibrate.py`, File ▸ Calibrate pick boxes, the banner's last
-   rung). It was a drag on a small picture of the frame inside Debug ▸
-   Live — "it should not be done in this silly debugging menu" — six
-   clicks deep, for the setup step the entire draft reading depends on.
-   Now two frameless always-on-top rectangles sit over the real Dota
-   client, dragged and resized by hand, with a Confirm.
-   **TWO BOXES, NOT TEN.** Ten labelled boxes were offered and turned
-   down — "just 2 big rectangles that go over all the portraits for
-   Radiant and all the portraits for Dire" — and the simpler answer is
-   also the only representable one: a `DraftLayout` is seven numbers, so
-   ten hand-placed rectangles could describe a pick bar that cannot
-   exist.
-   **THEY ARE `Qt.Tool` AND THEY EXIST ONLY WHILE CALIBRATING**, because
-   two more entries in the taskbar and Alt-Tab is what got the floating
-   overlay toggle deleted from this app.
-   **OPEN DOTA FIRST**, at the user's request: the boxes go ON the
-   client, so with no window there they are two rectangles being dragged
-   over the desktop onto nothing. `dota_client_rect` answers None both
-   when the game is shut and when this is not Windows, and the sentence
-   is the same either way.
-   **THE STRIP WITH THE NAME IN IT IS NOT PART OF THE MEASUREMENT**, and
-   it flips UNDER the rectangle when there is no room above — which is
-   the normal case rather than an edge one, since the pick bar hugs the
-   top of the screen and a label at a negative y is clipped off the
-   display. `screen_rect` returns the rectangle alone; handing the
-   widget's own geometry to the measurer would put every box a label's
-   height out.
-   **TWO FAULTS HERE WERE INVISIBLE TO THE TESTS AND OBVIOUS ON SCREEN**,
-   which is this app's oldest lesson repeating. The opening geometry
-   multiplied the WINDOW width by the layout's fractions — they are
-   fractions of the 16:9 HUD BOX, which is the mistake that once put the
-   crop boxes 440px left of the portraits, and the fix is to go through
-   `SlotRect.to_pixels` like everything else. And a bank spans four
-   PITCHES plus ONE portrait: `4 * slot_w + 4 * pitch` hung the Dire box
-   a hundred pixels off the right edge of the screen, where it could not
-   be dragged at all.
-   **AND A PANEL'S STYLESHEET CASCADES INTO ITS BUTTONS.** The control
-   panel set a background and border on itself unscoped, so each button
-   needed `border: none` to undo it — and that beat
-   `QPushButton[accent="true"]`, which drew Confirm, the one action the
-   window exists for, as a plain button. Naming the rule
-   (`QWidget#calPanel`) is the fix; the accent-ordering trap in the
-   stylesheet is the same family.
-   **AND CONFIRM COULD NEVER FIND A PICTURE TO MEASURE.** `frame_of`
-   asked the vision provider for a `last_frame` attribute that no
-   provider has ever had — the frame lives on the capture session's
-   state and reaches the window on the SNAPSHOT — and `getattr` on a name
-   nothing defines is an unconditional None. So the
-   first real use of this feature, with both boxes sitting correctly on
-   the portraits and the game on screen, refused with "there is no
-   picture of the game to measure": a sentence about the state of the
-   world that was really about our own attribute name, and one the user
-   could not have satisfied by anything they did. Two sources now, in
-   order — the live Snapshot, which is free, and failing that a ONE-SHOT
-   grab of the Dota window (`_grab_dota_frame`, the snapshot key's own),
-   because `use_vision` is a tick box and game-data-only mode has no
-   capture session at all: "you cannot calibrate the crop boxes unless
-   the crop boxes are already being used" is a circle.
-   **AND A REFUSAL NAMES WHAT TO DO ABOUT IT** — "what does this even
-   mean... what do I do next". Capture reads the WINDOW, so the one
-   thing the user can change is the game's display mode, and the message
-   says so. **Which then hit the wrapped-QLabel trap**: a QLabel
-   measures itself as one line and `heightForWidth` does not propagate
-   up through an already-shown window, so the longer sentence came out
-   in a 42px label needing 105 and the reader got the first two lines of
-   the answer. `_Panel.say` asks the label what it needs at the width it
-   has and grows the panel UPWARDS, since it sits near the bottom of the
-   screen and anchoring the top would push Confirm off the display.
-   Same fault as the setup wizard's paragraphs drawing over their own
-   controls, and caught the same way: by rendering it and looking.
+   What made it removable is that the drag was never where a working
+   calibration came from. Six numbers, each a fraction of Dota's 16:9 HUD
+   box, is not something anybody can convert "the boxes are 135 pixels
+   left of the portraits" into — that is why the drag existed, and it is
+   also why it was never a good answer. `autocal` measures the same six
+   off a frame the game has named the heroes in, which is where every
+   calibration this app has ever shipped actually came from.
 
-   A box round five portraits spans four pitches plus one portrait, which
-   is one equation for two unknowns — so a first attempt asked for three
-   rectangles (first portrait, fifth portrait, other bank) because the gap
-   between portraits could not be derived. It does not have to be derived:
-   it is IN THE PICTURE. Portrait content differs per hero and repeats
-   nothing, but the borders between them are the only periodic feature in
-   a pick bar, so `measure_bank` fits (start, pitch, width) against the
-   per-column edge profile and takes the fit that lands all ten predicted
-   boundaries on an edge. Scored on the sum AND the WEAKEST of the ten,
-   because the sum alone cannot tell the right fit from one whose portrait
-   width equals its pitch — that one puts every right edge on top of the
-   next left edge, scores the same five edges twice, and lands a whole
-   portrait out.
+   **AND THE RULE THAT PROTECTED A HAND CALIBRATION WENT WITH IT**, which
+   REVERSES "A MEASUREMENT NEVER OVERWRITES WHAT THE USER CALIBRATED".
+   That rule was written for a real fault: `_adopt_measured_layout`
+   claimed in its own docstring to save "the first time and never again"
+   and had no such guard, so boxes dragged onto the portraits and visibly
+   landing were silently replaced by whatever the next match measured. A
+   calibration the user set was an ANSWER and an automatic measurement a
+   guess. There is no hand-set answer any more — every calibration this
+   app holds is a measurement — so a measurement taken from THIS match
+   now replaces the last one, and `CALIBRATION_FILE.exists()` no longer
+   gates it. Without that, the first measurement a machine ever made
+   would be the last one it could take by itself, which is the opposite
+   of what was asked for. A measurement that is not `ok` still changes
+   nothing: `read_lineup` refuses anything short of ten portraits in two
+   banks of five.
 
-   All four sides are FITTED, not taken from the drag, because nobody
-   draws a rectangle within a few pixels of anything and a span 2% wide
-   misplaces the fifth portrait by a tenth of a portrait. Horizontally
-   that is free — ten edges agree with each other. Vertically there are
-   only two, so the top and bottom are pulled towards the drawn box rather
-   than snapped hard onto whatever row edge happened to be strongest.
-   Measured against synthetic bars at four resolutions with the drags up
-   to 12px sloppy: within 3px horizontally, 6px vertically. A flat picture
-   fits nothing, so it falls back to five equal slots and SAYS SO rather
-   than reporting noise as a measurement. Which bank is which is decided
-   by x, since Radiant is always the left bank.
-
-   **Use a saved picture…** loads a saved frame off disk so this can be
-   done without Dota on screen — `debug_out/<stamp>/frame.png` from Ctrl+S,
-   or any `recordings/<stamp>/frames/00042.png` — because making
-   calibration wait for a live game is what made it never happen.
-
-   **A MEASUREMENT NEVER OVERWRITES WHAT THE USER CALIBRATED.**
-   `_adopt_measured_layout` claimed in its own docstring to save "the first
-   time and never again" and had no such guard: it fired on every
-   measurement, so boxes dragged onto the portraits and visibly landing
-   were silently replaced by whatever the next match measured. A
-   calibration the user set is an ANSWER; an automatic measurement is a
-   guess, and the guess does not get to overwrite the answer. It is adopted
-   only when `CALIBRATION_FILE` does not exist — a fresh install — and
-   otherwise says it was kept. Measuring from this game is how you
-   ask for the new one deliberately.
+   `autocal.measure_bank` and `layout_from_banks` SURVIVE the deletion
+   and are still under test — they fit (start, pitch, width) against the
+   per-column edge profile, scored on the sum AND the WEAKEST of the ten
+   because the sum alone cannot tell the right fit from one whose
+   portrait width equals its pitch. What went is only the two places a
+   human drew the rectangles they were fitted to.
 
    **`load_layout` and `save_calibration` resolve the path at CALL time**,
    never as a default argument. A default is evaluated once at import, so a
@@ -639,18 +560,43 @@ credentials, and put the account at risk. Do not go there.
   a match not having started; a banner that is up all evening is one
   nobody reads on the night it matters.
   **AND THE CROP BOXES ARE THE SECOND RUNG** (`Snapshot.
-  crop_boxes_wrong`, `_open_calibration`), because between them these two
-  are the ways the app goes blind for a whole draft. A real ranked game
-  read **two of the ten slots** for eighty seconds — the picks trickled
-  in from the screen late and one was never read at all — and the app
-  said so ONLY in the recording's notes, which is after the game is over.
-  It is not a guess about recognition being unlucky, which is why it can
-  be a banner at all: at strategy time the GAME names the ten heroes that
-  are on the screen, `lineup.read_placed` scores the calibrated boxes
-  against exactly those ten, and boxes that match none of them are not on
-  portraits. The button goes to Settings > Debug > Live, where they are
-  drawn on the picture and can be dragged — six clicks deep from a
-  banner that exists to send you there.
+  crop_boxes_wrong`, `_measure_from_banner`), because between them these
+  two are the ways the app goes blind for a whole draft. A real ranked
+  game read **two of the ten slots** for eighty seconds — the picks
+  trickled in from the screen late and one was never read at all — and
+  the app said so ONLY in the recording's notes, which is after the game
+  is over. It is not a guess about recognition being unlucky, which is
+  why it can be a banner at all: at strategy time the GAME names the ten
+  heroes that are on the screen, `lineup.read_placed` scores the
+  calibrated boxes against exactly those ten, and boxes that match none
+  of them are not on portraits.
+  **BUT "MATCH NONE OF THEM" HAD TO BE MEASURED, NOT ASSERTED**
+  (`lineup.BOXES_PROVE_THE_GEOMETRY`, `ScreenLineup.matched` /
+  `boxes_wrong`). `read_placed` refuses unless ALL TEN boxes resolve,
+  which is right for a LINE-UP — a permutation with one hero guessed is
+  a wrong team — and is a hopeless test of the GEOMETRY. One hero
+  wearing a persona, an arcana or a set the library has no picture of
+  fails its box while the other nine land perfectly, and the refusal
+  that came out of that read "the boxes are probably not on the
+  portraits" with nine of them sitting on portraits: "it looked liek the
+  boxxes were in the right locaation anyway". So `_assign` returns how
+  far it got, `read_placed` carries the count and decides the verdict
+  itself, and the provider reads a flag rather than searching our own
+  message for a phrase. A whole BANK's worth of boxes holding heroes the
+  game named is not something a wrong geometry does by accident — the
+  boxes are one rigid set at one pitch.
+  **AND ONLY A FRAME WITH THE PICK BAR ON IT MAY JUDGE THEM.** The
+  minimap's ten are LATCHED for the match, so `_resolve_sides_by_sight`
+  went on asking through PRE_GAME and the whole game — draft bar long
+  gone, the in-game top bar in its place at a different size and
+  different coordinates — and every one of those ticks raised the
+  banner. The user's own debug log is one of those frames and says so in
+  its own note. The question is asked only in `DRAFTING_STATES` now,
+  which also stops a per-tick `read_placed` running for a whole match.
+  **AND THE BUTTON IS THE AUTOMATIC ROUTE**: what raises the strip is
+  exactly what measuring needs — a picture of the bar with all ten
+  heroes named by the game — and it used to send people off to drag two
+  rectangles instead. "i thought the latest system is all automatic???"
 
   **"No data from Dota" names the ONE broken link** (`gsi/diagnose.
   run_checks`, `GsiProvider._why_silent`). GSI has several independent
@@ -2712,9 +2658,9 @@ credentials, and put the account at risk. Do not go there.
   request everything out of Setup and Game is a tab in a settings window
   "like any typical application": General, Downloads, Game data,
   Appearance, Advanced and **Debug**, which is no longer a tab of the
-  main window at all. File is Settings… and Update application… and
-  **no Quit** — the window's close button is where everybody closes a
-  window.
+  main window at all. File is Settings… and **no Quit** — the window's
+  close button is where everybody closes a window — and Update
+  application… is in Help.
   **AND NOTHING MAY SEND ANYBODY TO A MENU THAT IS GONE**
   (`tests/test_no_stale_menu_trails.py`). "Game > Start a fresh
   recording --- i dont have this option", and they were right: nothing
@@ -2725,17 +2671,52 @@ credentials, and put the account at risk. Do not go there.
   that named "Setup > Download": a sentence about the app's own past,
   printed at somebody trying to use it now. Prose goes stale silently,
   so a test scans every STRING LITERAL in `draft_assist/` and `tools/`
-  for those two menu names - string literals rather than whole files,
+  for those menu names - string literals rather than whole files,
   because a COMMENT recording what a message used to say is this
   project explaining itself rather than the app misdirecting anybody.
-  **FOUR ITEMS WENT ENTIRELY rather than moving**, also at the user's
-  request, because each asked for something the app now does for itself
-  or says somewhere better: *Make a pinnable shortcut…* (written
-  automatically at every start), *Run first-time setup…* (the wizard
-  opens itself when needed and the banner is the way back), *Check item
-  icons…* (the strip already draws the name and the download reports what
-  failed) and *Game data status…* (Diagnose answers the same question by
-  naming the ONE broken link).
+  **CAPTURE IS ON THAT LIST TOO.** It stopped being a menu when the
+  source stopped being a mode and became two tick boxes, and SIX
+  sentences were still sending people to "Capture > Use game data
+  (GSI)" - one of them inside `_gsi_status`, a method nothing had called
+  since its own menu item was deleted. The guard names Setup, Game and
+  Capture, and a SECOND rule names whole items that were deleted rather
+  than moved, because there is nowhere at all to send somebody who goes
+  looking for one of those.
+  **AND THE INSTRUMENTS WENT, at the user's request**: "all of those
+  were used to refine the software - once its done i dont nteed them".
+  Help ▸ Recognition checks and its four items (Check hero recognition,
+  Fix recognition thresholds, Check other screen resolutions, Map
+  portrait sizes), Advanced ▸ Tune recognition and Advanced ▸ Run
+  capture probe, and File ▸ Calibrate pick boxes. `ui/tool_window.py`
+  went with them - it was Run, a text panel and Copy results, the shape
+  asked for outright, and every one of its callers was one of these, so
+  it became a window with no way to open it. The SCRIPTS in `tools/`
+  stay and stay under test: they are the measurement record, and the
+  resolution question is not finished (800x600 locates nothing, 1440x900
+  locates ten and fits them wrong). What went is the permanent menu of
+  development apparatus over a window read at a glance mid-draft.
+  **AND FIVE DEAD METHODS WENT WITH THEM**, each one the remains of an
+  item deleted earlier: `_gsi_status` (Game data status, superseded by
+  Diagnose naming the ONE broken link), `_switch_to_gsi` and
+  `_switch_to_vision` (the source is two tick boxes and `HybridProvider`,
+  not two mutually exclusive commands), `_open_search` (Ctrl+K drops the
+  Help menu directly) and `_update_and_restart` (the banner runs
+  `_update_everything`). Dead UI code is not inert - it goes stale and
+  then gets read as documentation, which is exactly how those Capture
+  trails survived.
+  **SEVERAL TASKS WERE DEAD TOO** (`ui/tasks.py`): `simulate_gsi` and
+  `simulate_gsi_real` outlived the two "Simulate a draft" menu items,
+  `check_item_icons` and `make_shortcut` outlived theirs. A task nothing
+  can run is a menu item that was removed by half.
+  **FOUR ITEMS HAD ALREADY GONE ENTIRELY rather than moving**, also at
+  the user's request, because each asked for something the app now does
+  for itself or says somewhere better: *Make a pinnable shortcut…*
+  (written automatically at every start), *Run first-time setup…* (the
+  wizard opens itself when needed and the banner is the way back),
+  *Check item icons…* (`item_icons.why_missing` puts the answer in the
+  blank tile's own tooltip - and `tools/check_item_icons.py` has since
+  been deleted as well) and *Game data status…* (Diagnose answers the
+  same question by naming the ONE broken link).
   **THE SETTINGS WINDOW IS MODELESS AND APPLIES AS YOU GO**, and the
   second half of that is what decides it. A preferences window with OK
   and Cancel is fine for a page of tick boxes — but this one holds the
@@ -3656,8 +3637,18 @@ credentials, and put the account at risk. Do not go there.
   no account while the statistics need a key the user has to go and get,
   and leading with the key leaves somebody staring at empty plates while
   they sign up for something.
-  **THE BANNER LADDER IS: game feed, no artwork at all, no statistics,
-  bracket changed, statistics stale, SOME artwork missing.** The last two are at the user's request and
+  **THE BANNER LADDER IS: game feed, crop boxes, no artwork at all, no
+  statistics, bracket changed, statistics stale, SOME artwork missing.**
+  There is NO "the pick boxes have not been set up" rung any more: it was
+  the last one and it asked for the one thing this app no longer wants
+  anybody to do by hand. With no calibration file the boxes are
+  `DraftLayout()`'s measured 16:9 fractions put through `hud_box`, which
+  the resolution sweep predicted to within 4px on 10 of 11 resolutions —
+  and where it is wrong, the first strategy time of the first match
+  measures the real geometry and saves it. An absent calibration file is
+  not a fault to report; a measurement that could not be made is, and
+  that is the crop-box rung.
+  The last two are at the user's request and
   the fifth REPLACES `_prompt_if_data_is_old` rather than joining it —
   the age was once a banner, a pill AND a status segment, was cut to one
   startup dialog for that reason, and a dialog dismissed on the way to a

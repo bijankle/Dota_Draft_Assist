@@ -289,7 +289,7 @@ class GsiProvider:
             self.bind_error = (
                 f"port {self.server.port} is already in use — another copy "
                 "of this app is probably already running. Close the other "
-                "one, then use Capture > Use game data (GSI).")
+                "one and restart this one.")
             return f"could not open the GSI port {self.server.port}: {exc}"
         return f"listening for Dota game data on 127.0.0.1:{self.server.port}"
 

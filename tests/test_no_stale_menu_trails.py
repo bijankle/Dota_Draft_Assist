@@ -26,9 +26,25 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# The two menus that were folded into Settings. `>` is what a console
-# tool prints and `▸` is what the Qt widgets do — both are trails.
-GONE = re.compile(r"\b(Game|Setup)\s*(?:>|▸)\s*[A-Z]")
+# Menus that no longer exist. Setup and Game were folded into Settings;
+# CAPTURE went when the source stopped being a mode and became two tick
+# boxes, and six sentences were still sending people to it — including
+# one inside a method nothing had called since the menu item went.
+# `>` is what a console tool prints and `▸` is what the Qt widgets do,
+# and both are trails.
+GONE = re.compile(r"\b(Game|Setup|Capture)\s*(?:>|▸)\s*[A-Z]")
+
+# Whole items that were deleted rather than moved, wherever they are
+# named as somewhere to go. Two families here and they went for
+# different reasons: the hand-drawn crop boxes, because the geometry is
+# measured now and "my plan now is to have the automatic detection work
+# so the user never needs to draw out these vision boxes"; and the
+# recognition checks, because they were instruments for refining the
+# recogniser and "once its done i dont nteed them".
+DELETED_ITEMS = re.compile(
+    r"(?:>|▸)\s*(?:Calibrate pick boxes|Recognition checks|"
+    r"Tune recognition|Run capture probe|Game data status|"
+    r"Check item icons|Make a pinnable shortcut|Simulate a draft)")
 
 FILES = sorted(
     list((ROOT / "draft_assist").rglob("*.py"))
@@ -88,3 +104,20 @@ def test_recording_is_not_offered_as_a_menu_item_anywhere():
     for path in FILES:
         for line, text in strings_in(path):
             assert not wrong.search(text), f"{path.name}:{line}: {text[:60]}"
+
+
+def test_no_string_offers_a_menu_item_that_was_deleted():
+    """An item that went entirely is worse to name than one that moved:
+    there is nowhere to send somebody who goes looking."""
+    for path in FILES:
+        for line, text in strings_in(path):
+            assert not DELETED_ITEMS.search(text), (
+                f"{path.name}:{line}: {text[:70]}")
+
+
+def test_that_check_would_actually_catch_one(tmp_path):
+    sample = tmp_path / "stale.py"
+    sample.write_text('print("Use File > Calibrate pick boxes to fix it.")',
+                      encoding="utf-8")
+    assert any(DELETED_ITEMS.search(text)
+               for _line, text in strings_in(sample))

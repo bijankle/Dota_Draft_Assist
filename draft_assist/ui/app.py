@@ -297,14 +297,9 @@ class MainWindow(QMainWindow):
         # Why the shields are what they are, for Settings to print under
         # the bar that sets them. Never empty after the first recompute.
         self.shields_note: str = ""
-        # Rectangles drawn on the debug picture during drag calibration.
-        self._drag_rects: list[tuple[int, int, int, int]] = []
         # Heroes whose alternative portrait has been learned this session,
         # so a draft's worth of frames writes one file rather than hundreds.
         self._learned: set[int] = set()
-        # A frame loaded from disk, so calibration does not need Dota to be
-        # on screen at the moment the user has time to do it.
-        self._still = None
         self.scored: list[scoring.ScoredHero] = []
         self._last_advice: list = []
         self._reason_popup = None
@@ -425,10 +420,16 @@ class MainWindow(QMainWindow):
         file_menu = bar.addMenu("&File")
         self._act(file_menu, "S&ettings…", self._open_settings, "Ctrl+,",
                   "Everything the app reads, downloads and diagnoses")
-        # THE ONE SETUP STEP THE WHOLE DRAFT READING DEPENDS ON, and it
-        # was six clicks deep in the debug panel until the user said so.
-        self._act(file_menu, "&Calibrate pick boxes…", self._calibrate,
-                  None, "Put two boxes over the pick bar, on the game")
+        # CALIBRATE PICK BOXES IS GONE, at the user's request — "i dont
+        # see the point in having the portrait box vision box feature at
+        # all... my plan now is to have the automatic detection work so
+        # the user never needs to draw out these vision boxes". It does:
+        # at strategy time the game names the ten heroes on screen and
+        # `autocal` measures the geometry off them, which is where every
+        # calibration this app has ever shipped actually came from. What
+        # went with the drag is the RULE that protected it — a
+        # measurement now replaces the last measurement, because there is
+        # no hand-set answer left for it to overwrite.
         # UPDATE IS IN HELP AND ONLY IN HELP, at the user's request. It
         # was on BOTH menus, wired to the same `_update_app` - one action
         # in two places, which is two things to keep in step for no gain.
@@ -489,21 +490,18 @@ class MainWindow(QMainWindow):
         # "debug" under Settings, and this opens it directly on that tab.
         self._act(help_menu, "&Debug view…",
                   lambda: self._open_settings("Debug"))
-        # ONE SUBMENU, because three siblings that all say "check what
-        # the app is seeing" are one idea said three times - the same
-        # argument that collapsed Update / Fetch / Fetch. Help is capped
-        # at seven items deliberately ("the menu bar stays small"), and
-        # the third of these was what took it to eight. The search box
-        # reads the COMMAND LIST rather than the menu, so nesting them
-        # costs nothing in findability.
-        checks = help_menu.addMenu("&Recognition checks")
-        self._act(checks, "&Check hero recognition…",
-                  self._check_recognition)
-        self._act(checks, "&Fix recognition thresholds…",
-                  lambda: self.run_task("fix_recognition"))
-        self._act(checks, "Check other screen &resolutions…",
-                  self._check_resolutions)
-        self._act(checks, "&Map portrait sizes…", self._map_sizes)
+        # RECOGNITION CHECKS IS GONE, submenu and all four items, at the
+        # user's request: "all of those were used to refine the software
+        # - once its done i dont nteed them". They were instruments, and
+        # they did their job — the hero check graded a recording against
+        # the game's own line-up, the threshold fixer wrote what that
+        # measured, and the two resolution tools settled where the pick
+        # bar sits and killed the letterboxed model. What they measured
+        # is IN the app now: `DraftLayout`'s fractions, `hud_box`, and
+        # `autocal` measuring the rest off a real frame. A permanent menu
+        # of development apparatus is a menu nobody in a draft wants.
+        # The scripts are still in `tools/` and still under test, so the
+        # next measurement is a console away rather than gone.
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.
@@ -589,18 +587,10 @@ class MainWindow(QMainWindow):
         # bar is for, which is why it was a submenu before and is a tab
         # now.
         advanced = [
-            act("Tune recognition…",
-                "Search for recognition settings that never misidentify.",
-                ("vision", "accuracy", "calibrate"),
-                lambda: self.run_task("tune")),
             act("List capture sources…",
                 "Every window the capture layer can see.",
                 ("windows", "capture", "screen"),
                 lambda: self.run_task("list_windows")),
-            act("Run capture probe…",
-                "Confirm occluded-window capture works on this machine.",
-                ("capture", "screen", "test"),
-                lambda: self.run_task("probe")),
             act("Save debug snapshot",
                 "Write the current frame, crops and matches to disk.",
                 ("frame", "screenshot", "snapshot"),
@@ -668,10 +658,13 @@ class MainWindow(QMainWindow):
                     "sessions recorded.",
                     ("log", "live", "recordings", "frame", "timings"),
                     lambda: self._open_settings("Debug")),
-            Command("Calibrate pick boxes…", "File",
-                    "Drag two boxes over the pick bar, on the game.",
+            Command("Measure the crop boxes", "Settings ▸ Debug",
+                    "Read the pick bar's geometry off a frame the game has "
+                    "named the heroes in. It happens by itself; this is "
+                    "how to ask for it now.",
                     ("calibrate", "boxes", "crop", "portraits", "picks",
-                     "recognition", "setup", "align"), self._calibrate),
+                     "recognition", "setup", "align", "measure"),
+                    self._measure_from_banner),
             Command("User manual", "Help",
                     "How every part of the app works, in one place.",
                     ("manual", "help", "guide", "docs", "instructions",
@@ -1083,7 +1076,6 @@ class MainWindow(QMainWindow):
         self.debug_image = FrameView("No frame captured yet.")
         self.debug_image.setMinimumHeight(320)
         self.debug_image.setProperty("card", True)
-        self.debug_image.boxed.connect(self._on_box_dragged)
         dlay.addWidget(self.debug_image, 3)
 
         log_card, loglay = card("Recognition log")
@@ -1125,33 +1117,13 @@ class MainWindow(QMainWindow):
         # and restarting.
         cal_card, callay = card("Crop boxes")
         cal_note = QLabel(
-            "Press <b>Drag the boxes</b> and draw a rectangle round each "
-            "bank of five above. The numbers are fractions of Dota's 16:9 "
-            "HUD area; nudge one if a box is a few pixels out.")
+            "Measured from the game, not drawn by hand — and measured "
+            "again by itself whenever the boxes stop finding the "
+            "portraits. These are what it last measured, as fractions of "
+            "Dota's 16:9 HUD area; nudging one is a last resort.")
         cal_note.setWordWrap(True)
         cal_note.setProperty("dim", True)
         callay.addWidget(cal_note)
-
-        self.drag_button = QPushButton("Drag the boxes onto the portraits")
-        self.drag_button.setProperty("accent", True)
-        self.drag_button.setCheckable(True)
-        self.drag_button.setToolTip(
-            "Draw a box round each bank of five and the six numbers are "
-            "measured out of the picture")
-        self.drag_button.toggled.connect(self._set_drag_calibration)
-        drag_row = QHBoxLayout()
-        drag_row.addWidget(self.drag_button, 1)
-        self.still_button = QPushButton("Use a saved picture…")
-        self.still_button.setToolTip(
-            "Calibrate from a frame saved earlier (Ctrl+S writes one) "
-            "instead of waiting for Dota to be on screen")
-        self.still_button.clicked.connect(self._choose_still)
-        drag_row.addWidget(self.still_button)
-        callay.addLayout(drag_row)
-        self.drag_label = QLabel("")
-        self.drag_label.setWordWrap(True)
-        self.drag_label.setProperty("dim", True)
-        callay.addWidget(self.drag_label)
         grid = QHBoxLayout()
         self.cal_spins = {}
         for field, label, step in (
@@ -1680,18 +1652,16 @@ class MainWindow(QMainWindow):
                 "missing.</b> Usually a hero added in a patch.",
                 "Get the artwork", lambda: self.run_task("fetch_assets"))
             return
-        # THE LAST RUNG: the pick boxes have never been set up. It is the
-        # first-run task the user asked to have flagged, and it is last
-        # because it is the only one that cannot be done alone — it needs
-        # Dota open AND the portraits downloaded, since recognition
-        # matches the boxes against that library. Flagging it above them
-        # would be asking for something that cannot work yet.
-        if not CALIBRATION_FILE.exists():
-            self._show_banner(
-                "<b>The pick boxes have not been set up.</b> Open Dota "
-                "and drag the two boxes over the pick bar.",
-                "Calibrate", self._calibrate)
-            return
+        # THERE IS NO "THE PICK BOXES ARE NOT SET UP" RUNG ANY MORE. It
+        # was the last one, and it asked for the one thing this app no
+        # longer wants anybody to do by hand. With no calibration file
+        # the boxes are `DraftLayout()`'s measured 16:9 fractions put
+        # through `hud_box`, which is right at every resolution the sweep
+        # could predict — and where it is not, the first strategy time of
+        # the first match measures the real geometry and saves it. An
+        # absent calibration file is therefore not a fault to report; a
+        # measurement that could not be made is, and that is the crop-box
+        # rung above.
         self.banner.setVisible(False)
 
     def _edit_rules(self) -> None:
@@ -1709,74 +1679,6 @@ class MainWindow(QMainWindow):
             return
         self._refresh_views()
         self._say(f"Loaded {len(self.rules)} item rules", 5000)
-
-    def _calibrate(self, *_ignored) -> None:
-        """Two red boxes over the live game, dragged onto the pick bar.
-
-        **OPEN DOTA FIRST**, at the user's request and because there is
-        nothing to put them on otherwise: the boxes go ON the client, so
-        with no window there they would be two rectangles over the
-        desktop being dragged onto nothing. `dota_client_rect` answers
-        None both when the game is closed and when this is not Windows,
-        and the sentence is the same either way — there is no pick bar to
-        calibrate against.
-        """
-        from .calibrate import Calibrator, dota_client_rect
-
-        client = dota_client_rect()
-        if client is None:
-            QMessageBox.information(
-                self, "Calibrate pick boxes",
-                "Open Dota 2 first. The boxes are dragged onto the pick "
-                "bar in the game, so the game has to be on screen.")
-            return
-        if getattr(self, "calibrator", None) is not None:
-            return                          # already up; one at a time
-        self.calibrator = Calibrator(client, self)
-        self.calibrator.frame_of = self._frame_to_calibrate_against
-        self.calibrator.finished.connect(self._calibrated)
-        self.calibrator.show()
-
-    def _frame_to_calibrate_against(self):
-        """The picture Confirm fits the two boxes to.
-
-        **A PROVIDER HAS NO `last_frame`, AND NEVER DID.** This asked the
-        vision provider for that attribute, which does not exist on it:
-        the frame lives on the capture session's state and reaches the
-        window on the Snapshot. `getattr(..., None)` on a name nothing
-        defines is an unconditional None, so Confirm answered "there is
-        no picture of the game to measure" every single time, with the
-        boxes sitting correctly on the portraits and the game on screen —
-        a refusal that could never be satisfied by anything the user did.
-        The same shape as the item icons' four causes: a sentence about
-        the state of the world that was really about our own attribute
-        name.
-
-        Two sources, in order. The live Snapshot, which is free and is
-        already a picture of this frame; and failing that a ONE-SHOT grab
-        of the Dota window, because calibration must work with the screen
-        reader turned off — `use_vision` is a tick box, the game-data-only
-        mode has no capture session at all, and "you cannot calibrate the
-        crop boxes unless the crop boxes are already being used" is a
-        circle. It is the same `_grab_dota_frame` the snapshot key uses.
-        """
-        snap = getattr(self, "snapshot", None)
-        frame = getattr(snap, "frame", None)
-        if frame is not None:
-            return frame
-        try:
-            return self._grab_dota_frame()
-        except Exception:
-            # Dota closed between opening the boxes and pressing Confirm,
-            # or capture is unavailable. Never take the app down for it.
-            return None
-
-    def _calibrated(self, saved: bool, note: str) -> None:
-        self.calibrator = None
-        if saved:
-            self._say(note, 8000)
-            self.reload_backend()
-            self._update_first_run_banner()
 
     def _open_manual(self, section: str | bool = "") -> None:
         """The manual, built once and kept.
@@ -1940,98 +1842,6 @@ class MainWindow(QMainWindow):
         ticker.start(1000)
         box.exec()
         ticker.stop()
-
-    def _gsi_status(self) -> None:
-        """Report exactly what the game is sending — the evidence that
-        settles what GSI can and cannot do."""
-        from ..gsi import install as gsi_install
-
-        server = getattr(self.provider, "server", None)
-        if server is None:
-            QMessageBox.information(
-                self, "Game data status",
-                "The current source is not game data. Switch with "
-                "Capture ▸ Use game data (GSI).")
-            return
-        reception = server.snapshot()
-        lines = [f"Listening on 127.0.0.1:{server.port}",
-                 f"Payloads received: {reception.count}",
-                 f"Rejected (bad auth token): {reception.rejected}"]
-        if reception.payload is None:
-            lines += [
-                "",
-                "Dota has not sent anything yet. Check that:",
-                "  1. the GSI config is installed "
-                "(Settings ▸ Game data ▸ Set up game data)",
-                f"  2. Dota's launch options include {gsi_install.LAUNCH_OPTION}",
-                "  3. Dota has been restarted since adding it",
-            ]
-        else:
-            lines.append(f"Last payload: {reception.age:.1f}s ago")
-            state = getattr(self.provider, "last_state", None)
-            if state is not None:
-                lines += ["", f"Game state: {state.summary()}", "",
-                          "Components this feed carries:"]
-                for name, present in state.capabilities.items():
-                    lines.append(f"  {'yes' if present else 'no ':>3}  {name}")
-                if state.notes:
-                    lines += ["", "Notes:"] + [f"  - {n}" for n in state.notes]
-                lines += [
-                    "",
-                    ("GSI IS reporting the full draft — manual entry is not "
-                     "needed." if state.has_full_draft else
-                     "GSI is NOT reporting both line-ups, so enemy picks "
-                     "must be clicked in. Click any draft slot to fill it."),
-                ]
-        if reception.last_error:
-            lines += ["", f"Last error: {reception.last_error}"]
-
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setWindowTitle("Game data status")
-        box.setText(("Receiving game data from Dota."
-                     if reception.live else "Not receiving game data."))
-        box.setDetailedText("\n".join(lines))
-        box.exec()
-
-    def _switch_to_gsi(self) -> None:
-        from ..gsi import install as gsi_install
-        from ..gsi.server import GsiServer
-        from .providers import GsiProvider
-
-        if isinstance(self.provider, GsiProvider):
-            self._say("Already using game data (GSI)", 5000)
-            return
-        token = gsi_install.read_installed_token()
-        server = GsiServer(gsi_install.DEFAULT_PORT, token=token)
-        self._swap_provider(GsiProvider(self.ds, server, self.manual))
-
-    def _switch_to_vision(self) -> None:
-        from .providers import LiveProvider
-
-        if isinstance(self.provider, LiveProvider):
-            self._say("Already using screen capture", 5000)
-            return
-        answer = QMessageBox.question(
-            self, "Use screen capture",
-            "Screen capture reads the draft from pixels. It is the older, "
-            "less reliable path and is kept only as a fallback.\n\n"
-            "Switch to it anyway?")
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            from ..capture.session import CaptureSession
-            from ..vision import library
-            from ..vision.layout import load_layout
-            params = library.load_params()
-            lib = library.load(expected_hash_size=params.hash_size)
-        except FileNotFoundError as exc:
-            QMessageBox.warning(self, "Use screen capture",
-                                f"Screen capture needs the portrait library:"
-                                f"\n\n{exc}")
-            return
-        self._swap_provider(LiveProvider(CaptureSession(load_layout(), lib,
-                                                        params)))
 
     def _swap_provider(self, provider) -> None:
         try:
@@ -2714,8 +2524,10 @@ class MainWindow(QMainWindow):
         pick bar with all ten heroes named by the game — so the answer to
         "the app cannot find the portraits" is to go and find them, not
         to hand somebody two rectangles to drag over the client.
-        `_calibrate` is still there for when measuring cannot (File ▸
-        Calibrate pick boxes), and the note says what stopped it.
+        There is no hand-drag to fall back to any more, so when this
+        cannot run the note says what stopped it — no picture, not enough
+        heroes named yet, no portraits downloaded — every one of which is
+        something the user can act on.
 
         The flag lives on the snapshot that raised the banner, so a
         success has to clear it here. The next tick builds a fresh one and
@@ -2738,7 +2550,21 @@ class MainWindow(QMainWindow):
         snap = self.snapshot
         frame = getattr(snap, "frame", None) if snap else None
         if frame is None:
-            frame = self._grab_dota_frame()
+            # TWO SOURCES, IN ORDER, and the second is not optional. The
+            # live Snapshot is free and is already a picture of this
+            # frame — but `use_vision` is a tick box and game-data-only
+            # mode has no capture session at all, so "you cannot measure
+            # the crop boxes unless the crop boxes are already being
+            # used" would be a circle. A one-shot grab of the Dota window
+            # breaks it.
+            try:
+                frame = self._grab_dota_frame()
+            except Exception:       # noqa: BLE001 — see below
+                # Dota closed between the banner appearing and the button
+                # being pressed, or capture is unavailable on this
+                # machine. That is a refusal with a sentence, never a
+                # traceback out of a button.
+                frame = None
         heroes = list(getattr(snap, "left", [])) + list(
             getattr(snap, "right", [])) if snap else []
         if frame is None:
@@ -2832,25 +2658,30 @@ class MainWindow(QMainWindow):
         search again — and on a real 3440x1440 session that was 25 seconds
         of frozen window.
 
-        **Only when nothing is calibrated yet.** This claimed to save "the
-        first time and never again" and did no such thing: it ran on every
-        measurement, so a user who dragged their boxes onto the portraits
-        and watched them land had them silently replaced by whatever the
-        next match measured. A calibration the user set is an ANSWER, and a
-        measurement is a guess that happens to be automatic — the guess
-        does not get to overwrite the answer. Measure from this
-        game is still there for asking for one deliberately.
+        **AND IT NOW ADOPTS OVER AN EXISTING CALIBRATION**, which
+        REVERSES the guard that stood here. That guard was written for a
+        real fault — boxes the user had dragged onto the portraits and
+        watched land were silently replaced by whatever the next match
+        measured, and "a calibration the user set is an ANSWER, a
+        measurement is a guess" was the right way to settle it. There is
+        no hand-drag any more, at the user's request, so there is no
+        answer left for a guess to overwrite: every calibration this app
+        holds is a measurement, and a measurement taken from THIS match is
+        never worse than one taken from a match on another monitor at
+        another resolution. That is the whole of "the automatic detection
+        works so the user never needs to draw these boxes" — without it,
+        the first measurement a machine ever made would be the last one it
+        could ever take by itself.
+
+        A measurement that is not `ok` still changes nothing: `read_lineup`
+        refuses anything short of ten portraits in two banks of five, so
+        what reaches here has already been checked against the geometry.
         """
         result = getattr(self.provider, "measured_layout", None)
         if result is None:
             return
         self.provider.measured_layout = None
         if not result.ok:
-            return
-        if CALIBRATION_FILE.exists():
-            self.cal_label.setText(
-                "measured this game, but your saved calibration was kept — "
-                "press Measure from this game to take the new one")
             return
         self.layout_spec = result.layout
         session = getattr(self.provider, "session", None)
@@ -2871,117 +2702,15 @@ class MainWindow(QMainWindow):
             "Crop boxes measured from this game and saved — recognition "
             "should work from here.", 12000)
 
-    # Two rectangles, one per bank, either order. It used to be three —
-    # first portrait, fifth portrait, other bank — because a box round a
-    # whole bank spans four pitches plus one portrait, which is one
-    # equation for two unknowns. The gap is now MEASURED off the picture
-    # instead (`autocal.measure_bank`), so the user draws the two boxes
-    # they were always going to draw.
-    DRAG_STEPS = (
-        "Drag a rectangle round ALL FIVE portraits of one bank.",
-        "Now round ALL FIVE of the other bank — either order is fine.",
-    )
-
-    def _choose_still(self) -> None:
-        """Calibrate from a frame saved earlier rather than a live one.
-
-        Dragging boxes onto portraits needs a picture of the portraits, and
-        waiting for Dota to be on screen to do it is a poor trade when the
-        user already has `frame_*.png` sitting in the debug folder from the
-        last time they pressed Ctrl+S.
-        """
-        if self._still is not None:
-            self._still = None
-            self.still_button.setText("Use a saved picture…")
-            self.drag_label.setText("Back to the live picture.")
-            return
-        path, _filter = QFileDialog.getOpenFileName(
-            self, "Pick a saved frame", str(DEBUG_OUT),
-            "Pictures (*.png *.jpg *.jpeg *.bmp)")
-        if not path:
-            return
-        import cv2
-        still = cv2.imread(path)
-        if still is None:
-            QMessageBox.warning(self, "Crop boxes",
-                                f"Could not read {Path(path).name}.")
-            return
-        self._still = still
-        self.still_button.setText("Back to the live picture")
-        self.drag_label.setText(
-            f"Showing {Path(path).name} ({still.shape[1]}x{still.shape[0]}). "
-            "Press \u201cDrag the boxes\u201d and draw on it.")
-        self._draw_still()
-
-    def _set_drag_calibration(self, on: bool) -> None:
-        """Calibrate by drawing on the picture instead of typing fractions.
-
-        Six numbers, each a fraction of Dota's 16:9 HUD box rather than of
-        the window, is not something anybody can convert "the boxes are 135
-        pixels too far left" into. The user could see exactly what was wrong
-        and had no way to say it.
-        """
-        self._drag_rects = []
-        self.debug_image.set_picking(on)
-        if not on:
-            self.drag_label.setText("")
-            return
-        # A still is drawn on demand rather than waiting for the refresh
-        # loop: the loop skips the debug view unless it is visible, and the
-        # user pressing this button is the proof that it is.
-        self._draw_still()
-        if self.debug_image.pixmap() is None or \
-                self.debug_image.pixmap().isNull():
-            self.drag_button.setChecked(False)
-            self.drag_label.setText(
-                "No picture to draw on yet — this needs Dota running and "
-                "captured. Check the capture source at the top of this tab.")
-            return
-        self.drag_label.setText(
-            f"1 of {len(self.DRAG_STEPS)} · {self.DRAG_STEPS[0]}")
-
-    def _on_box_dragged(self, x: int, y: int, width: int, height: int) -> None:
-        if not self.drag_button.isChecked():
-            return
-        self._drag_rects.append((x, y, width, height))
-        if len(self._drag_rects) < len(self.DRAG_STEPS):
-            step = len(self._drag_rects)
-            self.drag_label.setText(
-                f"{step + 1} of {len(self.DRAG_STEPS)} · "
-                f"{self.DRAG_STEPS[step]}")
-            return
-
-        from ..vision import autocal, layout as layout_mod
-        frame = (self._still if self._still is not None
-                 else getattr(self.snapshot, "frame", None))
-        if frame is None:
-            self.drag_button.setChecked(False)
-            self.drag_label.setText("the frame went away — try again")
-            return
-        layout, note = autocal.layout_from_banks(
-            frame, self._drag_rects[0], self._drag_rects[1], self.layout_spec)
-        self.drag_button.setChecked(False)
-        if layout is None:
-            self.drag_label.setText(f"Not saved: {note}")
-            return
-        self.layout_spec = layout
-        session = getattr(self.provider, "session", None)
-        if session is not None:
-            session.layout = layout
-        for field, spin in self.cal_spins.items():
-            spin.blockSignals(True)
-            spin.setValue(getattr(layout, field))
-            spin.blockSignals(False)
-        self._force_redraw()
-        try:
-            layout_mod.save_calibration(layout)
-        except OSError as exc:
-            self.drag_label.setText(f"measured but could not save: {exc}")
-            return
-        self.drag_label.setText(
-            f"Saved — {note}. The boxes above should now sit on the "
-            "portraits; nudge the numbers if any is a pixel or two out.")
-        self.cal_label.setText(f"saved to {CALIBRATION_FILE.name}")
+    # THE DRAG IS GONE, and with it "Use a saved picture…", which
+    # existed only to give the drag something to draw on when Dota was
+    # not up. At the user's request: "i dont see the point in having the
+    # portrait box vision box feature at all... my plan now is to have
+    # the automatic detection work so the user never needs to draw out
+    # these vision boxes". `autocal` measures the same six numbers off a
+    # frame the game has named the heroes in, which is where every
+    # calibration this app has ever shipped came from — the drag was the
+    # fallback for before that worked.
 
     def _set_calibration(self, field: str, value: float) -> None:
         """Live: the next frame is cropped with the new numbers, so the
@@ -3011,17 +2740,6 @@ class MainWindow(QMainWindow):
             spin.blockSignals(False)
         self._set_calibration("y", self.layout_spec.y)   # push and redraw
         self.cal_label.setText("reset to defaults — not saved")
-
-    def _update_and_restart(self) -> None:
-        """Pull, then relaunch.
-
-        Reloading in place works and is what `reload_backend` does — but a
-        restart is the only way to be certain nothing anywhere is still
-        holding the old data, and the user asked not to have to close and
-        reopen the app by hand. So the app does it for them.
-        """
-        self._restart_after_task = "update_data"
-        self.run_task("update_data")
 
     def _relaunch(self) -> None:
         """Start a fresh copy of ourselves and quit.
@@ -3105,136 +2823,13 @@ class MainWindow(QMainWindow):
         # whatever size it is closed at.
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
-    def _check_recognition(self) -> None:
-        """Run the recognition check and put its report on the clipboard.
-
-        AT THE USER'S REQUEST, and the request was a fair complaint:
-        "I still don't understand why I need to manually type this
-        command into Command Prompt." They should not. Everything this
-        does was already one command - find the last recording, sweep it
-        for the pick bar, name the ten heroes, mark them against what
-        the game reported - and a command line is the wrong place to
-        keep a test of the app's own eyesight.
-
-        The report is COPIED AUTOMATICALLY when it finishes, because the
-        thing done with it is always the same: paste it back. Selecting
-        a console window by hand is the step that makes somebody not
-        bother, and this app has already learned that lesson once with
-        Debug > Copy everything.
-
-        IT IS THE SAME WINDOW AS THE RESOLUTION SWEEP, and for
-        the same reason: this built a dialog, started the worker
-        and never showed it, so the run happened with nothing on
-        screen and its `finished` signal — which fires when a
-        dialog is CLOSED — never fired, so the automatic copy
-        never ran either. Two complaints, one missing `show()`.
-        """
-        self._open_tool("score_recognition", what="report",
-                        label="Recognition check")
-
-    def _recognition_progress(self, line: str) -> None:
-        self._tool_progress(line, "Recognition check")
-
-    def _resolutions_progress(self, line: str) -> None:
-        self._tool_progress(line, "Resolutions")
-
-    def _tool_progress(self, line: str, label: str) -> None:
-        """Show the tool's own percentage, and nothing else it prints.
-
-        The tool marks these lines itself rather than this guessing at
-        them: a run prints tables, hero names and file paths, and a
-        status bar that tried to summarise the latest of those would
-        flicker through all of it.
-
-        LABELLED BY CALLER, because two different runs report through
-        here and a resolution sweep announcing itself as "Recognition
-        check" is a status line lying about what is happening.
-        """
-        if not line.startswith("PROGRESS "):
-            return
-        # `_say` and not `showMessage`, so the state line does not
-        # overwrite it on the very next tick - which is what made every
-        # timed message in this app invisible before `_say` existed.
-        self._say(f"{label} — {line[len('PROGRESS '):].strip()}", 4000)
-
-    # WHERE WINDOWS PUTS SCREENSHOTS, and ONEDRIVE IS FIRST because it
-    # REDIRECTS the folder: with Backup on, `~/Pictures/Screenshots` is
-    # not where the pictures are, `~/OneDrive/Pictures/Screenshots` is —
-    # and the first version of this opened the picker on an empty folder
-    # for exactly that reason. Each is a place to START the picker, not
-    # an answer: the user's own set lives in a named subfolder of one of
-    # these ("All Resolutions - Dota 2"), and guessing at subfolder
-    # names is how a picker opens somewhere surprising.
-    SHOT_FOLDERS = (
-        # THE SAMPLE HAS ITS OWN FOLDER, and the picker should open IN it
-        # rather than one level above it. A folder with no pictures in it
-        # is refused before the run starts, so opening on the parent -
-        # which holds every screenshot this machine has ever taken - is
-        # the one place a wrong pick costs a twenty-minute run.
-        ("OneDrive", "Pictures", "Screenshots", "All Resolutions - Dota 2"),
-        ("Pictures", "Screenshots", "All Resolutions - Dota 2"),
-        ("OneDrive", "Pictures", "Screenshots"),
-        ("Pictures", "Screenshots"),
-        ("OneDrive", "Pictures"),
-        ("Pictures",),
-    )
-
-    @classmethod
-    def _shots_folder(cls) -> Path:
-        for parts in cls.SHOT_FOLDERS:
-            candidate = Path.home().joinpath(*parts)
-            if candidate.is_dir():
-                return candidate
-        return Path.home()
-
-    def _check_resolutions(self) -> None:
-        """Open the window; the RUN is a button inside it.
-
-        "A window pops up with a terminal / area for text, a button
-        saying run — I hit run and the button turns grey, the text
-        window shows all the thinking the program is doing and when it's
-        ready the button turns its original colour, i.e. red, and it says
-        copy results." That is `ToolWindow`, and the shape matters
-        because the version before it built a dialog, started the worker
-        and NEVER SHOWED IT: the run happened with nothing on screen and
-        nothing ever reached the clipboard.
-        """
-        self._open_tool(
-            "check_resolutions", what="results",
-            start_in=self._shots_folder(), label="Resolutions")
-
-    def _map_sizes(self) -> None:
-        """The instrument for when a sweep finds nothing.
-
-        Same window, same Run and Copy results: the answer to "what do I
-        run" has been "a button" twice now, and a command line is not an
-        answer to it a third time.
-        """
-        self._open_tool(
-            "map_sizes", what="results",
-            start_in=self._shots_folder(), label="Sizes")
-
-    def _open_tool(self, key: str, what: str, label: str,
-                   start_in: Path | None = None) -> None:
-        """One window per tool, kept alive and SHOWN.
-
-        Kept on `self` because a QDialog that goes out of scope is
-        collected with its running worker, and shown MODELESSLY because
-        these runs are minutes long and the app should still be usable
-        while one goes.
-        """
-        from .tool_window import ToolWindow
-
-        window = ToolWindow(TASKS[key], self, start_in=start_in, what=what)
-        window.line.connect(
-            lambda text, name=label: self._tool_progress(text, name))
-        self._open_tasks.append(window)
-        window.finished.connect(
-            lambda _code, w=window: self._open_tasks.remove(w)
-            if w in self._open_tasks else None)
-        window.show()
-        window.raise_()
-        window.activateWindow()
+    # THE TOOL WINDOW IS GONE WITH THE TOOLS IT RAN. It was Run, a text
+    # panel and Copy results — the shape asked for outright — and every
+    # one of its four callers was a recognition instrument the user has
+    # since said they no longer need. A window with no way to open it is
+    # not a feature held in reserve, it is code that cannot be exercised,
+    # so `ui/tool_window.py`, `_open_tool`, the progress relay and the
+    # screenshot-folder ladder went with them.
 
     def _open_settings(self, tab: str = "") -> None:
         """Show the settings window, building it the first time.
@@ -3312,13 +2907,6 @@ class MainWindow(QMainWindow):
                 f"Statistics source set to {chosen} — run Settings ▸ "
                 "Downloads ▸ Statistics and portraits to rebuild the "
                 "matrices from it", 12000)
-
-    def _open_search(self) -> None:
-        """Kept as the name the command list calls, and it now drops the
-        HELP MENU open rather than a window of its own — see
-        `ui/menusearch.py`. One search, one place it appears."""
-        self.menu_search.popup_under(self.menuBar() if self.menuBar()
-                                     else self.title_bar.menu_bar)
 
     def _apply_sources(self) -> None:
         """Rebuild the draft source from the settings.
@@ -4367,12 +3955,6 @@ class MainWindow(QMainWindow):
         if not self.debug_image.isVisible():
             return
         set_log(self.timing_text, LOOP.report())
-        if self._draw_still():
-            set_log(self.debug_text,
-                    f"Calibrating from a saved picture "
-                    f"({self._still.shape[1]}x{self._still.shape[0]}). "
-                    "The boxes above are the current numbers.")
-            return
         if snap is None:
             return
         # Debug shows the RAW per-frame read (live confidences, flicker and
@@ -4434,21 +4016,8 @@ class MainWindow(QMainWindow):
         session = self._capture_session()
         return getattr(session, "capture_title", None) or "(nothing bound)"
 
-    def _draw_still(self) -> bool:
-        """Put the loaded still on screen with the current boxes over it."""
-        if self._still is None:
-            return False
-        from ..vision.debug import draw_boxes
-        self._show_picture(draw_boxes(self._still, self.layout_spec))
-        return True
-
     def _show_picture(self, picture) -> None:
-        """Put a BGR frame in the debug view, at the view's size.
-
-        The view is told the FRAME's own size as well, because a rectangle
-        dragged on it has to come back in frame pixels rather than in
-        whatever the fit happened to scale it to.
-        """
+        """Put a BGR frame in the debug view, at the view's size."""
         height, width = picture.shape[:2]
         img = QImage(picture.tobytes(), width, height, 3 * width,
                      QImage.Format.Format_BGR888)

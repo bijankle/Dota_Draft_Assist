@@ -32,7 +32,10 @@ def qapp():
 
 @pytest.fixture()
 def dialog(qapp):
-    box = TaskDialog(TASKS["score_recognition"])
+    # ANY task will do: what is under test is the DIALOG, and the
+    # one it used to name was a recognition instrument that has
+    # since been removed with the rest of them.
+    box = TaskDialog(TASKS["update_data"])
     yield box
     box.deleteLater()
 

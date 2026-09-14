@@ -63,14 +63,6 @@ TASKS = {
         needs_network=True,
         reload_after=True,
     ),
-    "check_item_icons": Task(
-        key="check_item_icons",
-        title="Check item icons",
-        steps=[[PY, "tools/check_item_icons.py"]],
-        blurb=("Names every item in the rules that has no picture, and "
-               "which of the four reasons it is."),
-        needs_network=False,
-    ),
     "fetch_item_icons": Task(
         key="fetch_item_icons",
         title="Fetch item icons",
@@ -79,13 +71,6 @@ TASKS = {
                "draft."),
         needs_network=True,
         reload_after=True,
-    ),
-    "make_shortcut": Task(
-        key="make_shortcut",
-        title="Make a shortcut you can pin",
-        steps=[[PY, "tools/make_shortcut.py"]],
-        blurb=("Puts a shortcut in your Start menu and opens the folder, "
-               "so you can drag it onto the taskbar."),
     ),
     "fetch_assets": Task(
         key="fetch_assets",
@@ -105,89 +90,6 @@ TASKS = {
                "portraits, so a teammate wearing one stops reading as "
                "UNKNOWN."),
         reload_after=True,
-    ),
-    "tune": Task(
-        key="tune",
-        title="Tune recognition",
-        steps=[[PY, "-m", "draft_assist.proving.tune"]],
-        blurb=("Searches for the recognition settings that never produce "
-               "a wrong hero, against synthetic draft screens. Takes a "
-               "few minutes."),
-        reload_after=True,
-    ),
-    # THE RECOGNITION CHECK, which is a TEST rather than maintenance.
-    # It reads the newest recording, finds the pick bar, names the ten
-    # heroes and marks itself against what the GAME reported for that
-    # match - so the whole answer is in its output and there is nothing
-    # to interpret at the console.
-    "score_recognition": Task(
-        key="score_recognition",
-        title="Check hero recognition",
-        steps=[[PY, "tools/score_recording.py", "--every", "2"]],
-        blurb="Reads the last draft this app recorded and checks the "
-              "heroes it saw against the ones the game reported.",
-        cancellable=True,
-    ),
-    # THE SAME CHECK, allowed to write what it finds. Separate from the
-    # read-only one on purpose: a tool that changes a setting is a
-    # different decision from one that reports, and they should not be
-    # the same menu item.
-    "fix_recognition": Task(
-        key="fix_recognition",
-        title="Fix recognition thresholds",
-        steps=[[PY, "tools/score_recording.py", "--every", "2", "--apply"]],
-        blurb="Checks the last recorded draft, then writes the distance "
-              "and margin the heroes in it actually needed.",
-        reload_after=True,
-    ),
-    # THE RESOLUTION QUESTION, and it is a MEASUREMENT rather than a
-    # setting. The layout is fractions of the 16:9 HUD box, so every 16:9
-    # resolution shares one calibration and a wider one is handled by
-    # `hud_box` - confirmed on a real 3440x1440 client. What has never
-    # been settled is the VERTICAL on a display TALLER than 16:9, where
-    # `y` being a fraction of the window and a fraction of the HUD box
-    # are 60px apart on 1920x1200. CLAUDE.md says to settle it with real
-    # frames rather than by reasoning, and the screenshots the user
-    # already took - one per resolution - are exactly that.
-    "check_resolutions": Task(
-        key="check_resolutions",
-        title="Check other screen resolutions",
-        # `--tall` BECAUSE THE OTHERS CANNOT ANSWER IT. This check exists
-        # to settle where the vertical slack goes on a display taller
-        # than 16:9, and at 16:9 and wider there IS no slack - the three
-        # readings are the same number and no picture separates equal
-        # numbers (`find_portraits.can_vote`). A minute each over
-        # twenty-two shots is twenty-two minutes to answer with seven.
-        # The run says how many it kept and why, so the cut is visible
-        # in the output rather than silent.
-        # `--sample 5` BECAUSE A LAW NEEDS POINTS, NOT ALL OF THEM. One
-        # picture cannot demonstrate scaling at all: a single point fits
-        # any constant, so the measurement would be a definition. Five
-        # spread across the folder's 2.4x range of HUD spans cover it as
-        # well as fourteen do, in a third of the time - and the run says
-        # how to ask for all of them.
-        steps=[[PY, "tools/find_portraits.py", "{arg}", "--tall",
-                "--sample", "5"]],
-        blurb="Finds the ten portraits in draft screenshots taller than "
-              "16:9 - the only shapes that can settle where the pick bar "
-              "sits - and checks one constant predicts them all.",
-        cancellable=True,
-    ),
-    "map_sizes": Task(
-        key="map_sizes",
-        title="Map portrait sizes",
-        # ONE PICTURE and the app's OWN grid. The ordinary sweep tries 30
-        # widths as a fraction of the window against three fixed aspects;
-        # `autocal.find_scale`, which produced the shipped layout off a
-        # real client, sweeps 19 widths of the HUD span against 17
-        # INDEPENDENT heights. This runs the larger of the two and says
-        # whether the portraits are at a size the sweep can reach at all
-        # - in pixels of height, not in aspect numbers.
-        steps=[[PY, "tools/find_portraits.py", "{arg}", "--grid"]],
-        blurb="Measures what size the portraits actually are, on one "
-              "screenshot, against the app's own search grid. Four "
-              "minutes; use it when a sweep finds nothing.",
-        cancellable=True,
     ),
     "update_app": Task(
         key="update_app",
@@ -209,26 +111,6 @@ TASKS = {
                "client is among them, with its measured size."),
         cancellable=False,
     ),
-    "simulate_gsi": Task(
-        key="simulate_gsi",
-        title="Simulate a draft — full teams",
-        steps=[[PY, "tools/simulate_gsi.py", "--with-draft", "--loop"]],
-        blurb=("Pretends to be Dota and sends both line-ups, so the whole "
-               "path can be exercised with the game closed. Close this "
-               "dialog to stop."),
-        cancellable=True,
-        modeless=True,
-    ),
-    "simulate_gsi_real": Task(
-        key="simulate_gsi_real",
-        title="Simulate a draft — ONLY your hero (as real GSI)",
-        steps=[[PY, "tools/simulate_gsi.py", "--loop"]],
-        blurb=("EXPECT MOSTLY EMPTY SLOTS. Sends only what a player's own "
-               "feed carries — your hero and the game state — which is "
-               "the real limitation this app works around."),
-        cancellable=True,
-        modeless=True,
-    ),
     "replay_gsi": Task(
         key="replay_gsi",
         title="Replay recorded game data",
@@ -238,14 +120,6 @@ TASKS = {
                "simulated draft cannot."),
         cancellable=True,
         modeless=True,
-    ),
-    "probe": Task(
-        key="probe",
-        title="Run capture probe",
-        steps=[[PY, "tools/probe_capture.py", "--minutes", "2"]],
-        blurb=("Saves frames from the Dota window every 2 seconds for two "
-               "minutes. Cover the window while it runs: the frames "
-               "should keep showing Dota."),
     ),
 }
 

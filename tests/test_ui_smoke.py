@@ -252,8 +252,8 @@ def test_menus_expose_every_maintenance_action(window):
     action missing from it is missing from both.
     """
     flat = [c.label for c in window._all_commands()]
-    for expected in ("Statistics and portraits…", "Tune recognition…",
-                     "List capture sources…", "Run capture probe…",
+    for expected in ("Statistics and portraits…",
+                     "List capture sources…",
                      "Update application…", "Save debug snapshot"):
         assert expected in flat, f"{expected} is not reachable: {flat}"
     # And every one of them actually does something when taken.
@@ -551,9 +551,10 @@ def test_feeding_tasks_do_not_block_the_main_window():
     window behind a modal dialog would defeat them: you could watch heroes
     arrive but not click one to read its breakdown."""
     from draft_assist.ui.tasks import TASKS
-    for key in ("simulate_gsi", "simulate_gsi_real", "replay_gsi"):
-        assert TASKS[key].modeless, f"{key} would block the draft panel"
-    for key in ("update_data", "tune", "update_app"):
+    # The two invented-payload simulators went with their menu items; what
+    # is left is the one that replays a recording the app made itself.
+    assert TASKS["replay_gsi"].modeless, "it would block the draft panel"
+    for key in ("update_data", "update_app"):
         assert not TASKS[key].modeless, \
             f"{key} changes data under the running app and must block"
 
@@ -586,8 +587,8 @@ def test_modeless_task_is_shown_not_executed(window, monkeypatch):
             pass
 
     monkeypatch.setattr(app_mod, "TaskDialog", FakeDialog)
-    window.run_task("simulate_gsi")
-    assert shown == ["simulate_gsi"] and executed == []
+    window.run_task("replay_gsi")
+    assert shown == ["replay_gsi"] and executed == []
     assert len(window._open_tasks) == 1
 
 
@@ -3983,100 +3984,61 @@ def test_bad_crop_boxes_are_a_banner_not_a_note_in_a_recording(qapp,
         win.close()
 
 
-def test_calibrating_with_dota_shut_says_to_open_it(qapp, monkeypatch):
-    """The boxes go ON the client, so with no window there they would be
-    two red rectangles over the desktop being dragged onto nothing."""
-    from PyQt6.QtWidgets import QMessageBox
-    from draft_assist.ui import calibrate
-
-    monkeypatch.setattr(calibrate, "dota_client_rect", lambda: None)
-    said = []
-    monkeypatch.setattr(QMessageBox, "information",
-                        lambda *args, **kw: said.append(args[2]))
-    win = make_window(qapp, demo_dataset())
-    try:
-        win._calibrate()
-        assert said and "Open Dota 2 first" in said[0]
-        assert getattr(win, "calibrator", None) is None
-    finally:
-        win.close()
-
-
-def test_calibrating_opens_the_boxes_when_dota_is_there(qapp, monkeypatch):
-    from draft_assist.ui import calibrate
-
-    monkeypatch.setattr(calibrate, "dota_client_rect",
-                        lambda: (0, 0, 1920, 1080))
-    win = make_window(qapp, demo_dataset())
-    try:
-        win._calibrate()
-        assert win.calibrator is not None
-        assert [b.name for b in win.calibrator.boxes] == ["Radiant", "Dire"]
-        win.calibrator.panel.cancelled.emit()
-        qapp.processEvents()
-        assert win.calibrator is None, "it did not clean up after itself"
-    finally:
-        win.close()
-
-
-def test_confirm_has_a_picture_to_measure(qapp, monkeypatch):
-    """**THE REGRESSION.** `frame_of` asked the vision provider for a
-    `last_frame` attribute that no provider has ever defined — the frame
-    lives on the capture session's state and reaches the window on the
-    Snapshot — so `getattr(..., None)` answered None on every press and
-    Confirm refused with "there is no picture of the game to measure"
-    while the boxes sat correctly on the portraits.
-    """
+def test_measuring_takes_the_live_frame_when_there_is_one(qapp,
+                                                          monkeypatch):
+    """The Snapshot is free and is already a picture of this frame."""
     import numpy as np
     from types import SimpleNamespace
-    from draft_assist.ui import calibrate
 
-    monkeypatch.setattr(calibrate, "dota_client_rect",
-                        lambda: (0, 0, 1920, 1080))
     win = make_window(qapp, demo_dataset())
     try:
-        assert not hasattr(getattr(win.provider, "vision", None),
-                           "last_frame"), "the old lambda's attribute exists"
+        seen = {}
         frame = np.zeros((1080, 1920, 3), np.uint8)
-        win.snapshot = SimpleNamespace(frame=frame)
-        win._calibrate()
-        assert win.calibrator.frame_of() is frame
-        win.calibrator.panel.cancelled.emit()
-        qapp.processEvents()
+        win.snapshot = SimpleNamespace(frame=frame, left=[1, 2, 3, 4, 5],
+                                       right=[6, 7, 8, 9, 10])
+        monkeypatch.setattr(win, "_grab_dota_frame",
+                            lambda: seen.setdefault("grabbed", True))
+        from draft_assist.vision import autocal
+        monkeypatch.setattr(autocal, "base_portraits",
+                            lambda ids: {hid: np.zeros((144, 256), np.uint8)
+                                         for hid in ids})
+
+        def fake(f, art, spec):
+            seen["measured"] = f
+            raise RuntimeError("stop here")
+
+        monkeypatch.setattr(autocal, "calibrate", fake)
+        assert win._measure_calibration() is False
+        assert seen.get("measured") is frame
+        assert "grabbed" not in seen, "it grabbed with a frame in hand"
     finally:
         win.close()
 
 
 def test_it_grabs_a_frame_when_the_screen_reader_is_off(qapp, monkeypatch):
     """`use_vision` is a tick box and game-data-only mode has no capture
-    session at all, so with no live Snapshot Confirm takes a one-shot
-    picture of the window. "You cannot calibrate the crop boxes unless
-    the crop boxes are already being used" is a circle."""
+    session at all, so with no live Snapshot this takes a one-shot
+    picture of the window. "You cannot measure the crop boxes unless the
+    crop boxes are already being used" is a circle."""
     import numpy as np
-    from draft_assist.ui import calibrate
 
-    monkeypatch.setattr(calibrate, "dota_client_rect",
-                        lambda: (0, 0, 1920, 1080))
     win = make_window(qapp, demo_dataset())
     try:
         grabbed = np.zeros((1080, 1920, 3), np.uint8)
         win.snapshot = None
         monkeypatch.setattr(win, "_grab_dota_frame", lambda: grabbed)
-        win._calibrate()
-        assert win.calibrator.frame_of() is grabbed
-        win.calibrator.panel.cancelled.emit()
-        qapp.processEvents()
+        assert win._measure_calibration() is False
+        # No heroes named, so it stops there — but it got past the frame,
+        # which is the half this is about.
+        assert "not named enough heroes" in win.cal_label.text()
     finally:
         win.close()
 
 
 def test_a_failed_grab_is_not_an_exception(qapp, monkeypatch):
-    """Dota can be closed between opening the boxes and pressing
-    Confirm. That is a refusal with a sentence, never a traceback."""
-    from draft_assist.ui import calibrate
-
-    monkeypatch.setattr(calibrate, "dota_client_rect",
-                        lambda: (0, 0, 1920, 1080))
+    """Dota can be closed between the banner appearing and the button
+    being pressed. That is a refusal with a sentence, never a traceback
+    out of a button."""
     win = make_window(qapp, demo_dataset())
     try:
         def gone():
@@ -4084,23 +4046,37 @@ def test_a_failed_grab_is_not_an_exception(qapp, monkeypatch):
 
         win.snapshot = None
         monkeypatch.setattr(win, "_grab_dota_frame", gone)
-        win._calibrate()
-        assert win.calibrator.frame_of() is None
-        win.calibrator.panel.confirmed.emit()
-        qapp.processEvents()
-        assert win.calibrator is not None, "it closed on a failure"
-        assert "Borderless" in win.calibrator.panel.note.text()
-        win.calibrator.panel.cancelled.emit()
-        qapp.processEvents()
+        assert win._measure_calibration() is False
+        assert "no frame" in win.cal_label.text()
     finally:
         win.close()
 
 
-def test_never_calibrated_is_the_last_rung(qapp, monkeypatch, tmp_path):
-    """The first-run task the user asked to have flagged. It is LAST
-    because it is the only one that cannot be done alone: it needs Dota
-    open and the portraits downloaded, since recognition matches the
-    boxes against that library."""
+def test_there_is_no_calibrate_by_hand_left_to_reach(qapp):
+    """"i dont see the point in having the portrait box vision box
+    feature at all... my plan now is to have the automatic detection work
+    so the user never needs to draw out these vision pboxes"."""
+    import importlib
+
+    win = make_window(qapp, demo_dataset())
+    try:
+        assert not hasattr(win, "_calibrate")
+        assert not hasattr(win, "drag_button")
+        labels = [c.label for c in win._all_commands()]
+        assert "Calibrate pick boxes…" not in labels
+        assert "Measure the crop boxes" in labels
+    finally:
+        win.close()
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("draft_assist.ui.calibrate")
+
+
+def test_an_absent_calibration_file_is_no_longer_a_banner(qapp, monkeypatch,
+                                                          tmp_path):
+    """It was the LAST rung and it asked for the one thing this app no
+    longer wants anybody to do by hand. With nothing calibrated the boxes
+    are `DraftLayout()`'s measured fractions through `hud_box`, and the
+    first strategy time measures the real geometry by itself."""
     from draft_assist.ui import app as app_mod
     from draft_assist.ui import portraits
 
@@ -4112,7 +4088,6 @@ def test_never_calibrated_is_the_last_rung(qapp, monkeypatch, tmp_path):
         monkeypatch.setattr(win, "_bracket_mismatch", lambda: None)
         monkeypatch.setattr(win, "_stale_days", lambda: 0)
         win._update_first_run_banner()
-        assert "pick boxes have not been set up" in win.banner_label.text()
-        assert win.banner_button.text() == "Calibrate"
+        assert not win.banner.isVisible(), win.banner_label.text()
     finally:
         win.close()
