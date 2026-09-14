@@ -25,8 +25,17 @@ from . import appicon, theme
 
 
 def card(title: str | None = None,
-         corner: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
+         corner: QWidget | None = None,
+         corner_grows: bool = False) -> tuple[QFrame, QVBoxLayout]:
     """A titled panel. `corner` rides on the heading's right-hand end.
+
+    `corner_grows` hands the corner the heading's spare width instead of
+    a trailing stretch. OFF by default, because every other corner here
+    is a count box that must stay its own size — and ON for a corner
+    that REFLOWS, which cannot work out how many columns it has room for
+    if it is only ever given the width it currently uses. That is a
+    chicken and an egg, and the role filter sat eight rows deep inside
+    it.
 
     That is where a control BELONGS when it changes the panel under it —
     "how many of these do I want" is answered by looking at the answer, and
@@ -52,8 +61,9 @@ def card(title: str | None = None,
             head.setContentsMargins(0, 0, 0, 0)
             head.addWidget(label)
             head.addSpacing(8)
-            head.addWidget(corner)
-            head.addStretch(1)
+            head.addWidget(corner, 1 if corner_grows else 0)
+            if not corner_grows:
+                head.addStretch(1)
             layout.addLayout(head)
     return frame, layout
 

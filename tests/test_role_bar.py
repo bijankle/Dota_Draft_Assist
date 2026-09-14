@@ -1,15 +1,28 @@
-"""The Roles card: two teams facing each other across eight role names.
+"""The Roles card: eight roles twice, Radiant's left and Dire's right.
 
-Three things here are decisions rather than code, and each was made by
-rendering the card and looking at it:
+**THIS SHAPE REPLACES THE ONE THAT STOOD HERE**, at the user's request,
+and the tests it replaces went with it. It used to be two bars facing
+each other across ONE shared role name, under a "Radiant"/"Dire" heading
+pair per group. Those headings are what went: "there should not be a
+header for radiant and dire... its just if it sits under radiant its
+radiant and likewise for dire, divided by the same central line" — and
+then, asked which of two shapes that meant: "I mean you repeat the
+header, and you know which team it belongs to because all headers on the
+left are radiant, right are dire, by header I mean support, carry, etc."
 
-* the GROUP COUNT follows the width, because one column of eight was
-  294px tall in a window whose default height is 998 and used a third of
-  the width;
-* both sides' bars grow OUTWARD from the name, so the two are comparable
-  by length rather than by counting;
-* every pill is the frame's gold, at the user's request, replacing a
-  red/green rule asked for one message earlier.
+So POSITION carries the team, exactly as it does on the board above, and
+the tests below check the three things that makes load-bearing:
+
+* the role NAMES are repeated, once per side, and nothing else labels a
+  side;
+* the centre rule lands where the gap between the two team panels does;
+* the column count follows the WIDTH and the minimum is one column —
+  which is not cosmetic. Fixed at four this card asked for 1022px
+  against a window floor of 940, so the Draft page stopped shrinking
+  and the ten portraits could not scale down with the window.
+
+Every pill is still the frame's gold, at the user's request, replacing a
+red/green rule asked for one message earlier.
 """
 
 import os
@@ -81,199 +94,246 @@ def host(styled):
 def bar(host):
     widget = rolebar.RoleBar(host)
     widget.set_sides("Radiant", "Dire")
+    widget.show()
     return widget
+
+
+def lay_out(widget, width: int) -> None:
+    """Resize and make the layout ACTUALLY RUN.
+
+    Qt defers layout, so reading a geometry straight after a resize reads
+    the OLD one — the same trap `_hold_still` carries a note about in the
+    History tab, where measuring before forcing the layout moved the
+    control out from under the cursor.
+    """
+    widget.resize(width, widget.sizeHint().height())
+    widget._fit()
+    widget.layout().activate()
+    QApplication.processEvents()
+    widget.resize(width, widget.sizeHint().height())
+    widget.layout().activate()
 
 
 # ---- what it shows -----------------------------------------------------
 
-def test_every_role_gets_a_row_on_both_sides(bar):
-    for role in roles_mod.ROLES:
-        ally, name, enemy = bar._rows[role]
-        assert name.text() == role
-        assert isinstance(ally, rolebar.PillRow)
-        assert isinstance(enemy, rolebar.PillRow)
+def test_every_role_gets_a_cell_on_BOTH_sides(bar):
+    """Eight roles, twice — the repetition IS the labelling."""
+    for side in ("ally", "enemy"):
+        for role in roles_mod.ROLES:
+            name, pills = bar._cells[side][role]
+            assert name.text() == role
+            assert isinstance(pills, rolebar.PillRow)
+    assert len(bar._cells["ally"]) == len(roles_mod.ROLES)
+    assert len(bar._cells["enemy"]) == len(roles_mod.ROLES)
+
+
+def test_NOTHING_on_the_card_names_a_team(bar, styled):
+    """The whole of the request. A label reading "Radiant" anywhere on
+    this card is the thing that was asked to go."""
+    from PyQt6.QtWidgets import QLabel
+    words = {w.text().strip().lower() for w in bar.findChildren(QLabel)}
+    assert "radiant" not in words
+    assert "dire" not in words
+    assert {r.lower() for r in roles_mod.ROLES} <= words
 
 
 def test_the_pills_are_the_share_each_side_actually_scored(bar):
-    # Anti-Mage (Carry 3) alone against Lion (Carry 0) alone.
-    bar.show_draft([1], [26])
-    ally, _name, enemy = bar._rows["Carry"]
-    assert ally.filled == roles_mod.PILLS, "3 of 3 is every pill"
-    assert enemy.filled == 0
+    bar.show_draft([1, 26, 8], [2, 5])
+    ours = roles_mod.team_scores([1, 26, 8])
+    theirs = roles_mod.team_scores([2, 5])
+    for mine, yours in zip(ours, theirs):
+        assert bar._cells["ally"][mine.role][1].filled == mine.pills
+        assert bar._cells["enemy"][mine.role][1].filled == yours.pills
 
 
-def test_each_sides_bar_grows_away_from_the_name(bar):
-    """Both start at the role, so a four and a three begin at the same
-    place and the eye compares length rather than counting pills."""
-    ally, _name, enemy = bar._rows["Carry"]
-    assert ally._grows_right is False, "the ally bar sits left of the name"
-    assert enemy._grows_right is True
+def test_both_sides_now_grow_the_SAME_way(bar):
+    """REVERSES "each side grows outward from the name". That rule made
+    two bars comparable by length from a SHARED origin; with the halves
+    split there is no shared origin, and a mirrored right half would put
+    Dire's names down the middle of the card where the rule goes."""
+    for role in roles_mod.ROLES:
+        assert bar._cells["ally"][role][1]._grows_right is True
+        assert bar._cells["enemy"][role][1]._grows_right is True
 
 
 def test_the_lead_is_carried_even_though_nothing_paints_it(bar):
-    """Colouring by it again is one line in `_colour`; that is the point
-    of not deleting the arithmetic when it stopped being drawn."""
-    bar.show_draft([1], [26])           # Anti-Mage carries, Lion does not
-    ally, _name, enemy = bar._rows["Carry"]
-    assert ally.lead == 1 and enemy.lead == -1
-    support_ally, _n, support_enemy = bar._rows["Support"]
-    assert support_ally.lead == -1 and support_enemy.lead == 1
+    """Kept up to date so colouring by it again is one line in
+    `_colour` — the point of not deleting arithmetic the moment it stops
+    being drawn."""
+    bar.show_draft([1, 26, 8, 2, 5], [14, 29, 18, 11, 41])
+    leads = {bar._cells["ally"][role][1].lead for role in roles_mod.ROLES}
+    assert leads - {0}, "no role registered a lead either way"
+    for role in roles_mod.ROLES:
+        assert (bar._cells["ally"][role][1].lead
+                == -bar._cells["enemy"][role][1].lead)
 
 
 def test_the_tooltip_carries_the_figures_a_rounded_pill_cannot(bar):
-    bar.show_draft([1, 26, 8], [2, 5, 14, 29, 18])
-    _ally, name, _enemy = bar._rows["Carry"]
-    tip = name.toolTip()
+    """A row reading 3 against 3 can be 0.52 against 0.61."""
+    bar.set_sides("Radiant", "Dire")
+    bar.show_draft([1, 26, 8], [2, 5])
+    tip = bar._cells["ally"]["Carry"][0].toolTip()
     assert "Carry" in tip
-    assert "of 9" in tip, tip          # three picks, three each
-    assert "of 15" in tip, tip         # five picks
+    # AND IT NAMES THE SIDES, because the card no longer does.
+    assert "Radiant" in tip and "Dire" in tip
     assert "%" in tip
+    # Both halves of a role carry the SAME tooltip, so hovering either
+    # answers the comparison the split no longer makes on one line.
+    assert bar._cells["enemy"]["Carry"][0].toolTip() == tip
 
 
 def test_an_empty_board_draws_the_shape_with_nothing_in_it(bar):
-    """An empty panel shows the SHAPE of its answer, not a sentence."""
     bar.show_draft([], [])
-    for role in roles_mod.ROLES:
-        ally, _name, enemy = bar._rows[role]
-        assert ally.filled == 0 and enemy.filled == 0
-        assert ally.lead == 0 and enemy.lead == 0
+    for side in ("ally", "enemy"):
+        for role in roles_mod.ROLES:
+            assert bar._cells[side][role][1].filled == 0
 
 
 # ---- the colour --------------------------------------------------------
 
 def test_every_pill_is_the_frames_gold(bar):
-    """At the user's request, replacing red/green: gold is the app's
-    "this one" colour rather than a judgement, and it is what the window
-    border, the focus ring and the suggestion star already wear."""
-    ally, _name, enemy = bar._rows["Carry"]
-    bar.show_draft([1], [26])
-    for row in (ally, enemy):
-        assert row._colour() == QColor(theme.FRAME_GOLD)
+    """At the user's request: "just make it all gold - like the border of
+    the app window". Gold is this app's "this one" colour rather than a
+    judgement."""
+    bar.show_draft([1, 26, 8, 2, 5], [14, 29, 18, 11, 41])
+    for side in ("ally", "enemy"):
+        for role in roles_mod.ROLES:
+            assert (bar._cells[side][role][1]._colour()
+                    == QColor(theme.FRAME_GOLD))
 
 
 def test_a_filled_pill_is_actually_drawn_in_that_gold(bar, host):
-    """It is in the stylesheet has twice not meant it is on the screen,
-    so this reads the PIXELS the widget painted."""
-    row = rolebar.PillRow(grows_right=True, parent=host)
-    row.set_share(roles_mod.PILLS, 0)
+    """It is in the code has twice not meant it is on the screen."""
+    row = bar._cells["ally"]["Carry"][1]
+    row.set_share(3, 1)
     row.resize(row.sizeHint())
     picture = row.grab().toImage()
     gold = QColor(theme.FRAME_GOLD).rgb()
-    found = sum(picture.pixel(x, y) == gold
-                for x in range(picture.width())
-                for y in range(picture.height()))
-    assert found > 100, "no gold was painted at all"
+    assert any(picture.pixel(x, y) == gold
+               for x in range(picture.width())
+               for y in range(picture.height()))
+
+
+# ---- the split ---------------------------------------------------------
+
+def test_there_is_one_rule_and_it_is_at_the_CENTRE(bar, host):
+    """"divided by the same central line". Two halves carrying the same
+    stretch put it there BY CONSTRUCTION — worked out as a grid column
+    index instead, it landed 13px left, which is the family of error the
+    grid borders were got wrong four times by."""
+    lay_out(bar, 1200)
+    left = bar._rule.mapTo(bar, bar._rule.rect().topLeft()).x()
+    middle = bar.width() / 2
+    assert abs(left - middle) <= 4, (
+        f"the rule is at {left}, the card's centre is {middle}")
+
+
+def test_radiant_is_ALL_of_the_left_and_dire_ALL_of_the_right(bar, host):
+    """The one rule that replaces the headings: which side a cell is on
+    is the only thing saying whose it is, so not one cell may cross."""
+    lay_out(bar, 1200)
+    middle = bar.width() / 2
+    for role in roles_mod.ROLES:
+        for widget in bar._cells["ally"][role]:
+            right = widget.mapTo(bar, widget.rect().topRight()).x()
+            assert right <= middle + 1, f"Radiant {role} crosses the rule"
+        for widget in bar._cells["enemy"][role]:
+            left = widget.mapTo(bar, widget.rect().topLeft()).x()
+            assert left >= middle - 1, f"Dire {role} crosses the rule"
 
 
 # ---- how many across ---------------------------------------------------
 
-def test_the_group_count_follows_the_width(bar):
-    """"you can actually make them multi column if they are very
-    narrow.... e.g. 6 rows make it 3 x 2".
+def test_the_column_count_follows_the_width(bar):
+    wide = bar.columns_for(4000)
+    narrow = bar.columns_for(bar._cell_width() * 2 + 40)
+    assert wide > narrow
+    assert wide == max(rolebar.RoleBar.COLUMNS)
+    assert narrow == 1
 
-    SHOWN, because Qt does not deliver a resize to a hidden widget — the
-    reason `showEvent` asks again.
-    """
-    one = bar._group_width()
-    bar.resize(one + 10, 400)
+
+def test_the_counts_are_divisors_of_eight(bar):
+    """A ragged last column reads as a cell having gone missing."""
+    for count in rolebar.RoleBar.COLUMNS:
+        assert len(roles_mod.ROLES) % count == 0
+
+
+def test_its_MINIMUM_is_one_column_a_side(bar):
+    """**THE LOAD-BEARING ONE.** A widget's minimum is the window's
+    minimum. Reporting four columns put the Draft page's floor at 1314px
+    against a window floor of 940 — so inside the tab's scroll area the
+    page stopped shrinking, a horizontal scrollbar appeared and the ten
+    portraits were pinned at one size at every window width: "i also feel
+    like portraits are not scaling down as i make the windows smaller"."""
+    one = bar._cell_width() * 2 + bar._extra()
+    assert bar.minimumSizeHint().width() <= one
+    # And that is far under the window's own floor.
+    from draft_assist.ui import teams
+    assert bar.minimumSizeHint().width() < 2 * teams.minimum_panel_width()
+
+
+def test_a_card_shown_after_the_window_grew_still_reflows(bar, host):
+    """Qt delivers no resize to a HIDDEN widget, and this card lives on a
+    tab that hides its pages."""
+    bar.hide()
+    bar.resize(bar._cell_width() * 2 + 40, 60)
+    bar._fit()
+    assert bar.columns == 1
+    bar.resize(4000, 60)
     bar.show()
     QApplication.processEvents()
-    assert bar.groups == 1
-    bar.resize(4 * (one + bar.GROUP_GAP), 400)
-    QApplication.processEvents()
-    assert bar.groups == 4
+    assert bar.columns == max(rolebar.RoleBar.COLUMNS)
 
 
-def test_a_card_shown_after_the_window_grew_still_regroups(bar):
-    """A tab widget hides the pages it is not showing, so a window
-    resized on another tab arrives here as one event on the way back."""
-    bar.resize(4 * (bar._group_width() + bar.GROUP_GAP), 400)
-    assert bar.groups == 1, "hidden widgets get no resize event"
-    bar.show()
-    QApplication.processEvents()
-    assert bar.groups == 4
+def test_four_columns_is_half_the_height_of_two(bar, host):
+    lay_out(bar, 4000)
+    wide = bar.sizeHint().height()
+    assert bar.columns == max(rolebar.RoleBar.COLUMNS)
+    lay_out(bar, bar._cell_width() * 2 + 60)
+    assert bar.columns == 1
+    narrow = bar.sizeHint().height()
+    assert narrow > wide, (wide, narrow)
 
 
-def test_it_never_asks_for_more_groups_than_there_are_roles(bar):
-    assert bar.groups_for(100_000) == len(roles_mod.ROLES)
-    assert bar.groups_for(0) == 1
-    assert bar.groups_for(-50) == 1
-
-
-def test_four_groups_is_half_the_height_of_two(bar):
-    """The reason the count follows the width at all: this card sits
-    between the picks and the advice about them, so its height is paid
-    for by everything below it."""
-    bar.resize(2 * (bar._group_width() + bar.GROUP_GAP), 600)
-    bar.show()
-    QApplication.processEvents()
-    two_high = bar.sizeHint().height()
-    bar.resize(4 * (bar._group_width() + bar.GROUP_GAP), 600)
-    QApplication.processEvents()
-    assert bar.groups == 4
-    assert bar.sizeHint().height() < two_high
-
-
-def test_relaying_out_moves_the_rows_rather_than_rebuilding_them(bar):
-    """Each row owns its tooltip and its fill, so tearing them down on a
-    window drag would drop what the card is showing."""
-    bar.show_draft([1, 26, 8], [2, 5, 14, 29, 18])
-    before = {role: bar._rows[role] for role in roles_mod.ROLES}
-    tip = bar._rows["Carry"][1].toolTip()
-    bar.resize(bar._group_width() + 10, 400)
-    bar.resize(4 * (bar._group_width() + bar.GROUP_GAP), 400)
-    assert {role: bar._rows[role] for role in roles_mod.ROLES} == before
-    assert bar._rows["Carry"][1].toolTip() == tip
-    assert bar._rows["Carry"][0].filled  # and it still knows its fill
-
-
-def test_headings_this_width_does_not_use_are_hidden(bar):
-    """A spare label left in the layout draws at (0, 0) over the first
-    group - the throwaway-QLabel trap the History sidebar already found."""
-    bar.resize(bar._group_width() + 10, 400)
-    assert bar.groups == 1
-    for spare in bar._heads[1:]:
-        assert all(widget.isHidden() for widget in spare)
-    for shown in bar._heads[0]:
-        assert not shown.isHidden()
-
-
-def test_every_group_says_whose_half_each_side_is(bar):
-    """Side by side, one group's right-hand pills sit next to the next
-    group's left-hand ones, and one pair of headings across the top would
-    leave nothing saying the run in the middle is two different teams."""
-    bar.resize(4 * (bar._group_width() + bar.GROUP_GAP), 400)
-    for ally_head, enemy_head in bar._heads[:bar.groups]:
-        assert ally_head.text() == "Radiant"
-        assert enemy_head.text() == "Dire"
+def test_relaying_out_moves_the_cells_rather_than_rebuilding_them(bar):
+    """Each cell owns its tooltip and its fill, so tearing them down on a
+    window drag would drop what the card is showing — and a destroyed C++
+    object behind a live Python wrapper is the trap the History tab's
+    item block already found."""
+    bar.show_draft([1, 26, 8], [2, 5])
+    before = {(side, role): bar._cells[side][role]
+              for side in ("ally", "enemy") for role in roles_mod.ROLES}
+    filled = bar._cells["ally"]["Carry"][1].filled
+    bar._relayout(1)
+    bar._relayout(4)
+    for key, pair in before.items():
+        assert bar._cells[key[0]][key[1]] is pair
+    assert bar._cells["ally"]["Carry"][1].filled == filled
 
 
 def test_no_widget_in_the_card_is_left_without_a_parent(bar):
     """A parentless QWidget in this app is a second window in the
-    taskbar the moment anything shows it - three times over."""
-    for row in bar._rows.values():
-        for widget in row:
-            assert widget.parent() is not None
-    for pair in bar._heads:
-        for widget in pair:
-            assert widget.parent() is not None
+    taskbar the moment anything shows it — including the centre rule,
+    which `edge()` hands back unparented."""
+    from PyQt6.QtWidgets import QWidget
+    assert bar._rule.parent() is not None
+    for side in ("ally", "enemy"):
+        for role in roles_mod.ROLES:
+            for widget in bar._cells[side][role]:
+                assert widget.parent() is not None
+    for child in bar.findChildren(QWidget):
+        assert child.parent() is not None
 
 
-def test_no_group_is_ever_created_with_no_roles_in_it(bar):
-    """Eight roles across five groups is two each and the fifth gets
-    nothing — which drew a pair of "Radiant Dire" headings over thin air
-    in the corner of the card. Caught by rendering the tab and looking."""
-    bar.show()
-    for width in (300, 600, 900, 1200, 1464, 2400):
-        bar.resize(width, 400)
-        QApplication.processEvents()
-        per = -(-len(roles_mod.ROLES) // bar.groups)
-        # Every group has at least one role: the last slice is not empty.
-        assert (bar.groups - 1) * per < len(roles_mod.ROLES), (
-            f"at {width}px, {bar.groups} groups of {per} leaves the last "
-            "one empty")
-        for head in bar._heads[bar.groups:]:
-            assert all(w.isHidden() for w in head)
+def test_no_column_is_ever_created_with_no_roles_in_it(bar):
+    """Eight roles over five columns is two each and the fifth gets
+    nothing, which drew a pair of headings over thin air. The count is
+    what the SLICES need, not what the width would permit."""
+    for asked in range(1, 12):
+        bar._relayout(asked)
+        per = -(-len(roles_mod.ROLES) // bar.columns)
+        assert per * bar.columns >= len(roles_mod.ROLES)
+        assert (bar.columns - 1) * per < len(roles_mod.ROLES)
 
 
 def test_all_five_pills_are_always_drawn_however_few_are_filled(host):

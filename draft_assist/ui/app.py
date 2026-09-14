@@ -114,26 +114,29 @@ class MarkLabel(QWidget):
     SIDE = 22
     GAP = 9              # room for the rule between the two marks
 
-    def __init__(self, shield: bool | None = None, parent=None):
+    def __init__(self, shield=None, parent=None):
         super().__init__(parent)
         # None means BOTH, which is what the single count box is
-        # labelled with now. The bool is kept for anything that still
-        # wants one mark on its own.
+        # labelled with now; True is the shield alone and False the
+        # heart. "hand" is the odd one out and says so - see below.
         self._shield = shield
         self.setFixedSize(self.SIDE if shield is not None
                           else self.SIDE * 2 + self.GAP, self.SIDE)
         self.setToolTip(
             "Pink heart: your best of the suggestions.  Gold shield: "
             "hardest to counter." if shield is None else
+            "How many heroes to suggest" if shield == "hand" else
             "Gold shield: hardest to counter of the suggestions"
             if shield else "Pink heart: your best of the suggestions")
 
-    def _mark(self, painter, box, shield: bool) -> None:
+    def _mark(self, painter, box, shield) -> None:
         # The painters inset their mark inside the box they are handed,
         # so it is grown by the inset to come out at label size.
         grown = box.adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
                              tilekit.STAR_INSET, tilekit.STAR_INSET)
-        if shield:
+        if shield == "hand":
+            tilekit.paint_hand(painter, grown)
+        elif shield:
             tilekit.paint_shield(painter, grown)
         else:
             tilekit.paint_heart(painter, grown)
@@ -940,7 +943,8 @@ class MainWindow(QMainWindow):
         # advice about the board: first which hero to take, then what to
         # build against what is already there.
         self.count_boxes = {}
-        picks_card, playy = card("Suggested picks", self._picks_controls())
+        picks_card, playy = card("Suggested picks", self._picks_controls(),
+                                 corner_grows=True)
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
             self._on_suggestion_clicked)
@@ -3623,89 +3627,67 @@ class MainWindow(QMainWindow):
         one setting is two places for it to go stale.
         """
         row = QWidget()
+        row.setSizePolicy(QSizePolicy.Policy.Expanding,
+                          QSizePolicy.Policy.Preferred)
+        # TRANSPARENT. A bare QWidget takes the base `QWidget` rule, which
+        # is the CONTENT colour - lighter than the card it is sitting on -
+        # so this container painted a pale rectangle behind the whole
+        # heading: "the suggested picks area has a weird padding
+        # background color discrepancy". Exactly the fault the stylesheet
+        # already fixes for every QLabel, one widget kind over. The count
+        # boxes on top of it were transparent and correctly showing this.
+        row.setProperty("bare", True)
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(6)
-        line.addWidget(self._count_box("suggested_picks"))
+        line.setSpacing(10)
+
+        # TWO ROWS, HAND ON TOP, at the user's request: "i want the qty of
+        # suggested picks to have a hand symbol to symbolize picking and i
+        # want it to be the top row of the two, with the bottom row being
+        # the shield / heart field". Stacked rather than strung out, which
+        # is also most of the WIDTH this heading was costing - and width
+        # is what the ten picks were being squeezed by.
+        counts = QWidget(row)
+        counts.setProperty("bare", True)
+        stack = QGridLayout(counts)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setHorizontalSpacing(6)
+        stack.setVerticalSpacing(2)
+        stack.addWidget(MarkLabel("hand", counts), 0, 0)
+        self.suggested_box = self._count_box("suggested_picks")
+        stack.addWidget(self.suggested_box, 0, 1)
         # ONE BOX FOR BOTH MARKS. They answer the same question - how far
         # down the strip is worth marking - and two boxes made that look
         # like two decisions. Set it to 2 and the strip carries two
         # hearts AND two shields.
-        line.addSpacing(6)
-        line.addWidget(MarkLabel(None, row))
-        line.addWidget(self._badge_box("mark_count"))
-        line.addSpacing(10)
-        line.addWidget(self._role_filter(row))
+        stack.addWidget(MarkLabel(None, counts), 1, 0)
+        self.mark_box = self._badge_box("mark_count")
+        stack.addWidget(self.mark_box, 1, 1)
+        line.addWidget(counts)
+        # THE FILTER TAKES THE SPARE WIDTH rather than a trailing
+        # stretch taking it. It reflows from the width it is GIVEN, so a
+        # layout that hands it only what it asks for is a chicken and an
+        # egg: it laid out one column deep, which made it narrow, which
+        # kept it one column deep — eight rows tall, for ever. The stretch
+        # factor is what lets it see the room it has to fill.
+        line.addWidget(self._role_filter(row), 1)
+        self._picks_row = row
         return row
 
     def _role_filter(self, parent) -> QWidget:
-        """How strong a suggestion has to be in each role, 0 to 3.
+        """The eight role floors, beside the strip they cut.
 
-        AT THE USER'S REQUEST, and the point of it is the card above:
-        "the user looks at the team attributes, figures out what's
-        lacking and ticks the suggested hero filters". It is the other
-        half of the Roles card — that one says what the draft is short
-        of, and this one cuts the strip to heroes that answer it. It has
-        a second use they named too: "if you are always support you don't
-        want to see anything that has 0 support attribution".
-
-        **A NUMBER, NOT A TICK**, which is the second thing asked for:
-        "instead of a tick box it would be nice to have a number input
-        (up / down arrow) for each allowing 1, 2, 3 only... that way if
-        you need a really strong support example you can filter the
-        suggested heroes well". So the value is the LOWEST rating that
-        passes on Valve's own 0-to-3 scale, and nought is the filter
-        being off — which is exactly what an unticked box used to mean,
-        with 1 being what a ticked one meant.
-
-        **TWO ROWS OF FOUR**, as asked, which is exactly eight — and that
-        is the shape only because Valve scores EIGHT roles. The nine
-        everybody lists includes Jungler, which has no hero data behind
-        it at all (see `model/roles.py`), and a 3x3 with a dead corner is
-        what a ninth would have cost. It is a `QGridLayout` because that
-        is how Qt is told "two rows of four"; **nothing draws a grid** —
-        no lines, no header, no cell borders — at the user's request:
-        "when you say grid i dont want it to look like a grid, just said
-        it in terms of row / column so that they fit nicely".
-
-        **SEVERAL AT ONCE MEANS ALL OF THEM**: the strip is cut to heroes
-        that clear EVERY figure set. Durable 2 and Initiator 2 to find
-        the hero who is properly both is a question worth asking, where
-        "either" is barely a filter once two are on.
-
-        It is BESIDE the mark counts rather than in Settings for the
-        reason those moved there: a control you set by looking at the
-        result belongs beside the result.
+        The widget is `rolebar.RoleFilter` — it lives beside the Roles
+        card it is the other half of, and shares that card's reflow so
+        neither can weld the Draft tab wide again. This method is what
+        connects it to the settings file.
         """
-        from ..model.roles import MAX_LEVEL, ROLES
-
-        box = QWidget(parent)
-        grid = QGridLayout(box)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(2)
         wanted = ui_settings.clean_roles(self.settings.get("pick_roles"))
-        self.role_boxes: dict[str, chrome.CountBox] = {}
-        for index, role in enumerate(ROLES):
-            name = QLabel(role, box)
-            name.setProperty("dim", True)
-            count = chrome.CountBox(wanted.get(role, 0), 0, MAX_LEVEL)
-            count.setToolTip(
-                f"Only suggest heroes Dota scores at least this highly in "
-                f"{role}, on its own 1-to-3 scale.\n"
-                "Nought is off. Several set means a hero has to clear "
-                "all of them.")
-            # SET BEFORE IT IS WIRED: restoring what the file said is not
-            # the user choosing it, and an unblocked restore would write
-            # the settings file on every start and re-cut a strip that
-            # does not exist yet.
-            count.valueChanged.connect(self._roles_picked)
-            row, column = index % 2, (index // 2) * 2
-            grid.addWidget(name, row, column,
-                           Qt.AlignmentFlag.AlignRight
-                           | Qt.AlignmentFlag.AlignVCenter)
-            grid.addWidget(count, row, column + 1)
-            self.role_boxes[role] = count
+        box = rolebar.RoleFilter(wanted, parent)
+        box.picked.connect(self._roles_picked)
+        self.role_filter = box
+        # Kept for every caller that reads the boxes by role.
+        self.role_boxes = box.boxes
         return box
 
     def _roles_picked(self, _value: int = 0) -> None:

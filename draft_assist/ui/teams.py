@@ -26,7 +26,7 @@ from PyQt6.QtCore import (QMimeData, QPoint, QPointF, QRect, QSize, Qt,
                           pyqtSignal)
 from PyQt6.QtGui import QColor, QDrag, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
-                             QSizePolicy, QVBoxLayout)
+                             QLayout, QSizePolicy, QVBoxLayout)
 
 from . import theme, tilekit
 from .portraits import scaled
@@ -454,7 +454,40 @@ class HaloLabel(QLabel):
 
 
 class TeamPanel(QFrame):
-    """Five tiles under one heading — one half of the draft."""
+    """Five tiles under one heading — one half of the draft.
+
+    **ITS LAYOUT DOES NOT DICTATE ITS MINIMUM**, and that one line is
+    what lets the ten portraits shrink with the window.
+    `HeroTile.set_edge` calls `setFixedSize` — which is right, and is
+    what stops Qt handing each tile the leftover width and stretching the
+    art — but a layout full of fixed-size children reports a minimum of
+    five of whatever they happen to be RIGHT NOW, and Qt hands that
+    straight to the widget. That is a RATCHET: widen the window, the
+    tiles grow, the panel's floor grows with them, and the width can
+    never be given back. Two panels at 925 put the Draft page's floor at
+    1884 against a window floor of 940, so inside the tab's scroll area
+    the page stopped shrinking and a horizontal scrollbar appeared —
+    "i also feel like portraits are nto scaling down as i make the
+    windows smaller". Before the scroll area the same ratchet showed up
+    as a window that would not narrow.
+
+    `SetNoConstraint` is the documented way to say the layout's minimum
+    is not the widget's, and the real floor is then stated once, as
+    `minimum_panel_width()` — the number the window's own minimum width
+    has always been derived from.
+
+    **TWO OTHER FIXES FOR THIS WERE TRIED AND BOTH SEGFAULT**, which is
+    worth recording because neither looks dangerous:
+    overriding `minimumSizeHint` to report the floor leaves Qt's layout
+    engine with constraints it cannot satisfy, and giving the tiles a
+    minimum-and-maximum instead of a fixed size makes the tile's hint
+    feed the panel's hint, which feeds the width that chose it. Both end
+    in the same place — the ten tiles flipping 80, 78, 80, 78 through
+    Qt's C++ layout until the stack goes, with no exception and a Python
+    traceback naming whichever `show()` was on top. `_match_grid_
+    portraits` carries the same warning: Qt ABORTS rather than raising,
+    so this class of bug has no traceback to find it by.
+    """
 
     tile_resized = pyqtSignal(int, int)
 
@@ -462,9 +495,14 @@ class TeamPanel(QFrame):
         super().__init__(parent)
         self.side = side
         self.setProperty("card", True)
+        self.setMinimumWidth(minimum_panel_width())
         self._told: tuple[int, int] | None = None
 
         lay = QVBoxLayout(self)
+        # SEE THE CLASS NOTE. Without this the layout hands the widget a
+        # minimum of five tiles at their CURRENT size, which only ever
+        # goes up.
+        lay.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         lay.setContentsMargins(PANEL_MARGIN, 8, PANEL_MARGIN, 10)
         lay.setSpacing(6)
 
@@ -528,11 +566,40 @@ class TeamPanel(QFrame):
         super().resizeEvent(event)
         self._resize_tiles(event.size().width())
 
+    # HOW MUCH THE WIDTH MUST MOVE BEFORE THE TILES FOLLOW IT.
+    #
+    # **THIS IS A DAMPER ON A SCROLLBAR LOOP, not a tidiness setting.**
+    # The Draft tab is in a scroll area, and its page is as tall as it is
+    # WIDE — the tiles are 16:9 and the Roles card reflows — so: the page
+    # is a few pixels too tall, the vertical scrollbar appears, that takes
+    # ~10px of width, the tiles shrink to suit, the page gets shorter, the
+    # scrollbar is no longer needed, it goes, the width comes back. The
+    # measured result is the ten tiles flipping 80, 78, 80, 78 for ever
+    # inside Qt's C++ layout until the stack goes — and Qt does not raise
+    # for that, it SEGFAULTS, with a Python traceback naming whichever
+    # `show()` happened to be on top. `_match_grid_portraits` carries the
+    # same warning one card down.
+    # Two pixels on a portrait is invisible; an app that will not open is
+    # not. A real drag moves the width by far more than this, so the tiles
+    # still follow the window.
+    #
+    # **IT ONLY DAMPS GROWTH**, which is what makes it safe. Refusing to
+    # SHRINK would let the tiles overrun the card they are in the moment
+    # the scrollbar took its width — five tiles two pixels too wide is ten
+    # pixels of portrait outside the panel. So a smaller size is always
+    # taken at once and a bigger one has to be worth having, which settles
+    # the flutter at the smaller of the two and can never overflow.
+    STEADY = 3
+
     def _resize_tiles(self, width: int) -> None:
         margins = self.layout().contentsMargins()
         inner = width - margins.left() - margins.right() - 4 * self.spacing
+        edge = inner // 5
+        now = self.slots[0].width() if self.slots else 0
+        if now and 0 < edge - now < self.STEADY:
+            edge = now
         for tile in self.slots:
-            tile.set_edge(inner // 5)
+            tile.set_edge(edge)
         # EVERY tile in the app is this tile. The two strips below have no
         # width of their own to reason from — theirs was fixed at 78x44
         # while these grew with the window, so a suggestion was a different

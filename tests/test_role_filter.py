@@ -89,8 +89,13 @@ def test_they_are_laid_out_two_rows_by_four_columns(win):
         row, column, _rs, _cs = grid.getItemPosition(index)
         cells.add((row, column))
     assert max(r for r, _c in cells) == 1, "more than two rows"
-    # Each role takes two columns: its name, then its box.
-    assert max(c for _r, c in cells) == 7
+    # Each role takes THREE grid columns — its name, its box, and the
+    # fixed gap to the next cell. The gap column is what keeps the two
+    # rows of four snug at any width now that the filter REFLOWS: at
+    # four columns it asked for 644px, which made the Suggested picks
+    # card 1030px wide at its narrowest, over the window's own 940 floor,
+    # so the Draft page stopped shrinking and the portraits with it.
+    assert max(c for _r, c in cells) == 10
     assert len(cells) == 16, "a label and a box for each of eight roles"
 
 

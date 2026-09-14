@@ -427,6 +427,15 @@ QPushButton#overlayToggle:checked {{
     border-color: {ACCENT};
 }}
 
+/* A BARE CONTAINER PAINTS NOTHING. The base rule above gives every
+   QWidget the CONTENT colour, so a plain QWidget used purely to hold a
+   layout draws a pale rectangle wherever it sits on something darker -
+   a card, the tab strip, a banner. That is the QLabel fault one widget
+   kind over, and it showed up as "the padding is a lighter color" round
+   the Suggested picks heading. Anything whose job is to hold a layout
+   rather than to be a surface carries `bare`. */
+QWidget[bare="true"] {{ background: transparent; }}
+
 QFrame[card="true"] {{
     background: {BG_ELEVATED};
     border: 1px solid {BORDER};

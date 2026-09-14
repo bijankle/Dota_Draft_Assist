@@ -2038,6 +2038,37 @@ credentials, and put the account at risk. Do not go there.
   halves** — the rule unknown slots already follow, and the alternative
   reports a team as WORSE at every role for having picked a hero the
   bundled file has not been cut for yet.
+  **THE CARD IS SPLIT DOWN THE MIDDLE AND THE NAMES ARE REPEATED**, at
+  the user's request, and this REVERSES the arrangement above it: two
+  bars facing each other across ONE shared role name, under a
+  "Radiant"/"Dire" heading pair per group. The headings went first —
+  "there should not be a header for radiant and dire... its just if it
+  sits under radiant its radiant and likewise for dire, divided by the
+  same central line" — and, asked which of two shapes that meant: "I
+  mean you repeat the header, and you know which team it belongs to
+  because all headers on the left are radiant, right are dire, by
+  header I mean support, carry, etc."
+  So POSITION carries the team, exactly as it does on the board above:
+  everything left of the centre rule is Radiant, everything right is
+  Dire, and a cell is a role name and its five pills —
+
+      Carry - XXXXX | Nuker - XXXXX | Durable - XXXXX | Pusher - XXXXX
+      Support - XXXXX | Disabler - XXXXX | Escape - XXXXX | Initiator...
+
+  per side. The cost is each role being named twice; the gain is that no
+  cell needs a label saying whose it is. **Both sides now grow the same
+  way**, which reverses "each side grows outward from the name": that
+  rule made two bars comparable from a SHARED origin, and with the halves
+  split there is no shared origin — a mirrored right half would put
+  Dire's names down the middle where the rule goes. The comparison moved
+  to the tooltip, which both halves of a role share and which now NAMES
+  the two sides, since the card no longer does.
+  **THE RULE IS AT THE CENTRE BY CONSTRUCTION**: two half-widgets with
+  the same stretch and the rule between them. Worked out as a grid
+  column index instead it landed 13px left — the family of error the
+  grid borders were got wrong four times by. It is `section_bar.edge`,
+  the same 1px widget the History tab uses, and it lands within a pixel
+  of the gap between the two team panels above.
   **EVERY PILL IS THE FRAME'S GOLD**, at the user's request, and that
   REVERSES a red/green rule asked for one message earlier (green where
   that side led the role, red where it trailed, mirrored across the two
@@ -2047,8 +2078,9 @@ credentials, and put the account at risk. Do not go there.
   (`PillRow.lead`, and the tooltip says which side is ahead), so
   colouring by it again is one line in `_colour`: that is the point of
   not deleting arithmetic the moment it stops being drawn.
-  **THE GROUP COUNT FOLLOWS THE WIDTH** — "you can actually make them
-  multi column if they are very narrow.... e.g. 6 rows make it 3 x 2".
+  **THE COLUMN COUNT FOLLOWS THE WIDTH, AND THE MINIMUM IS ONE COLUMN**
+  (`rolebar.ReflowGrid`) — "you can actually make them multi column if
+  they are very narrow.... e.g. 6 rows make it 3 x 2".
   One column of eight was 294px tall in a window whose default height is
   998 and used a third of the width. It fits as many groups across as the
   width allows, and **never one with no roles in it**: eight roles across
@@ -2061,8 +2093,20 @@ credentials, and put the account at risk. Do not go there.
   **AND THE CARD'S HEIGHT IS PAID FOR BY EVERYTHING BELOW IT**, which is
   what turned up the oldest bug in this family — see the strips note.
 
+- **THE SUGGESTION COUNTS ARE TWO ROWS, HAND OVER MARKS**
+  (`_picks_controls`, `tilekit.paint_hand`), at the user's request: "i
+  want the qty of suggested picks to have a hand symbol to symbolize
+  picking and i want it to be the top row of the two, with the bottom
+  row being the shield / heart field". A pointing hand is what everybody
+  reads as choosing this one, and it is the only mark in `tilekit` that
+  names an ACTION rather than a property of a hero — which is why it is
+  dim rather than pink or gold: those two are marks ON a suggestion,
+  this is a label for a control. Stacked rather than strung along the
+  heading, which is also most of the WIDTH this row was costing, and
+  width is what the ten picks were being squeezed by.
+
 - **AND EIGHT NUMBERS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT
-  OF** (`MainWindow._role_filter` / `_has_roles`,
+  OF** (`rolebar.RoleFilter`, `MainWindow._has_roles`,
   `ui_settings.pick_roles` / `clean_roles`), at the user's request and
   beside the mark counts on the Suggested picks heading. It is the other half of the Roles card:
   that one says what the draft HAS, these cut the strip to heroes that
@@ -2112,6 +2156,73 @@ credentials, and put the account at risk. Do not go there.
   would be seven dead keys in everybody's file; and `load` copies lists
   and dicts alike, or one shared object would let a filter edit
   `DEFAULTS` itself.
+
+- **NOTHING ON THE DRAFT TAB MAY ASK FOR MORE WIDTH THAN THE WINDOW'S
+  OWN FLOOR** (`rolebar.ReflowGrid`, `teams.TeamPanel`,
+  `tests/test_the_draft_tab_shrinks.py`). "i also feel like portraits are
+  nto scaling down as i make the windows smaller" — they were not, and
+  nothing about the ten portraits was at fault. The Roles card and the
+  role filter were each laid out at a FIXED four columns, so between them
+  the Draft page demanded **1314px against a window floor of 940**. A
+  widget's minimum is the WINDOW's minimum, and inside the tab's scroll
+  area that does not wrap or clip: the page simply stops shrinking. It
+  stayed 1884px wide at every window size, the two team panels stayed
+  925, and a permanent horizontal scrollbar appeared instead. Before the
+  scroll area the same thing showed up as a window that would not narrow.
+  So anything wide on this tab REFLOWS, and — the load-bearing half —
+  **says so in `minimumSizeHint`**, because Qt otherwise reports the
+  width of whatever layout it happens to be holding, which is the widest
+  it has ever been given. `ReflowGrid` is one implementation for both,
+  since two would be two chances to get this wrong again; the counts are
+  divisors of eight (4, 2, 1) so the last column is never short.
+  **A BLOCK THAT DECIDES ITS OWN WIDTH NEEDS A RE-ENTRANCY GUARD.** The
+  role filter takes the Suggested picks heading's spare width, so its new
+  column count changes the width that chose it.
+  **AND IT HAS TO BE GIVEN THE SPARE WIDTH TO SEE IT AT ALL**
+  (`chrome.card(corner_grows=True)`): a corner widget is handed its own
+  sizeHint, so a block that reflows from the width it is GIVEN laid out
+  one column deep, which made it narrow, which kept it one column deep —
+  eight rows tall, for ever. Chicken and egg.
+
+- **THE TEAM PANEL'S FLOOR IS THE TILE FLOOR, AND THREE WAYS OF SAYING SO
+  SEGFAULT** (`teams.TeamPanel`, `SetNoConstraint`, `STEADY`). This is
+  the other half of the same fault and the more instructive one.
+  `HeroTile.set_edge` calls `setFixedSize` — right, and what stops Qt
+  handing each tile the leftover width and stretching the art — but a
+  layout full of fixed-size children reports a minimum of five of
+  whatever they are RIGHT NOW, and Qt hands that to the widget. A
+  RATCHET: widen the window, the tiles grow, the floor grows with them,
+  and the width can never be given back.
+  The fix is one line — `layout().setSizeConstraint(SetNoConstraint)`,
+  the documented way to say the layout's minimum is not the widget's,
+  with the real floor stated once as `setMinimumWidth(minimum_panel_
+  width())`. **Note which of Qt's two minimums is authoritative**:
+  `qSmartMinSize` prefers an explicit `minimumWidth` over the layout's,
+  so `minimumSizeHint` goes on reporting the ratcheted figure and is not
+  the number to assert on.
+  **THE TWO OBVIOUS FIXES BOTH CRASH THE PROCESS.** Overriding
+  `TeamPanel.minimumSizeHint` to report the floor leaves Qt's layout
+  engine with constraints it cannot satisfy; giving the tiles a minimum
+  and a maximum instead of a fixed size makes the tile's hint feed the
+  panel's hint, which feeds the width that chose it. Both end in the ten
+  tiles flipping **80, 78, 80, 78** through Qt's C++ layout until the
+  stack goes — fifty passes and climbing, measured.
+  **AND A THIRD LOOP IS THE SCROLLBAR ITSELF**, which survived both.
+  The page is as tall as it is WIDE (16:9 tiles, a reflowing card), so a
+  page a few pixels too tall raises the vertical scrollbar, which takes
+  ~10px of width, which shrinks the tiles, which shortens the page,
+  which drops the scrollbar. `TeamPanel.STEADY` damps it: a tile size
+  has to be at least three pixels BIGGER to be worth taking, while a
+  smaller one is always taken at once — asymmetric, because refusing to
+  shrink would put five tiles two pixels too wide outside their own card
+  the moment the scrollbar took its width.
+  **EVERY ONE OF THESE IS A SEGFAULT, NOT A FAILURE.** Qt ABORTS on an
+  unbounded layout rather than raising, so there is no exception, no
+  traceback into our own code, and the Python stack names whichever
+  `show()` was on top — in whichever test happened to run after one that
+  left Qt warm. `_match_grid_portraits` carries the same warning. When a
+  UI change here produces a crash with a stack that makes no sense, look
+  for a value that is both an input and an output of layout.
 
 - **A WRAPPING STRIP HAS TO DECLARE THAT IT WRAPS**
   (`suggest_row`, `item_row`, `QSizePolicy.setHeightForWidth`).
@@ -2345,6 +2456,15 @@ credentials, and put the account at risk. Do not go there.
   window. It has gone ~1234 → ~1324 → ~1464 across the two rises. That is
   the derivation working, not a regression, but it is the budget any
   further increase spends.
+  **AND SO IS A BARE CONTAINER** (`QWidget[bare="true"]`). Same fault,
+  one widget kind over: a plain QWidget used only to hold a layout takes
+  the base rule and paints a rectangle of CONTENT colour, which on a
+  card (`BG_ELEVATED`, darker) is a pale band round whatever it holds —
+  "the suggested picks area has a weird padding background color
+  discrepancy (the padding is a lighter color i want it to match the
+  background)". The count boxes sitting on it were already transparent
+  and were faithfully showing it. Anything whose job is to hold a layout
+  rather than to be a surface carries `bare`.
   **A QLabel is TRANSPARENT by default** — one rule under the base one. A
   label inherits `QWidget {{ background: BG }}`, so every label in the app
   painted a rectangle of CONTENT colour wherever it sat: on a card

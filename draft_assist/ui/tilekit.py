@@ -439,6 +439,26 @@ HEART = (("m", 0.50, 0.97),
          ("c", 0.70, 0.00, 1.00, 0.06, 1.00, 0.28),
          ("c", 1.00, 0.42, 0.90, 0.68, 0.50, 0.97))
 
+# A HAND, for the box that says how many heroes to suggest.
+# "i want the qty of suggested picks to have a hand symbol to symbolize
+# picking". A pointing hand is what everybody already reads as choosing
+# this one, and it is the only mark here that names an ACTION rather than
+# a property of a hero - which is why it is dim rather than pink or gold:
+# those two are marks ON a suggestion, this is a label for a control.
+HAND = (("m", 0.30, 0.06),
+        ("c", 0.30, 0.00, 0.46, 0.00, 0.46, 0.06),   # the fingertip
+        ("l", 0.46, 0.40),
+        ("c", 0.52, 0.34, 0.62, 0.36, 0.62, 0.44),   # three folded knuckles
+        ("c", 0.68, 0.38, 0.78, 0.40, 0.78, 0.48),
+        ("c", 0.84, 0.44, 0.94, 0.46, 0.94, 0.56),
+        ("l", 0.94, 0.74),
+        ("c", 0.94, 0.92, 0.78, 1.00, 0.58, 1.00),
+        ("l", 0.44, 1.00),
+        ("c", 0.26, 1.00, 0.16, 0.90, 0.12, 0.76),
+        ("l", 0.04, 0.52),                           # the thumb, out to the left
+        ("c", 0.02, 0.44, 0.12, 0.38, 0.18, 0.46),
+        ("l", 0.30, 0.62))
+
 SHIELD = (("m", 0.50, 0.00),
           ("l", 0.96, 0.16),
           ("l", 0.96, 0.52),
@@ -574,6 +594,20 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     _stamp(painter, _shape(where, SHIELD), FOCUS_COLOUR,
            where.width() * 0.20)
     _paint_rank(painter, where, rank, SHIELD_CENTRE)
+
+
+def paint_hand(painter: QPainter, box: QRect) -> None:
+    """The mark on the "how many suggestions" box.
+
+    DIM, not pink or gold. Every other mark in this module sits ON a
+    suggestion and says something about that hero; this one labels a
+    CONTROL, so it wears the colour every other label on a card does. It
+    is still stroked and still painted for the reasons they are - one
+    implementation, so a mark cannot drift into two conventions.
+    """
+    where = star_box(box)
+    _stamp(painter, _shape(where, HAND), theme.TEXT_DIM,
+           where.width() * 0.18)
 
 
 def delta_text(delta: float, kind: str | None = None) -> str:
