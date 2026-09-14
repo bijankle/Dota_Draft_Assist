@@ -155,6 +155,12 @@ DEFAULTS = {
     # write filter means a dead name would otherwise sit in everybody's
     # file for ever.
     "pick_roles": {},
+    # WHETHER THE WINDOW STAYS IN FRONT. True is what this app has always
+    # done — it was `WindowStaysOnTopHint` with no way to say otherwise —
+    # so the default keeps that and the pin is what makes it a choice
+    # rather than a mode. Remembered, because a window that forgets where
+    # it sits in the Z order is one you re-pin every session.
+    "always_on_top": True,
     "portrait_scale": 1.0,
     "number_scale": 1.0,
     # The size the window opens at, and the size it is closed at is

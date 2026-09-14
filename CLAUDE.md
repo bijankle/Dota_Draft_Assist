@@ -1317,6 +1317,32 @@ credentials, and put the account at risk. Do not go there.
   `ui_settings.json`). The tab opens saying when that account was last
   measured and with what, so running it again is one press — and sending
   someone a copy of this app sends them none of it.
+  **AND A FRESH INSTALL OPENS ON AN EXAMPLE ACCOUNT**
+  (`store.EXAMPLE_ACCOUNT`, `store.starting_account`), at the user's
+  request — Topson's public friend ID — and then, on what "default"
+  means: "by default i mean only when its being setup. If the user
+  searches for their account to analyse it should be remembered and
+  appear when the app is closed and reopened." So it is the value the box
+  STARTS on and nothing else: it is never written into
+  `history_accounts.json`, because that file is the accounts THIS MACHINE
+  has actually looked at and an entry nobody ran would read as a run that
+  happened — and it would then be adopted on every start, which is
+  precisely what is supposed to stop. Measure any account of your own and
+  that one is remembered, adopted on the next start, and this number is
+  never seen again on that machine.
+  **A REAL ACCOUNT IS RIGHT HERE AND WRONG IN THE FIXTURES, and the two
+  rules contradict each other on purpose.** The test fixtures use a
+  MADE-UP id (`test_the_example_account_is_not_a_real_one`, 4242424242)
+  because there the number stands in for the player THEMSELVES — payloads,
+  a name, a match history — and pinning a stranger's identity to that data
+  would be inventing a record about them. This is the opposite job: the
+  tab needs a public match history behind the Run button, and an id that
+  cannot exist comes back with no matches, which is one of the three
+  things "your history is private" exists to tell apart and would read as
+  the app being broken on its first run. A professional player's friend ID
+  is public and is nobody's personal data. Both are held by tests, since a
+  later sweep for "example account ids" would otherwise correct one of
+  them into uselessness.
   **THE WHOLE RUN IS KEPT NOW** (`history/cache.py`, `history_cache/`,
   gitignored with the rest), which REVERSES this file's earlier "a
   BOOKMARK, not a copy of anybody's match history". That rule cost a
@@ -3223,6 +3249,56 @@ credentials, and put the account at risk. Do not go there.
   every font there has ever been. `test_the_window_buttons_are_the_same_
   size_as_each_other` measures the INK's bounding box rather than the
   widget, because that is what the eye compares.
+  **AND A FOURTH BUTTON HOLDS THE WINDOW IN FRONT** (`chrome.PinButton`,
+  `ui/ontop.py`, `ui_settings.always_on_top`), at the user's request: "i
+  want a symbol of a pin to the left of the minimise button. If the pin
+  is hollow, that means that the window is not pinned... however if you
+  click on the pin symbol it will become filled - in this state it is
+  always in front so you can be playing dota 2 while the app remains in
+  front of dota 2". The window was always-on-top with NO WAY TO SAY
+  OTHERWISE, which is a mode rather than a setting when the thing
+  underneath is a game you are trying to click on.
+  **IT DEFAULTS TO ON, so a fresh install behaves exactly as this app
+  always has** and the pin is purely something gained. It is remembered,
+  like every other control here, and `TitleBar.set_pinned` BLOCKS SIGNALS
+  while it restores — setting a control to what was saved is not the user
+  pressing it, and unblocked it rewrites the settings file on every start.
+  **IT IS `SetWindowPos`, NEVER `setWindowFlags`, AND THAT IS THE WHOLE
+  REASON `ui/ontop.py` IS ITS OWN FILE.** Qt's way to change always-on-top
+  is to add or remove `WindowStaysOnTopHint`, and changing a window's
+  flags on Windows DESTROYS AND RECREATES THE NATIVE HANDLE. This app has
+  already paid for that once, in the other direction: `setWindowIcon` ran
+  before `setWindowFlags`, the icon went to an HWND that no longer
+  existed and the taskbar button fell back to pythonw.exe (see
+  `appicon.push_native_icon`). On a BUTTON it would happen on EVERY
+  PRESS, taking the window's Win32 icon, its AppUserModelID relaunch
+  properties and its taskbar identity with it each time. `HWND_TOPMOST` /
+  `HWND_NOTOPMOST` with `NOMOVE | NOSIZE | NOACTIVATE` moves the window in
+  the Z order and touches nothing else — same handle, no flicker. Off
+  Windows (which in practice means the test machines) the flag is the only
+  route there is, so that branch uses it and shows the window again
+  afterwards, since `setWindowFlags` hides it. Two traps in the ctypes
+  call, both silent and both already met in `appicon`: **`restype` is not
+  optional**, the default being a 32-bit int, and nothing may be fatal —
+  a window that will not come to the front is a nuisance, an app that will
+  not start because it could not reorder itself is worse. `ontop.note`
+  says which of "worked", "refused" and "never attempted" it was, for the
+  reason `identity_note` does.
+  **THE MARK IS A TACK LYING AT 45 DEGREES**, the shape the user supplied
+  ("use this pin look (that's the hollow state)... full solid fill when it
+  is active"). It was drawn UPRIGHT first — a flat cap over a body over a
+  needle — because a round head on a stem read as a BALLOON at eleven
+  pixels; that was the right diagnosis and the wrong fix, since what was
+  missing is the ANGLE. Nothing else in the title bar is diagonal, so it
+  cannot be taken for its three square neighbours. It is drawn upright and
+  ROTATED rather than having eight rotated coordinates written out, and
+  the cap and skirt are UNITED into one path, because two overlapping
+  fills leave a visible join where their edges cross. Hollow and filled
+  are the SAME PATH, one stroked and one filled: a mark that changes SHAPE
+  when it changes meaning is two marks to learn. Held gold — the frame's
+  own `FRAME_GOLD`, this app's "this one" colour, which the border, the
+  focus ring and the suggestion star all wear and none of which mean good
+  or bad.
   **The floating toggle paints its own plate and icon.** It used to hand
   the icon to QPushButton, and a translucent frameless top-level button
   under a stylesheet drew the plate and nothing else, so the one thing on

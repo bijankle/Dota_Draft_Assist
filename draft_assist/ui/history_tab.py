@@ -833,8 +833,18 @@ class HistoryTab(QWidget):
             self.remembered.addItem(store.label(row), row["account_id"])
         self.remembered.blockSignals(False)
         rows = store.load()
-        if select_first and rows and not self.account_box.text().strip():
+        if not select_first or self.account_box.text().strip():
+            return
+        if rows:
             self._apply_remembered(rows[0])
+            return
+        # NOTHING REMEMBERED YET, so the box opens on the example account
+        # rather than on nothing. It is a starting value and not a
+        # setting: run any account of your own and that one is remembered
+        # and adopted from then on, which is the branch above.
+        example = store.starting_account()
+        if example is not None:
+            self.account_box.setText(str(example))
 
     def _pick_remembered(self, index: int) -> None:
         account_id = self.remembered.itemData(index)

@@ -95,3 +95,37 @@ def label(row: dict) -> str:
     """
     name = (row.get("name") or "").strip()
     return f"{row['account_id']} ({name})" if name else str(row["account_id"])
+
+
+# ---- what a fresh install starts on -------------------------------------
+#
+# THE ACCOUNT THIS TAB OPENS ON BEFORE ANYBODY HAS LOOKED ONE UP, at the
+# user's request: "i think it would be cool to have topson steam ID be the
+# one that gets used for the app by default", and then, on what "by
+# default" means: "by default i mean only when its being setup. If the
+# user searches for their account to analyse it should be remembered and
+# appear when the app is closed and reopened."
+#
+# So it is a STARTING VALUE, not a setting and not a remembered account.
+# It is never written into `history_accounts.json` — that file is the list
+# of accounts THIS MACHINE has actually looked at, and an entry nobody ran
+# would read as a run that happened. The moment a real account is measured
+# it is remembered, it is what `_load_accounts` adopts on the next start,
+# and this number is never seen again on that machine.
+#
+# WHY A REAL ACCOUNT IS RIGHT HERE AND WRONG IN THE FIXTURES. The test
+# fixtures use a MADE-UP id (see `test_the_example_account_is_not_a_real_
+# one`) because there they stand in for the player themselves — payloads,
+# names, a match history — and pinning a stranger's identity to that data
+# would be inventing a record about them. This is the opposite job: the
+# tab needs an account with a real public match history behind it so the
+# Run button has something to show, and a number that cannot exist would
+# come back empty and read as the app being broken. A professional
+# player's account id is public and carries no personal data of anybody's.
+EXAMPLE_ACCOUNT = 94054712
+EXAMPLE_NAME = "Topson"
+
+
+def starting_account(path: Path | None = None) -> int | None:
+    """The id to open the box on, or None once this machine has its own."""
+    return None if load(path) else EXAMPLE_ACCOUNT

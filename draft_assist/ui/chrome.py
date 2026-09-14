@@ -14,7 +14,7 @@ press, a move, a release.
 
 from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
                           QSize, QTimer, Qt, pyqtSignal)
-from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPen,
+from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPainterPath, QPen,
                          QPolygonF)
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QLabel, QMenuBar, QPushButton,
@@ -132,8 +132,114 @@ class WindowButton(QAbstractButton):
         super().leaveEvent(event)
 
 
+class PinButton(WindowButton):
+    """Keep the window in front of everything, or let it fall behind.
+
+    HOLLOW IS NOT PINNED, FILLED IS, at the user's request: "if the pin is
+    hollow, that means that the window is not pinned... however if you
+    click on the pin symbol it will become filled — in this state it is
+    always in front so you can be playing dota 2 while the app remains in
+    front of dota 2", and then the mark itself: "use this pin look (that's
+    the hollow state)... full solid fill when it is active".
+
+    **THE SHAPE IS THE USER'S, NOT A GUESS.** It was drawn as an upright
+    tack first — a flat cap over a body over a needle — because a round
+    head on a stem read as a BALLOON at eleven pixels. That was the right
+    diagnosis and the wrong fix: what was missing is the ANGLE. A tack
+    lying at 45° with its needle running off to the bottom-left is the
+    shape everybody already reads as "pin", and nothing else in a title
+    bar is diagonal, so it cannot be mistaken for its three square
+    neighbours.
+    So it is drawn UPRIGHT and ROTATED, rather than having eight rotated
+    coordinates written out: the arithmetic stays legible, the two states
+    are guaranteed to be the same outline, and the angle is one number.
+
+    It is PAINTED like its three neighbours, for the reason they are: a
+    glyph resizes with whatever font the bar is carrying and cannot be
+    coloured apart from it. The hollow and the filled pin are the SAME
+    PATH — one stroked, one filled — so the mark does not change shape
+    when it changes meaning, only whether there is ink inside it.
+    """
+
+    # The tack lies at 45°, so its own length is the DIAGONAL of the box
+    # the other three marks are drawn in rather than its side.
+    LENGTH = WindowButton.GLYPH * 1.50
+    ANGLE = 45.0
+
+    def __init__(self, parent=None):
+        super().__init__("pin", parent)
+        self.setCheckable(True)
+        self.setToolTip(
+            "Keep this window in front of Dota.\n"
+            "Filled: it stays on top. Hollow: clicking another window "
+            "brings that one forward.")
+
+    def _tack(self) -> tuple[QPainterPath, QPointF, QPointF]:
+        """The pin drawn upright, needle pointing down, centred on (0, 0).
+
+        Returns the body (cap and skirt as ONE path, so the filled state
+        has no seam down the middle of it) and the two ends of the
+        needle, which is a line and can never be filled.
+        """
+        length = self.LENGTH
+        top = -length / 2.0
+        path = QPainterPath()
+        # The cap: the disc you press, seen from the side.
+        cap = QRectF(-length * 0.31, top, length * 0.62, length * 0.19)
+        path.addRoundedRect(cap, cap.height() / 2.0, cap.height() / 2.0)
+        # The skirt: narrow at the cap, flaring to where the needle
+        # leaves it. Same direction as a real tack and, at this size,
+        # the half that says which end you press.
+        waist = length * 0.13
+        hem = length * 0.30
+        base = top + length * 0.60
+        skirt = QPainterPath()
+        skirt.addPolygon(QPolygonF([
+            QPointF(-waist, cap.bottom() - 0.4),
+            QPointF(waist, cap.bottom() - 0.4),
+            QPointF(hem, base),
+            QPointF(-hem, base)]))
+        # UNITED, not two shapes drawn over each other: the filled state
+        # is one silhouette, and two overlapping fills leave a visible
+        # join where their edges cross.
+        path = path.united(skirt)
+        return path, QPointF(0.0, base), QPointF(0.0, top + length * 1.06)
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        hot = self.underMouse()
+        if hot:
+            painter.fillRect(self.rect(), QColor(theme.BG_HOVER))
+        # The FRAME'S OWN GOLD when it is holding, which is this app's
+        # "this one" colour — the window border, the focus ring and the
+        # suggestion star all wear it, and none of them mean good or bad.
+        if self.isChecked():
+            ink = QColor(theme.FRAME_GOLD)
+        else:
+            ink = QColor("#ffffff" if hot else theme.TEXT_DIM)
+        painter.setPen(QPen(ink, 1.5, cap=Qt.PenCapStyle.RoundCap,
+                            join=Qt.PenJoinStyle.RoundJoin))
+
+        middle = QRectF(self.rect()).center()
+        painter.translate(middle)
+        painter.rotate(self.ANGLE)
+        body, from_, to = self._tack()
+        painter.setBrush(ink if self.isChecked() else Qt.BrushStyle.NoBrush)
+        painter.drawPath(body)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawLine(from_, to)
+        painter.end()
+
+
 class TitleBar(QWidget):
-    """Icon, title, and the three buttons Windows would have drawn."""
+    """Icon, title, and the four buttons Windows would have drawn.
+
+    FOUR, because a PIN sits to the left of minimise — the window used to
+    be always-on-top with no way to say otherwise, and that is a mode
+    rather than a setting when the thing underneath is a game you are
+    trying to click on.
+    """
 
     minimise = pyqtSignal()
     maximise = pyqtSignal()
@@ -141,6 +247,8 @@ class TitleBar(QWidget):
     # bar could never be closed programmatically and the failure was a
     # baffling "native Qt signal is not callable".
     close_clicked = pyqtSignal()
+    # True when the pin was just filled in, False when it was emptied.
+    pinned = pyqtSignal(bool)
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
@@ -185,12 +293,32 @@ class TitleBar(QWidget):
         self.extras.setAlignment(middle)
         lay.addLayout(self.extras)
 
+        # LEFT OF MINIMISE, as asked. It is a window control rather than a
+        # setting, so it belongs with the other three rather than two
+        # menus away — the same argument that put the mark counts on the
+        # heading they size.
+        self.pin = PinButton(self)
+        self.pin.toggled.connect(self.pinned.emit)
+        lay.addWidget(self.pin)
+
         for name, signal in (("min", self.minimise),
                              ("max", self.maximise),
                              ("close", self.close_clicked)):
             button = WindowButton(name, self)
             button.clicked.connect(signal.emit)
             lay.addWidget(button)
+
+    def set_pinned(self, on: bool) -> None:
+        """Show the state without announcing it as a fresh choice.
+
+        Restoring what the settings file said is not the user pressing
+        the pin, and an unblocked restore would write the file back on
+        every start — the trap every other remembered control here
+        carries a note about.
+        """
+        was = self.pin.blockSignals(True)
+        self.pin.setChecked(bool(on))
+        self.pin.blockSignals(was)
 
     def add_menu_bar(self, menu_bar: QWidget) -> None:
         """The menus live in the bar, not above it.

@@ -66,7 +66,7 @@ from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
-from . import accountrow, menusearch, rolebar
+from . import accountrow, menusearch, ontop, rolebar
 from . import chrome
 from . import ornate
 from . import reasons
@@ -311,8 +311,18 @@ class MainWindow(QMainWindow):
         # app and reads as a different program bolted on top. The cost is
         # that the drag and the resize corner have to be put back by hand,
         # which `ui/chrome.py` does.
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint
-                            | Qt.WindowType.WindowStaysOnTopHint)
+        #
+        # ALWAYS-ON-TOP IS STILL SET HERE, and it is still the default —
+        # but it is no longer the only state. The pin in the title bar
+        # turns it off and on, and it does NOT come back through
+        # `setWindowFlags`: changing a window's flags on Windows destroys
+        # and recreates the native handle, which would throw away the
+        # window's Win32 icon and its taskbar identity on every press.
+        # See `ui/ontop.py`.
+        flags = Qt.WindowType.FramelessWindowHint
+        if self.settings.get("always_on_top", True):
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        self.setWindowFlags(flags)
         # The narrowest honest width. Two things are competing for it —
         # five matrix columns wide enough to print "+12.34", and five pick
         # tiles wide enough to still show a portrait — so the floor is
@@ -367,6 +377,10 @@ class MainWindow(QMainWindow):
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
         appicon.claim_window_identity(int(self.winId()))
+        # The pin shows what the flags above were built from. Set without
+        # announcing it: restoring the file is not the user pressing it.
+        self.title_bar.set_pinned(
+            bool(self.settings.get("always_on_top", True)))
         # AFTER `setWindowFlags`, and that is the whole point of it being
         # here rather than beside the `setWindowIcon` further up.
         # Changing a window's flags on Windows DESTROYS AND RECREATES the
@@ -811,6 +825,7 @@ class MainWindow(QMainWindow):
         self.title_bar.minimise.connect(self.showMinimized)
         self.title_bar.maximise.connect(self._toggle_maximised)
         self.title_bar.close_clicked.connect(self.close)
+        self.title_bar.pinned.connect(self._set_pinned)
         shell_lay.addWidget(self.title_bar)
         # A rule between the tab labels and the controls too, so the
         # whole row is one series of things with one kind of gap.
@@ -2843,6 +2858,28 @@ class MainWindow(QMainWindow):
         # out again for it.
         appicon.claim_window_identity(int(self.winId()))
         appicon.push_native_icon(int(self.winId()))
+
+    def _set_pinned(self, on: bool) -> None:
+        """The pin was pressed: hold the window in front, or stop.
+
+        **NOT `setWindowFlags`.** Changing a window's flags on Windows
+        DESTROYS AND RECREATES the native handle, and this app has
+        already paid for that once — the icon was pushed at an HWND that
+        no longer existed and the taskbar button fell back to
+        pythonw.exe. On a button it would happen on every press, taking
+        the window's Win32 icon and its relaunch identity with it each
+        time. `ontop.apply` moves the window in the Z order and touches
+        nothing else.
+        """
+        on = bool(on)
+        ontop.apply(self, on)
+        if self.settings.get("always_on_top") == on:
+            return
+        self.settings["always_on_top"] = on
+        ui_settings.save(self.settings)
+        self._say("Window pinned in front" if on else
+                  "Window no longer pinned — click another to raise it",
+                  4000)
 
     def _toggle_maximised(self) -> None:
         # It used to refuse while the size was locked, and there is no
