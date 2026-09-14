@@ -1,6 +1,6 @@
 """Your own hero must not vanish when the screen starts reading.
 
-Reported from a real draft, match 8996474799. The user was first pick:
+Reported from a real draft, match 8000000006. The user was first pick:
 
      5.6s  HERO_SELECTION  none    allies=Rubick
     17.3s  HERO_SELECTION  screen  allies=Disruptor        <- Rubick GONE

@@ -174,7 +174,7 @@ def mock_report():
     return Report(
         options=Options(account_id=86680300, window="12m", cap=5000,
                         picked=picked),
-        how="", name="Bijson", matches=matches, blocks=blocks,
+        how="", name="ExampleDrafter", matches=matches, blocks=blocks,
         dropped={}, sessions=len(matches) // 4, returned=len(matches),
         ran_at=datetime(2026, 9, 12, 0, 11))
 

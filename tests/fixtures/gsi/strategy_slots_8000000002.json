@@ -4,10 +4,10 @@
  },
  "map": {
   "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
-  "matchid": "8995290135"
+  "matchid": "8000000002"
  },
  "player": {
-  "name": "Bijson",
+  "name": "ExampleDrafter",
   "team_name": "radiant"
  },
  "hero": {

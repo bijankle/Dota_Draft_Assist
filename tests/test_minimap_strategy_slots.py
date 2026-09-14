@@ -1,6 +1,6 @@
 """The split that a real match's ground truth settled.
 
-The user played match 8995290135, the app put Hoodwink on the enemy team
+The user played match 8000000002, the app put Hoodwink on the enemy team
 and Riki on theirs, and they said which way round it really was. Their
 recording's fullest strategy-time payload is the fixture here, so the one
 case that has ever been checked against a person's own knowledge of the
@@ -15,7 +15,7 @@ import pytest
 from draft_assist.gsi import minimap
 
 FIXTURE = (Path(__file__).parent / "fixtures" / "gsi"
-           / "strategy_slots_8995290135.json")
+           / "strategy_slots_8000000002.json")
 
 # The ten heroes, numbered however this test likes: `read_lineups` maps
 # names to ids through whatever dictionary it is handed.

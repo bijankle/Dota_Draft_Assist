@@ -1,7 +1,7 @@
 {
-  "_comment": "Real payload gsi_00079.json, match 8983145525, recorded by the user 2026-09-05. Bijson played Rubick on Dire. STRATEGY_TIME. The draft block is empty, as it is in every payload ever recorded; the minimap carries all ten heroes.",
-  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8983145525"},
-  "player": {"name": "Bijson", "team_name": "dire"},
+  "_comment": "Real payload gsi_00079.json, match 8000000004, recorded by the user 2026-09-05. ExampleDrafter played Rubick on Dire. STRATEGY_TIME. The draft block is empty, as it is in every payload ever recorded; the minimap carries all ten heroes.",
+  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8000000004"},
+  "player": {"name": "ExampleDrafter", "team_name": "dire"},
   "hero": {"facet": 0, "id": 86, "name": "npc_dota_hero_rubick"},
   "draft": {},
   "minimap": {

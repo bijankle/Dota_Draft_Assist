@@ -202,12 +202,12 @@ def test_the_report_includes_what_dota_sent(tmp_path):
         row(20, "HERO_SELECTION", "screen", ["Rubick"], [])])
     (folder / "gsi" / "gsi_00001.json").write_text(json.dumps({
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
-                "matchid": "8983179556"},
-        "player": {"name": "Bijson"}, "draft": {}}), encoding="utf-8")
+                "matchid": "8000000003"},
+        "player": {"name": "ExampleDrafter"}, "draft": {}}), encoding="utf-8")
     text = record.format_session_report(folder)
     assert "WHAT DOTA ACTUALLY SENT" in text
     assert "Payloads examined: 1" in text
-    assert "8983179556" in text
+    assert "8000000003" in text
     assert "empty draft block" in text
     # and the session's own account is still there, above it
     assert text.index("TIMELINE") < text.index("WHAT DOTA ACTUALLY SENT")

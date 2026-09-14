@@ -1,7 +1,7 @@
 {
-  "_comment": "Real payload gsi_00208.json, match 8983179556, recorded by the user 2026-09-05. STRATEGY_TIME, all ten heroes. This one disproves the lane-position pairing rule inferred from the first fixture: (176,-370) holds pudge AND axe, both from the same run of five, and (176,370) holds lion AND obsidian_destroyer, likewise. Positions are lane assignments, not ally/enemy pairs, and a lane can hold two heroes from one team.",
-  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8983179556"},
-  "player": {"name": "Bijson", "team_name": "radiant"},
+  "_comment": "Real payload gsi_00208.json, match 8000000003, recorded by the user 2026-09-05. STRATEGY_TIME, all ten heroes. This one disproves the lane-position pairing rule inferred from the first fixture: (176,-370) holds pudge AND axe, both from the same run of five, and (176,370) holds lion AND obsidian_destroyer, likewise. Positions are lane assignments, not ally/enemy pairs, and a lane can hold two heroes from one team.",
+  "map": {"game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME", "matchid": "8000000003"},
+  "player": {"name": "ExampleDrafter", "team_name": "radiant"},
   "hero": {"facet": 0, "id": 76, "name": "npc_dota_hero_obsidian_destroyer"},
   "draft": {},
   "minimap": {

@@ -1,6 +1,6 @@
 """Nine located portraits still determine the sides.
 
-Ground truth, match 8996568678: the user's teams came out INVERTED. The
+Ground truth, match 8000000001: the user's teams came out INVERTED. The
 recording's own notes say why, and both halves are here —
 
     sides not readable from the screen: the ten heroes could not be told
@@ -30,7 +30,7 @@ from draft_assist.vision.layout import DraftLayout, hud_box
 
 
 WIDTH, HEIGHT = 1920, 1080
-# The ten of match 8996568678, in bar order: the user's five on Radiant.
+# The ten of match 8000000001, in bar order: the user's five on Radiant.
 TEN = [17, 54, 2, 86, 31, 22, 14, 111, 42, 47]
 
 

@@ -71,8 +71,8 @@ def a_report(count=60):
     shaped = shape.shape(rows, HEROES)
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
                                   dict(analyse.DEFAULT_ON), {29: "Boots"})
-    return Report(options=Options(account_id=195286385),
-                  how="read as a 32 bit friend ID", name="Bijson",
+    return Report(options=Options(account_id=4242424242),
+                  how="read as a 32 bit friend ID", name="ExampleDrafter",
                   matches=shaped.matches, blocks=blocks,
                   dropped=shaped.dropped, sessions=shaped.sessions,
                   returned=count)
@@ -159,9 +159,9 @@ def test_a_finished_run_is_remembered_and_headlined(qapp, tmp_path,
     from draft_assist.history import account, store
     monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
     tab = HistoryTab()
-    tab._account = account.parse("195286385")
+    tab._account = account.parse("4242424242")
     report = a_report()
-    report.options.account_id = 195286385
+    report.options.account_id = 4242424242
     tab._done(report)
     assert tab.report is report
     assert tab.export_button.isEnabled()
@@ -170,13 +170,13 @@ def test_a_finished_run_is_remembered_and_headlined(qapp, tmp_path,
     # two different ways.
     # The run's own name, not its number: the lookup resolved it, and
     # the number is what you TYPE while the name is what you recognise.
-    assert tab.last_run.who.text() == "Bijson"
+    assert tab.last_run.who.text() == "ExampleDrafter"
     assert "\u2192" in tab.last_run.when.text(), "a from-to range"
     assert "60 matches" in tab.last_run.toolTip()
     # And no offer to click through to the tab you are already on.
     assert "Click to open" not in tab.last_run.toolTip()
     saved = store.load(tmp_path / "accounts.json")
-    assert saved and saved[0]["account_id"] == 195286385
+    assert saved and saved[0]["account_id"] == 4242424242
     assert saved[0]["matches"] == report.n
     tab.deleteLater()
 
@@ -205,7 +205,7 @@ def test_the_dropdown_names_the_account_it_cannot_be_recognised_by(
     from draft_assist.history import store
     path = tmp_path / "accounts.json"
     monkeypatch.setattr(store, "STORE_FILE", path)
-    store.remember(195286385, "Bijson", when="2026-09-09 10:00",
+    store.remember(4242424242, "ExampleDrafter", when="2026-09-09 10:00",
                    matches=412, wins=211, path=path)
     store.remember(42, "", when="2026-09-01 09:00", matches=88, wins=40,
                    path=path)
@@ -213,13 +213,13 @@ def test_the_dropdown_names_the_account_it_cannot_be_recognised_by(
     tab = HistoryTab()
     shown = [tab.remembered.itemText(i)
              for i in range(1, tab.remembered.count())]
-    assert shown == ["42", "195286385 (Bijson)"]
+    assert shown == ["42", "4242424242 (ExampleDrafter)"]
     # An account with no resolved name is its number alone: empty brackets
     # would be the app reporting a failed lookup at the user.
     assert "()" not in " ".join(shown)
-    assert "195286385 (Bijson)" not in row_says(tab)   # 42 is newest
+    assert "4242424242 (ExampleDrafter)" not in row_says(tab)   # 42 is newest
     tab._apply_remembered(store.load(path)[1])
-    assert "195286385 (Bijson)" in row_says(tab)
+    assert "4242424242 (ExampleDrafter)" in row_says(tab)
     tab.deleteLater()
 
 
@@ -247,8 +247,8 @@ def test_opening_the_tab_draws_the_last_run_with_no_network(qapp, tmp_path,
     from draft_assist.history import cache, opendota, store
 
     report = a_report()
-    report.options.account_id = 195286385
-    store.remember(195286385, "Bijson", when="2026-09-09 10:00",
+    report.options.account_id = 4242424242
+    store.remember(4242424242, "ExampleDrafter", when="2026-09-09 10:00",
                    matches=report.n, wins=report.wins)
     assert cache.save(report)
 
@@ -279,10 +279,10 @@ def test_a_listener_connected_after_the_tab_must_be_told_what_it_holds(
     monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
 
     report = a_report()
-    report.options.account_id = 195286385
-    report.name = "Bijson"
+    report.options.account_id = 4242424242
+    report.name = "ExampleDrafter"
     cache.save(report)
-    store.remember(195286385, "Bijson",
+    store.remember(4242424242, "ExampleDrafter",
                    when=report.ran_at.strftime("%Y-%m-%d %H:%M"),
                    matches=report.n, wins=report.wins,
                    options=report.options.as_dict())
@@ -297,7 +297,7 @@ def test_a_listener_connected_after_the_tab_must_be_told_what_it_holds(
     # So the window reads it once, and only then is the row right.
     tab.report_changed.emit(tab.report)
     assert heard and heard[0] is tab.report
-    assert tab.last_run.who.text() == "Bijson"
+    assert tab.last_run.who.text() == "ExampleDrafter"
     assert "\u2192" in tab.last_run.when.text()
     tab.deleteLater()
 

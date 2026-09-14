@@ -256,7 +256,7 @@ credentials, and put the account at risk. Do not go there.
 
    **A NEW MATCH ID ENDS THE PREVIOUS BOARD, AND IT DOES NOT WAIT THIRTY
   SECONDS** (`HybridProvider._new_match`, `CaptureSession.
-  forget_reading`). At 0.0s of the recording for match 8996568678 the
+  forget_reading`). At 0.0s of the recording for match 8000000001 the
   board carried a full ten heroes from the game BEFORE it and held them
   for nine seconds — the first pick of the new draft, made against advice
   about a board that no longer existed. `FORGET_AFTER` says in its own
@@ -381,7 +381,7 @@ credentials, and put the account at risk. Do not go there.
 
     **NINE LOCATED PORTRAITS SETTLE IT, and requiring ten put a real
     draft on the wrong teams** (`lineup.split_banks`, `_place_missing`,
-    `MIN_FOUND`). Match 8996568678: the placed path failed, the search
+    `MIN_FOUND`). Match 8000000001: the placed path failed, the search
     found 9 of the 10, `read_searched` refused the lot, and the minimap's
     coin flip won — Axe and Storm Spirit advised against as enemies while
     standing on the user's own team, the board scoring 6/10. The ninth
@@ -480,9 +480,9 @@ credentials, and put the account at risk. Do not go there.
 
   **BUT THE COMMONER CASE IS NOW DECIDED, AND IT IS THE FIRST THING HERE
   THAT IS** (`minimap._split_by_strategy_slots`, fixture
-  `tests/fixtures/gsi/strategy_slots_8995290135.json`). Ground truth, for
+  `tests/fixtures/gsi/strategy_slots_8000000002.json`). Ground truth, for
   the second time and this time it BUILT a rule instead of killing one:
-  the user played match 8995290135, the app put Hoodwink on the enemy team
+  the user played match 8000000002, the app put Hoodwink on the enemy team
   and Riki on theirs, and they said so. The placed heroes were not two to
   a slot — so `_split_by_lane_pairs` declined and object order, which is
   known to invert, produced exactly that swap. The positions say why:
@@ -1388,7 +1388,7 @@ credentials, and put the account at risk. Do not go there.
   ever been; id to name is one row on `/players/<id>`, and the two are not
   the same request wearing different clothes — refusing the first says
   nothing about the second. So a run's FIRST call resolves the display
-  name, and the remembered list reads `195286385 (Bijson)`: the number is
+  name, and the remembered list reads `4242424242 (ExampleDrafter)`: the number is
   the identity and what the field takes, the name in brackets is what a
   person recognises a fortnight later, which is the whole reason that
   dropdown exists. It happens during a RUN because that is the one moment
@@ -2343,7 +2343,7 @@ credentials, and put the account at risk. Do not go there.
   number is printed in, and if the two matched, a selected tab would read
   as a warning. Keep them apart if either is ever retuned.
   **The team headings are PLAIN WHITE**, and they say only the side name.
-  "Your team — Bijson · Radiant" said three things where one does, and the
+  "Your team — ExampleDrafter · Radiant" said three things where one does, and the
   side is what the eye is looking for. They were briefly Dota's own green
   and red, which put the two colours that mean "good for you" and "bad for
   you" on two words that judge nothing — with the side's own signed total
@@ -4131,6 +4131,35 @@ credentials, and put the account at risk. Do not go there.
   "transparency does not remember what I set it to" was, and the floating
   toggle's position had the same bug. A new preference means a new DEFAULTS
   entry, every time.
+- **NOTHING IN THIS REPOSITORY IDENTIFIES ITS OWNER**, and that is a
+  rule rather than an accident: "I dont want random users seeing my steam
+  account". The owner's Dota friend ID, their persona and the ids of
+  matches they actually played were all in here — in this file, in the
+  GSI fixtures and in a dozen tests — and a match id is a ONE-CLICK route
+  to the account, since anyone can open `opendota.com/matches/<id>` and
+  read the ten players off it. The repository being private is not the
+  answer either: it was private only by luck, and the whole point of
+  never committing the key or the artwork was that it could be public.
+  So the example account is **4242424242 / ExampleDrafter**, and the real
+  matches became `80000000xx`.
+  **WHY THAT NUMBER AND NOT ONE STARTING WITH 9.** A number beginning
+  with 9 cannot be a friend ID at all: a 10-digit one is at least nine
+  billion and the 32-bit account space stops at 4294967295, so the app's
+  own parser refuses it — and a NINE-digit one starting with 9 is only
+  ~987 million, which is well inside the range Steam has already handed
+  out and could be somebody's real account. The safe band is a number
+  that is inside 32 bits and past what has been allocated: Steam has made
+  roughly two billion accounts, so 4.24 billion is about twice the
+  frontier, still parses, converts to a real-shaped 17-digit Steam64
+  (76561202202689970), and repeats a digit pattern so it reads as an
+  example on sight.
+  **THE FIXTURES ARE STILL REAL RECORDINGS.** What was anonymised is a
+  name and an id; the payloads themselves are untouched, which is the
+  whole of their evidential value — they are kept for the SHAPE of what
+  Dota sends, never for which match it was.
+  `tests/test_no_personal_data.py` scans every tracked file, because this
+  is exactly the sort of thing that comes back in one careless paste.
+
 - **Stratz API key** lives in `.env` (`STRATZ_API_KEY=...`), gitignored since
   the first commit, read at runtime. Never hardcode, never commit.
 

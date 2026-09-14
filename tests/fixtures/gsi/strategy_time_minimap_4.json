@@ -1,11 +1,11 @@
 {
-  "_comment": "Real payload gsi_00023.json, recorded by the user 2026-09-05. STRATEGY_TIME; Bijson played Rubick. Two things this fixture pins: SVEN sits at the origin with no other placement, so dropping every origin entry loses a real player and leaves nine; and dragon_knight shares a lane slot with juggernaut, both on the same team, which is why the lane-pairing check cannot be used to validate the split.",
+  "_comment": "Real payload gsi_00023.json, recorded by the user 2026-09-05. STRATEGY_TIME; ExampleDrafter played Rubick. Two things this fixture pins: SVEN sits at the origin with no other placement, so dropping every origin entry loses a real player and leaves nine; and dragon_knight shares a lane slot with juggernaut, both on the same team, which is why the lane-pairing check cannot be used to validate the split.",
   "map": {
     "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
     "matchid": "0"
   },
   "player": {
-    "name": "Bijson",
+    "name": "ExampleDrafter",
     "team_name": "radiant"
   },
   "hero": {

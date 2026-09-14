@@ -466,13 +466,13 @@ def test_side_selector_is_hidden_when_the_game_reports_your_team(qapp):
 
     win, ds = gsi_window(qapp, {
         "map": {"game_state": gsi_state.STATE_HERO_SELECTION},
-        "player": {"team_name": "dire", "name": "Bijson"},
+        "player": {"team_name": "dire", "name": "ExampleDrafter"},
         "hero": {"id": 5}})
     try:
         win.refresh()
         assert win.side_combo.isHidden()
         assert win.side_label.isHidden()
-        # The headings are just the two side names: "Your team — Bijson ·
+        # The headings are just the two side names: "Your team — ExampleDrafter ·
         # Dire" said three things where one does.
         assert win.team_captions["ally"].text() == "Dire"
         assert win.team_captions["enemy"].text() == "Radiant"
@@ -499,7 +499,7 @@ def test_side_selector_cannot_contradict_the_game(qapp):
     manual.set_slot("enemy", 0, 11)
     win, ds = gsi_window(qapp, {
         "map": {"game_state": gsi_state.STATE_HERO_SELECTION},
-        "player": {"team_name": "radiant", "name": "Bijson"},
+        "player": {"team_name": "radiant", "name": "ExampleDrafter"},
         "hero": {"id": 5}}, manual=manual)
     try:
         win.refresh()

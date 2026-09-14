@@ -775,7 +775,7 @@ def test_recording_verdict_says_no_draft_block(tmp_path):
         (tmp_path / f"gsi_{i:05d}.json").write_text(json.dumps({
             "provider": {"name": "Dota 2"},
             "map": {"game_state": state},
-            "player": {"name": "Bijson", "team_name": "radiant"},
+            "player": {"name": "ExampleDrafter", "team_name": "radiant"},
             "hero": {"name": "npc_dota_hero_lion"},
         }))
     report = gsi_summary.from_directory(tmp_path, demo_dataset())
@@ -796,7 +796,7 @@ def test_recording_verdict_reports_a_real_draft_block(tmp_path):
     (tmp_path / "gsi_00001.json").write_text(json.dumps({
         "provider": {"name": "Dota 2"},
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-        "player": {"name": "Bijson", "team_name": "radiant"},
+        "player": {"name": "ExampleDrafter", "team_name": "radiant"},
         "draft": draft,
     }))
     from draft_assist.gsi import summary as gsi_summary
@@ -822,7 +822,7 @@ def test_recording_verdict_refuses_to_answer_without_a_draft(tmp_path):
     must not be read as evidence that GSI is silent."""
     (tmp_path / "gsi_00001.json").write_text(json.dumps({
         "map": {"game_state": "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"},
-        "player": {"name": "Bijson"}}))
+        "player": {"name": "ExampleDrafter"}}))
     from draft_assist.gsi import summary as gsi_summary
     text = gsi_summary.format_report(
         gsi_summary.from_directory(tmp_path, demo_dataset()))
@@ -1106,13 +1106,13 @@ def test_the_richest_payload_dump_names_its_file(tmp_path):
 
     (tmp_path / "gsi_00007.json").write_text(json.dumps({
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION",
-                "matchid": "8981992551"},
+                "matchid": "8000000005"},
         "minimap": {"o0": {"unitname": "npc_dota_hero_lion", "team": 2,
                            "xpos": -1000, "ypos": 500}}}))
     text = gsi_summary.format_report(
         gsi_summary.from_directory(tmp_path, demo_dataset()))
     assert "gsi_00007.json" in text
-    assert "8981992551" in text
+    assert "8000000005" in text
     assert '"xpos": -1000' in text      # the whole object, not just the name
 
 
@@ -1155,7 +1155,7 @@ def minimap_dataset():
 
 
 def test_both_lineups_read_from_a_real_strategy_time_payload():
-    """The payload is one the user actually recorded (match 8983145525).
+    """The payload is one the user actually recorded (match 8000000004).
     They played Rubick on Dire; the minimap names all ten heroes."""
     ds = minimap_dataset()
     parsed = gsi_state.parse(real_strategy_payload(), ds)
@@ -1314,7 +1314,7 @@ def test_a_hero_selection_payload_naming_only_your_own_hero_reads_nothing():
     ds = minimap_dataset()
     parsed = gsi_state.parse({
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-        "player": {"name": "Bijson", "team_name": "radiant"},
+        "player": {"name": "ExampleDrafter", "team_name": "radiant"},
         "hero": {"id": 76, "name": "npc_dota_hero_obsidian_destroyer"},
         "draft": {},
         "minimap": {f"o{i}": {"unitname": "npc_dota_hero_obsidian_destroyer",
@@ -1331,7 +1331,7 @@ def test_hero_selection_payloads_still_yield_nothing():
     minimap reader must not invent one from an empty block."""
     parsed = gsi_state.parse({
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-        "player": {"name": "Bijson", "team_name": "dire"},
+        "player": {"name": "ExampleDrafter", "team_name": "dire"},
         "draft": {}, "minimap": {}}, minimap_dataset())
     assert not parsed.allies and not parsed.enemies
     assert not parsed.has_full_draft
@@ -1388,7 +1388,7 @@ def hybrid(payload, radiant=(), dire=(), unknown=0, manual=None):
 
 def hero_selection_payload(team="dire"):
     return {"map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-            "player": {"name": "Bijson", "team_name": team},
+            "player": {"name": "ExampleDrafter", "team_name": team},
             "draft": {}, "minimap": {}}
 
 
@@ -1417,7 +1417,7 @@ def test_the_game_says_which_bank_is_yours():
 
 def test_sides_stay_a_question_when_the_game_has_not_said():
     payload = hero_selection_payload("")
-    payload["player"] = {"name": "Bijson"}
+    payload["player"] = {"name": "ExampleDrafter"}
     provider, _ds = hybrid(payload, radiant=[75], dire=[86])
     snap = provider.poll()
     assert not snap.sides_known
@@ -1501,7 +1501,7 @@ def test_a_new_draft_clears_the_held_line_up():
 
     server._reception.payload = {
         "map": {"game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-        "player": {"name": "Bijson", "team_name": "dire"},
+        "player": {"name": "ExampleDrafter", "team_name": "dire"},
         "draft": {}, "minimap": {}}
     snap = provider.poll()
     assert snap.left == [] and snap.right == []

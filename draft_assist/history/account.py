@@ -63,7 +63,7 @@ def parse(raw) -> Account:
         return Account(account_id=int(found.group(1)),
                        how="read from a steamID3")
 
-    # Classic steamID, STEAM_0:1:97643192 — account = Z * 2 + Y.
+    # Classic steamID, STEAM_0:0:2121212121 — account = Z * 2 + Y.
     found = re.search(r"STEAM_[0-5]:([01]):(\d+)", text, re.I)
     if found:
         return Account(account_id=int(found.group(2)) * 2 + int(found.group(1)),

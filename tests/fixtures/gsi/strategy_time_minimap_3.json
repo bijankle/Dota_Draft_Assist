@@ -1,11 +1,11 @@
 {
-  "_comment": "Real payload gsi_00034.json, match 8983xxxxx, recorded by the user 2026-09-05. STRATEGY_TIME; Bijson played Lion on Radiant. All five lane slots hold one hero from each run of five, which is what makes the split readable \u2014 unlike the second fixture, where two slots hold both heroes from the same run.",
+  "_comment": "Real payload gsi_00034.json, match 80000000xx, recorded by the user 2026-09-05. STRATEGY_TIME; ExampleDrafter played Lion on Radiant. All five lane slots hold one hero from each run of five, which is what makes the split readable \u2014 unlike the second fixture, where two slots hold both heroes from the same run.",
   "map": {
     "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME",
     "matchid": "0"
   },
   "player": {
-    "name": "Bijson",
+    "name": "ExampleDrafter",
     "team_name": "radiant"
   },
   "hero": {

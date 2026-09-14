@@ -37,7 +37,7 @@ class Fake:
         self.__dict__.update(kw)
 
 
-def a_report(window="6m", name="Bijson", account=195286385, n=575):
+def a_report(window="6m", name="ExampleDrafter", account=4242424242, n=488):
     return Fake(options=Options(account_id=account, window=window),
                 name=name, matches=[1] * n,
                 ran_at=datetime(2026, 9, 11, 14, 30))
@@ -100,16 +100,16 @@ def test_the_url_comes_off_the_profile_row(monkeypatch):
     learning it costs no extra request — which is the whole reason the
     picture is affordable at all."""
     monkeypatch.setattr(opendota, "_get", lambda *a, **k: {
-        "profile": {"personaname": "Bijson", "avatarfull": STEAM}})
-    got = opendota.profile(195286385)
-    assert got.name == "Bijson" and got.known is True
+        "profile": {"personaname": "ExampleDrafter", "avatarfull": STEAM}})
+    got = opendota.profile(4242424242)
+    assert got.name == "ExampleDrafter" and got.known is True
     assert got.avatar == STEAM
 
     # A profile with no picture is not a failure: "" reaches `ensure`,
     # which then keeps whatever is on disk rather than blanking it.
     monkeypatch.setattr(opendota, "_get", lambda *a, **k: {
-        "profile": {"personaname": "Bijson"}})
-    assert opendota.profile(195286385).avatar == ""
+        "profile": {"personaname": "ExampleDrafter"}})
+    assert opendota.profile(4242424242).avatar == ""
 
     # And an account OpenDota has never seen has no avatar to report.
     monkeypatch.setattr(opendota, "_get", lambda *a, **k: {})
@@ -145,7 +145,7 @@ def test_the_range_is_the_runs_own_window(qapp, window, expected_start,
     from draft_assist.ui.accountrow import AccountRow
     row = AccountRow()
     row.show_report(a_report(window=window))
-    assert row.who.text() == "Bijson"
+    assert row.who.text() == "ExampleDrafter"
     text = row.when.text()
     assert text.startswith(expected_start)
     assert "Sep 2026" in text, "the run's own date is the end"
@@ -215,8 +215,10 @@ def test_an_account_with_no_resolved_name_is_just_its_number(qapp):
     from draft_assist.ui.accountrow import AccountRow
     row = AccountRow()
     row.show_report(a_report(name=""))
-    assert row.who.text() == "195286385"
-    assert row.face._initial == "1"
+    assert row.who.text() == "4242424242"
+    # The face falls back to the first character of whatever is shown,
+    # which for a nameless account is the leading digit of its number.
+    assert row.face._initial == "4"
     row.deleteLater()
 
 
@@ -233,7 +235,7 @@ def test_a_picture_on_disk_is_drawn_and_a_bad_one_falls_back(qapp, tmp_path,
     art.fill(QColor("#4488cc"))
     source = tmp_path / "src.png"
     art.save(str(source), "PNG")
-    avatars.save(195286385, source.read_bytes(), STEAM)
+    avatars.save(4242424242, source.read_bytes(), STEAM)
 
     row = AccountRow()
     row.show_report(a_report())

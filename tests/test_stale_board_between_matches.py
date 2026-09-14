@@ -1,7 +1,7 @@
 """The previous match's ten heroes, on screen for nine seconds of a new draft.
 
 Reported from a real session: at 0.0s of the recording for match
-8996568678 the board carried a full ten from the game before it, and held
+8000000001 the board carried a full ten from the game before it, and held
 them for nine seconds - which is the first pick of the new draft, made
 against advice about a board that no longer existed.
 
@@ -64,23 +64,23 @@ def tick(provider, match_id, game_state="DOTA_GAMERULES_STATE_HERO_SELECTION"):
 
 
 def test_the_first_match_of_a_session_forgets_nothing(provider):
-    tick(provider, "8996568678")
-    tick(provider, "8996568678")
+    tick(provider, "8000000001")
+    tick(provider, "8000000001")
     assert provider.vision.session.forgotten == 0, (
         "there is no previous board to be stale")
 
 
 def test_a_new_match_forgets_the_previous_boards_picks(provider):
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     assert provider.vision.session.forgotten == 0
-    tick(provider, "8996568678")
+    tick(provider, "8000000001")
     assert provider.vision.session.forgotten == 1
 
 
 def test_it_happens_once_per_match_not_once_per_tick(provider):
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     for _ in range(20):
-        tick(provider, "8996568678")
+        tick(provider, "8000000001")
     assert provider.vision.session.forgotten == 1, (
         "forgetting on every tick would delete a reading as fast as it "
         "was made")
@@ -90,24 +90,24 @@ def test_dotas_zero_is_not_a_match(provider):
     """Dota reports matchid 0 outside a match; `summary` already filters
     it. Treating it as a new match would wipe the board between every
     payload that arrived in a menu."""
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     tick(provider, "0", game_state="DOTA_GAMERULES_STATE_POST_GAME")
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     assert provider.vision.session.forgotten == 0
 
 
 def test_a_blank_id_is_dota_saying_nothing(provider):
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     tick(provider, "", game_state="")
-    tick(provider, "8995290135")
+    tick(provider, "8000000002")
     assert provider.vision.session.forgotten == 0
 
 
 def test_a_session_with_no_forget_reading_does_not_raise(provider):
     """The vision half is optional and is duck-typed everywhere else here."""
     provider.vision.session = object()
-    tick(provider, "8995290135")
-    tick(provider, "8996568678")
+    tick(provider, "8000000002")
+    tick(provider, "8000000001")
 
 
 def test_the_capture_session_really_drops_the_read():

@@ -42,13 +42,13 @@ def test_every_id_form_lands_on_the_same_account():
     """A friend ID, a 64 bit Steam ID, a steamID3, a classic STEAM_0 and a
     profile URL are five spellings of one number, and the field takes all
     of them because the user has no reason to know which they have."""
-    for text in ("195286385", "76561198155552113", "[U:1:195286385]",
-                 "STEAM_0:1:97643192",
-                 "https://www.dotabuff.com/players/195286385",
-                 "https://www.opendota.com/players/195286385"):
+    for text in ("4242424242", "76561202202689970", "[U:1:4242424242]",
+                 "STEAM_0:0:2121212121",
+                 "https://www.dotabuff.com/players/4242424242",
+                 "https://www.opendota.com/players/4242424242"):
         parsed = account.parse(text)
         assert parsed.ok, text
-        assert parsed.account_id == 195286385, text
+        assert parsed.account_id == 4242424242, text
         assert parsed.how
 
 
@@ -62,9 +62,9 @@ def test_a_steam_id_below_the_individual_range_is_refused():
 def test_a_vanity_url_is_a_name_and_says_so():
     """Resolving one needs the Steam Web API — a key AND a server, since
     Steam sends no CORS headers. So it is a name, and named as one."""
-    parsed = account.parse("https://steamcommunity.com/id/dendi")
+    parsed = account.parse("https://steamcommunity.com/id/exampledrafter")
     assert parsed.account_id is None
-    assert parsed.name == "dendi"
+    assert parsed.name == "exampledrafter"
     assert "name" in parsed.how
 
 
@@ -378,9 +378,9 @@ def _report():
     baseline = sum(1 for m in matches if m.win) / len(matches)
     blocks = analyse.build_blocks(matches, baseline,
                                   dict(analyse.DEFAULT_ON), {})
-    return Report(options=Options(account_id=195286385, window="12m",
+    return Report(options=Options(account_id=4242424242, window="12m",
                                   cap=1000),
-                  how="read as a 32 bit friend ID", name="Bijson",
+                  how="read as a 32 bit friend ID", name="ExampleDrafter",
                   matches=matches, blocks=blocks,
                   dropped={"short": 0, "window": 0, "turbo": 0,
                            "unranked": 0, "malformed": 0},
@@ -430,20 +430,25 @@ def test_the_workbook_carries_the_buckets_the_screen_hides(tmp_path):
 def test_the_remembered_accounts_are_local_only(tmp_path):
     """Gitignored, like the settings file and the API key: sending someone
     a copy of this app must not send them your match history."""
+    # THE REPOSITORY'S OWN .gitignore, found from this file rather than
+    # typed. It was an absolute path out of the machine this was written
+    # on — so the check passed there and ERRORED on anybody else's, which
+    # is the one place a test must not be fussy: it runs on the user's
+    # Windows box too.
     import pathlib
-    ignored = pathlib.Path("/home/user/Dota_Draft_Assist/.gitignore")
+    ignored = pathlib.Path(__file__).resolve().parent.parent / ".gitignore"
     assert "history_accounts.json" in ignored.read_text(encoding="utf-8")
 
     path = tmp_path / "accounts.json"
-    store.remember(195286385, "Bijson", when="2026-09-08 21:14", matches=412,
+    store.remember(4242424242, "ExampleDrafter", when="2026-09-08 21:14", matches=356,
                    wins=211, options={"window": "6m"}, path=path)
     store.remember(42, "Mate", when="2026-09-09 10:00", matches=88, wins=40,
                    path=path)
     rows = store.load(path)
-    assert [row["account_id"] for row in rows] == [42, 195286385]
-    assert rows[1]["name"] == "Bijson"
+    assert [row["account_id"] for row in rows] == [42, 4242424242]
+    assert rows[1]["name"] == "ExampleDrafter"
     assert rows[1]["options"] == {"window": "6m"}
-    assert store.label(rows[1]) == "195286385 (Bijson)"
+    assert store.label(rows[1]) == "4242424242 (ExampleDrafter)"
 
 
 def test_an_account_with_no_resolved_name_is_just_its_number():
@@ -461,10 +466,10 @@ def test_the_display_name_is_read_off_the_profile(monkeypatch):
     from draft_assist.history import opendota
     seen = []
     monkeypatch.setattr(opendota, "_get", lambda url, **k: seen.append(url)
-                        or {"profile": {"personaname": " Bijson "}})
-    who = opendota.profile(195286385)
-    assert (who.name, who.known) == ("Bijson", True)
-    assert seen == ["https://api.opendota.com/api/players/195286385"]
+                        or {"profile": {"personaname": " ExampleDrafter "}})
+    who = opendota.profile(4242424242)
+    assert (who.name, who.known) == ("ExampleDrafter", True)
+    assert seen == ["https://api.opendota.com/api/players/4242424242"]
 
 
 def test_a_name_that_cannot_be_had_is_not_a_fault(monkeypatch):
@@ -529,30 +534,30 @@ def test_a_run_carries_the_name_through_to_the_remembered_list(
         if "/matches?" in url:
             return rows_for(40)
         if "/players/" in url:
-            return {"profile": {"personaname": "Bijson"}}
+            return {"profile": {"personaname": "ExampleDrafter"}}
         return []                                   # the hero list
 
     monkeypatch.setattr(opendota, "_get", fake)
-    report = runner.run(Options(account_id=195286385, window="all", cap=100))
-    assert report.name == "Bijson"
+    report = runner.run(Options(account_id=4242424242, window="all", cap=100))
+    assert report.name == "ExampleDrafter"
 
     path = tmp_path / "accounts.json"
     rows = store.remember(report.options.account_id, report.name,
                           when="2026-09-09 10:00", matches=report.n,
                           wins=report.wins, path=path)
-    assert store.label(rows[0]) == "195286385 (Bijson)"
+    assert store.label(rows[0]) == "4242424242 (ExampleDrafter)"
 
 
 def test_running_an_account_again_keeps_what_it_knew(tmp_path):
     """An id typed straight in has no name attached, and must not wipe the
     one a previous run resolved."""
     path = tmp_path / "accounts.json"
-    store.remember(7, "Bijson", when="2026-01-01 00:00", matches=100, wins=50,
+    store.remember(7, "ExampleDrafter", when="2026-01-01 00:00", matches=100, wins=50,
                    path=path)
     store.remember(7, "", when="2026-02-02 00:00", matches=120, wins=61,
                    path=path)
     row = store.load(path)[0]
-    assert row["name"] == "Bijson"
+    assert row["name"] == "ExampleDrafter"
     assert row["last_run"] == "2026-02-02 00:00"
     assert (row["matches"], row["wins"]) == (120, 61)
 
@@ -575,20 +580,20 @@ def test_the_last_run_comes_back_off_disk_without_a_fetch(tmp_path,
         if "/matches?" in url:
             return rows_for(40)
         if "/players/" in url:
-            return {"profile": {"personaname": "Bijson"}}
+            return {"profile": {"personaname": "ExampleDrafter"}}
         return []
 
     monkeypatch.setattr(opendota, "_get", fake)
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
-    report = runner.run(Options(account_id=195286385, window="all", cap=100))
+    report = runner.run(Options(account_id=4242424242, window="all", cap=100))
     assert cache.save(report)
 
     monkeypatch.setattr(opendota, "_get", lambda *a, **k: pytest.fail(
         "reading the cache asked OpenDota for something"))
-    back = cache.load(195286385)
+    back = cache.load(4242424242)
     assert back is not None
     assert back.n == report.n and back.wins == report.wins
-    assert back.name == "Bijson"
+    assert back.name == "ExampleDrafter"
     assert back.ran_at == report.ran_at
     # The RAW MATCHES survive, which is what lets the workbook's first
     # sheet be written with no network at all.
@@ -638,8 +643,13 @@ def test_a_cache_that_cannot_be_read_is_no_cache_rather_than_a_crash(
 def test_the_cached_runs_are_local_only(tmp_path):
     """Gitignored beside history_accounts.json and the API key: sending
     somebody a copy of this app sends them none of your matches."""
+    # THE REPOSITORY'S OWN .gitignore, found from this file rather than
+    # typed. It was an absolute path out of the machine this was written
+    # on — so the check passed there and ERRORED on anybody else's, which
+    # is the one place a test must not be fussy: it runs on the user's
+    # Windows box too.
     import pathlib
-    ignored = pathlib.Path("/home/user/Dota_Draft_Assist/.gitignore")
+    ignored = pathlib.Path(__file__).resolve().parent.parent / ".gitignore"
     assert "history_cache/" in ignored.read_text(encoding="utf-8")
 
 

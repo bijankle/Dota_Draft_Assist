@@ -49,7 +49,7 @@ TEAM_SIZE = 5
 
 # NINE LOCATED PORTRAITS STILL DETERMINE THE SIDES, and requiring ten is
 # what put a real draft on the wrong teams. `locate` found 9 of the 10 in
-# match 8996568678, `read_searched` refused the lot, and the minimap's
+# match 8000000001, `read_searched` refused the lot, and the minimap's
 # coin-flip split won instead — Axe and Storm Spirit came out on the enemy
 # team and the board scored 6/10.
 #
