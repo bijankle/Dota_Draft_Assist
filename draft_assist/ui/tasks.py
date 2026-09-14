@@ -160,10 +160,17 @@ TASKS = {
         # twenty-two shots is twenty-two minutes to answer with seven.
         # The run says how many it kept and why, so the cut is visible
         # in the output rather than silent.
-        steps=[[PY, "tools/find_portraits.py", "{arg}", "--tall"]],
+        # `--sample 5` BECAUSE A LAW NEEDS POINTS, NOT ALL OF THEM. One
+        # picture cannot demonstrate scaling at all: a single point fits
+        # any constant, so the measurement would be a definition. Five
+        # spread across the folder's 2.4x range of HUD spans cover it as
+        # well as fourteen do, in a third of the time - and the run says
+        # how to ask for all of them.
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--tall",
+                "--sample", "5"]],
         blurb="Finds the ten portraits in draft screenshots taller than "
               "16:9 - the only shapes that can settle where the pick bar "
-              "sits - and reports whether they agree.",
+              "sits - and checks one constant predicts them all.",
         cancellable=True,
     ),
     "map_sizes": Task(

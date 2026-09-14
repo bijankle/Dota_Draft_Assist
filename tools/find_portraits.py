@@ -213,6 +213,46 @@ def size_of(path: Path):
     return int(image.shape[1]), int(image.shape[0])
 
 
+def spread_over_spans(shots, sizes, how_many: int):
+    """`how_many` pictures SPREAD across the range of HUD spans.
+
+    ONE PICTURE CANNOT DEMONSTRATE SCALING AT ALL - a single point fits
+    any constant you care to name, so "slot_w = k x span" measured on
+    one screenshot is not a law, it is a definition of k. What shows
+    the law is the same k predicting a span it never saw, which needs
+    points at DIFFERENT spans and gets better the further apart they
+    are.
+
+    It does not need all fourteen. The folder holds eight distinct
+    spans from 800 to 1920 - a 2.4x range - and five of them spread
+    across it cover that range exactly as well as fourteen do, in a
+    third of the time. Which is the whole reason this exists: fourteen
+    minutes to re-derive a constant that five minutes establishes.
+
+    The ENDS are always taken, because the range is what is being
+    tested and an interpolation between two close points proves the
+    least.
+    """
+    known = [(sizes[shot][0] * 1.0 if sizes.get(shot) else 0.0, shot)
+             for shot in shots]
+    by_span = {}
+    for width, shot in known:
+        if width:
+            # hud_box needs both, and every candidate here is already
+            # taller than 16:9, where the span IS the width.
+            size = sizes[shot]
+            _left, span = hud_box(size[0], size[1])
+            by_span.setdefault(round(span), shot)
+    spans = sorted(by_span)
+    if not spans or how_many <= 0 or how_many >= len(spans):
+        return list(shots)
+    if how_many == 1:
+        return [by_span[spans[0]]]
+    step = (len(spans) - 1) / (how_many - 1)
+    want = sorted({spans[round(i * step)] for i in range(how_many)})
+    return [by_span[span] for span in want]
+
+
 def can_vote(width: int, height: int) -> bool:
     """Can a display this shape settle the VERTICAL convention?
 
@@ -1502,6 +1542,13 @@ def main() -> None:
                              "not only the ones that fail")
     parser.add_argument("--loud", action="store_true",
                         help="print every size tried and what it matched")
+    parser.add_argument("--sample", type=int, default=0,
+                        help="do this many pictures SPREAD across the "
+                             "range of HUD spans, rather than all of "
+                             "them. One cannot demonstrate scaling at "
+                             "all; five cover the folder's 2.4x range "
+                             "as well as fourteen, in a third of the "
+                             "time. 0 means all.")
     parser.add_argument("--tall", action="store_true",
                         help="only the pictures TALLER than 16:9 - the "
                              "only ones that can settle the vertical "
@@ -1559,6 +1606,13 @@ def main() -> None:
                 "them can settle it.\nA 4:3 (1024x768), 5:4 (1280x1024) "
                 "or 16:10 (1920x1200, 1680x1050) shot would.")
         shots = tall
+    if args.sample and not args.only:
+        picked = spread_over_spans(shots, sizes, args.sample)
+        if len(picked) < len(shots):
+            print(f"  Doing {len(picked)} of them, spread across the "
+                  f"range of HUD spans - see `spread_over_spans`. "
+                  f"Drop --sample for all of them.")
+            shots = picked
     print()
 
     # THE ARTWORK IS THE METHOD, so its absence is refused rather than
