@@ -3602,7 +3602,7 @@ class MainWindow(QMainWindow):
         return row
 
     def _role_filter(self, parent) -> QWidget:
-        """Eight ticks: only suggest heroes Valve scores in these roles.
+        """How strong a suggestion has to be in each role, 0 to 3.
 
         AT THE USER'S REQUEST, and the point of it is the card above:
         "the user looks at the team attributes, figures out what's
@@ -3612,52 +3612,69 @@ class MainWindow(QMainWindow):
         a second use they named too: "if you are always support you don't
         want to see anything that has 0 support attribution".
 
+        **A NUMBER, NOT A TICK**, which is the second thing asked for:
+        "instead of a tick box it would be nice to have a number input
+        (up / down arrow) for each allowing 1, 2, 3 only... that way if
+        you need a really strong support example you can filter the
+        suggested heroes well". So the value is the LOWEST rating that
+        passes on Valve's own 0-to-3 scale, and nought is the filter
+        being off — which is exactly what an unticked box used to mean,
+        with 1 being what a ticked one meant.
+
         **TWO ROWS OF FOUR**, as asked, which is exactly eight — and that
         is the shape only because Valve scores EIGHT roles. The nine
         everybody lists includes Jungler, which has no hero data behind
         it at all (see `model/roles.py`), and a 3x3 with a dead corner is
-        what a ninth would have cost.
+        what a ninth would have cost. It is a `QGridLayout` because that
+        is how Qt is told "two rows of four"; **nothing draws a grid** —
+        no lines, no header, no cell borders — at the user's request:
+        "when you say grid i dont want it to look like a grid, just said
+        it in terms of row / column so that they fit nicely".
 
-        **TICKING TWO MEANS BOTH**, not either: the strip is cut to
-        heroes scored in EVERY ticked role. "Heroes that contain non-zero
-        attributes in the ticked departments" is the narrower reading and
-        it is the one that makes the control a tool — ticking Durable and
-        Initiator to find the hero who is both is a question worth
-        asking, where "either" is barely a filter at all once two are on.
+        **SEVERAL AT ONCE MEANS ALL OF THEM**: the strip is cut to heroes
+        that clear EVERY figure set. Durable 2 and Initiator 2 to find
+        the hero who is properly both is a question worth asking, where
+        "either" is barely a filter once two are on.
 
         It is BESIDE the mark counts rather than in Settings for the
         reason those moved there: a control you set by looking at the
         result belongs beside the result.
         """
-        from ..model.roles import ROLES
+        from ..model.roles import MAX_LEVEL, ROLES
 
         box = QWidget(parent)
         grid = QGridLayout(box)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(0)
-        wanted = set(ui_settings.clean_roles(self.settings.get("pick_roles")))
-        self.role_ticks: dict[str, chrome.TickBox] = {}
+        grid.setVerticalSpacing(2)
+        wanted = ui_settings.clean_roles(self.settings.get("pick_roles"))
+        self.role_boxes: dict[str, chrome.CountBox] = {}
         for index, role in enumerate(ROLES):
-            tick = chrome.TickBox(role, box)
-            tick.setToolTip(
-                f"Only suggest heroes Dota scores in {role}.\n"
-                "Several ticked means a hero has to have all of them.")
+            name = QLabel(role, box)
+            name.setProperty("dim", True)
+            count = chrome.CountBox(wanted.get(role, 0), 0, MAX_LEVEL)
+            count.setToolTip(
+                f"Only suggest heroes Dota scores at least this highly in "
+                f"{role}, on its own 1-to-3 scale.\n"
+                "Nought is off. Several set means a hero has to clear "
+                "all of them.")
             # SET BEFORE IT IS WIRED: restoring what the file said is not
-            # the user ticking it, and an unblocked restore would write
-            # the settings file on every start and re-cut the strip
-            # before the strip exists.
-            tick.setChecked(role in wanted)
-            tick.toggled.connect(self._roles_picked)
-            grid.addWidget(tick, index % 2, index // 2)
-            self.role_ticks[role] = tick
+            # the user choosing it, and an unblocked restore would write
+            # the settings file on every start and re-cut a strip that
+            # does not exist yet.
+            count.valueChanged.connect(self._roles_picked)
+            row, column = index % 2, (index // 2) * 2
+            grid.addWidget(name, row, column,
+                           Qt.AlignmentFlag.AlignRight
+                           | Qt.AlignmentFlag.AlignVCenter)
+            grid.addWidget(count, row, column + 1)
+            self.role_boxes[role] = count
         return box
 
-    def _roles_picked(self, _checked: bool = False) -> None:
-        """Remember the ticks and re-cut the strip."""
-        picked = [role for role, tick in self.role_ticks.items()
-                  if tick.isChecked()]
-        if picked == list(self.settings.get("pick_roles", [])):
+    def _roles_picked(self, _value: int = 0) -> None:
+        """Remember the figures and re-cut the strip."""
+        picked = self._picked_roles()
+        if picked == dict(self.settings.get("pick_roles") or {}):
             return
         self.settings["pick_roles"] = picked
         ui_settings.save(self.settings)
@@ -3875,8 +3892,9 @@ class MainWindow(QMainWindow):
         # indistinguishable from the app having stopped working, which is
         # the lesson the hero picker's refused rows already carry.
         self.suggest_row.show_heroes(rows, empty=(
-            "No hero left in the draft is scored in "
-            f"{' + '.join(wanted)} — untick one to widen it."
+            "No hero left in the draft is "
+            + ", ".join(f"{role} {least}" for role, least in wanted.items())
+            + " — turn one down to widen it."
             if wanted and not rows else ""))
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
@@ -3884,28 +3902,34 @@ class MainWindow(QMainWindow):
         self.suggest_row.set_stars(self.stars, self._heart_count())
         self.suggest_row.set_shields(self.shields, self._shield_count())
 
-    def _picked_roles(self) -> list[str]:
-        """Which role ticks are on, in Valve's own order."""
-        ticks = getattr(self, "role_ticks", None)
-        if not ticks:
-            return []
-        return [role for role, tick in ticks.items() if tick.isChecked()]
+    def _picked_roles(self) -> dict[str, int]:
+        """Role -> the lowest rating asked for, in Valve's own order.
+
+        Nought is not stored: it is the filter being off, and a dict of
+        every role with most of them nought would be seven dead keys in
+        everybody's settings file.
+        """
+        boxes = getattr(self, "role_boxes", None)
+        if not boxes:
+            return {}
+        return {role: box.value() for role, box in boxes.items()
+                if box.value() > 0}
 
     @staticmethod
-    def _has_roles(hero_id: int, wanted: list[str]) -> bool:
-        """Does this hero score NON-ZERO in every role that is ticked?
+    def _has_roles(hero_id: int, wanted: dict[str, int]) -> bool:
+        """Does this hero clear the rating asked for in every role set?
 
         A hero the bundled table has no figures for at all fails a filter
         rather than passing it: the strip is being cut to heroes that
         ANSWER something, and "we do not know" is not an answer. With
-        nothing ticked there is no filter and every hero is through, so a
-        hero added in a patch is only ever missing from a filtered strip.
+        nothing set there is no filter and every hero is through, so a
+        hero added in a patch is only ever missing from a FILTERED strip.
         """
         if not wanted:
             return True
         levels = roles_mod.levels_for(hero_id)
-        return bool(levels) and all(levels.get(role, 0) > 0
-                                    for role in wanted)
+        return bool(levels) and all(levels.get(role, 0) >= least
+                                    for role, least in wanted.items())
 
     def _recompute_shields(self) -> None:
         """Which heroes the field struggles to counter, from the DATASET.

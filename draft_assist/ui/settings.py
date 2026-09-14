@@ -140,16 +140,21 @@ DEFAULTS = {
     # `ads_enabled` was here and is GONE with the slot it switched. A key
     # left in DEFAULTS is not inert: this dict is the WRITE FILTER, so a
     # dead one is a line written into everybody's settings file for ever.
-    # WHICH ROLES A SUGGESTION HAS TO HAVE, as a LIST of Valve's role
-    # names — empty means no filter, which is the default. Remembered
-    # between runs like the mark count beside it, at the user's request:
-    # "i want the suggest hero tick boxes to be remembered from previous
-    # state just like for shield / heart count".
-    # A LIST rather than a dict of every role, because the set of roles is
-    # Valve's and not ours: a name this app has never heard of is simply
-    # not ticked, where a dict would carry a dead key into everybody's
-    # file for ever — which is what DEFAULTS being the write filter means.
-    "pick_roles": [],
+    # HOW STRONG a suggestion has to be in each role: role name -> the
+    # LOWEST rating that passes, 1 to 3 on Valve's own scale. A role that
+    # is not in the dict is not filtered on, and an empty dict is no
+    # filter at all, which is the default.
+    # It was a LIST of names — tick or no tick — and became a number at
+    # the user's request: "instead of a tick box it would be nice to have
+    # a number input (up / down arrow) for each allowing 1, 2, 3 only...
+    # that way if you need a really strong support example you can filter
+    # the suggested heroes well". A list is read back as every named role
+    # at 1, which is exactly what a tick used to mean.
+    # ONLY THE ROLES ASKED FOR ARE STORED, never all eight with zeros:
+    # the set of roles is Valve's and not ours, and DEFAULTS being the
+    # write filter means a dead name would otherwise sit in everybody's
+    # file for ever.
+    "pick_roles": {},
     "portrait_scale": 1.0,
     "number_scale": 1.0,
     # The size the window opens at, and the size it is closed at is
@@ -197,20 +202,37 @@ def clamp_count(value, fallback: int) -> int:
     return max(1, min(MAX_SHOWN, number))
 
 
-def clean_roles(value) -> list[str]:
-    """Whatever was in the file, as role names this app still knows.
+def clean_roles(value) -> dict[str, int]:
+    """Whatever was in the file, as role -> lowest rating that passes.
 
-    A hand-edited file, or one written when Valve scored a role it no
-    longer does, must not be able to filter the suggestion strip down to
-    nothing with a name nothing can satisfy. Unknown names are dropped and
-    the order is Valve's own, so the ticks read in the same order as the
-    Roles card above them however the file happened to be written.
+    Three things a stored value must not be able to do, and all three
+    have a file somebody could hand-edit behind them: name a role the
+    game no longer scores (which would cut the suggestion strip to
+    nothing with a name nothing can ever satisfy), ask for a rating
+    outside Valve's 1-to-3 scale, or ask for nought, which is not a
+    filter and should not be stored as one.
+
+    A LIST is read as every role in it at 1 — the shape this preference
+    had while the control was a tick box, where a tick meant "any rating
+    above zero". Nobody's saved filter is lost to the change.
+
+    Comes back in Valve's own column order, so the controls read in the
+    same order as the Roles card above them however the file was written.
     """
-    from ..model.roles import ROLES
-    if not isinstance(value, (list, tuple, set)):
-        return []
-    wanted = {str(name) for name in value}
-    return [role for role in ROLES if role in wanted]
+    from ..model.roles import MAX_LEVEL, ROLES
+    if isinstance(value, (list, tuple, set)):
+        value = {str(name): 1 for name in value}
+    if not isinstance(value, dict):
+        return {}
+    out = {}
+    for role in ROLES:
+        try:
+            level = int(value[role])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 1 <= level <= MAX_LEVEL:
+            out[role] = level
+    return out
 
 
 def clamp_marks(value, fallback: int) -> int:
@@ -263,8 +285,9 @@ def load(path: Path | None = None) -> dict:
     # every caller shares — the History tab writing a table's sort order
     # would edit DEFAULTS itself, and the next fresh load would come back
     # carrying it as though it had always been the default.
-    # LISTS ARE COPIED TOO, for the reason the dicts are: `pick_roles` is
-    # a list, and one shared object would let a tick edit DEFAULTS itself.
+    # LISTS ARE COPIED AS WELL AS DICTS, for the same reason: one shared
+    # object would let a caller edit DEFAULTS itself, and the next fresh
+    # load would come back carrying the edit as though it were default.
     settings = {k: (dict(v) if isinstance(v, dict)
                     else list(v) if isinstance(v, list) else v)
                 for k, v in DEFAULTS.items()}

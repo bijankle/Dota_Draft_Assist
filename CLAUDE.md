@@ -2015,29 +2015,42 @@ credentials, and put the account at risk. Do not go there.
   **AND THE CARD'S HEIGHT IS PAID FOR BY EVERYTHING BELOW IT**, which is
   what turned up the oldest bug in this family — see the strips note.
 
-- **AND EIGHT TICKS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT OF**
-  (`MainWindow._role_filter` / `_has_roles`, `ui_settings.pick_roles` /
-  `clean_roles`), at the user's request and beside the mark counts on
-  the Suggested picks heading. It is the other half of the Roles card:
+- **AND EIGHT NUMBERS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT
+  OF** (`MainWindow._role_filter` / `_has_roles`,
+  `ui_settings.pick_roles` / `clean_roles`), at the user's request and
+  beside the mark counts on the Suggested picks heading. It is the other half of the Roles card:
   that one says what the draft HAS, these cut the strip to heroes that
   answer it — "the user looks at the team attributes, figures out what
   lacking and ticks the suggested hero filters". It has a second use
   they named: "if you are always support you dont want to see anythign
   that has 0 support attribution".
+  **A NUMBER, NOT A TICK**, which REVERSES the control asked for one
+  message earlier: "instead of a tick box it would be nice to have a
+  number input (up / down arrow) for each allowing 1, 2, 3 only... that
+  way if you need a really strong support example you can filter the
+  suggested heroes well". The value is the LOWEST rating that passes on
+  Valve's own scale, so nought is the filter off (what an unticked box
+  meant) and 1 is any rating at all (what a ticked one meant) — and a
+  filter saved in the tick era reads back as every named role at 1, so
+  nobody's setting is lost to the change.
   **TWO ROWS OF FOUR**, as asked, which is exactly eight — and that is a
-  clean grid only because Valve scores EIGHT roles. A ninth (Jungler,
+  clean shape only because Valve scores EIGHT roles. A ninth (Jungler,
   which has no hero data at all) would have made it a 3x3 with a dead
-  corner.
-  **TICKING TWO MEANS BOTH, not either.** "Heroes that contain non-zero
-  attributes in the ticked departments" is the narrower reading and it
-  is the one that makes this a tool: ticking Durable and Initiator to
-  find the hero who is both is a question worth asking, where "either"
-  is barely a filter once two are on.
-  **THE FILTER RUNS BEFORE THE COUNT IS CUT.** Taking the top twenty and
-  then dropping the ones that miss would show however many of the top
-  twenty happened to qualify — a different answer, and a worse one: with
-  Durable ticked it could show two heroes while the list held forty
-  more.
+  corner. It is a `QGridLayout` because that is how Qt is told "two rows
+  of four"; **nothing draws a grid** — no lines, no header, no cell
+  borders — at the user's request: "when you say grid i dont want it to
+  look like a grid, just said it in terms of row / column so that they
+  fit nicely".
+  **SEVERAL AT ONCE MEANS ALL OF THEM, not any.** Durable 2 and
+  Initiator 2 to find the hero who is properly both is a question worth
+  asking, where "either" is barely a filter once two are on.
+  **THE FILTER RUNS BEFORE THE COUNT IS CUT, so the strip REFILLS.**
+  "The suggested hero pool fills with more suggestions that are support
+  strength 3 and its all still in order of synergy / counter score -
+  with no more than the max suggest hero count." Taking the top twenty
+  and then dropping the misses would show however many of the top twenty
+  happened to qualify — a different answer, and a worse one: it could
+  show two heroes while the list held forty more.
   **A HERO WITH NO FIGURES FAILS A FILTER AND PASSES NO FILTER.** The
   strip is being cut to heroes that ANSWER something and "we do not
   know" is not an answer — so a hero added in a patch before the bundled
@@ -2045,11 +2058,14 @@ credentials, and put the account at risk. Do not go there.
   **AND A FILTER MATCHING NOTHING SAYS SO**, naming the roles it was
   asked for: an empty strip is indistinguishable from the app having
   stopped working, which is the hero picker's refused-rows lesson.
-  Remembered between runs like the mark count beside it, as a LIST of
-  role names — `clean_roles` drops any the game no longer scores, so a
-  hand-edited file cannot cut the strip to nothing with a name nothing
-  can satisfy, and `load` copies lists as well as dicts or one shared
-  object would let a tick edit `DEFAULTS` itself.
+  Remembered between runs like the mark count beside it, as role -> the
+  lowest rating asked for. `clean_roles` drops any role the game no
+  longer scores and any figure off the 1-to-3 scale, so a hand-edited
+  file cannot cut the strip to nothing with a name or a number nothing
+  can ever satisfy; nought is never STORED, since seven roles at nought
+  would be seven dead keys in everybody's file; and `load` copies lists
+  and dicts alike, or one shared object would let a filter edit
+  `DEFAULTS` itself.
 
 - **A WRAPPING STRIP HAS TO DECLARE THAT IT WRAPS**
   (`suggest_row`, `item_row`, `QSizePolicy.setHeightForWidth`).
