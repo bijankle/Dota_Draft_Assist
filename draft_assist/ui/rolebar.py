@@ -184,7 +184,6 @@ class ReflowGrid(QWidget):
 
     COLUMNS = (4, 2, 1)
     GAP = 18            # between one column and the next
-    HALVES = 1          # how many independent blocks share the width
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -218,10 +217,6 @@ class ReflowGrid(QWidget):
         """
         return max(widget.width(), widget.sizeHint().width())
 
-    def _extra(self) -> int:
-        """Room the layout needs that is not cells (a centre rule)."""
-        return 0
-
     def _relayout(self, columns: int) -> None:
         raise NotImplementedError
 
@@ -235,7 +230,7 @@ class ReflowGrid(QWidget):
         each = self._cell_width() + self.GAP
         if each <= 0:
             return 1
-        room = (width - self._extra()) / max(1, self.HALVES)
+        room = width
         for count in self.COLUMNS:
             if count * each - self.GAP <= room:
                 return count
@@ -245,7 +240,7 @@ class ReflowGrid(QWidget):
         hint = super().minimumSizeHint()
         if not self._ready:
             return hint
-        one = self._cell_width() * self.HALVES + self._extra()
+        one = self._cell_width()
         hint.setWidth(one if hint.width() <= 0 else min(hint.width(), one))
         return hint
 
@@ -291,174 +286,141 @@ class ReflowGrid(QWidget):
 
 
 class RoleBar(ReflowGrid):
-    """Eight roles, twice: Radiant's on the left, Dire's on the right.
+    """ONE team's eight roles. There are two of these, one per card.
 
-    **THE COLUMN COUNT FOLLOWS THE WIDTH.** A cell is a name and five
-    pills, which is narrow; eight of them in one column would be a card
-    294px tall in a window whose whole default height is 998. This card
-    sits between the ten picks and the advice about them, so every pixel
-    it takes pushes the suggestions, the items and both grids down — and
-    every pixel of WIDTH it demands is width the ten picks do not get.
+    **IT IS ONE SIDE, NOT BOTH**, at the user's request, and that is the
+    second reversal this card has had. It began as two bars facing each
+    other across a shared role name under a Radiant/Dire heading pair;
+    the headings went when position started carrying the team; and now
+    the CARD goes too: "see the padding on the background that allows you
+    to know that 5 heroes at the pick menu are radiant? that padding
+    should encapsulate the roles".
+    Which is right, and it is the same argument that removed the
+    headings, carried one step further. The board already says which side
+    is which by putting each five in its own card — so a roles block in
+    its own card, under that card, needs nothing else to say whose it is.
+    A centre rule drawn inside one wide card was this app inventing a
+    second way to draw a division it already had.
+    **AND THE CARD HAS NO HEADING**: "you don't need to state roles, it's
+    obvious from the content". Eight role names with pills beside them
+    are not mistakable for anything else on this tab.
 
-    So each half fits as many columns as it has room for, and BOTH HALVES
-    ALWAYS USE THE SAME COUNT: they are mirror images about the centre
-    rule, and two halves wrapping differently would break the one thing
-    that says which team a cell belongs to. The counts are the divisors
-    of eight — 4, 2, 1 — so the last column is never short.
-
-    **IT RE-LAYS OUT ONLY WHEN THE COUNT CHANGES.** `resizeEvent` fires
-    during layout, and moving widgets lays the parent out again: reacting
-    to every pixel would be the unbounded loop `_match_grid_portraits`
-    carries a guard against, and Qt ABORTS the process for that rather
-    than raising, so there is no traceback to find it by.
-
-    **AND THE WIDGETS ARE MOVED, NEVER REBUILT.** Each cell owns its
-    tooltip and its current fill, so tearing them down on a window drag
-    would drop what the card is showing and re-score it — and a destroyed
-    C++ object behind a live Python wrapper is the trap the History tab's
-    item block already found.
+    Everything about the reflow is `ReflowGrid`'s. The two cards are
+    given equal stretch in the same row, so they are the same width and
+    independently arrive at the same column count — there is nothing to
+    keep in step.
     """
 
-    # Two halves — Radiant's roles and Dire's — sharing the width, with
-    # the centre rule between them.
-    HALVES = 2
-    CENTRE_GAP = 14
-
-    def __init__(self, parent=None):
+    def __init__(self, side: str, parent=None):
         super().__init__(parent)
-        # TWO EQUAL HALVES WITH THE RULE BETWEEN THEM, rather than one
-        # grid with a rule column somewhere in the middle of it. The
-        # halves carry the same stretch, so the rule is at the card's
-        # centre BY CONSTRUCTION — where a column index has to be
-        # arithmetic that happens to come out even, and did not: it
-        # landed 13px left of centre, which is exactly the kind of
-        # "looks like the right number" error the grid borders were
-        # got wrong four times by.
-        line = QHBoxLayout(self)
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(self.CENTRE_GAP)
-        self._halves: dict[str, tuple[QWidget, QGridLayout]] = {}
-        self._cells: dict[str, dict[str, tuple[QLabel, PillRow]]] = {
-            "ally": {}, "enemy": {}}
-
-        for side in ("ally", "enemy"):
-            half = QWidget(self)
-            half.setProperty("bare", True)
-            grid = QGridLayout(half)
-            grid.setContentsMargins(0, 0, 0, 0)
-            grid.setHorizontalSpacing(6)
-            grid.setVerticalSpacing(3)
-            self._halves[side] = (half, grid)
-            for role in roles_mod.ROLES:
-                name = QLabel(role, half)
-                name.setProperty("dim", True)
-                name.setAlignment(Qt.AlignmentFlag.AlignRight
-                                  | Qt.AlignmentFlag.AlignVCenter)
-                # BOTH SIDES GROW THE SAME WAY now that each has its own
-                # name to its left. The old card had them growing outward
-                # from a SHARED name, which is what made two bars
-                # comparable on one line; with the halves split there is
-                # no shared origin to grow away from, and a mirrored
-                # right half would put Dire's names down the middle of
-                # the card where the rule goes.
-                self._cells[side][role] = (name, PillRow(grows_right=True,
-                                                         parent=half))
-            if side == "ally":
-                line.addWidget(half, 1)
-                # THE CENTRE RULE, the same 1px widget the History tab's
-                # sidebar and name column use — two implementations of
-                # one grey line is two chances to draw a different grey.
-                # PARENTED AT ONCE: `edge()` hands back a parentless
-                # QWidget, and a parentless QWidget in this app is a
-                # second window in the taskbar the moment anything shows
-                # it.
-                from .section_bar import edge
-                self._rule = edge()
-                self._rule.setParent(self)
-                line.addWidget(self._rule)
-            else:
-                line.addWidget(half, 1)
-
-        self._ally_name = ""
-        self._enemy_name = ""
+        self.side = side
+        self.setProperty("bare", True)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(3)
+        self._grid = grid
+        self._cells: dict[str, tuple[QLabel, PillRow]] = {}
+        for role in roles_mod.ROLES:
+            name = QLabel(role, self)
+            name.setProperty("dim", True)
+            name.setAlignment(Qt.AlignmentFlag.AlignRight
+                              | Qt.AlignmentFlag.AlignVCenter)
+            # BOTH CARDS GROW THE SAME WAY, each pill row starting at its
+            # own name. The original bars grew OUTWARD from one shared
+            # name, which is what made two of them comparable by length;
+            # with the sides in separate cards there is no shared origin
+            # left, and the comparison lives in the tooltip instead.
+            self._cells[role] = (name, PillRow(grows_right=True, parent=self))
         self._align_names()
         self._ready = True
         self._relayout(self.COLUMNS[0])
 
     # ---- how many fit ---------------------------------------------------
     def _cell_width(self) -> int:
-        name, pills = self._cells["ally"][roles_mod.ROLES[0]]
-        _half, grid = self._halves["ally"]
+        name, pills = self._cells[roles_mod.ROLES[0]]
         return (self._widest(name) + self._widest(pills)
-                + grid.horizontalSpacing())
-
-    def _extra(self) -> int:
-        return self.CENTRE_GAP * 2 + 1
+                + self._grid.horizontalSpacing())
 
     def _relayout(self, columns: int) -> None:
         columns = max(1, int(columns))
         per = -(-len(roles_mod.ROLES) // columns)       # rows per column
         columns = -(-len(roles_mod.ROLES) // per)       # and back again
         self._columns = columns
-        for side, (_half, grid) in self._halves.items():
-            while grid.count():
-                grid.takeAt(0)
-            for column in range(grid.columnCount()):
-                grid.setColumnStretch(column, 0)
-                grid.setColumnMinimumWidth(column, 0)
-            for index, role in enumerate(roles_mod.ROLES):
-                line, column = index % per, (index // per) * 3
-                name, pills = self._cells[side][role]
-                grid.addWidget(name, line, column,
-                               Qt.AlignmentFlag.AlignRight
-                               | Qt.AlignmentFlag.AlignVCenter)
-                grid.addWidget(pills, line, column + 1,
-                               Qt.AlignmentFlag.AlignLeft
-                               | Qt.AlignmentFlag.AlignVCenter)
-                name.show()
-                pills.show()
-            # The gap between cells is FIXED and the slack goes at the
-            # end, so the two halves hold their cells the same distance
-            # apart whatever width they are given. Spread by stretch
-            # instead, each half's spacing followed its own width and
-            # the mirror stopped being a mirror.
-            for column in range(columns - 1):
-                grid.setColumnMinimumWidth(column * 3 + 2, self.GAP)
-            grid.setColumnStretch((columns - 1) * 3 + 2, 1)
+        grid = self._grid
+        while grid.count():
+            grid.takeAt(0)
+        for column in range(grid.columnCount()):
+            grid.setColumnStretch(column, 0)
+            grid.setColumnMinimumWidth(column, 0)
+        for index, role in enumerate(roles_mod.ROLES):
+            line, column = index % per, (index // per) * 3
+            name, pills = self._cells[role]
+            grid.addWidget(name, line, column,
+                           Qt.AlignmentFlag.AlignRight
+                           | Qt.AlignmentFlag.AlignVCenter)
+            grid.addWidget(pills, line, column + 1,
+                           Qt.AlignmentFlag.AlignLeft
+                           | Qt.AlignmentFlag.AlignVCenter)
+            name.show()
+            pills.show()
+        # A FIXED GAP BETWEEN CELLS AND THE SLACK AT THE END, so the two
+        # cards hold their cells the same distance apart whatever width
+        # they are given. Spread by stretch instead, each card's spacing
+        # would follow its own width and the pair would stop matching.
+        for column in range(columns - 1):
+            grid.setColumnMinimumWidth(column * 3 + 2, self.GAP)
+        grid.setColumnStretch((columns - 1) * 3 + 2, 1)
 
     def _align_names(self) -> None:
         widest = 0
-        for side in self._cells.values():
-            for name, _pills in side.values():
-                name.ensurePolished()   # or the font is not the stylesheet's
-                widest = max(widest, name.sizeHint().width())
-        for side in self._cells.values():
-            for name, _pills in side.values():
-                name.setFixedWidth(widest)
+        for name, _pills in self._cells.values():
+            name.ensurePolished()     # or the font is not the stylesheet's
+            widest = max(widest, name.sizeHint().width())
+        for name, _pills in self._cells.values():
+            name.setFixedWidth(widest)
 
     # ---- what it says ---------------------------------------------------
+    def set_role(self, role: str, pills: int, lead: int, tip: str) -> None:
+        name, row = self._cells[role]
+        row.set_share(pills, lead)
+        name.setToolTip(tip)
+        row.setToolTip(tip)
+
+
+class RoleCards:
+    """The two role blocks, scored together and drawn apart.
+
+    One object because the two cards answer ONE question: a role's pills
+    are a share of what that side could have scored, and the tooltip on
+    either card names both sides and says which leads. Splitting the
+    widgets did not split the arithmetic.
+    """
+
+    def __init__(self, parent=None):
+        self.bars = {side: RoleBar(side, parent)
+                     for side in ("ally", "enemy")}
+        self._ally_name = ""
+        self._enemy_name = ""
+
     def set_sides(self, ally: str, enemy: str) -> None:
         """Which side is which, for the TOOLTIPS.
 
-        Nothing on the card draws these any more — position says it — but
-        a tooltip that reads "this side" and "the other side" beside a
-        card with no headings is worse than one that names them.
+        Nothing on either card draws these — the card it is in says it —
+        but a tooltip reading "this side" and "the other side" beside a
+        card with no heading is worse than one that names them.
         """
         self._ally_name, self._enemy_name = ally, enemy
 
     def show_draft(self, allies, enemies) -> None:
-        """Score both line-ups and redraw every cell."""
+        """Score both line-ups and redraw every cell on both cards."""
         ours = roles_mod.team_scores(allies)
         theirs = roles_mod.team_scores(enemies)
         verdict = roles_mod.compare(ours, theirs)
         for mine, yours, lead in zip(ours, theirs, verdict):
-            ally_name, ally_pills = self._cells["ally"][mine.role]
-            enemy_name, enemy_pills = self._cells["enemy"][mine.role]
-            ally_pills.set_share(mine.pills, lead)
-            enemy_pills.set_share(yours.pills, -lead)
             tip = _explain(mine, yours, self._ally_name, self._enemy_name)
-            for widget in (ally_name, ally_pills, enemy_name, enemy_pills):
-                widget.setToolTip(tip)
+            self.bars["ally"].set_role(mine.role, mine.pills, lead, tip)
+            self.bars["enemy"].set_role(mine.role, yours.pills, -lead, tip)
 
 
 class RoleFilter(ReflowGrid):

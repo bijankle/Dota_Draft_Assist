@@ -934,17 +934,45 @@ class MainWindow(QMainWindow):
         # below answer what to do about it. Valve's own 0-to-3 role
         # ratings, normalised by how many picks each side has made so a
         # 3v5 board is still a comparison (`model/roles.py`).
-        roles_card, rlay = card("Roles")
-        self.role_bar = rolebar.RoleBar()
-        rlay.addWidget(self.role_bar)
-        outer.addWidget(roles_card)
+        # ONE CARD PER SIDE, UNDER THE SIDE IT IS ABOUT, at the user's
+        # request: "see the padding on the background that allows you to
+        # know that 5 heroes at the pick menu are radiant? that padding
+        # should encapsulate the roles". The board already says which
+        # team is which by putting each five in its own card, so a roles
+        # block in its own card under that one needs nothing else to say
+        # whose it is — which is the argument that removed the
+        # Radiant/Dire headings, carried one step further. A centre rule
+        # inside one wide card was a second way of drawing a division
+        # this tab already had.
+        # AND NO HEADING ON EITHER: "you don't need to state roles, it's
+        # obvious from the content."
+        # Same spacing and the same stretch as `teams_row`, so the two
+        # cards sit exactly under the two panels.
+        self.roles_row = roles_row = QHBoxLayout()
+        roles_row.setSpacing(teams_row.spacing())
+        self.role_bar = rolebar.RoleCards()
+        self.roles_cards = {}
+        for side in ("ally", "enemy"):
+            side_card, slay = card()
+            slay.addWidget(self.role_bar.bars[side])
+            self.roles_cards[side] = side_card
+            roles_row.addWidget(side_card, 1)
+        outer.addLayout(roles_row)
 
         # The board is the top of the screen and everything under it is
         # advice about the board: first which hero to take, then what to
         # build against what is already there.
         self.count_boxes = {}
-        picks_card, playy = card("Suggested picks", self._picks_controls(),
-                                 corner_grows=True)
+        # THE HEADING ON ITS OWN LINE, with everything else a row below
+        # it, at the user's request: "i think it would look better if
+        # 'suggested picks' header was above all the text - shift the
+        # rest down so it's all level 1 row lower than the header".
+        # The controls stop being the card's CORNER and become the first
+        # thing in its body, which also hands them the card's full width
+        # rather than whatever the heading row had spare — so the filter
+        # no longer needs to be told it may grow.
+        picks_card, playy = card("Suggested picks")
+        playy.addWidget(self._picks_controls())
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
             self._on_suggestion_clicked)

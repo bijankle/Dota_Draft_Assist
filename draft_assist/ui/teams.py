@@ -497,6 +497,8 @@ class TeamPanel(QFrame):
         self.setProperty("card", True)
         self.setMinimumWidth(minimum_panel_width())
         self._told: tuple[int, int] | None = None
+        # Activating a layout can deliver a resize, which lands back here.
+        self._flooring = False
 
         lay = QVBoxLayout(self)
         # SEE THE CLASS NOTE. Without this the layout hands the widget a
@@ -600,6 +602,31 @@ class TeamPanel(QFrame):
             edge = now
         for tile in self.slots:
             tile.set_edge(edge)
+        # **THE HEIGHT FLOOR HAS TO BE PUT BACK BY HAND.**
+        # `SetNoConstraint` frees the widget from its layout's minimum in
+        # BOTH axes, and only the WIDTH was ever the problem. Left free
+        # vertically the panel was squeezed to 74px against a layout that
+        # needed 102 — hero names sheared in half, which is the exact
+        # symptom `test_draft_card_never_clips_the_hero_names` exists for.
+        # So the width is stated once in `__init__` and the height is
+        # restated here, where the tile size that decides it has just been
+        # worked out.
+        # **AND THE LAYOUT HAS TO BE MADE TO RUN BEFORE IT IS ASKED.** Qt
+        # defers layout, so reading `minimumSize()` from inside a resize
+        # reads the answer for the PREVIOUS tile size — it returned 74,
+        # which was then stamped on as the floor and became the squeeze it
+        # was meant to prevent. Same trap as `_hold_still` in the History
+        # tab, where measuring before forcing the layout moved the control
+        # out from under the cursor.
+        if not self._flooring:
+            self._flooring = True
+            try:
+                self.layout().activate()
+                wanted = self.layout().minimumSize().height()
+                if wanted and wanted != self.minimumHeight():
+                    self.setMinimumHeight(wanted)
+            finally:
+                self._flooring = False
         # EVERY tile in the app is this tile. The two strips below have no
         # width of their own to reason from — theirs was fixed at 78x44
         # while these grew with the window, so a suggestion was a different

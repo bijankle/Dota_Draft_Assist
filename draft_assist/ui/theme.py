@@ -43,6 +43,13 @@ FRAME_GOLD = "#c9a45a"
 # Pink belongs to nothing else here, so it cannot be read as a judgement
 # about the figure beside it.
 HEART_PINK = "#ff6fa5"
+# THE HAND ON THE SUGGESTION COUNT, at the user's request: "can you make
+# the hand symbol a skin color baige". It is the only mark in `tilekit`
+# that is a picture of a THING rather than a token — a heart and a
+# shield are symbols and take symbolic colours, a hand is a hand — and
+# beige keeps it clear of both `FRAME_GOLD`, which means "this one"
+# everywhere else, and the two signed-number colours.
+SKIN_BEIGE = "#e0bb92"
 # The hairline between one control and the next, at the user's request:
 # "right in the middle" of white and black, which is exactly #808080. It
 # is deliberately NOT one of the greys above — those are surfaces and

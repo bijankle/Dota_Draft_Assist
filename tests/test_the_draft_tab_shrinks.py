@@ -151,13 +151,29 @@ def test_the_tiles_never_overrun_their_card(window):
 
 
 def test_the_two_blocks_reflow_rather_than_forcing_the_width(window):
-    """The Roles card and the role filter are the two that caused it."""
+    """The two roles cards and the role filter are what caused it.
+
+    The FILTER is checked directly rather than through the window,
+    because it stopped needing to reflow at any size a window can reach:
+    moving it out of the heading's corner and into the card's body (the
+    "Suggested picks" header on its own row) handed it the card's whole
+    width, and two rows of four fit in that even at the window's floor.
+    What still has to hold is that it CAN, since that is what its
+    minimum width rests on.
+    """
     settle(window, 1900)
-    assert window.role_bar.columns == 4
+    for bar in window.role_bar.bars.values():
+        assert bar.columns == 4
     assert window.role_filter.columns == 4     # "two rows of four"
+
+    # The roles cards are half the window each, so they do reflow.
     settle(window, 940)
-    assert window.role_bar.columns < 4
-    assert window.role_filter.columns < 4
+    for bar in window.role_bar.bars.values():
+        assert bar.columns < 4
+
+    box = window.role_filter
+    assert box.columns_for(box._cell_width() + 10) == 1
+    assert box.minimumSizeHint().width() <= box._cell_width()
 
 
 # ---- and it must not oscillate -----------------------------------------
@@ -260,3 +276,107 @@ def test_the_containers_say_they_are_bare(window):
     assert window.role_filter.property("bare") is True
     row = getattr(window, "_picks_row", None)
     assert row is None or row.property("bare") is True
+
+
+# ---- the roles cards ----------------------------------------------------
+
+def test_each_roles_block_sits_EXACTLY_under_its_own_team(window):
+    """"see the padding on the background that allows you to know that 5
+    heroes at the pick menu are radiant? that padding should encapsulate
+    the roles".
+
+    The card IS the label. That only works if it lines up with the panel
+    above it, so the two rows carry the same spacing and the same
+    stretch — and this checks the pixels rather than the intent, because
+    a card one pixel out reads as a different column.
+    """
+    for width in (1900, 1610, 1200, 940):
+        settle(window, width)
+        for side in ("ally", "enemy"):
+            panel = window.team_panels[side]
+            block = window.roles_cards[side]
+            assert (block.mapTo(window, block.rect().topLeft()).x()
+                    == panel.mapTo(window, panel.rect().topLeft()).x()), side
+            assert block.width() == panel.width(), side
+
+
+def test_neither_roles_card_has_a_heading(window):
+    """"you don't need to state roles, it's obvious from the content"."""
+    from PyQt6.QtWidgets import QLabel
+
+    from draft_assist.model import roles as roles_mod
+    for side in ("ally", "enemy"):
+        words = {w.text().strip().lower()
+                 for w in window.roles_cards[side].findChildren(QLabel)}
+        assert "roles" not in words
+        assert "radiant" not in words and "dire" not in words
+        # What IS there is the eight role names.
+        assert {r.lower() for r in roles_mod.ROLES} <= words
+
+
+def test_there_is_no_rule_drawn_between_them(window):
+    """The gap between two cards is the division now. Drawing a line as
+    well would be this tab saying the same thing twice, which is what
+    the Radiant/Dire headings were removed for."""
+    settle(window, 1610)
+    ally = window.roles_cards["ally"]
+    enemy = window.roles_cards["enemy"]
+    gap_left = (ally.mapTo(window, ally.rect().topRight()).x())
+    gap_right = (enemy.mapTo(window, enemy.rect().topLeft()).x())
+    picture = window.grab().toImage()
+    y = ally.mapTo(window, ally.rect().center()).y()
+    background = picture.pixel(gap_left + 3, y - 40)   # above, outside a card
+    for x in range(gap_left + 2, gap_right - 1):
+        assert picture.pixel(x, y) == background, (
+            f"something is drawn in the gap at x={x}")
+
+
+# ---- the hand -----------------------------------------------------------
+
+def test_the_hand_is_skin_beige(styled):
+    """"can you make the hand symbol a skin color baige". Every other
+    mark here is a token taking a symbolic colour; a hand is a picture of
+    a hand."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtGui import QColor, QImage, QPainter
+
+    from draft_assist.ui import tilekit
+
+    picture = QImage(28, 28, QImage.Format.Format_ARGB32)
+    picture.fill(QColor(theme.BG_ELEVATED))
+    painter = QPainter(picture)
+    tilekit.paint_hand(painter, QRect(-3, -3, 28, 28))
+    painter.end()
+    beige = QColor(theme.SKIN_BEIGE).rgb()
+    assert any(picture.pixel(x, y) == beige
+               for x in range(picture.width())
+               for y in range(picture.height())), "no beige on the hand"
+    # And it is NOT the frame's gold, which means "this one" everywhere
+    # else in this app and would read as one more of those.
+    assert theme.SKIN_BEIGE != theme.FRAME_GOLD
+    gold = QColor(theme.FRAME_GOLD).rgb()
+    assert not any(picture.pixel(x, y) == gold
+                   for x in range(picture.width())
+                   for y in range(picture.height()))
+
+
+def test_the_suggested_picks_heading_is_on_its_own_row(window):
+    """"i think it would look better if 'suggested picks' header was
+    above all the text - shift the rest down so it's all level 1 row
+    lower than the header"."""
+    from PyQt6.QtWidgets import QLabel
+
+    settle(window, 1610)
+    card = window._picks_row.parent()
+    heads = [w for w in card.findChildren(QLabel)
+             if w.text() == "Suggested picks"]
+    assert heads, "the heading is gone"
+    head = heads[0]
+    below = window._picks_row
+    assert (head.mapTo(window, head.rect().bottomLeft()).y()
+            <= below.mapTo(window, below.rect().topLeft()).y() + 2), (
+        "the controls are still level with the heading")
+    # And the heading starts at the card's left edge, with the controls
+    # under it rather than beside it.
+    assert (abs(head.mapTo(window, head.rect().topLeft()).x()
+                - below.mapTo(window, below.rect().topLeft()).x()) <= 2)

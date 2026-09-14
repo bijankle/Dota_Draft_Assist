@@ -2038,10 +2038,33 @@ credentials, and put the account at risk. Do not go there.
   halves** — the rule unknown slots already follow, and the alternative
   reports a team as WORSE at every role for having picked a hero the
   bundled file has not been cut for yet.
-  **THE CARD IS SPLIT DOWN THE MIDDLE AND THE NAMES ARE REPEATED**, at
-  the user's request, and this REVERSES the arrangement above it: two
-  bars facing each other across ONE shared role name, under a
-  "Radiant"/"Dire" heading pair per group. The headings went first —
+  **IT IS TWO CARDS, ONE PER SIDE, UNDER THE PANEL IT IS ABOUT**
+  (`rolebar.RoleBar(side)`, `rolebar.RoleCards`), and that is the THIRD
+  and current shape. At the user's request: "see the padding on the
+  background that allows you to know that 5 heroes at the pick menu are
+  radiant? that padding should encapsulate the roles". The board already
+  says which team is which by putting each five in its own card, so a
+  roles block in its own card under that one needs nothing else to say
+  whose it is — which is the argument that removed the Radiant/Dire
+  headings, carried one step further. What it replaces is a centre RULE
+  drawn inside one wide card, which was this app inventing a second way
+  to draw a division the tab already had.
+  **AND NEITHER CARD HAS A HEADING**: "you don't need to state roles,
+  it's obvious from the content." Eight role names with pills beside
+  them are not mistakable for anything else here.
+  The two rows carry the same spacing and the same stretch, so each card
+  is exactly as wide as the panel above it and starts at the same x — a
+  test checks the pixels, because a card one pixel out reads as a
+  different column. They are given equal width, so they independently
+  arrive at the same column count and there is nothing to keep in step.
+  `RoleCards` exists because the two cards answer ONE question: a role's
+  pills are a share of what that side COULD have scored and the tooltip
+  names both sides, so splitting the widgets did not split the
+  arithmetic.
+  **THE SHAPE BEFORE THIS ONE** was one wide card split by a centre rule,
+  which REVERSED the arrangement before that: two bars facing each other
+  across ONE shared role name, under a "Radiant"/"Dire" heading pair per
+  group. The headings went first —
   "there should not be a header for radiant and dire... its just if it
   sits under radiant its radiant and likewise for dire, divided by the
   same central line" — and, asked which of two shapes that meant: "I
@@ -2063,12 +2086,6 @@ credentials, and put the account at risk. Do not go there.
   Dire's names down the middle where the rule goes. The comparison moved
   to the tooltip, which both halves of a role share and which now NAMES
   the two sides, since the card no longer does.
-  **THE RULE IS AT THE CENTRE BY CONSTRUCTION**: two half-widgets with
-  the same stretch and the rule between them. Worked out as a grid
-  column index instead it landed 13px left — the family of error the
-  grid borders were got wrong four times by. It is `section_bar.edge`,
-  the same 1px widget the History tab uses, and it lands within a pixel
-  of the gap between the two team panels above.
   **EVERY PILL IS THE FRAME'S GOLD**, at the user's request, and that
   REVERSES a red/green rule asked for one message earlier (green where
   that side led the role, red where it trailed, mirrored across the two
@@ -2098,12 +2115,23 @@ credentials, and put the account at risk. Do not go there.
   want the qty of suggested picks to have a hand symbol to symbolize
   picking and i want it to be the top row of the two, with the bottom
   row being the shield / heart field". A pointing hand is what everybody
-  reads as choosing this one, and it is the only mark in `tilekit` that
-  names an ACTION rather than a property of a hero — which is why it is
-  dim rather than pink or gold: those two are marks ON a suggestion,
-  this is a label for a control. Stacked rather than strung along the
-  heading, which is also most of the WIDTH this row was costing, and
-  width is what the ten picks were being squeezed by.
+  reads as choosing this one.
+  **AND IT IS SKIN BEIGE** (`theme.SKIN_BEIGE`), also at their request.
+  Every other mark in `tilekit` is a TOKEN taking a symbolic colour —
+  the heart is pink because it means "yours", the shield gold because
+  gold means "this one" throughout this app. A hand is not a token, it
+  is a picture of a hand, so it is the colour a hand is; beige also
+  keeps it off `FRAME_GOLD`, which would have read as one more "this
+  one".
+  **THE WHOLE BLOCK SITS BELOW THE HEADING RATHER THAN BESIDE IT**:
+  "i think it would look better if 'suggested picks' header was above
+  all the text - shift the rest down so it's all level 1 row lower than
+  the header". So the controls stopped being the card's CORNER and
+  became the first thing in its BODY — which also hands them the card's
+  full width instead of whatever the heading row had spare, so the role
+  filter no longer needs telling it may grow. `card(corner_grows=...)`
+  went with it: a corner is sized to itself, and anything that needs the
+  card's width belongs under the heading.
 
 - **AND EIGHT NUMBERS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT
   OF** (`rolebar.RoleFilter`, `MainWindow._has_roles`,
@@ -2175,14 +2203,15 @@ credentials, and put the account at risk. Do not go there.
   it has ever been given. `ReflowGrid` is one implementation for both,
   since two would be two chances to get this wrong again; the counts are
   divisors of eight (4, 2, 1) so the last column is never short.
-  **A BLOCK THAT DECIDES ITS OWN WIDTH NEEDS A RE-ENTRANCY GUARD.** The
-  role filter takes the Suggested picks heading's spare width, so its new
-  column count changes the width that chose it.
-  **AND IT HAS TO BE GIVEN THE SPARE WIDTH TO SEE IT AT ALL**
-  (`chrome.card(corner_grows=True)`): a corner widget is handed its own
-  sizeHint, so a block that reflows from the width it is GIVEN laid out
-  one column deep, which made it narrow, which kept it one column deep —
-  eight rows tall, for ever. Chicken and egg.
+  **A BLOCK THAT DECIDES ITS OWN WIDTH NEEDS A RE-ENTRANCY GUARD**, and
+  one that is only handed the width it already uses can never reflow at
+  all. Both were the role filter while it sat in the Suggested picks
+  heading's CORNER: a corner is sized to its own sizeHint, so it laid
+  out one column deep, which made it narrow, which kept it one column
+  deep — eight rows tall, for ever. Moving it under the heading fixed
+  that at the root by giving it the card's width; the guard stays,
+  because a block whose column count changes its own width is a loop
+  waiting for the next layout that behaves that way.
 
 - **THE TEAM PANEL'S FLOOR IS THE TILE FLOOR, AND THREE WAYS OF SAYING SO
   SEGFAULT** (`teams.TeamPanel`, `SetNoConstraint`, `STEADY`). This is
@@ -2211,7 +2240,18 @@ credentials, and put the account at risk. Do not go there.
   The page is as tall as it is WIDE (16:9 tiles, a reflowing card), so a
   page a few pixels too tall raises the vertical scrollbar, which takes
   ~10px of width, which shrinks the tiles, which shortens the page,
-  which drops the scrollbar. `TeamPanel.STEADY` damps it: a tile size
+  which drops the scrollbar. **And `SetNoConstraint` frees the widget
+  from its layout in BOTH axes, where only the width was ever the
+  problem** — left free vertically the panel was squeezed to 74px against
+  a layout needing 102 and the hero names sheared in half, which is the
+  symptom `test_draft_card_never_clips_the_hero_names` already existed
+  for. The height floor is therefore restated in `_resize_tiles`, and the
+  layout has to be ACTIVATED before it is asked: Qt defers layout, so
+  reading `minimumSize()` from inside a resize returns the answer for the
+  previous tile size — it returned the 74 and stamped it on as the floor,
+  becoming the squeeze it was meant to prevent. Same trap as
+  `_hold_still` in the History tab.
+  `TeamPanel.STEADY` damps the scrollbar loop: a tile size
   has to be at least three pixels BIGGER to be worth taking, while a
   smaller one is always taken at once — asymmetric, because refusing to
   shrink would put five tiles two pixels too wide outside their own card
