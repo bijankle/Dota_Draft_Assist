@@ -18,6 +18,14 @@ assets/items/
 assets/synth/
 assets/gate/
 assets/role_icons/
+# SCREENSHOTS OF THE GAME ARE VALVE'S ARTWORK, like everything above.
+# This folder is where the resolution sweep is pointed, so it fills up
+# with full-screen captures of the draft - and it was the one artwork
+# folder NOT listed here, which is the way that rule gets broken by
+# accident rather than by decision. A frame also shows whatever else was
+# on screen and the player names in the game, so it carries more than
+# the artwork does.
+assets/screenshots/
 # The app icon: whatever the user chose, and the .ico written
 # from it for the shortcut and the taskbar pin.
 assets/app.ico

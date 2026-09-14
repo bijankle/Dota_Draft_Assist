@@ -109,3 +109,42 @@ def test_the_example_account_is_not_a_real_one():
     steam64 = account.STEAM64_BASE + example
     assert len(str(steam64)) == 17
     assert account.parse(str(steam64)).account_id == example
+
+
+def test_every_artwork_folder_is_ignored():
+    """VALVE'S AND BLIZZARD'S ARTWORK NEVER ENTERS THIS REPOSITORY, and a
+    folder that is missing from `.gitignore` is how that rule gets broken
+    by accident rather than by decision.
+
+    `assets/screenshots/` was the one that was missing. It is where the
+    resolution sweep is pointed, so it fills with full-screen captures of
+    the draft — and a game frame carries more than the artwork: it shows
+    whatever else was on screen and the names of the nine other players.
+    Every sibling folder was listed and this one was not, which is
+    exactly the shape of an omission nobody notices until a `git add -A`.
+    """
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    for folder in ("portraits", "items", "synth", "gate", "role_icons",
+                   "screenshots"):
+        probe = f"assets/{folder}/probe.png"
+        done = subprocess.run(["git", "check-ignore", "-q", probe],
+                              cwd=root, capture_output=True)
+        assert done.returncode == 0, (
+            f"{probe} is NOT gitignored — artwork could be committed")
+
+
+def test_no_screenshot_of_the_game_is_tracked():
+    """The rule, checked against what git actually holds rather than
+    against what `.gitignore` says it should."""
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    listed = subprocess.run(["git", "ls-files"], cwd=root,
+                            capture_output=True, text=True).stdout.split()
+    art = [f for f in listed
+           if f.startswith("assets/")
+           and f.rsplit(".", 1)[-1].lower() in {"png", "jpg", "jpeg", "bmp"}
+           and not f.startswith("assets/app-default.")]
+    assert not art, f"artwork is committed: {art}"
