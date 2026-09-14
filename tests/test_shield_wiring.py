@@ -78,7 +78,7 @@ def test_moving_the_count_REDRAWS_THE_MARKS(window):
     window.suggest_row.set_shields = lambda rows, count=0: marked.append(
         count)
     window.suggest_row.set_stars = lambda stars, count=0: None
-    window._apply_settings({"shield_count": 5})
+    window._apply_settings({"mark_count": 5})
     assert marked and marked[-1] == 5, (
         "the strip was not told the new count")
 

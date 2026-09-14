@@ -34,10 +34,10 @@ import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QSize,
+from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QRect, QSize,
                           QT_VERSION_STR, Qt, QTimer)
 from PyQt6.QtGui import (QAction, QColor, QImage, QKeySequence,
-                         QPainter, QPixmap)
+                         QPainter, QPen, QPixmap)
 from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QDialog, QFrame,
                              QHBoxLayout, QLabel,
@@ -111,25 +111,50 @@ class MarkLabel(QWidget):
     """
 
     SIDE = 22
+    GAP = 9              # room for the rule between the two marks
 
-    def __init__(self, shield: bool, parent=None):
+    def __init__(self, shield: bool | None = None, parent=None):
         super().__init__(parent)
+        # None means BOTH, which is what the single count box is
+        # labelled with now. The bool is kept for anything that still
+        # wants one mark on its own.
         self._shield = shield
-        self.setFixedSize(self.SIDE, self.SIDE)
-        self.setToolTip("Gold shield: hardest to counter of the suggestions"
-                        if shield else
-                        "Pink heart: your best of the suggestions")
+        self.setFixedSize(self.SIDE if shield is not None
+                          else self.SIDE * 2 + self.GAP, self.SIDE)
+        self.setToolTip(
+            "Pink heart: your best of the suggestions.  Gold shield: "
+            "hardest to counter." if shield is None else
+            "Gold shield: hardest to counter of the suggestions"
+            if shield else "Pink heart: your best of the suggestions")
 
-    def paintEvent(self, event) -> None:   # noqa: N802 - Qt naming
-        painter = QPainter(self)
+    def _mark(self, painter, box, shield: bool) -> None:
         # The painters inset their mark inside the box they are handed,
         # so it is grown by the inset to come out at label size.
-        grown = self.rect().adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
-                                     tilekit.STAR_INSET, tilekit.STAR_INSET)
-        if self._shield:
+        grown = box.adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
+                             tilekit.STAR_INSET, tilekit.STAR_INSET)
+        if shield:
             tilekit.paint_shield(painter, grown)
         else:
             tilekit.paint_heart(painter, grown)
+
+    def paintEvent(self, event) -> None:   # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        if self._shield is not None:
+            self._mark(painter, self.rect(), self._shield)
+            return
+        # BOTH MARKS, WITH A RULE BETWEEN THEM - drawn rather than
+        # written, at the user's request: "actually show it
+        # artistically instead of writing words". The "/" is the same
+        # painted rule the toolbar uses between controls, because a
+        # typed slash is a glyph that resizes with the font and cannot
+        # be coloured apart from the label holding it.
+        left = QRect(0, 0, self.SIDE, self.SIDE)
+        self._mark(painter, left, False)
+        painter.setPen(QPen(QColor(theme.RULE), 1))
+        middle = self.SIDE + self.GAP // 2
+        painter.drawLine(middle, 4, middle, self.SIDE - 4)
+        self._mark(painter, QRect(self.SIDE + self.GAP, 0,
+                                  self.SIDE, self.SIDE), True)
 
 
 def open_folder(path: Path) -> None:
@@ -3225,9 +3250,7 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
-        if (self.settings.get("heart_count"),
-                self.settings.get("shield_count")) != (
-                    before.get("heart_count"), before.get("shield_count")):
+        if self.settings.get("mark_count") != before.get("mark_count"):
             # RE-APPLIED, NOT RE-MEASURED, and that is the change: these
             # used to be percentile floors INSIDE the ranking, so moving
             # one meant reading the whole History run again and
@@ -3912,10 +3935,13 @@ class MainWindow(QMainWindow):
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(6)
         line.addWidget(self._count_box("suggested_picks"))
-        for key, shield in (("heart_count", False), ("shield_count", True)):
-            line.addSpacing(6)
-            line.addWidget(MarkLabel(shield, row))
-            line.addWidget(self._badge_box(key))
+        # ONE BOX FOR BOTH MARKS. They answer the same question - how far
+        # down the strip is worth marking - and two boxes made that look
+        # like two decisions. Set it to 2 and the strip carries two
+        # hearts AND two shields.
+        line.addSpacing(6)
+        line.addWidget(MarkLabel(None, row))
+        line.addWidget(self._badge_box("mark_count"))
         return row
 
     def _badge_box(self, key: str):
@@ -4156,11 +4182,11 @@ class MainWindow(QMainWindow):
 
     def _heart_count(self) -> int:
         """How many suggestions may carry a heart."""
-        return ui_settings.clamp_marks(self.settings.get("heart_count", 3), 3)
+        return ui_settings.clamp_marks(self.settings.get("mark_count", 3), 3)
 
     def _shield_count(self) -> int:
         """How many suggestions may carry a shield."""
-        return ui_settings.clamp_marks(self.settings.get("shield_count", 3), 3)
+        return ui_settings.clamp_marks(self.settings.get("mark_count", 3), 3)
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.

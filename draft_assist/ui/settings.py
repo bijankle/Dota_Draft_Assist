@@ -88,8 +88,13 @@ DEFAULTS = {
     # THE KEYS CHANGE AGAIN, for the reason they changed last time: a
     # stored 30 meant "30% of the strip" and would now mean "thirty
     # heroes", which is more than the strip can ever hold.
-    "heart_count": 3,
-    "shield_count": 3,
+    # ONE COUNT FOR BOTH MARKS, at the user's request: "I don't think
+    # there is value in being able to set the heart and shield counts to
+    # separate values... just have a single field for both". They answer
+    # the same question - how far down the suggestion strip is worth
+    # marking - and two boxes made that look like two decisions. Set it
+    # to 2 and the strip carries two hearts AND two shields.
+    "mark_count": 3,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather
@@ -241,6 +246,15 @@ def load(path: Path | None = None) -> dict:
         if isinstance(stored, dict):
             # Only known keys, so a stale file can never inject surprises.
             settings.update({k: v for k, v in stored.items() if k in DEFAULTS})
+            # A FILE WRITTEN BEFORE THE TWO BECAME ONE. Take the LARGER
+            # of what was there: the reader set both deliberately, and
+            # of the two possible surprises, "a mark I had is gone" is
+            # worse than "a mark I had is still here".
+            if "mark_count" not in stored:
+                old = [stored[k] for k in ("heart_count", "shield_count")
+                       if isinstance(stored.get(k), int)]
+                if old:
+                    settings["mark_count"] = clamp_marks(max(old), 3)
     for key in COUNTS:
         settings[key] = clamp_count(settings.get(key), DEFAULTS[key])
     settings["data_reminder_days"] = clamp_days(
