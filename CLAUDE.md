@@ -101,6 +101,26 @@ credentials, and put the account at risk. Do not go there.
    reason `to_pixels` multiplies by it, or a measurement taken on a 16:10
    client would be stored under a convention nothing renders it with.
 
+   **AND IT IS CHECKED END TO END, not as arithmetic about fractions**
+   (`tests/test_reads_every_resolution.py`). The test DRAWS a pick bar
+   the way Dota lays one out — square portraits, sized off the HUD box —
+   and hands it to `lineup.read_placed` with the shipped `DraftLayout`.
+   Reading `y` and `slot_h` against the frame instead, the same frames
+   come back:
+
+       1920x1080   0.995 -> 0.995   (nothing changes at 16:9)
+       1440x900    0.517 -> 0.993   located ten and fitted them wrong
+       1920x1200   0.510 -> 0.995
+       1024x768    REFUSED -> 1.000
+       800x600     REFUSED -> 1.000  located nothing at all
+
+   0.517 against a `MIN_PLACED_SCORE` of 0.25 is what "the crops are
+   half a portrait out" looks like from inside the matcher, and the two
+   4:3 shapes did not clear the floor at all. The remaining confirmation
+   is a sweep over the user's own screenshots on their own machine —
+   this is a synthetic bar, and a synthetic bar cannot be evidence about
+   Dota's real artwork.
+
    **THE LETTERBOXED MODEL IS REFUTED** (`find_portraits._vertical`,
    run as `python tools/find_portraits.py <folder>`; there is no menu
    item for it any more). On a display TALLER than

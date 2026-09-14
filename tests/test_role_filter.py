@@ -273,3 +273,61 @@ def test_the_default_is_not_shared_with_DEFAULTS(tmp_path, monkeypatch):
     one["pick_roles"]["Carry"] = 3
     assert ui_settings.DEFAULTS["pick_roles"] == {}
     assert ui_settings.load()["pick_roles"] == {}
+
+
+def test_the_filter_searches_the_WHOLE_pool_not_a_window(win, qapp):
+    """"im concerned if you just populate a single row below, that what
+    if i filter support level 3 and there are hardly any in the list of
+    20 as well as the reserve list of 10 below".
+
+    There is no window and no reserve list: `score_all` returns EVERY
+    undrafted hero and the filter runs over all of them, so the strip
+    shows the best N of everything that qualifies. When it shows fewer
+    than the cap it is because fewer than the cap exist.
+    """
+    assert len(win.scored) > 100, "the pool is the whole roster"
+    drafted = set(win._current_draft().allies) | set(
+        win._current_draft().enemies)
+    assert not (drafted & {s.hero_id for s in win.scored})
+
+    win.settings["suggested_picks"] = 20
+    win.role_boxes["Support"].setValue(3)
+    qapp.processEvents()
+    win._refresh_views()
+    qapp.processEvents()
+    eligible = [s.hero_id for s in win.scored
+                if roles_mod.levels_for(s.hero_id).get("Support", 0) >= 3]
+    shown = list(win.suggest_row.hero_ids)
+    assert shown == eligible[:20]
+    # Short of the cap ONLY because the roster is short of them.
+    if len(shown) < 20:
+        assert len(shown) == len(eligible)
+
+
+def test_no_tile_is_ever_laid_out_below_the_strips_own_edge(win, qapp):
+    """"i dont want you to layout suggestions below what is visible".
+
+    That was a real fault and it is fixed at the root: `FlowLayout`
+    always answered `heightForWidth`, but the strip's SIZE POLICY did
+    not declare it had one, so Qt never asked and a parent short of room
+    compressed the strip over its own tiles. The strip now takes the
+    height its wrap needs, at any filter.
+    """
+    win.resize(940, 1000)
+    win.show()
+    qapp.processEvents()
+    for setting in ({}, {"Support": 1}, {"Support": 3}, {"Carry": 2}):
+        for role in roles_mod.ROLES:
+            win.role_boxes[role].setValue(setting.get(role, 0))
+        # SEVERAL PASSES. Qt defers layout, and a strip that has just been
+        # refilled is measured on the NEXT pass — reading its geometry
+        # after one `processEvents` reads the previous answer.
+        for _ in range(8):
+            qapp.processEvents()
+        strip = win.suggest_row
+        room = strip.rect()
+        tiles = strip._tiles or strip._blanks
+        outside = [t for t in tiles if not room.contains(t.geometry())]
+        assert not outside, (
+            f"{len(outside)} of {len(tiles)} tiles fall outside "
+            f"{room.width()}x{room.height()} with {setting}")
