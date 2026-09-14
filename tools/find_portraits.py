@@ -855,7 +855,8 @@ def app_boxes(width: int, height: int) -> list:
 
 
 def measure(path: Path, into: Path, art: dict, loud=False,
-            strips=False, lib=None, params=None, tick=None) -> dict:
+            strips=False, lib=None, params=None, tick=None,
+            boxes_only: bool = False) -> dict:
     frame = read_image(path)
     if frame is None:
         return {"file": path.name, "why": "not an image this build can read"}
@@ -866,6 +867,14 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     # did not find the bar, and those are the frames where "what does the
     # app grab here" is the question actually being asked.
     row["app_crops"] = crop_row(frame, app_boxes(width, height))
+    if boxes_only:
+        # NOTHING BELOW IS NEEDED TO ANSWER "WHAT DOES THE APP GRAB
+        # HERE". The search is what costs a minute a picture, and it
+        # answers a different question — where Dota actually put the
+        # bar. The shipped crop boxes are six fractions and a multiply,
+        # so a whole folder is seconds, and that is the question
+        # somebody looking at a wrong-looking draft is asking.
+        return row
 
     note = (lambda line: print(line, flush=True)) if loud else None
     if strips:
@@ -1579,6 +1588,15 @@ def main() -> None:
                              "convention. At 16:9 and wider the three "
                              "readings are arithmetically the same "
                              "number, so those minutes buy nothing.")
+    parser.add_argument("--boxes-only", action="store_true",
+                        dest="boxes_only",
+                        help="skip the search: just cut the APP'S OWN crop "
+                             "boxes out of every picture and stack them. "
+                             "Seconds rather than a minute a picture, and "
+                             "it works at every resolution rather than only "
+                             "the ones that can settle the vertical. This is "
+                             "the one that answers 'what is the app actually "
+                             "grabbing at 1440x900'.")
     parser.add_argument("--grid", action="store_true",
                         help="instead of locating, map the best match at "
                              "every size in the app's own 2-D search grid. "
@@ -1621,8 +1639,13 @@ def main() -> None:
           f"16:9.")
     print("Only a display taller than 16:9 can settle the vertical "
           "convention - see `can_vote`.")
-    print(f"About a minute each: ~{len(shots)} min for all, "
-          f"~{len(tall)} min with --tall.")
+    if args.boxes_only:
+        print("--boxes-only: no search, so this is seconds rather than "
+              "minutes, and EVERY picture counts rather than only the "
+              "tall ones.")
+    else:
+        print(f"About a minute each: ~{len(shots)} min for all, "
+              f"~{len(tall)} min with --tall.")
     if args.tall:
         if not tall:
             raise SystemExit(
@@ -1644,8 +1667,11 @@ def main() -> None:
     # would fall back to guessing, which is what the edge fit was.
     if args.art:
         library.BASE_DIR = Path(args.art).expanduser()
-    art = load_art()
-    if len(art) < 50:
+    # --boxes-only NEEDS NO ARTWORK AT ALL. It cuts six fractions out of
+    # a picture; it recognises nothing. Demanding the library there would
+    # refuse the one run that still works on a fresh install.
+    art = {} if args.boxes_only else load_art()
+    if not args.boxes_only and len(art) < 50:
         raise SystemExit(
             f"Only {len(art)} hero portrait(s) in {library.BASE_DIR}.\n"
             "This tool RECOGNISES the portraits, so it needs them on disk.\n"
@@ -1657,7 +1683,7 @@ def main() -> None:
     # and the question being asked is whether the one that ships works
     # once the boxes are in the right place.
     lib = params = None
-    if not args.no_read and not args.grid:
+    if not args.no_read and not args.grid and not args.boxes_only:
         params = library.load_params()
         lib = library.load(expected_hash_size=params.hash_size)
 
@@ -1669,8 +1695,9 @@ def main() -> None:
             "dire x", "slot w", "pitch", "x/hud", "w/hud", "pitch/hud",
             "y/win")
     widths = (24, 11, 7, 5, 8, 7, 7, 7, 7, 6, 8, 8, 9, 8)
-    print("  ".join(h.ljust(w) for h, w in zip(head, widths)))
-    print("-" * (sum(widths) + 2 * len(widths)))
+    if not args.boxes_only:
+        print("  ".join(h.ljust(w) for h, w in zip(head, widths)))
+        print("-" * (sum(widths) + 2 * len(widths)))
 
     if args.grid:
         # ONE PICTURE, unless you named others. The map is four times the
@@ -1723,10 +1750,14 @@ def main() -> None:
         step(done, f"{shot.name}  ({number} of {len(shots)})")
         row = measure(
             shot, into, art, loud=args.loud, strips=args.strips,
-            lib=lib, params=params,
+            lib=lib, params=params, boxes_only=args.boxes_only,
             tick=lambda share, at=done, size=each, name=shot.name:
                 step(at + size * share, name))
         rows.append(row)
+        if args.boxes_only:
+            print(f"{row['file'][:24].ljust(24)}  "
+                  f"{row.get('w','?')}x{row.get('h','?')}", flush=True)
+            continue
         if "why" in row:
             print(f"{row['file'][:24].ljust(24)}  "
                   f"{row.get('w','?')}x{row.get('h','?')}   -- {row['why']}",
@@ -1744,16 +1775,21 @@ def main() -> None:
 
     step(1.0, "done")
     good = [r for r in rows if "why" not in r]
-    _consensus(good)
-    print(f"\n{len(good)} of {len(rows)} located.")
-    for key in ("x_of_width", "x_of_hudbox", "slot_w_of_hudbox",
-                "pitch_of_hudbox", "y_of_window", "y_of_hudbox",
-                "slot_h_of_window"):
-        values = [r[key] for r in good if r.get(key) is not None]
-        if values:
-            print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
-                  f"   spread {max(values) - min(values):.5f}")
-    _failures([r for r in rows if "why" in r])
+    # NONE OF THE MEASUREMENT EXISTS IN --boxes-only, so none of it is
+    # reported. A consensus printed over rows that were never measured
+    # would be a verdict about nothing, which is the fault this tool
+    # already carries two notes about.
+    if not args.boxes_only:
+        _consensus(good)
+        print(f"\n{len(good)} of {len(rows)} located.")
+        for key in ("x_of_width", "x_of_hudbox", "slot_w_of_hudbox",
+                    "pitch_of_hudbox", "y_of_window", "y_of_hudbox",
+                    "slot_h_of_window"):
+            values = [r[key] for r in good if r.get(key) is not None]
+            if values:
+                print(f"  {key:<18} {min(values):.5f} to {max(values):.5f}"
+                      f"   spread {max(values) - min(values):.5f}")
+        _failures([r for r in rows if "why" in r])
     # THE PROOF, IN ONE PICTURE. Written last so it carries every
     # resolution this run located, in the order they were done.
     # THE LABEL CARRIES THE COUNT, so a row of rubbish explains itself
@@ -1773,7 +1809,10 @@ def main() -> None:
     for r in rows:
         size = f"{r.get('w','?')}x{r.get('h','?')}"
         if r.get("app_crops") is not None:
-            lines.append((f"{size}  app boxes", r["app_crops"]))
+            lines.append((size if args.boxes_only else f"{size}  app boxes",
+                          r["app_crops"]))
+        if args.boxes_only:
+            continue
         if "why" in r:
             lines.append((f"{size}  found: none", None))
             continue
@@ -1786,11 +1825,18 @@ def main() -> None:
     where = proof_sheet(lines, into)
     if where is not None:
         print(f"\n{SHEET} {where}")
-        print(f"  Two rows per picture: what the APP's own crop boxes cut "
-              f"out, and what this tool's search located.")
-        print(f"  A box that is off the portraits is the row that does "
-              f"not look like the others - a sliced or stretched crop "
-              f"rather than ten whole heads.")
+        if args.boxes_only:
+            print("  One row per picture: the ten crops the APP'S OWN box "
+                  "fractions cut out of it.")
+            print("  Ten whole centred heads is a working geometry. A "
+                  "sliced or stretched row is not, and the resolution "
+                  "beside it names itself.")
+        else:
+            print("  Two rows per picture: what the APP's own crop boxes "
+                  "cut out, and what this tool's search located.")
+            print("  A box that is off the portraits is the row that does "
+                  "not look like the others - a sliced or stretched crop "
+                  "rather than ten whole heads.")
     named = sum(r.get("named", 0) for r in good)
     if any("named" in r for r in good):
         print(f"\n{named} of {10 * len(good)} slots were given a hero name.")
