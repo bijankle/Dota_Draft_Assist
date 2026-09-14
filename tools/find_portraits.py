@@ -68,7 +68,8 @@ from draft_assist import console                     # noqa: E402
 from draft_assist.vision import autocal              # noqa: E402
 from draft_assist.vision import library              # noqa: E402
 from draft_assist.vision import recognize            # noqa: E402
-from draft_assist.vision.layout import hud_box       # noqa: E402
+from draft_assist.vision.layout import (DraftLayout,  # noqa: E402
+                                        hud_box)
 
 SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
 WORK_WIDTH = 960          # the hunt runs on a picture this wide
@@ -834,6 +835,25 @@ def boxes_of(radiant_x: int, dire_x: int, pitch: int, slot_w: int,
     return out
 
 
+def app_boxes(width: int, height: int) -> list:
+    """Where the SHIPPED crop boxes land on a frame this size.
+
+    THIS IS THE OTHER QUESTION, and the sheet was only ever answering
+    one of them. Everything else in this tool SEARCHES for the pick bar
+    and reports what it found, which measures Dota; these are the six
+    fractions the app actually cuts with, put through the app's own
+    `SlotRect.to_pixels`. A run can therefore say both "the tool could
+    not find the bar here" and "and here is what the app would have
+    grabbed anyway", which are different faults with different fixes and
+    looked identical while only the first was drawn.
+
+    It needs no search and cannot fail, so it is available on the
+    pictures where the search came back with nothing — which are exactly
+    the ones worth looking at.
+    """
+    return [slot.to_pixels(width, height) for slot in DraftLayout().slots()]
+
+
 def measure(path: Path, into: Path, art: dict, loud=False,
             strips=False, lib=None, params=None, tick=None) -> dict:
     frame = read_image(path)
@@ -842,6 +862,10 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     height, width = frame.shape[:2]
     row = {"file": path.name, "w": width, "h": height,
            "aspect": round(width / height, 4)}
+    # BEFORE ANYTHING CAN FAIL. Every early return below is a search that
+    # did not find the bar, and those are the frames where "what does the
+    # app grab here" is the question actually being asked.
+    row["app_crops"] = crop_row(frame, app_boxes(width, height))
 
     note = (lambda line: print(line, flush=True)) if loud else None
     if strips:
@@ -1736,17 +1760,37 @@ def main() -> None:
     # rather than looking like the recognition failing. The two frames
     # that located five of ten produced exactly that, and the reader had
     # to cross-reference a table to know which rows to disbelieve.
-    where = proof_sheet(
-        [(f"{r['w']}x{r['h']}"
-          + ("" if r.get("heroes") == 2 * autocal.TEAM_SIZE
-             else f"  ({r.get('heroes', 0)} of "
-                  f"{2 * autocal.TEAM_SIZE} - set aside)"),
-          r.get("crops")) for r in good], into)
+    # TWO ROWS PER PICTURE, and the second one is the app.
+    # "app boxes" is what the shipped fractions actually cut out of this
+    # frame - the thing a change to `SlotRect.to_pixels` moves, and the
+    # thing somebody asking "show me what it captures at 1440x900" is
+    # asking about. "found" is what this tool's own search located, which
+    # measures DOTA rather than us. They fail independently and for
+    # different reasons, so a sheet carrying only one of them cannot say
+    # which is at fault. EVERY picture gets the app row, including the
+    # ones the search gave up on - those are the interesting ones.
+    lines = []
+    for r in rows:
+        size = f"{r.get('w','?')}x{r.get('h','?')}"
+        if r.get("app_crops") is not None:
+            lines.append((f"{size}  app boxes", r["app_crops"]))
+        if "why" in r:
+            lines.append((f"{size}  found: none", None))
+            continue
+        lines.append((
+            f"{size}  found"
+            + ("" if r.get("heroes") == 2 * autocal.TEAM_SIZE
+               else f" ({r.get('heroes', 0)} of "
+                    f"{2 * autocal.TEAM_SIZE} - set aside)"),
+            r.get("crops")))
+    where = proof_sheet(lines, into)
     if where is not None:
         print(f"\n{SHEET} {where}")
-        print(f"  {len(good)} row(s) of ten crops, one per resolution. "
-              f"A fit half a portrait out is the row that does not look "
-              f"like the others.")
+        print(f"  Two rows per picture: what the APP's own crop boxes cut "
+              f"out, and what this tool's search located.")
+        print(f"  A box that is off the portraits is the row that does "
+              f"not look like the others - a sliced or stretched crop "
+              f"rather than ten whole heads.")
     named = sum(r.get("named", 0) for r in good)
     if any("named" in r for r in good):
         print(f"\n{named} of {10 * len(good)} slots were given a hero name.")
