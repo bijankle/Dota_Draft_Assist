@@ -254,6 +254,46 @@ def spread_over_spans(shots, sizes, how_many: int):
     return [by_span[span] for span in want]
 
 
+# THE SMALLEST AND THE WIDEST A DOTA CLIENT CAN PLAUSIBLY BE.
+# 640x480 is under every resolution Dota offers; 5:4 (1.25) is the
+# narrowest monitor anybody drafts on and 32:9 (3.56) the widest.
+CLIENT_MIN = (640, 480)
+CLIENT_ASPECT = (1.20, 3.70)
+
+
+def not_a_client(width: int, height: int) -> str:
+    """Why this picture cannot be a screenshot of the game, or "".
+
+    **THE CROP BOXES ARE FRACTIONS, SO THEY "WORK" ON ANYTHING.** Six
+    numbers times a width and a height will happily cut ten rectangles
+    out of a 296x43 snip of a chat window, and the sheet then shows ten
+    rows of nothing with no hint that the folder was wrong. That is a
+    tool reporting an answer to a question it was never asked — the
+    fault this file already carries two notes about, where a refusal
+    assembled out of our own rules got printed as a claim about the
+    picture.
+    `--boxes-only` made it worse by design: skipping the search skips
+    every check that would have noticed, because the search is what
+    normally fails loudly on a frame with no pick bar in it. So the
+    shape is checked directly. It cannot tell Dota from any other
+    full-screen application - nothing but recognition can - but it
+    catches the cases that actually turn up in a Screenshots folder:
+    Snipping Tool crops, windowed captures and portrait-shaped ones.
+    """
+    if width < CLIENT_MIN[0] or height < CLIENT_MIN[1]:
+        return (f"{width}x{height} is smaller than any resolution Dota "
+                f"runs at - a crop or a window, not a client")
+    aspect = width / height if height else 0.0
+    low, high = CLIENT_ASPECT
+    if aspect < low:
+        return (f"{aspect:.2f}:1 is taller than it is wide - no monitor "
+                f"is this shape")
+    if aspect > high:
+        return (f"{aspect:.2f}:1 is wider than 32:9 - a strip or a crop "
+                f"rather than a whole screen")
+    return ""
+
+
 def can_vote(width: int, height: int) -> bool:
     """Can a display this shape settle the VERTICAL convention?
 
@@ -1633,6 +1673,37 @@ def main() -> None:
     # spends a minute each on twenty-two pictures without ever saying
     # that fifteen of them cannot answer the open question.
     sizes = {p: size_of(p) for p in shots}
+
+    # WHAT CANNOT BE A GAME SCREENSHOT IS SAID SO AND SET ASIDE, before
+    # anything is measured or cut. A Screenshots folder is where the
+    # Snipping Tool puts things too, and the crop boxes cannot tell: they
+    # are fractions, so they cut ten tidy rectangles out of a 296x43 snip
+    # and the sheet reports them as though they meant something. A whole
+    # run over the wrong folder is worse than no run, because it looks
+    # like a result.
+    refused = []
+    keep = []
+    for shot in shots:
+        size = sizes.get(shot)
+        why = not_a_client(*size) if size else "not an image this build can read"
+        (refused if why else keep).append((shot, why) if why else shot)
+    if refused:
+        print(f"{len(refused)} of {len(shots)} cannot be a Dota client:")
+        for shot, why in refused[:12]:
+            print(f"  {shot.name[:34].ljust(34)}  {why}")
+        if len(refused) > 12:
+            print(f"  ... and {len(refused) - 12} more")
+        print()
+    if not keep:
+        raise SystemExit(
+            "NONE of these pictures is the shape of a game screenshot, so "
+            "there is nothing here to measure.\n"
+            "This is almost always the wrong folder. Dota's own screenshots "
+            "(F12) go to Steam's userdata, not to Pictures;\n"
+            "Windows' PrintScreen and Win+Shift+S go to Pictures, but only "
+            "a FULL-SCREEN capture of the draft is any use here.")
+    shots = keep
+
     tall = [p for p in shots
             if sizes.get(p) and can_vote(*sizes[p])]
     print(f"{len(shots)} picture(s) in {folder}; {len(tall)} taller than "

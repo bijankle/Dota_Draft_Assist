@@ -284,3 +284,40 @@ def test_two_banks_of_five_are_accepted(art):
     xs = [40 + i * 60 for i in range(5)] + [700 + i * 60 for i in range(5)]
     hits = [(0.9, x, 8, i + 1) for i, x in enumerate(xs)]
     assert fp.bar_shape(hits, 55) is not None
+
+
+# ---- a folder of the wrong pictures -------------------------------------
+
+def test_a_snip_is_named_as_not_a_client():
+    """**THE CROP BOXES ARE FRACTIONS, SO THEY "WORK" ON ANYTHING.**
+
+    Six numbers times a width and a height cut ten tidy rectangles out of
+    a 296x43 snip of a chat window, and the sheet then shows ten rows of
+    nothing with no hint the folder was wrong. A real run over a real
+    Screenshots folder produced exactly that: twelve pictures, none of
+    them a game, every one processed. `--boxes-only` made it worse by
+    design, since skipping the search skips the thing that would
+    otherwise have failed loudly on a frame with no pick bar in it.
+    """
+    from tools.find_portraits import not_a_client
+
+    # The shapes that actually turned up in that folder.
+    assert "smaller than any resolution" in not_a_client(296, 43)
+    assert "smaller than any resolution" in not_a_client(1045, 98)
+    assert "smaller than any resolution" in not_a_client(928, 260)
+    assert "wider than 32:9" in not_a_client(2279, 575)
+    # The app's own window, which is taller than it is wide.
+    assert "taller than it is wide" in not_a_client(923, 993)
+
+
+def test_every_resolution_the_app_cares_about_is_allowed():
+    """The guard must not refuse the frames the whole exercise is for —
+    especially the two that fail today, which are the smallest and the
+    ones most likely to trip a size floor."""
+    from tools.find_portraits import not_a_client
+
+    for width, height in [(800, 600), (1024, 768), (1280, 800), (1280, 1024),
+                          (1440, 900), (1680, 1050), (1920, 1080),
+                          (1920, 1200), (2560, 1440), (3440, 1440),
+                          (5120, 1440)]:
+        assert not_a_client(width, height) == "", f"{width}x{height} refused"
