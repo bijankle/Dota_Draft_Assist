@@ -285,6 +285,58 @@ def load_installed() -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
+def why_404(branch: str) -> str:
+    """Which of the two causes it is, ASKED rather than assumed.
+
+    A 404 on the archive endpoint has more than one cause and this used
+    to report only one of them: "GitHub has no branch called 'main'".
+    The branch existed. The REPOSITORY was private, and GitHub answers a
+    private repository's archive with 404 to anyone not signed in —
+    exactly the same status as a branch that is not there.
+
+    So it is a sentence about the state of the world assembled out of a
+    fact about our own request, which is the shape this project has hit
+    before: the calibration refusal that reported no picture of the game
+    when what was missing was an attribute name, and the eighteen
+    resolution sweeps that each blamed the screenshot. The repository row
+    tells the two apart, so ask for it.
+    """
+    requests = _requests()
+    try:
+        answer = requests.get(
+            f"https://api.github.com/repos/{OWNER}/{REPO}", timeout=20,
+            headers={"Accept": "application/vnd.github+json"})
+    except Exception:
+        answer = None
+    if answer is not None and answer.ok:
+        try:
+            private = bool(answer.json().get("private"))
+        except ValueError:
+            private = False
+        if private:
+            return (
+                f"{OWNER}/{REPO} is a PRIVATE repository, so GitHub will "
+                "not hand this copy the download — it answers 404 to "
+                "anyone not signed in, whatever the branch is called.\n"
+                "Three ways on, and the first is the quickest:\n"
+                "  1. Download the ZIP from GitHub in a browser you are "
+                "signed into (Code > Download ZIP) and unzip it over this "
+                "folder. Nothing of yours is in the archive, so your key, "
+                "settings and downloads survive it.\n"
+                "  2. Make the repository public, if you meant it to be.\n"
+                "  3. Install git and clone it instead, which is the only "
+                "one of the three that makes this button work by itself.")
+        return (f"GitHub has no branch called '{branch}' in {OWNER}/"
+                f"{REPO}, so there is no release to download.")
+    # The repository row could not be read either, so both causes are
+    # still open and naming one would be a guess wearing a fact.
+    return (f"GitHub answered 404 for {OWNER}/{REPO} on branch "
+            f"'{branch}'. Either that branch does not exist, or the "
+            "repository is private — a private one answers 404 to any "
+            "copy that is not signed in, and this one is not. Opening "
+            f"https://github.com/{OWNER}/{REPO} in a browser says which.")
+
+
 def download(branch: str, into: Path) -> Path:
     """The branch as a zip, on disk. Whole file first, then unpack.
 
@@ -300,9 +352,7 @@ def download(branch: str, into: Path) -> Path:
     try:
         with requests.get(url, timeout=120, stream=True) as response:
             if response.status_code == 404:
-                raise Refused(
-                    f"GitHub has no branch called '{branch}' in {OWNER}/"
-                    f"{REPO}, so there is no release to download.")
+                raise Refused(why_404(branch))
             if not response.ok:
                 raise Refused(
                     f"GitHub answered HTTP {response.status_code} for the "

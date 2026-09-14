@@ -448,3 +448,67 @@ def test_the_update_task_runs_the_tool_rather_than_bare_git():
     steps = TASKS["update_app"].steps
     assert steps[0][1] == "tools/update_app.py"
     assert not any(step[0] == "git" for step in steps)
+
+
+# ---- a 404 has more than one cause, and it used to name only one ------
+
+class _Answer:
+    def __init__(self, ok, payload=None):
+        self.ok, self._payload = ok, payload or {}
+
+    def json(self):
+        return self._payload
+
+
+def _github(monkeypatch, ok=True, payload=None, boom=False):
+    import types
+    def get(url, **kwargs):
+        if boom:
+            raise OSError("no network")
+        return _Answer(ok, payload)
+    monkeypatch.setattr(update_app, "_requests",
+                        lambda: types.SimpleNamespace(get=get))
+
+
+def test_a_private_repository_is_named_as_the_cause(monkeypatch):
+    """THE BUG. The branch existed and the message said it did not.
+
+    GitHub answers a PRIVATE repository's archive with 404 to anyone not
+    signed in — the same status as a branch that is not there — so the
+    old message was a sentence about the state of the world assembled
+    out of a fact about our own request. Same shape as the calibration
+    refusal that reported no picture of the game when what was missing
+    was an attribute name.
+    """
+    _github(monkeypatch, ok=True, payload={"private": True})
+    said = update_app.why_404("main")
+    assert "PRIVATE" in said
+    assert "no branch" not in said, "it still blames the branch"
+    # And it says what to do, which is the other half of a refusal.
+    assert "Download ZIP" in said
+    assert "settings and downloads survive" in said
+
+
+def test_a_public_repository_really_is_a_missing_branch(monkeypatch):
+    _github(monkeypatch, ok=True, payload={"private": False})
+    said = update_app.why_404("nonesuch")
+    assert "no branch called 'nonesuch'" in said
+    assert "PRIVATE" not in said
+
+
+def test_when_it_cannot_ask_it_names_BOTH_rather_than_guessing(monkeypatch):
+    """Naming one of two open causes is a guess wearing a fact."""
+    _github(monkeypatch, boom=True)
+    said = update_app.why_404("main")
+    assert "Either that branch does not exist" in said
+    assert "private" in said
+    assert "github.com/" in said, "it does not say how to tell them apart"
+
+
+def test_the_download_asks_before_it_blames_the_branch():
+    """`download` must route its 404 through `why_404` rather than
+    carrying a message of its own that can only say one thing."""
+    import inspect
+    body = inspect.getsource(update_app.download)
+    assert "why_404(branch)" in body
+    assert "has no branch called" not in body
