@@ -84,9 +84,18 @@ def test_all_history_keeps_everything_in_one_half():
 # ---- measuring it ------------------------------------------------------
 
 def test_it_counts_the_older_half_through_the_same_filters():
-    """Or the delta would compare a ranked, turbo-free sample against
-    everything the account has played and report a change that is
-    entirely the filters."""
+    """**THE FILTERS ARE UNIVERSAL**, at the user's request: "now that my
+    filters are in the settings i think you should probably have the vibe
+    that it is universal.. so for these metrics i want those filters to
+    apply.... not only for present to 3 months but for 3 months to 6
+    mopnths for that exampl;e".
+
+    Both halves go through the one `shape` call with the one set of
+    options, so there is no second place for a filter to be forgotten.
+    Without it the delta would compare a ranked, turbo-free sample
+    against everything the account has played and report a change that is
+    entirely the filters.
+    """
     rows = [a_row(200, win=True) for _ in range(3)]
     rows.append(a_row(250, win=False))
     rows.append({**a_row(210), "game_mode": 23})          # turbo
@@ -97,6 +106,27 @@ def test_it_counts_the_older_half_through_the_same_filters():
         rows, Options(window="6m", no_turbo=False, ranked_only=False), HEROES)
     assert strict == Before(matches=4, wins=3)
     assert loose.matches == 6
+
+
+def test_the_cap_is_the_one_setting_that_does_not_reach_the_older_half():
+    """AND THAT IS THE HONEST WAY ROUND, not an oversight.
+
+    The cap is "at most N matches to MEASURE", so it belongs to the
+    window's own sample. Applying it to the older half as well would cut
+    that half to its newest N and leave the two covering different
+    amounts of TIME — which is the unfairness the whole `clipped` guard
+    exists to refuse. So the older half is counted whole, and if the cap
+    ever bites on the WINDOW the delta is not drawn at all (see
+    `test_a_window_trimmed_to_the_cap_is_refused`).
+    """
+    rows = [a_row(200) for _ in range(30)]
+    got = runner.measure_before(rows, Options(window="6m", cap=5), HEROES)
+    assert got == Before(matches=30, wins=30), (
+        "the cap was applied to the stretch before")
+    # And the window's own half IS cut to it.
+    recent, _earlier = runner.split_window(
+        [a_row(1) for _ in range(30)], 182, cap=5, now=NOW)
+    assert len(recent) == 5
 
 
 def test_a_clipped_fetch_is_refused():

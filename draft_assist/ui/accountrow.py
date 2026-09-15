@@ -50,6 +50,21 @@ PROMPT = "Open the History tab to analyse one"
 NOTHING = "\u2014"
 
 
+def display_name(report) -> str:
+    """What to CALL this account: its persona, or its bare number.
+
+    Here rather than read off a widget. The window used to take it from
+    the profile callout's own name label — and that label has gone, at
+    the user's request ("you dont need to shwo profile pic and name in
+    the dropdown - its in the button already"), which would have left the
+    title bar reading a name out of a widget that no longer exists.
+    Both surfaces ask the REPORT now, which is where it came from.
+    """
+    account = getattr(getattr(report, "options", None), "account_id", 0)
+    name = (getattr(report, "name", "") or "").strip()
+    return name or (str(account) if account else "")
+
+
 def avatar_path(account_id: int):
     """The picture on disk for this account, or None.
 
@@ -372,28 +387,30 @@ class ProfileButton(QWidget):
 class ProfileCard(QWidget):
     """What drops out of the profile button in the title bar.
 
-    THE SHAPE IS THE USER'S, stated twice and drawn once: "when you click
-    you see profiele pic  Bijson and below that you see a 6 motnhs box
-    that you can click to see a dropdown and select different durations
-    and an apply button next to that to change the history look back
-    range", then "when the user clicks the down arrow on the profile i
-    want to see win rate %, in brackets after that i want the delta from
-    the previous XXX duration... and below those two i want games played
-    (with a delta also, qty)". So:
+    THE SHAPE IS THE USER'S, stated across several messages:
 
-        [face]  Bijson
-                Win rate   53% (+2.1%)
-                Games      412 (+37)
-                [ Last 6 months v ] [ Apply ]
+        Win rate   53% (+2.1%)
+        Games      412 (+37)
+        [ Last 6 months v ] [ Update ]
+        ---- the load bar, only while a run is going ----
+
+    **THE FACE AND THE NAME ARE NOT ON IT**, which REVERSES the first
+    sketch ("when you click you see profiele pic  Bijson and below that
+    you see a 6 motnhs box"). They went the moment both were real and
+    visible together: "you dont need to shwo profile pic and name in the
+    dropdown - its in the button already". The button the callout hangs
+    off carries exactly that picture and exactly that name, an inch
+    above, and a callout that opens by repeating what opened it is
+    spending its first two rows saying nothing.
 
     IT REPLACES `AccountRow` HERE and does not replace it everywhere:
     the History tab still uses that row, where the question is "when was
     this account last measured" rather than "how is it going". The two
     read the same report and neither computes anything of its own.
 
-    NOTHING ON IT MAKES A REQUEST. The face is read off disk, the figures
-    are on the report, and Apply hands a window key back to the window to
-    run — which is the one path in this app allowed on the network.
+    NOTHING ON IT MAKES A REQUEST. The figures are on the report, and
+    Update hands a window key back to the window to run — which is the
+    one path in this app allowed on the network.
     """
 
     applied = pyqtSignal(str)          # a key from `report.WINDOWS`
@@ -412,16 +429,6 @@ class ProfileCard(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(10)
-
-        top = QHBoxLayout()
-        top.setSpacing(10)
-        self.face = Face(self)
-        top.addWidget(self.face, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.who = QLabel(NOTHING_YET, self)
-        self.who.setProperty("heading", True)
-        top.addWidget(self.who, 0, Qt.AlignmentFlag.AlignVCenter)
-        top.addStretch(1)
-        lay.addLayout(top)
 
         # A GRID, so the two figures and the two deltas each line up in
         # their own column — three labels per row laid out by hand would
@@ -475,12 +482,34 @@ class ProfileCard(QWidget):
         pick.addStretch(1)
         lay.addLayout(pick)
 
-        self.face.show_initial("")
+        # UNDER THE DROPDOWN, at the user's request: "when the user hits
+        # update on the 3 month oor whatevber, i want some sort of
+        # feedback to aknowledge that it is loading ... maybe have a
+        # small red bar that runs underneath the dropdown that acts as a
+        # loading bar". A run is seconds of network with these figures
+        # sitting unchanged above it, so without this a press is
+        # indistinguishable from a press that did nothing.
+        self.load_bar = chrome.LoadBar(self)
+        lay.addWidget(self.load_bar)
 
     def _apply(self) -> None:
         key = self.window_box.currentData()
         if key:
+            # SHOWN HERE rather than waiting for the run to say so. The
+            # window starts the run synchronously off this signal, but a
+            # failure that never reaches a worker (a bad id, a run
+            # already going) would otherwise leave the press with no
+            # acknowledgement at all — and `set_busy(False)` arrives from
+            # the tab either way.
+            self.set_busy(True)
             self.applied.emit(str(key))
+
+    def set_busy(self, busy: bool) -> None:
+        """Run under way, or not. The bar is the only thing that moves."""
+        self.load_bar.set_busy(busy)
+
+    def busy(self) -> bool:
+        return self.load_bar.busy()
 
     def window_key(self) -> str:
         return str(self.window_box.currentData() or "")
@@ -501,18 +530,11 @@ class ProfileCard(QWidget):
     def show_report(self, report) -> None:
         """Draw whichever run the History tab is showing, or the prompt."""
         if report is None:
-            self.who.setText(NOTHING_YET)
-            self.face.show_initial("")
             for key in self.values:
                 self.values[key].setText(NOTHING)
                 self.deltas[key].set_value("", theme.TEXT_DIM)
             return
 
-        account = getattr(getattr(report, "options", None), "account_id", 0)
-        name = (getattr(report, "name", "") or "").strip()
-        self.who.setText(name or (str(account) if account else NOTHING_YET))
-        if not (account and self.face.show_file(avatar_path(account))):
-            self.face.show_initial(name or str(account))
         self.set_window(getattr(getattr(report, "options", None),
                                 "window", "") or "")
 

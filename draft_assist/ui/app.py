@@ -1178,6 +1178,12 @@ class MainWindow(QMainWindow):
         # fit is already on. It follows whichever run is LOADED there, at
         # the user's request, rather than being pinned to one account.
         analysis.report_changed.connect(self._history_run_changed)
+        # AND WHETHER ONE IS RUNNING, for the callout's load bar: a press
+        # on Update there is seconds of network with the figures beside
+        # it unchanged, which without this reads as a press that did
+        # nothing. The tab is the one place that knows, so it says so
+        # rather than the callout guessing from its own click.
+        analysis.busy.connect(self.account_card.set_busy)
         # AND THE RUN IT ALREADY HAS. `HistoryTab.__init__` loads the
         # cached run and assigns `report`, which emits - EIGHT LINES
         # ABOVE this connect, into nothing at all. So on a fresh start the
@@ -4912,12 +4918,14 @@ class MainWindow(QMainWindow):
         # "Bijson (6 months)", at the user's request — "Instead of
         # showign the date where it is atm next to bijson, i want it to
         # be in brackets after bijson". With nothing measured there is
-        # neither, and the button falls back to its own short form: the
-        # card says "No account measured yet", which is a sentence, right
-        # for a callout and four times too long for a title bar.
+        # neither, and the button falls back to its own short form.
+        # ASKED OF THE REPORT, not of the callout: the callout's name
+        # label is gone ("you dont need to shwo profile pic and name in
+        # the dropdown - its in the button already"), and reading one
+        # widget's text to fill another was always a longer way round.
         options = getattr(report, "options", None)
         self.profile_button.show_run(
-            self.account_card.who.text() if matches else "",
+            accountrow.display_name(report) if matches else "",
             getattr(options, "account_id", 0) if matches else 0,
             getattr(options, "window_short", "") if matches else "")
 

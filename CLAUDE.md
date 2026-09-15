@@ -3360,6 +3360,38 @@ credentials, and put the account at risk. Do not go there.
   callout is a face, the name, two figures with a delta each, and a
   duration dropdown with an Apply beside it — the user's own shape,
   stated across four messages.
+  **THE CALLOUT CARRIES NO FACE AND NO NAME**, which REVERSES the
+  shape it was first asked for ("when you click you see profiele pic
+  Bijson and below that..."). They went the moment both were real and
+  visible together: "you dont need to shwo profile pic and name in the
+  dropdown - its in the button already". The button it hangs off carries
+  exactly that picture and exactly that name an inch above, so the
+  callout was spending its first two rows repeating what opened it. The
+  identity is GONE rather than hidden, which is why
+  `accountrow.display_name` exists — the window used to read the name
+  for the title bar off that card's own label, and a widget's text is a
+  long way round to a field that is on the report.
+  **AND A RUN SAYS IT IS RUNNING** (`chrome.LoadBar`, `HistoryTab.busy`,
+  `ProfileCard.set_busy`), at the user's request: "when the user hits
+  update on the 3 month oor whatevber, i want some sort of feedback to
+  aknowledge that it is loading ... maybe have a small red bar that runs
+  underneath the dropdown that acts as a loading bar". A run is seconds
+  of network with the figures above it unchanged, so without it a press
+  is indistinguishable from a press that did nothing — which is the
+  fault `_say` was written for one surface over.
+  INDETERMINATE on purpose: the run's stages have no totals known in
+  advance, so a percentage would be a number the widget invented.
+  PAINTED rather than a QProgressBar, for the scrollbars' reason — the
+  stylesheet does not name that widget's sub-controls, and what a
+  stylesheet does not name goes to the NATIVE style, which on Windows
+  would be a stock blue bar in the one palette where blue means nothing.
+  Its TIMER only runs while it is on screen, because it lives inside a
+  QMenu that is shut most of the time.
+  It is set on the PRESS and cleared by the TAB: a failure that never
+  reaches a worker (a bad id, a run already going) would otherwise leave
+  the press unacknowledged, and `busy(False)` arrives from
+  `_set_running` either way — one signal from the one place that knows,
+  rather than each surface guessing.
   **THE PICTURE WAS NEVER DRAWN, and that was a whole missing call** —
   "why is the thumbnail not working??". `show_name` set the LABEL and
   nothing else, so the face kept the "?" it was given in `__init__` for
@@ -3382,9 +3414,21 @@ credentials, and put the account at risk. Do not go there.
   the most RECENT rows: leaving it at `cap` while doubling the days would
   clip away exactly the older half being reached for. The cap is then
   applied to the WINDOW's own half, which is what the user asked for.
-  The older half goes through the SAME `shape` filters, or the delta
-  would compare a ranked turbo-free sample against everything the account
-  has played and report a change that is entirely the filters.
+  **THE FILTERS ARE UNIVERSAL** — "now that my filters are in the
+  settings i think you should probably have the vibe that it is
+  universal.. so for these metrics i want those filters to apply.... not
+  only for present to 3 months but for 3 months to 6 mopnths". Both
+  halves go through the one `shape` call with the one set of options, so
+  there is no second place for a filter to be forgotten; without it the
+  delta would compare a ranked turbo-free sample against everything the
+  account has played and report a change that is entirely the filters.
+  **THE CAP IS THE ONE SETTING THAT DELIBERATELY DOES NOT**, and that is
+  the honest way round rather than an oversight: it means "at most N
+  matches to MEASURE", so it belongs to the window's own sample, and
+  applying it to the older half would cut that half to its newest N and
+  leave the two covering different amounts of TIME. So the older half is
+  counted whole — and if the cap ever bites on the WINDOW, the delta is
+  not drawn at all.
   **NONE IN EVERY DOUBTFUL CASE**, which is the whole point of `Before`
   being absent rather than zeroed. Three of them:
   "All history" has nothing before it; the fetch came back CLIPPED

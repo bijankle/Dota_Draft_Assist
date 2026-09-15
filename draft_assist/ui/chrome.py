@@ -1177,6 +1177,107 @@ def paint_rules(painter: QPainter, gaps: list[tuple[int, int, int]],
         painter.drawLine(x, middle - height // 2, x, middle + height // 2)
 
 
+class LoadBar(QWidget):
+    """A thin moving bar that says a run is under way and nothing else.
+
+    At the user's request, about the profile callout: "when the user hits
+    update on the 3 month oor whatevber, i want some sort of feedback to
+    aknowledge that it is loading ... maybe have a small red bar that
+    runs underneath the dropdown that acts as a loading bar". A run is
+    seconds of network with the callout's own figures unchanged
+    underneath it, so without this a press looks exactly like a press
+    that did nothing — the fault this app has a standing rule about.
+
+    INDETERMINATE ON PURPOSE. The run reports progress in stages whose
+    totals are not known in advance (a match list, then a shape, then
+    eleven analyses), so a percentage here would be a number this widget
+    invented. A block that keeps moving says "still working" honestly.
+
+    PAINTED, not a QProgressBar. This app's stylesheet does not name
+    `QProgressBar`'s sub-controls, and once a stylesheet touches a widget
+    the parts it does not name are handed to the NATIVE style — which is
+    the scrollbar's lesson and the tick box's, and on Windows it would
+    draw a stock blue bar in the one palette where blue means nothing.
+
+    AND THE TIMER ONLY RUNS WHILE IT IS ON SCREEN. It lives inside a
+    QMenu that is shut most of the time, and a repaint every 40ms for a
+    widget nobody is looking at is exactly the kind of cost the live loop
+    has rules about.
+    """
+
+    HEIGHT = 3
+    PERIOD = 40                 # ms between steps
+    BLOCK = 0.28                # the moving part, as a share of the width
+    STEP = 0.022                # how far it travels per step
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(self.HEIGHT)
+        self.setProperty("bare", True)
+        self._at = 0.0
+        self._busy = False
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.PERIOD)
+        self._timer.timeout.connect(self._step)
+        self.setVisible(False)
+
+    def set_busy(self, busy: bool) -> None:
+        busy = bool(busy)
+        if busy == self._busy:
+            return
+        self._busy = busy
+        self._at = 0.0
+        self.setVisible(busy)
+        self._sync_timer()
+        self.update()
+
+    def busy(self) -> bool:
+        return self._busy
+
+    def _sync_timer(self) -> None:
+        if self._busy and self.isVisible():
+            if not self._timer.isActive():
+                self._timer.start()
+        elif self._timer.isActive():
+            self._timer.stop()
+
+    def showEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().showEvent(event)
+        self._sync_timer()
+
+    def hideEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        super().hideEvent(event)
+        self._sync_timer()
+
+    def _step(self) -> None:
+        # `_at` is the position along ONE cycle, 0 to 1, and the cycle is
+        # a block-width longer than the track at each end — so at 0 the
+        # block is just off the left and at 1 it is just off the right.
+        # The extra travel belongs in the MAPPING (see `paintEvent`), not
+        # in the modulo: winding `_at` past 1 put the block a whole block
+        # beyond the right-hand edge for a fifth of every cycle, which is
+        # a loading bar that stops for a moment on every pass.
+        self._at = (self._at + self.STEP) % 1.0
+        self.update()
+
+    def paintEvent(self, event) -> None:           # noqa: N802 - Qt naming
+        if not self._busy:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        radius = self.HEIGHT / 2.0
+        painter.setBrush(QColor(theme.BG_INPUT))
+        painter.drawRoundedRect(QRectF(self.rect()), radius, radius)
+        width = self.width()
+        block = max(1.0, width * self.BLOCK)
+        left = self._at * (width + block) - block
+        painter.setBrush(QColor(theme.ACCENT))
+        painter.drawRoundedRect(
+            QRectF(left, 0.0, block, float(self.height())), radius, radius)
+        painter.end()
+
+
 class Divider(QWidget):
     """A vertical rule between two controls on a row.
 

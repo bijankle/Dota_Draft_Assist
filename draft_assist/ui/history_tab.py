@@ -457,6 +457,9 @@ class HistoryTab(QWidget):
     # WHICH RUN IS ON THE TAB, so the Draft tab can star the heroes this
     # account is good on. Carries the Report, or None.
     report_changed = pyqtSignal(object)
+    # WHETHER A RUN IS GOING, so a surface that is not this tab can say
+    # so — the profile callout can start one from the title bar.
+    busy = pyqtSignal(bool)
 
     def __init__(self, say=None, parent=None, settings=None):
         super().__init__(parent)
@@ -1076,6 +1079,12 @@ class HistoryTab(QWidget):
         self.run_button.setEnabled(not running)
         self.stop_button.setVisible(running)
         self.account_box.setEnabled(not running)
+        # ANNOUNCED, because this tab is no longer the only thing that
+        # shows a run happening: the profile callout in the title bar can
+        # start one, and a press there with no acknowledgement anywhere is
+        # a press that looks like it did nothing. One signal from the one
+        # place that already knows, rather than each surface guessing.
+        self.busy.emit(bool(running))
 
     def _progress(self, text: str, done: int, total: int) -> None:
         self._note(self.status, f"{text} {done}/{total}" if total else text)

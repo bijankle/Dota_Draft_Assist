@@ -115,7 +115,6 @@ def test_the_card_prints_both_figures_and_both_deltas(qapp):
     card = ProfileCard()
     card.show_report(a_report(played=100, won=53,
                               before=Before(matches=63, wins=32)))
-    assert card.who.text() == NAME
     assert card.values["rate"].text() == "53%"
     assert card.values["games"].text() == "100"
     assert card.deltas["rate"].text() == "(+2.2%)"
@@ -254,6 +253,144 @@ def test_setting_the_window_is_not_the_user_applying_it(qapp):
     card.set_window("6m")
     assert seen == []
     card.deleteLater()
+
+
+def test_the_callout_does_not_repeat_the_button_that_opened_it(qapp):
+    """"you dont need to shwo profile pic and name in the dropdown - its
+    in the button already".
+
+    It opened with a face and a name an inch below the same face and the
+    same name, so its first two rows said nothing. THE CARD KEEPS NO
+    IDENTITY AT ALL now — not hidden, gone — which is why
+    `accountrow.display_name` exists: the window used to take the name
+    for the title bar off this card's own label.
+    """
+    from PyQt6.QtWidgets import QLabel
+
+    card = ProfileCard()
+    card.show_report(a_report())
+    assert not hasattr(card, "who")
+    assert not hasattr(card, "face")
+    shown = {label.text() for label in card.findChildren(QLabel)}
+    assert NAME not in shown, "the name is on the card again"
+    assert str(ACCOUNT) not in shown, "the account id is on the card"
+    card.deleteLater()
+
+
+def test_the_name_comes_off_the_report_rather_than_a_widget(qapp):
+    from draft_assist.ui.accountrow import display_name
+
+    assert display_name(a_report()) == NAME
+    # No persona resolved: the number is what a person has to go on.
+    bare = a_report()
+    bare.name = ""
+    assert display_name(bare) == str(ACCOUNT)
+    assert display_name(None) == ""
+
+
+# ---- the load bar ------------------------------------------------------
+
+def test_pressing_update_says_so_before_anything_else_can(qapp):
+    """"when the user hits update on the 3 month oor whatevber, i want
+    some sort of feedback to aknowledge that it is loading".
+
+    SET ON THE PRESS rather than waiting for the run to report itself: a
+    failure that never reaches a worker — a bad id, a run already going —
+    would otherwise leave the press with no acknowledgement at all, and
+    `set_busy(False)` arrives from the tab either way.
+    """
+    card = ProfileCard()
+    card.show_report(a_report())
+    assert not card.busy()
+    card._apply()
+    assert card.busy(), "the press said nothing"
+    card.set_busy(False)
+    assert not card.busy()
+    card.deleteLater()
+
+
+def test_the_bar_is_only_there_while_it_is_running(qapp):
+    card = ProfileCard()
+    assert not card.load_bar.isVisibleTo(card)
+    card.set_busy(True)
+    assert card.load_bar.isVisibleTo(card)
+    card.set_busy(False)
+    assert not card.load_bar.isVisibleTo(card)
+    card.deleteLater()
+
+
+def test_the_bar_costs_nothing_when_nobody_is_looking(qapp):
+    """It lives inside a QMenu that is shut most of the time, and a
+    repaint every 40ms for a widget nobody can see is the kind of cost
+    the live loop has rules about."""
+    from draft_assist.ui import chrome
+
+    bar = chrome.LoadBar()
+    assert not bar._timer.isActive()
+    bar.set_busy(True)
+    bar.show()
+    assert bar._timer.isActive()
+    bar.hide()
+    assert not bar._timer.isActive(), "still ticking while hidden"
+    bar.show()
+    assert bar._timer.isActive(), "did not pick up again"
+    bar.set_busy(False)
+    assert not bar._timer.isActive()
+    bar.deleteLater()
+
+
+def test_the_bar_is_painted_in_the_apps_accent(qapp):
+    """PAINTED, not a QProgressBar: this app's stylesheet does not name
+    that widget's sub-controls, and once a stylesheet touches a widget
+    the parts it does not name go to the NATIVE style — which on Windows
+    would be a stock blue bar in the one palette where blue means
+    nothing. The scrollbars' lesson."""
+    from PyQt6.QtGui import QColor
+
+    from draft_assist.ui import chrome, theme
+
+    bar = chrome.LoadBar()
+    bar.resize(200, chrome.LoadBar.HEIGHT)
+    bar.set_busy(True)
+    bar.show()
+    # A cycle STARTS with the block just off the left-hand edge, so a
+    # grab at rest is a picture of the track and nothing else.
+    for _ in range(12):
+        bar._step()
+    picture = bar.grab().toImage()
+    want = QColor(theme.ACCENT).rgb()
+    assert any(picture.pixel(x, y) == want
+               for x in range(picture.width())
+               for y in range(picture.height())), "no accent on the bar"
+    # And it MOVES, or it is a red rectangle rather than a loading bar.
+    was = bar._at
+    for _ in range(3):
+        bar._step()
+    assert bar._at != was
+    bar.deleteLater()
+
+
+def test_the_bar_keeps_its_block_inside_the_track(qapp):
+    """It runs off one end and comes back on at the other, so the travel
+    is one block longer than the track — and the arithmetic must not
+    leave it stranded off-screen at either end."""
+    from draft_assist.ui import chrome
+
+    bar = chrome.LoadBar()
+    bar.resize(200, chrome.LoadBar.HEIGHT)
+    bar.set_busy(True)
+    seen = []
+    block = 200 * chrome.LoadBar.BLOCK
+    for _ in range(200):
+        bar._step()
+        seen.append(bar._at * (200 + block) - block)
+    assert min(seen) < 0, "the block never enters from the left"
+    assert max(seen) + block > 200, "the block never reaches the right"
+    # And it is never placed WHOLLY past either end, which is a bar that
+    # pauses once a cycle.
+    assert min(seen) > -block
+    assert max(seen) < 200
+    bar.deleteLater()
 
 
 # ---- the button --------------------------------------------------------
