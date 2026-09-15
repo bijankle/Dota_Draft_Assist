@@ -1595,25 +1595,52 @@ class MainWindow(QMainWindow):
         here, so there is one way to do this rather than a wizard that can
         only ever be seen once.
         """
-        from .setup_wizard import SetupWizard
+        from .setup_wizard import SetupWizard, STEPS
         wizard = SetupWizard(self)
-        accepted = wizard.exec() == SetupWizard.DialogCode.Accepted
-        # WHICH WAY THEY LEFT IS REMEMBERED, and it decides exactly one
-        # thing: whether the GSI config gets written for them from now on
-        # without being asked. Finishing setup is that agreement; Skip is
-        # somebody who has not agreed to anything yet, and the banner is
-        # where they say so later.
-        self.settings["setup_skipped"] = not accepted
+        wizard.exec()
+        # WHAT IS LEFT UNDONE IS REMEMBERED PER STEP, not as one "did
+        # they finish" flag. Each step writes its own answer as you leave
+        # it, so closing the window on the third page keeps the first two
+        # and puts only the rest on the banner. Skip this step and
+        # closing the window come to the same thing here, which is the
+        # honest reading of both.
+        self.settings["setup_pending"] = list(wizard.pending)
         ui_settings.save(self.settings)
-        if accepted:
-            # TICKING THE BOXES IS THE WHOLE INTERACTION. An install that
-            # ends by telling the user to go and find a menu item has not
-            # finished installing. GSI is part of that: the config file is
-            # a write into the Dota install with nothing to choose, so it
-            # happens here rather than being a menu item to discover.
-            self._ensure_gsi_config()
+        # The GSI config is the app's own half of the last step and has
+        # nothing in it to decide, so it is written rather than asked
+        # about — but only once that step has actually been reached.
+        self._ensure_gsi_config()
+        done = {step.ident for step in STEPS} - set(wizard.pending)
+        if {"key", "ranks"} & done:
+            # The statistics are built FOR the ranks, so either answer
+            # changing means the download is what happens next.
             self._update_everything()
+        if wizard.account_id is not None:
+            self._measure_history(wizard.account_id)
         self._update_first_run_banner()
+
+    def _measure_history(self, account_id: int) -> None:
+        """Run the History tab once, on the account setup just collected.
+
+        "its nice to have the steam code asked for and then to run the
+        default analysis so that everything is setup as a starting
+        point". The options are `ui_settings.history_options`' own
+        defaults — ranked only, no turbo, six months, 5000 matches —
+        which is already exactly what was asked for, so nothing here
+        overrides them and the tab and this agree by construction.
+
+        NEVER FATAL: it is a network call at the end of setup, and a
+        first run that cannot reach OpenDota must still leave a set-up
+        app rather than an error.
+        """
+        tab = getattr(self, "history_tab", None)
+        if tab is None:
+            return
+        try:
+            tab.account_box.setText(str(account_id))
+            tab.start()
+        except Exception:               # noqa: BLE001 - never worth a crash
+            pass
 
     def _ensure_gsi_config(self) -> str:
         """Write Dota's GSI config unless the user skipped setup.
@@ -1639,7 +1666,7 @@ class MainWindow(QMainWindow):
         or written to is a thing to say on the banner, not a reason for
         the app to fail to open.
         """
-        if self.settings.get("setup_skipped"):
+        if "gsi" in (self.settings.get("setup_pending") or []):
             return ""
         from ..gsi import install as gsi_install
 
@@ -1751,7 +1778,9 @@ class MainWindow(QMainWindow):
         `setup_skipped` as well -- otherwise the config would be written
         once here and then never kept up to date.
         """
-        self.settings["setup_skipped"] = False
+        pending = [k for k in (self.settings.get("setup_pending") or [])
+                   if k != "gsi"]
+        self.settings["setup_pending"] = pending
         ui_settings.save(self.settings)
         note = self._ensure_gsi_config()
         if note:
@@ -1870,6 +1899,31 @@ class MainWindow(QMainWindow):
                 "screen.</b> Picks will be read late or not at all until "
                 "the crop boxes are measured.",
                 "Measure the boxes", self._measure_from_banner)
+            return
+        # STEPS THE USER SKIPPED, named. "allow users to click 'skip
+        # this step' and then there is a banner at the main menu for
+        # outstanding steps" — so a skip is a decision to come back to
+        # it rather than a decision to go without, and this strip is
+        # what makes that true. It sits under the two faults that cost a
+        # draft outright and above everything about the statistics,
+        # because it is the one rung that names something the user
+        # themselves put off.
+        # The GSI step is left OFF this list even when it is pending:
+        # its own rung above says the feed is silent, which is a
+        # measurement rather than a memory of a button press, and two
+        # strips about one thing is one of them going stale.
+        outstanding = [k for k in (self.settings.get("setup_pending") or [])
+                       if k != "gsi"]
+        if outstanding:
+            from .setup_wizard import STEPS
+            names = [step.title.lower() for step in STEPS
+                     if step.ident in outstanding]
+            many = len(names) != 1
+            self._show_banner(
+                f"<b>Setup {'has' if many else 'has'} "
+                f"{len(names)} step{'s' if many else ''} left.</b> "
+                + ", ".join(names).capitalize() + ".",
+                "Finish setup", self._run_setup)
             return
         # ARTWORK BEFORE STATISTICS, because it is the half that always
         # works. A fresh install has neither, and the statistics need a

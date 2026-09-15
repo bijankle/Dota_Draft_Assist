@@ -44,12 +44,19 @@ DEFAULTS = {
     # app wants both. Turning one off is a debugging step, never a mode.
     "use_gsi": True,
     "use_vision": True,
-    # Did the user press Skip on the first-run wizard? It decides one
-    # thing only: whether the GSI config is written for them silently at
-    # every start, or offered on the banner instead. Somebody who skipped
-    # the wizard has not agreed to anything yet, and writing a file into
-    # their Dota install on that footing is not ours to do unasked.
-    "setup_skipped": False,
+    # Which first-run steps are still outstanding, by `setup_wizard`
+    # ident. A step stays on this list until it is FINISHED, so closing
+    # the wizard half way through leaves the rest of it on the banner
+    # rather than silently forgotten, and Skip this step is the same as
+    # closing as far as what is left to do.
+    # It also gates the one thing setup does without being asked: the
+    # GSI config is written silently only once "gsi" is OFF this list,
+    # because somebody who has not been through that step has not agreed
+    # to a file being written into their Dota install.
+    # A LIST, and `load` copies it — `dict(DEFAULTS)` is shallow, so
+    # otherwise every caller would share one object with the defaults
+    # and appending to it would edit them.
+    "setup_pending": [],
     # How see-through the window is. It HAS to be listed here: `save`
     # writes only the keys DEFAULTS names, so a preference the app set
     # but this dict did not know about was written by the slider, kept in

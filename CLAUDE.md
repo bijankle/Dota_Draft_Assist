@@ -1324,32 +1324,18 @@ credentials, and put the account at risk. Do not go there.
   `ui_settings.json`). The tab opens saying when that account was last
   measured and with what, so running it again is one press — and sending
   someone a copy of this app sends them none of it.
-  **AND A FRESH INSTALL OPENS ON AN EXAMPLE ACCOUNT**
-  (`store.EXAMPLE_ACCOUNT`, `store.starting_account`), at the user's
-  request — Topson's public friend ID — and then, on what "default"
-  means: "by default i mean only when its being setup. If the user
-  searches for their account to analyse it should be remembered and
-  appear when the app is closed and reopened." So it is the value the box
-  STARTS on and nothing else: it is never written into
-  `history_accounts.json`, because that file is the accounts THIS MACHINE
-  has actually looked at and an entry nobody ran would read as a run that
-  happened — and it would then be adopted on every start, which is
-  precisely what is supposed to stop. Measure any account of your own and
-  that one is remembered, adopted on the next start, and this number is
-  never seen again on that machine.
-  **A REAL ACCOUNT IS RIGHT HERE AND WRONG IN THE FIXTURES, and the two
-  rules contradict each other on purpose.** The test fixtures use a
-  MADE-UP id (`test_the_example_account_is_not_a_real_one`, 4242424242)
-  because there the number stands in for the player THEMSELVES — payloads,
-  a name, a match history — and pinning a stranger's identity to that data
-  would be inventing a record about them. This is the opposite job: the
-  tab needs a public match history behind the Run button, and an id that
-  cannot exist comes back with no matches, which is one of the three
-  things "your history is private" exists to tell apart and would read as
-  the app being broken on its first run. A professional player's friend ID
-  is public and is nobody's personal data. Both are held by tests, since a
-  later sweep for "example account ids" would otherwise correct one of
-  them into uselessness.
+  **AND A FRESH INSTALL OPENS ON YOUR OWN ACCOUNT, BECAUSE SETUP ASKED
+  FOR IT.** This REPLACES a professional player's public friend ID
+  (Topson's) that the box used to START on — "forget about topsons
+  accoutn, that was a silly addition". The problem it solved was real:
+  an id that cannot exist comes back with no matches, which is one of
+  the three things "your history is private" exists to tell apart and
+  would read as the app being broken on its first run. First-run setup
+  asking for YOUR id solves it without putting a stranger in the
+  source — see the wizard note above. With nothing remembered and that
+  step skipped the box is empty and its placeholder says where to set
+  it, which is the one thing an empty box must not leave unsaid.
+
   **THE WHOLE RUN IS KEPT NOW** (`history/cache.py`, `history_cache/`,
   gitignored with the rest), which REVERSES this file's earlier "a
   BOOKMARK, not a copy of anybody's match history". That rule cost a
@@ -4201,6 +4187,85 @@ credentials, and put the account at risk. Do not go there.
   nothing on screen said so. The block was displayed nowhere either, so
   the status-line feature that commit shipped was never live. A test
   walks that method's AST for the two names.
+  **AND THE WIZARD IS A STEPPED INSTALLER NOW, NOT A FORM**
+  (`ui/setup_wizard.py`, `STEPS`, `ui_settings.setup_pending`), at the
+  user's request: "i think its nicer to have the step by step process be
+  a forced step by step like your typical install windows steps, and the
+  bookmarks bar on the left is just showing where your progress sits, so
+  you knwo all the steps in the setup and where you are at currently."
+  This REVERSES the three-cards-on-one-scrolling-page shape, which asked
+  for everything at once — fine once you know what all of it is for, and
+  useless on the one run that matters.
+  **FOUR STEPS, AND THE ORDER IS THE DEPENDENCY ORDER**: the Stratz key,
+  which ranks, your friend ID, then Dota's feed. **THE LAUNCH OPTION IS
+  LAST DELIBERATELY** — "i thnik its best to have the steam
+  -gamestateintegratio nstep to be last as its annoying (iisnt a click
+  'run' type step)". Everything before it is typing or ticking in this
+  window; that one sends you into another program, and it is also the
+  only step the app can do no part of for you.
+  **EVERY STEP SAYS HOW AND WHY**, also asked for: "a concise window
+  askign for something e.g. Stratz key and then below that it says how to
+  get the key (with a link to the appropriate website) and then 'why this
+  step is important' where the details of how this step enables a
+  particular aspect of the program in nice concise terms". `Step` carries
+  `how` and `why` as DATA rather than widgets built inline, which is what
+  lets `test_manual` hold every one of them to a length — the 120
+  character cap on `paragraph` did not go away, it changed shape, and
+  this dialog has been cut back for prose growing once already.
+  **THE SIDEBAR IS `SectionBar`**, the History tab's own, because two
+  implementations of "a list down the left with the one you are on lit"
+  would drift. Here it is progress rather than a switchboard: a step you
+  have REACHED is reachable and can be gone back to, a step ahead is dim
+  and cannot be jumped to, and that is what makes the order forced. Going
+  back is allowed because correcting an answer is not skipping a question.
+  **THAT EXPOSED A REAL BUG IN `SectionRow`**: `set_reachable` returns
+  early when the value has not changed, so a row born unreachable and
+  left that way was never coloured at all and kept the stylesheet's
+  ordinary TEXT. Invisible in the History tab, where every row is
+  switched on and off as analyses are ticked; plain here, where dimming
+  the steps ahead IS the feature. `__init__` calls `_recolour()` now.
+  **EACH STEP WRITES ITS OWN ANSWER AS YOU LEAVE IT**, never all of them
+  at the end: an installer that only saves on the last page loses four
+  answers when somebody closes it on the fourth.
+  **AND WHAT IS LEFT UNDONE IS REMEMBERED PER STEP**
+  (`setup_pending`) — "allow users to click 'skip this step' and then
+  there is a banner at the main menu for outstanding steps". So a skip is
+  a decision to come back to it rather than a decision to go without, and
+  closing the window comes to the same thing. The banner names the steps
+  and reopens the wizard. **THE GSI STEP IS LEFT OFF THAT STRIP** even
+  when pending, because its own rung already says the feed is silent —
+  which is a MEASUREMENT rather than a memory of a button press, and two
+  strips about one thing is one of them going stale. `setup_pending` also
+  replaces the `setup_skipped` flag that briefly gated the GSI config
+  write; the gate is now `"gsi" in setup_pending`, which is the same rule
+  at step granularity.
+  **PRESSING NEXT ON AN EMPTY BOX IS REFUSED AND SKIP IS NOT.** The
+  difference is whether the app has been told to stop asking for now, or
+  is being walked past an unanswered question by accident.
+  **THE FRIEND ID IS COLLECTED HERE, AND TOPSON IS GONE**
+  (`store.EXAMPLE_ACCOUNT`, `starting_account`, both DELETED), at the
+  user's request — "forget about topsons accoutn, that was a silly
+  addition". That example existed so the Run button had a real public
+  match history behind it on a fresh install, since an id that cannot
+  exist comes back empty and reads as a broken app. Asking for the user's
+  OWN id is a better answer to the same problem: it is remembered through
+  `store.remember`, the tab adopts it on the next start, and setup runs
+  the analysis once so there is something on the tab from the first
+  launch. The box now opens EMPTY with a placeholder saying where to set
+  it — an empty box with no placeholder is indistinguishable from a
+  broken tab, which is what the starting value was really for.
+  **THE FIRST RUN USES `history_options`' OWN DEFAULTS** — ranked only,
+  no turbo, six months, 5000 matches — which is already exactly what was
+  asked for, so `_measure_history` overrides nothing and the tab and
+  setup cannot disagree. Never fatal: a first run that cannot reach
+  OpenDota must still leave a set-up app rather than an error.
+  **THE BOX TAKES FIVE SHAPES OF ID AND SAYS WHICH IT READ.**
+  `account.parse` already handled a friend ID, a Steam64, a steamID3, a
+  classic STEAM_0: and a profile URL; the note under the box echoes
+  `parsed.how`, because "converted from a 64 bit Steam ID" is the
+  difference between trusting the number and wondering whether the paste
+  landed whole.
+
   **A FRESH INSTALL IS A WIZARD, NOT A BANNER NAMING A FILE**
   (`ui/setup_wizard.py`, `MainWindow.offer_setup` / `_run_setup`). The
   app opened to empty tiles over a strip telling the user to go and edit

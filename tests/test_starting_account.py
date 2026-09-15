@@ -1,15 +1,17 @@
-"""Which account the History tab opens on, and for how long.
+"""Which account the History tab opens on.
 
-"i think it would be cool to have topson steam ID be the one that gets
-used for the app by default... i think it is 94054712", and then what
-"by default" means: "by default i mean only when its being setup. If the
-user searches for their account to analyse it should be remembered and
-appear when the app is closed and reopened."
+IT USED TO BE A PROFESSIONAL PLAYER'S PUBLIC FRIEND ID, so that the Run
+button had a real match history behind it on a fresh install rather than
+coming back empty and reading as a broken app. That is gone at the
+user's request — "forget about topsons accoutn, that was a silly
+addition" — and what replaces it is better: first-run setup ASKS for
+your own friend ID, remembers it, and runs the analysis once. The tab
+then opens on you from the first launch, which is what the example
+account was standing in for.
 
-So it is the value the box STARTS on, not a preference and not a
-remembered account — the Run button has something real behind it on a
-fresh install, and the moment anybody measures an account of their own
-that one takes over permanently.
+So there is no starting value any more. The box opens on a remembered
+account if there is one, and otherwise empty with a placeholder saying
+where to set it.
 """
 
 import os
@@ -23,83 +25,56 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from draft_assist.history import account, store          # noqa: E402
+from draft_assist.history import store                   # noqa: E402
 
 
-def test_a_fresh_machine_starts_on_the_example(tmp_path):
-    assert store.starting_account(tmp_path / "none.json") \
-        == store.EXAMPLE_ACCOUNT
+def test_nobody_elses_account_is_shipped():
+    """A stranger's id in the source is a record about somebody who did
+    not ask to be in this repository, and it only existed to give Run
+    something to show. Setup asks for the user's own now."""
+    source = (ROOT / "draft_assist/history/store.py").read_text(
+        encoding="utf-8")
+    assert "EXAMPLE_ACCOUNT" not in source
+    assert "starting_account" not in source
+    assert "94054712" not in source, "Topson's id is back in the source"
+    assert "Topson" not in source
 
 
-def test_and_stops_the_moment_the_user_has_one_of_their_own(tmp_path):
-    """The whole of "only when its being setup"."""
-    file = tmp_path / "accounts.json"
-    store.remember(11223344, "Someone", path=file)
-    assert store.starting_account(file) is None
+def test_no_module_still_asks_for_a_starting_account():
+    """A caller left behind would be an AttributeError on the first
+    opening of the History tab, which is exactly where nobody would see
+    it until a fresh install."""
+    for path in (ROOT / "draft_assist").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert "starting_account" not in text, path.name
+        assert "EXAMPLE_ACCOUNT" not in text, path.name
 
 
-def test_the_example_is_never_written_into_the_remembered_list(tmp_path):
-    """That file is the accounts THIS MACHINE has looked at. An entry
-    nobody ran would read as a run that happened — and it would then be
-    adopted on the next start, which is exactly the thing that is
-    supposed to stop once the user has their own."""
-    file = tmp_path / "accounts.json"
-    store.starting_account(file)
-    assert store.load(file) == []
-    assert not file.exists()
-
-
-def test_the_app_can_actually_parse_it():
-    """A starting value the parser refuses would open the tab on a box
-    that cannot be run, which is worse than an empty one."""
-    parsed = account.parse(str(store.EXAMPLE_ACCOUNT))
-    assert parsed.ok
-    assert parsed.account_id == store.EXAMPLE_ACCOUNT
-    assert store.EXAMPLE_ACCOUNT <= account.MAX_ACCOUNT_ID
-
-
-def test_it_is_a_REAL_account_and_that_is_the_point_here():
-    """The opposite of the rule the test FIXTURES follow.
-
-    `test_the_example_account_is_not_a_real_one` requires a made-up id,
-    because there the number stands in for the player themselves and
-    pinning a stranger to that data would be inventing a record about
-    them. Here the tab needs a public match history to measure: a number
-    that cannot exist comes back with no matches, which is one of the
-    three things "your history is private" is meant to tell apart, and
-    it would read as the app being broken on its first run.
-
-    Held as a test because the two rules contradict each other on
-    purpose, and a later sweep for "example account ids" would otherwise
-    correct this one into uselessness.
-    """
-    from draft_assist.history import account as acct
-
-    assert store.EXAMPLE_ACCOUNT < 2_500_000_000, (
-        "inside the range Steam has allocated, unlike the fixtures' id")
-    # And the two must never be confused for one another.
-    import tests.test_no_personal_data as privacy          # noqa: F401
-    assert store.EXAMPLE_ACCOUNT != 4242424242
-    assert acct.parse(str(store.EXAMPLE_ACCOUNT)).ok
-
-
-@pytest.mark.parametrize("remembered", [False, True])
-def test_the_tab_opens_on_the_right_one(tmp_path, monkeypatch, remembered):
-    """End to end, through the tab's own start-up path."""
-    from PyQt6.QtWidgets import QApplication
+@pytest.mark.parametrize("remembered", [True, False])
+def test_the_box_opens_on_a_remembered_account_or_on_nothing(
+        tmp_path, monkeypatch, remembered):
+    pytest.importorskip("PyQt6")
+    from PyQt6.QtWidgets import QApplication, QWidget
 
     file = tmp_path / "accounts.json"
     monkeypatch.setattr(store, "STORE_FILE", file)
+    from draft_assist.history import cache
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "history_cache")
     if remembered:
         store.remember(11223344, "Someone", path=file)
 
     app = QApplication.instance() or QApplication([])
     from draft_assist.ui.history_tab import HistoryTab
 
-    from PyQt6.QtWidgets import QWidget
     host = QWidget()
     tab = HistoryTab(parent=host, settings={})
     app.processEvents()
-    expected = "11223344" if remembered else str(store.EXAMPLE_ACCOUNT)
-    assert tab.account_box.text().strip() == expected
+    if remembered:
+        assert tab.account_box.text().strip() == "11223344"
+    else:
+        assert tab.account_box.text().strip() == ""
+        # AND IT SAYS WHERE TO SET IT. An empty box with no placeholder
+        # is indistinguishable from a broken tab, which is the whole
+        # reason a starting value existed in the first place.
+        assert "friend ID" in tab.account_box.placeholderText()
     host.deleteLater()

@@ -83,15 +83,31 @@ def test_no_task_explains_itself_at_length():
 
 
 def test_the_wizard_asks_rather_than_explains():
-    """It is two controls and a Finish button; it was also four
-    paragraphs about where statistics come from."""
+    """It is four questions on four pages; it was also four paragraphs
+    about where statistics come from, on one.
+
+    The cap moved SHAPE rather than going away. `paragraph` is still
+    held to a line or two, and the per-step "how" and "why" — which the
+    user asked for outright, "it says how to get the key ... and then
+    why this step is important ... in nice concise terms" — are held
+    here because they are the prose most likely to grow back.
+    """
     import re
     from pathlib import Path
+    from draft_assist.ui.setup_wizard import STEPS
     source = Path("draft_assist/ui/setup_wizard.py").read_text(
         encoding="utf-8")
     for call in re.findall(r"paragraph\(\s*((?:\s*\"[^\"]*\")+)", source):
-        text = "".join(re.findall(r'"([^"]*)"', call))
+        text = "".join(re.findall(r'\"([^\"]*)\"', call))
         assert len(text) <= 120, f"the wizard lectures again: {text[:60]!r}"
+    for step in STEPS:
+        assert len(step.how) <= 200, f"{step.ident} 'how' is an essay"
+        assert len(step.why) <= 220, f"{step.ident} 'why' is an essay"
+        assert "\n\n" not in step.how + step.why, (
+            f"{step.ident} runs to paragraphs")
+        assert step.why, f"{step.ident} does not say why it matters"
+        assert len(step.label) <= 16, (
+            f"{step.label!r} will wrap in the 178px sidebar")
 
 
 # ---- About ---------------------------------------------------------------

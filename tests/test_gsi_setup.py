@@ -151,21 +151,30 @@ def test_every_surface_renders_the_shared_steps(qapp, tmp_path,
 
 # ------------------------------------------------------------ the wizard ----
 
-def test_the_wizard_has_a_card_for_game_data(qapp, tmp_path, monkeypatch):
+def test_the_wizard_has_a_step_for_game_data(qapp, tmp_path, monkeypatch):
     """It asked for NEITHER half before, and the app then put a banner up
-    about it on the first screen after setup."""
+    about it on the first screen after setup. It is the LAST step, at the
+    user's request — everything before it is typing or ticking in this
+    window, and that one sends you into another program."""
     from draft_assist import config
     from draft_assist.ui.setup_wizard import SetupWizard
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setattr(config, "PREFS_FILE", tmp_path / "prefs.json")
 
+    from draft_assist.ui.setup_wizard import STEPS
+    assert STEPS[-1].ident == "gsi", "the annoying step must come last"
+
     wizard = SetupWizard()
-    shown = wizard.findChildren(type(wizard.summary))
-    words = " ".join(label.text() for label in shown)
+    words = " ".join(label.text() for label
+                     in wizard.findChildren(type(wizard.note)))
     assert "Launch Options" in words, "the procedure is not on the dialog"
     assert gsi_install.LAUNCH_OPTION in words
-    assert "Finish writes the config file" in words, (
-        "the card must say the app does its own half")
+    # The MEANING, not a phrase: the step has to say the app writes the
+    # config file, because the whole complaint was that it used to send
+    # people off to do the half with nothing in it to decide.
+    how = STEPS[-1].how.lower()
+    assert "writes" in how and "config file" in how, (
+        f"the step must say the app does its own half: {STEPS[-1].how!r}")
     wizard.deleteLater()
 
 
@@ -250,11 +259,11 @@ def test_the_config_is_written_without_anybody_asking(window):
     assert window._ensure_gsi_config() == ""
 
 
-def test_a_skipped_setup_is_not_written_for(window):
-    """Skip is somebody who has not agreed to anything yet. Writing a
-    file into their Dota install on that footing is not ours to do — the
-    banner is where they say otherwise."""
-    window.settings["setup_skipped"] = True
+def test_a_skipped_gsi_step_is_not_written_for(window):
+    """Somebody who has not been through that step has not agreed to a
+    file being written into their Dota install. The banner is where they
+    say otherwise, and pressing its button clears the step."""
+    window.settings["setup_pending"] = ["gsi"]
     assert window._ensure_gsi_config() == ""
     assert not (gsi_install.config_dir(window.dota_dir)
                 / gsi_install.CONFIG_NAME).exists()
@@ -393,11 +402,13 @@ def test_nothing_on_the_wizard_is_clipped_at_any_width(qapp, tmp_path,
         dialog.deleteLater()
 
 
-def test_the_buttons_do_not_scroll_away_with_the_cards(qapp, tmp_path,
-                                                       monkeypatch):
-    """Finish below the bottom edge with no way to reach it is the fault
+def test_the_buttons_do_not_scroll_away_with_the_page(qapp, tmp_path,
+                                                     monkeypatch):
+    """Next below the bottom edge with no way to reach it is the fault
     the scroll area was added for; putting the buttons INSIDE it would be
-    a smaller version of the same thing."""
+    a smaller version of the same thing. The sidebar stays put too — it
+    is the progress indicator, so scrolling it out of view would take
+    away the one thing saying where you are."""
     from PyQt6.QtWidgets import QScrollArea
     from draft_assist import config
     from draft_assist.ui.setup_wizard import SetupWizard
@@ -408,10 +419,14 @@ def test_the_buttons_do_not_scroll_away_with_the_cards(qapp, tmp_path,
     dialog.resize(660, 560)            # short enough that it must scroll
     dialog.show()
     qapp.processEvents()
-    area = dialog.findChild(QScrollArea)
-    assert area is not None
-    assert not area.isAncestorOf(dialog.finish), "Finish scrolls away"
+    # NOT `findChild(QScrollArea)`: the sidebar is a QScrollArea too, so
+    # that returns whichever Qt lists first. The page area is the one
+    # holding the steps.
+    area = next(a for a in dialog.findChildren(QScrollArea)
+                if a.isAncestorOf(dialog.pages))
+    assert not area.isAncestorOf(dialog.next), "Next scrolls away"
     assert not area.isAncestorOf(dialog.skip), "Skip scrolls away"
+    assert not area.isAncestorOf(dialog.sections), "the sidebar scrolls away"
     # And the dialog can be made shorter than its content at all.
     assert dialog.minimumSizeHint().height() < 560
     dialog.close()

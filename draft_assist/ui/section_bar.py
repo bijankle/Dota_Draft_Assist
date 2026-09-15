@@ -75,6 +75,15 @@ class SectionRow(QWidget):
         # cursor is set by `set_reachable` rather than here.
         self.name.mousePressEvent = self._pressed
         row.addWidget(self.name, 1)
+        # PAINT THE STARTING STATE. `set_reachable` returns early when
+        # the value has not changed, so a row that is born unreachable
+        # and stays that way was never coloured at all — it kept the
+        # stylesheet's ordinary TEXT and read as available. Invisible in
+        # the History tab, where every row gets switched on and off as
+        # analyses are ticked; plain on the setup wizard, where the steps
+        # ahead of you are unreachable from the moment they are built and
+        # dimming them is the whole way the order reads as forced.
+        self._recolour()
 
     def _pressed(self, event) -> None:
         if self.reachable and event.button() == Qt.MouseButton.LeftButton:

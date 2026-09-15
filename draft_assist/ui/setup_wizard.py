@@ -1,51 +1,69 @@
-"""First-run setup: the key, the ranks, the game feed, and get on with it.
+"""First-run setup: one step at a time, in the order they have to happen.
 
-A fresh install needs two things the app cannot work out for itself — a
-free Stratz API key, and which ranks the statistics should describe — and
-before this existed it asked for neither. It opened to a grid of empty
-plates with a banner naming a file, which is fine for the person who wrote
-it and no use at all to somebody who has just unzipped it.
+**IT IS A STEPPED INSTALLER, NOT A FORM**, at the user's request: "i
+think its nicer to have the step by step process be a forced step by
+step like your typical install windows steps, and the bookmarks bar on
+the left is just showing where your progress sits, so you knwo all the
+steps in the setup and where you are at currently."
 
-**AND A THIRD CARD THAT ASKS FOR ALMOST NOTHING.** Game data (GSI) has
-two halves: a config file in the Dota install, which this writes on
-Finish because there is nothing in it for anybody to decide, and
-`-gamestateintegration` in Steam's launch options, which cannot be
-automated at all — Steam holds that file in memory and rewrites it on
-exit. So the card does the first silently and spells the second out as a
-numbered procedure with the option on the clipboard, at the user's
-request. Neither half used to be here at all, and the app opened telling
-people to go and find a menu item for the half it could have done
-itself.
+What it replaced was three cards stacked on one scrolling page. That
+shape asks for everything at once, which is fine when you already know
+what all of it is for and useless on the run that matters — the first
+one. Four questions on four pages, each with the one control it is
+about, is the same information with somewhere to stand.
 
-**IT ASKS ONCE AND THEN DOES THE WORK.** Ticking the boxes is the whole
-interaction: on Finish it writes `.env`, saves the brackets, and starts
-the download itself. An install that ends by telling the user to go and
-find a menu item has not finished installing.
+**EVERY STEP SAYS HOW AND WHY**, also at the user's request: "a concise
+window askign for something e.g. Stratz key and then below that it says
+how to get the key (with a link to the appropriate website) and then
+'why this step is important' where the details of how this step enables
+a particular aspect of the program in nice concise terms". So `Step`
+carries `how` and `why` as data and the page renders them, which is what
+lets a test hold both to a length — prose grows back, and this dialog
+has been cut down for that reason once already.
+
+**THE SIDEBAR IS `SectionBar`**, the History tab's own, because two
+implementations of "a list of places down the left, with the one you are
+on lit" would drift. Here it is a progress bar rather than a switchboard:
+a step you have reached is reachable and can be gone back to, a step
+ahead of you is dim and cannot be jumped to. That is what makes the
+order forced.
+
+**THE DOTA LAUNCH OPTION IS LAST**, at the user's request — "i thnik its
+best to have the steam -gamestateintegratio nstep to be last as its
+annoying (iisnt a click 'run' type step)". Everything before it is
+typing or ticking in this window; that one sends you into another
+program. It is also the only step the app cannot do any part of for you,
+which is the same fact from the other side.
+
+**A SKIPPED STEP IS REMEMBERED, NOT LOST** (`ui_settings.setup_pending`).
+Skip this step moves on and writes the step's name down; the main
+window's banner then names what is outstanding and opens this again at
+it. Nobody offline, or who wants a look before signing up for anything,
+should meet a wall — and nothing should quietly stay undone either.
 
 **THE KEY IS CHECKED BEFORE IT IS TRUSTED** (`stratz.check_key`). A typo
 accepted here surfaces three minutes later as a failure inside a progress
 dialog, which reads as the app being broken rather than as a bad paste.
 But a check that could not be MADE — rate limit, no connection — never
 blocks: `KeyCheck.ok` is three-valued, and only an outright rejection
-stops the Finish button.
-
-**IT IS SKIPPABLE**, at the user's request. Somebody offline, or who
-wants a look before signing up for anything, must not meet a wall. Skip
-leaves the banner at the top of the window as the way back, and the
-wizard opens again next time until setup is actually done.
+stops you moving on.
 """
 
 import webbrowser
+from dataclasses import dataclass, field
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QScrollArea, QVBoxLayout, QWidget)
+                             QPushButton, QScrollArea, QStackedWidget,
+                             QVBoxLayout, QWidget)
 
 from ..config import (ALL_BRACKETS, DEFAULT_TARGET_BRACKETS, has_stratz_key,
                       save_stratz_key, save_target_brackets, target_brackets)
 from ..gsi import install as gsi_install
+from ..history import account as account_mod
+from . import section_bar
 
 KEY_URL = "https://stratz.com/api"
 
@@ -61,13 +79,62 @@ PRESETS = [
 ]
 
 
+@dataclass(frozen=True)
+class Step:
+    """One page: what it asks, how to answer it, and what it buys.
+
+    `how` and `why` are DATA rather than widgets built inline, so a test
+    can hold every one of them to a length. This dialog was four
+    paragraphs about where statistics come from before it was cut back,
+    and prose grows back.
+    """
+    ident: str
+    label: str                  # the sidebar row; it is 178px wide
+    title: str
+    how: str
+    why: str
+    link: tuple = ()            # (button text, url), optional
+
+
+STEPS: tuple = (
+    Step(
+        "key", "Stratz key", "Your Stratz API key",
+        how="Sign in with Steam at stratz.com/api and copy the key it "
+            "shows you. It is free and takes about a minute.",
+        why="Every win rate, matchup and synergy number in the app is "
+            "built from Stratz. Without a key the app opens and the "
+            "draft board works, but there is nothing to score it with.",
+        link=("Open stratz.com/api", KEY_URL)),
+    Step(
+        "ranks", "Ranks", "Which ranks the advice describes",
+        how="Tick the bracket you play in, or one above it if you are "
+            "climbing. Two adjacent brackets are combined.",
+        why="Heroes perform differently at different ranks, so the "
+            "matrices are BUILT for the ranks you choose here. Two "
+            "brackets together roughly double the sample."),
+    Step(
+        "account", "Your account", "Your Dota friend ID",
+        how=account_mod.IN_GAME,
+        why="The History tab measures your own matches — what you win "
+            "on, when you play worst, which items go with winning — and "
+            "stars the suggestions you already play well."),
+    Step(
+        "gsi", "Dota's feed", "Letting Dota tell the app about the draft",
+        how="The app writes Dota's config file for you when you "
+            "finish. The steps above are the part no program can do.",
+        why="It is how the app knows a draft has started and which side "
+            "is yours. Valve's own channel: nothing is injected into "
+            "the game and no memory is read."),
+)
+
+
 def needed() -> bool:
     """Is there anything left for first-run setup to ask?
 
-    Only the KEY, deliberately. The brackets always have a defensible
-    default and an install with a key is one somebody has already been
-    through this for — so an existing install never sees the wizard, and
-    a fresh one sees it exactly once.
+    Only the KEY, deliberately. Every other step has either a defensible
+    default or a banner of its own, and an install that already has a key
+    has been through this — so an existing install never has the wizard
+    opened at it, and a fresh one sees it exactly once.
     """
     return not has_stratz_key()
 
@@ -87,9 +154,9 @@ class KeyWorker(QThread):
         self.answered.emit(check_key(self.key))
 
 
-# How much width a paragraph inside a card actually gets: the dialog's
-# minimum, less the dialog's margins and the card's.
-TEXT_WIDTH = 640 - 72
+# How much width a paragraph inside a step page actually gets: the page
+# column, less its margins.
+TEXT_WIDTH = 560
 
 
 def paragraph(text: str, width: int = TEXT_WIDTH) -> QLabel:
@@ -97,39 +164,33 @@ def paragraph(text: str, width: int = TEXT_WIDTH) -> QLabel:
 
     A word-wrapped QLabel's size hint is a single line until something
     tells it how wide it will be, and `heightForWidth` does not propagate
-    up through nested layouts — so the dialog measured every paragraph
-    here as one line tall, and the two long ones were drawn ON TOP of the
-    controls beneath them with the preset buttons squashed to nothing.
-    Measuring the text at the width it will actually get and making that
-    the minimum is the fix, and it holds at any size at or above the
-    dialog's minimum because a wider label only ever needs fewer lines.
+    up through nested layouts — so this dialog measured every paragraph
+    as one line tall and drew the long ones ON TOP of the controls
+    beneath them, with the preset buttons squashed to nothing. Measuring
+    the text at the width it will actually get and making that the
+    minimum is the fix, and it holds at any size at or above the dialog's
+    minimum because a wider label only ever needs fewer lines.
     """
     label = QLabel(text)
     label.setWordWrap(True)
     # `heightForWidth`, not a font-metrics bounding rect: the metrics
     # measure the STRING, while the label measures what it will actually
-    # lay out — margins, indent and the stylesheet's font included. The
-    # bounding rect came out a line short, which put the last line of two
-    # paragraphs underneath the controls below them.
-    needed = label.heightForWidth(width)
-    label.setMinimumHeight(max(needed, label.sizeHint().height()))
+    # lay out — margins, indent and the stylesheet's font included.
+    needs = label.heightForWidth(width)
+    label.setMinimumHeight(max(needs, label.sizeHint().height()))
     return label
 
 
-def steps(lines) -> QLabel:
+def steps_list(lines) -> QLabel:
     """A numbered procedure, which is NOT a paragraph.
 
-    The rule on this dialog is that it asks rather than explains, and it
-    is held by a test: no `paragraph` over 120 characters, because four
-    of them about where statistics come from is what this screen was cut
-    back from. A PROCEDURE is a different shape and earns its place by
-    being the thing the user has to carry out by hand — it is scanned a
-    line at a time rather than read, and each line here is one action.
-    Cutting it to a sentence is what left "add the launch option" as a
-    thing people were told about and did not do.
+    A procedure is scanned a line at a time rather than read, and each
+    line is one action. Naming the launch option and leaving somebody to
+    it is exactly how "add the launch option" became a thing people were
+    told about and did not do.
     """
     label = QLabel("\n".join(f"{n}.  {line}"
-                              for n, line in enumerate(lines, 1)))
+                             for n, line in enumerate(lines, 1)))
     label.setWordWrap(True)
     label.setTextInteractionFlags(
         Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -137,134 +198,147 @@ def steps(lines) -> QLabel:
     return label
 
 
+class StepPage(QWidget):
+    """One step, laid out the same way as every other one.
+
+    Ask, then how, then why — in that order every time, so the eye knows
+    where to go on the second page as well as the first. The control
+    belongs to the wizard; this only decides where it sits.
+    """
+
+    def __init__(self, step: Step, parent=None):
+        super().__init__(parent)
+        self.setProperty("bare", True)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(10)
+
+        title = QLabel(step.title)
+        title.setProperty("heading", True)
+        lay.addWidget(title)
+
+        self.body = QVBoxLayout()
+        self.body.setSpacing(8)
+        lay.addLayout(self.body)
+
+        lay.addWidget(self._card("How", step.how, step.link))
+        lay.addWidget(self._card("Why this step matters", step.why))
+        lay.addStretch(1)
+
+    def _card(self, heading: str, text: str, link: tuple = ()) -> QFrame:
+        frame = QFrame()
+        frame.setProperty("card", True)
+        inner = QVBoxLayout(frame)
+        inner.setSpacing(6)
+        head = QLabel(heading)
+        head.setProperty("dim", True)
+        inner.addWidget(head)
+        inner.addWidget(paragraph(text, TEXT_WIDTH - 24))
+        if link:
+            text_, url = link
+            row = QHBoxLayout()
+            button = QPushButton(text_)
+            button.clicked.connect(lambda _c, u=url: webbrowser.open(u))
+            row.addWidget(button)
+            row.addStretch(1)
+            inner.addLayout(row)
+        return frame
+
+
 class SetupWizard(QDialog):
-    """One dialog: what this needs, the key, the ranks, and Finish."""
+    """The stepped wizard: a sidebar of progress and one page at a time."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Set up Dota Draft Assist")
-        self.setMinimumWidth(640)
         self.checked: bool | None = None       # what check_key last said
         self.worker: KeyWorker | None = None
+        self.at = 0
+        # Steps left undone. Every step starts outstanding and is struck
+        # off by finishing it, so closing the window half way through
+        # leaves the rest on the banner rather than silently forgotten.
+        self.pending: list = [step.ident for step in STEPS]
+        self.reached: set = {STEPS[0].ident}
+        self.account_id: int | None = None
 
-        # THE CARDS SCROLL, and the third one is what made that necessary.
-        # A dialog is sized to its contents, so three cards and a
-        # seven-step procedure came to 1218px — taller than the usable
-        # height of a 1080p screen and half as tall again as a 1366x768
-        # laptop's, with Finish somewhere below the bottom of both. This
-        # is `app._scrolling`'s lesson in a dialog: a long page inside a
-        # scroll area asks for nothing, so the height becomes a choice
-        # rather than a demand. The buttons stay OUTSIDE it — Skip and
-        # Finish scrolling away with the content is the fault being
-        # fixed, not a smaller version of it.
         shell = QVBoxLayout(self)
         shell.setContentsMargins(0, 0, 0, 0)
-        page = QWidget()
-        page.setProperty("bare", True)
-        lay = QVBoxLayout(page)
-        lay.setSpacing(10)
+        shell.setSpacing(0)
 
-        heading = QLabel("Three steps and it is ready")
-        heading.setProperty("heading", True)
-        lay.addWidget(heading)
+        across = QHBoxLayout()
+        across.setContentsMargins(0, 0, 0, 0)
+        across.setSpacing(0)
+        self.sections = section_bar.SectionBar()
+        for step in STEPS:
+            self.sections.add(step.ident, step.label)
+        self.sections.jumped.connect(self._jump_to)
+        across.addWidget(self.sections)
+        across.addWidget(section_bar.edge())
 
-        # ONE LINE. It was four, explaining where the numbers come from
-        # and why each thing below is being asked for — all true, all
-        # read once, and all of it between somebody and the controls
-        # they came for. It is the manual's first page now (Help ▸ User
-        # manual). What this line has to carry is the two facts somebody
-        # decides on: nothing leaves the machine, nothing is permanent.
-        blurb = paragraph(
-            "Everything here stays on this machine, and all of it can be "
-            "changed later in Settings.")
-        blurb.setProperty("dim", True)
-        lay.addWidget(blurb)
-
-        lay.addWidget(self._key_section())
-        lay.addWidget(self._bracket_section())
-        lay.addWidget(self._game_data_section())
+        # THE PAGE SCROLLS, THE SIDEBAR AND THE BUTTONS DO NOT. A dialog
+        # is sized to its contents, and the launch-option page alone is
+        # a heading, a seven-step procedure and two cards. Buttons that
+        # scroll away with the content are the fault this avoids, not a
+        # smaller version of it.
+        self.pages = QStackedWidget()
+        self.pages.setProperty("bare", True)
+        for step in STEPS:
+            page = StepPage(step)
+            self.pages.addWidget(page)
+        self._fill_pages()
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        holder = QWidget()
+        holder.setProperty("bare", True)
+        inner = QVBoxLayout(holder)
+        inner.setContentsMargins(18, 16, 18, 16)
+        inner.addWidget(self.pages)
+        area.setWidget(holder)
+        across.addWidget(area, 1)
+        shell.addLayout(across, 1)
 
         self.note = QLabel("")
         self.note.setWordWrap(True)
         self.note.setProperty("dim", True)
         self.note.setVisible(False)
-        lay.addWidget(self.note)
-
-        lay.addStretch(1)
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        area.setFrameShape(QScrollArea.Shape.NoFrame)
-        area.setWidget(page)
-        shell.addWidget(area, 1)
 
         buttons = QHBoxLayout()
-        buttons.setContentsMargins(12, 0, 12, 12)
-        self.skip = QPushButton("Skip for now")
-        self.skip.setToolTip("The banner at the top is the way back.")
-        self.skip.clicked.connect(self.reject)
-        buttons.addWidget(self.skip)
+        buttons.setContentsMargins(18, 0, 18, 14)
+        self.back = QPushButton("Back")
+        self.back.clicked.connect(self._back)
+        buttons.addWidget(self.back)
+        # THE NOTE TAKES THE SLACK, AND A STRETCH BACKS IT UP. It is
+        # hidden whenever there is nothing to say, and a hidden widget
+        # contributes no stretch — so without the spacer the three
+        # buttons shared the whole width and read as a tab bar rather
+        # than as Back on one side and the way forward on the other.
+        buttons.addWidget(self.note, 1)
         buttons.addStretch(1)
-        self.finish = QPushButton("Finish and download")
-        self.finish.setProperty("accent", True)
-        self.finish.setDefault(True)
-        self.finish.clicked.connect(self._finish)
-        buttons.addWidget(self.finish)
+        self.skip = QPushButton("Skip this step")
+        self.skip.setToolTip("It goes on the banner at the top of the "
+                             "window, which opens this again here.")
+        self.skip.clicked.connect(self._skip)
+        buttons.addWidget(self.skip)
+        self.next = QPushButton("Next")
+        self.next.setProperty("accent", True)
+        self.next.setDefault(True)
+        self.next.clicked.connect(self._next)
+        buttons.addWidget(self.next)
         shell.addLayout(buttons)
 
-        # AS TALL AS IT WANTS, UP TO WHAT THE SCREEN HAS. Asking for the
-        # full 1218 and letting the window manager clip it is how Finish
-        # ends up off the bottom edge with no way to reach it; asking for
-        # a fixed short height would make everybody scroll on a monitor
-        # with room to spare.
-        self.resize(660, self._fitting_height())
-        self._update_summary()
+        self.resize(820, self._fitting_height())
+        self._show_step(0)
 
-    @staticmethod
-    def _fitting_height(wanted: int = 1218) -> int:
-        """What the content wants, or what the screen can show, whichever
-        is less.
+    # ---- the controls each page owns -------------------------------------
+    def _fill_pages(self) -> None:
+        self._fill_key(self.pages.widget(0).body)
+        self._fill_ranks(self.pages.widget(1).body)
+        self._fill_account(self.pages.widget(2).body)
+        self._fill_gsi(self.pages.widget(3).body)
 
-        `wanted` is the measured height of all three cards laid out. The
-        ceiling is 88% of the AVAILABLE geometry rather than the screen's
-        -- available already excludes the taskbar -- which leaves the
-        dialog reading as a dialog rather than filling the display. The
-        520 floor is there for the degenerate case of a very short
-        screen, where scrolling is the answer rather than a dialog too
-        small to show a card.
-        """
-        screen = QGuiApplication.primaryScreen()
-        if screen is None:
-            return 820
-        return max(520, min(wanted, int(screen.availableGeometry().height()
-                                        * 0.88)))
-
-    # ---- the three sections ----------------------------------------------
-    def _key_section(self) -> QFrame:
-        frame = QFrame()
-        frame.setProperty("card", True)
-        lay = QVBoxLayout(frame)
-        title = QLabel("1 · A Stratz API key")
-        title.setProperty("heading", True)
-        lay.addWidget(title)
-        # WHAT IT IS FOR, WHAT IT COSTS, WHERE IT GOES. The old line said
-        # only "free, and it takes a minute", which answers none of them:
-        # somebody being asked to go and sign up for a thing wants to
-        # know what stops working if they do not.
-        why = paragraph(
-            "Every win rate and matchup in the app comes from Stratz. "
-            "Free: sign in with Steam and copy the key.")
-        why.setProperty("dim", True)
-        lay.addWidget(why)
-        where = paragraph(
-            "It is written to .env beside the app and never sent anywhere "
-            "but Stratz.")
-        where.setProperty("dim", True)
-        lay.addWidget(where)
-
+    def _fill_key(self, lay: QVBoxLayout) -> None:
         row = QHBoxLayout()
-        get = QPushButton("Open stratz.com/api")
-        get.clicked.connect(lambda: webbrowser.open(KEY_URL))
-        row.addWidget(get)
         self.key_box = QLineEdit()
         self.key_box.setPlaceholderText("Paste the key here")
         # NOT a password field: the user needs to see that a paste landed
@@ -275,44 +349,20 @@ class SetupWizard(QDialog):
         self.check.clicked.connect(self._check_key)
         row.addWidget(self.check)
         lay.addLayout(row)
-
         self.key_note = QLabel("")
         self.key_note.setWordWrap(True)
         self.key_note.setProperty("dim", True)
         self.key_note.setVisible(False)
         lay.addWidget(self.key_note)
-        return frame
 
-    def _bracket_section(self) -> QFrame:
-        frame = QFrame()
-        frame.setProperty("card", True)
-        lay = QVBoxLayout(frame)
-        title = QLabel("2 · Which ranks the advice describes")
-        title.setProperty("heading", True)
-        lay.addWidget(title)
-        # WHY "ABOVE", which the old line asserted without saying. Two
-        # ticked rather than one is the other half and is why the presets
-        # are pairs: it roughly doubles the sample.
-        why = paragraph(
-            "Heroes perform differently by rank. Pick the bracket you "
-            "play in, or one above if you are climbing.")
-        why.setProperty("dim", True)
-        lay.addWidget(why)
-        pair = paragraph(
-            "Two adjacent brackets are combined, which doubles the sample "
-            "for a difference smaller than the noise.")
-        pair.setProperty("dim", True)
-        lay.addWidget(pair)
-
-        # A GRID, NOT A ROW. Eight brackets and five presets across one
-        # line each came out with every label elided — "Guardi", "Crusad",
-        # "ald - Crusa" — which is a rank picker you cannot read the ranks
-        # off. Four columns fits the longest name at the app's body size
-        # with room to spare, and the dialog stays a sensible shape.
+    def _fill_ranks(self, lay: QVBoxLayout) -> None:
+        # A GRID, NOT A ROW. Eight brackets across one line came out with
+        # every label elided — "Guardi", "Crusad" — which is a rank
+        # picker you cannot read the ranks off.
         current = target_brackets() or DEFAULT_TARGET_BRACKETS
         ticks = QGridLayout()
         ticks.setHorizontalSpacing(18)
-        self.boxes: dict[str, QCheckBox] = {}
+        self.boxes: dict = {}
         for index, bracket in enumerate(ALL_BRACKETS):
             box = QCheckBox(bracket.title())
             box.setChecked(bracket in current)
@@ -331,45 +381,26 @@ class SetupWizard(QDialog):
                 lambda _c, b=brackets: self._apply_preset(b))
             presets.addWidget(button, index // 3, index % 3)
         lay.addLayout(presets)
-
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
         lay.addWidget(self.summary)
-        return frame
 
-    def _game_data_section(self) -> QFrame:
-        """The third card: one half automatic, one half the user's.
+    def _fill_account(self, lay: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        self.account_box = QLineEdit()
+        self.account_box.setPlaceholderText(
+            "Friend ID, Steam ID, or a profile link")
+        self.account_box.textChanged.connect(self._account_changed)
+        row.addWidget(self.account_box, 1)
+        lay.addLayout(row)
+        self.account_note = QLabel("")
+        self.account_note.setWordWrap(True)
+        self.account_note.setProperty("dim", True)
+        self.account_note.setVisible(False)
+        lay.addWidget(self.account_note)
 
-        It exists because the app used to ask for NEITHER half here and
-        then put a banner up about it — "why is it not just auto run at
-        setup with all the other crap like portraits". The config file is
-        auto-run now, on Finish, with nothing on this card to decide; the
-        launch option cannot be, so it gets the procedure.
-        """
-        frame = QFrame()
-        frame.setProperty("card", True)
-        lay = QVBoxLayout(frame)
-        title = QLabel("3 · Letting Dota tell the app about the draft")
-        title.setProperty("heading", True)
-        lay.addWidget(title)
-        why = paragraph(
-            "Dota can send the app the draft as it happens. Valve's own "
-            "feature: nothing is injected into the game.")
-        why.setProperty("dim", True)
-        lay.addWidget(why)
-        auto = paragraph(
-            "Finish writes the config file into your Dota install for "
-            "you. One step is yours, in Steam:")
-        auto.setProperty("dim", True)
-        lay.addWidget(auto)
-
-        lay.addWidget(steps(gsi_install.LAUNCH_STEPS))
-
-        # ONE BUTTON DOING BOTH, because they are one action: the
-        # clipboard is loaded by the time the box you paste into is in
-        # front of you. It covers steps 1 and 2, which is as far as
-        # anything can carry somebody -- the box it lands on is the one
-        # they have to type in.
+    def _fill_gsi(self, lay: QVBoxLayout) -> None:
+        lay.addWidget(steps_list(gsi_install.LAUNCH_STEPS))
         row = QHBoxLayout()
         self.copy_option = QPushButton("Copy it and open Steam")
         self.copy_option.setProperty("accent", True)
@@ -377,34 +408,141 @@ class SetupWizard(QDialog):
         row.addWidget(self.copy_option)
         row.addStretch(1)
         lay.addLayout(row)
-
         self.gsi_note = QLabel("")
         self.gsi_note.setWordWrap(True)
         self.gsi_note.setProperty("dim", True)
         self.gsi_note.setVisible(False)
         lay.addWidget(self.gsi_note)
-        return frame
 
-    def _copy_launch_option(self) -> None:
-        """Copy it and open the dialog it goes in.
+    # ---- moving between steps --------------------------------------------
+    @staticmethod
+    def _fitting_height(wanted: int = 760) -> int:
+        """What the pages want, or what the screen can show, less.
 
-        A press with no visible result is a press nobody trusts, and both
-        halves of this one land somewhere the dialog cannot see -- the
-        clipboard, and another program's window. So it says what it did.
-        And it says the same thing whether or not the handler reported
-        success: Steam is silent either way, so a True there is not
-        evidence the Properties window opened.
+        88% of the AVAILABLE geometry — available already excludes the
+        taskbar — so the dialog reads as a dialog rather than filling the
+        display. The floor is for a very short screen, where the answer
+        is to scroll rather than to show a window too small for a card.
         """
-        QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
-        gsi_install.open_properties()
-        self._note(self.gsi_note,
-                   "Copied, and Steam should be opening Dota's properties. "
-                   "Paste into Launch Options, then restart Dota. If Steam "
-                   "did not open, step 1 above does it by hand.")
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return wanted
+        return max(480, min(wanted, int(screen.availableGeometry().height()
+                                        * 0.88)))
 
-    # ---- state ----------------------------------------------------------
+    def _show_step(self, index: int) -> None:
+        self.at = max(0, min(index, len(STEPS) - 1))
+        step = STEPS[self.at]
+        self.reached.add(step.ident)
+        self.pages.setCurrentIndex(self.at)
+        # REACHED STEPS ONLY. A step ahead of you is dim and cannot be
+        # jumped to, which is what makes the order forced; one behind you
+        # can be, because going back to correct something is not the same
+        # as skipping ahead past a question.
+        self.sections.set_reachable(self.reached)
+        self.sections.light(step.ident)
+        self.back.setEnabled(self.at > 0)
+        last = self.at == len(STEPS) - 1
+        self.next.setText("Finish" if last else "Next")
+        self._note(self.note, "")
+        self._update_next()
+
+    def _jump_to(self, ident: str) -> None:
+        if ident not in self.reached:
+            return
+        for index, step in enumerate(STEPS):
+            if step.ident == ident:
+                self._show_step(index)
+                return
+
+    def _back(self) -> None:
+        self._show_step(self.at - 1)
+
+    def _skip(self) -> None:
+        """Move on, leaving this step on the banner's list.
+
+        It is NOT the same as pressing Next with the box empty, which is
+        refused: Skip is a decision, and the difference is whether the
+        app has been told to stop asking for now or is being walked past
+        an unanswered question by accident.
+        """
+        self._advance()
+
+    def _next(self) -> None:
+        done, problem = self._commit(STEPS[self.at])
+        if problem:
+            self._note(self.note, problem, warn=True)
+            return
+        if done:
+            ident = STEPS[self.at].ident
+            if ident in self.pending:
+                self.pending.remove(ident)
+        self._advance()
+
+    def _advance(self) -> None:
+        if self.at == len(STEPS) - 1:
+            self.accept()
+            return
+        self._show_step(self.at + 1)
+
+    def _commit(self, step: Step) -> tuple:
+        """Save this step's answer. Returns (done, problem).
+
+        PER STEP, not all at the end: a stepped installer that only
+        writes anything on the last page loses four answers when
+        somebody closes it on the fourth, and the whole point of the
+        banner is that what IS done stays done.
+        """
+        if step.ident == "key":
+            key = self.key_box.text().strip()
+            if not key:
+                return False, ("Paste your key, or press Skip this step "
+                               "to come back to it later.")
+            if self.checked is False:
+                return False, "Stratz rejected that key."
+            try:
+                save_stratz_key(key)
+            except (OSError, ValueError) as failure:
+                return False, f"Could not save the key: {failure}"
+            return True, ""
+        if step.ident == "ranks":
+            if not self.selected:
+                return False, "Tick at least one rank."
+            try:
+                save_target_brackets(self.selected)
+            except (OSError, ValueError) as failure:
+                return False, f"Could not save the ranks: {failure}"
+            return True, ""
+        if step.ident == "account":
+            text = self.account_box.text().strip()
+            if not text:
+                return False, ("Enter your friend ID, or press Skip this "
+                               "step to come back to it later.")
+            parsed = account_mod.parse(text)
+            if parsed.error:
+                return False, parsed.error
+            if parsed.account_id is None:
+                return False, ("That reads as a display name. Use the "
+                               "Friend ID number from your Dota profile.")
+            # REMEMBERED HERE, so the History tab opens on you. Reading
+            # it back off this dialog would mean the wizard had to still
+            # exist when the tab was first drawn.
+            from ..history import store
+            try:
+                store.remember(parsed.account_id)
+            except OSError as failure:
+                return False, f"Could not save the account: {failure}"
+            self.account_id = parsed.account_id
+            return True, ""
+        # The launch option is the user's to do in another program, so
+        # there is nothing here to validate and nothing to save. Finish
+        # takes it as done; the banner's rung is the GSI feed being
+        # silent, which is a better test than anything this could ask.
+        return True, ""
+
+    # ---- state ------------------------------------------------------------
     @property
-    def selected(self) -> tuple[str, ...]:
+    def selected(self) -> tuple:
         return tuple(b for b in ALL_BRACKETS if self.boxes[b].isChecked())
 
     def _apply_preset(self, brackets) -> None:
@@ -424,7 +562,7 @@ class SetupWizard(QDialog):
             self.summary.setProperty("warn", False)
         self.summary.style().unpolish(self.summary)
         self.summary.style().polish(self.summary)
-        self._update_finish()
+        self._update_next()
 
     def _key_changed(self) -> None:
         # A key that has been edited since the check is UNCHECKED again,
@@ -432,13 +570,25 @@ class SetupWizard(QDialog):
         # one character and inherit the previous answer.
         self.checked = None
         self._note(self.key_note, "")
-        self._update_finish()
+        self._update_next()
 
-    def _update_finish(self) -> None:
-        self.finish.setEnabled(bool(self.selected)
-                               and bool(self.key_box.text().strip())
-                               and self.checked is not False
-                               and self.worker is None)
+    def _account_changed(self) -> None:
+        text = self.account_box.text().strip()
+        if not text:
+            self._note(self.account_note, "")
+        else:
+            parsed = account_mod.parse(text)
+            # SAY WHAT IT READ IT AS. This box takes five shapes of id
+            # and a profile URL, and "converted from a 64 bit Steam ID"
+            # is the difference between trusting the number and wondering
+            # whether it took the paste whole.
+            self._note(self.account_note,
+                       parsed.error or parsed.how or "",
+                       warn=bool(parsed.error))
+        self._update_next()
+
+    def _update_next(self) -> None:
+        self.next.setEnabled(self.worker is None)
 
     @staticmethod
     def _note(label: QLabel, text: str, warn: bool = False) -> None:
@@ -448,7 +598,7 @@ class SetupWizard(QDialog):
         label.style().unpolish(label)
         label.style().polish(label)
 
-    # ---- checking -------------------------------------------------------
+    # ---- the two buttons that reach outside this window -------------------
     def _check_key(self) -> None:
         if self.worker is not None:
             return
@@ -462,49 +612,36 @@ class SetupWizard(QDialog):
         self.worker.answered.connect(self._checked)
         self.worker.finished.connect(self._worker_done)
         self.worker.start()
-        self._update_finish()
+        self._update_next()
 
     def _checked(self, answer) -> None:
         self.checked = answer.ok
         # ok is None — asked and not answered — is NOT a bad key, so it is
-        # a plain note and Finish stays available.
+        # a plain note and Next stays available.
         self._note(self.key_note, answer.message, warn=answer.ok is False)
-        # The verdict has to reach the button in the same breath: without
-        # this a rejected key left Finish enabled until something else
-        # happened to re-evaluate it, which is the whole point of asking.
-        self._update_finish()
+        self._update_next()
 
     def _worker_done(self) -> None:
         self.worker = None
         self.check.setEnabled(True)
-        self._update_finish()
+        self._update_next()
 
-    # ---- finishing ------------------------------------------------------
-    def _finish(self) -> None:
-        """Save both, then accept. Whichever fails, say which and stay."""
-        try:
-            save_target_brackets(self.selected)
-        except (OSError, ValueError) as failure:
-            self._note(self.note, f"Could not save the ranks: {failure}",
-                       warn=True)
-            return
-        try:
-            save_stratz_key(self.key_box.text())
-        except (OSError, ValueError) as failure:
-            self._note(self.note, f"Could not save the key: {failure}",
-                       warn=True)
-            return
-        # THE CONFIG ITSELF IS THE WINDOW'S, not this dialog's
-        # (`MainWindow._ensure_gsi_config`). It has to know the listener's
-        # real port and hand the new token to the running server in the
-        # same breath, and it is the same call that runs at every start
-        # for installs that never see this wizard — so writing it here
-        # too would be two implementations of one step. Accepting is what
-        # asks for it; a failure to find Dota is reported by the banner
-        # rather than blocking Finish, since setting the app up before
-        # installing Dota is a perfectly ordinary order to do it in.
-        self.accept()
+    def _copy_launch_option(self) -> None:
+        """Copy it and open the dialog it goes in — ONE action, so the
+        clipboard is loaded by the time the box is in front of you.
 
+        It says the same thing whether or not the handler reported
+        success: Steam is silent either way, so a True there is not
+        evidence the Properties window opened.
+        """
+        QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
+        gsi_install.open_properties()
+        self._note(self.gsi_note,
+                   "Copied, and Steam should be opening Dota's properties. "
+                   "Paste into Launch Options, then restart Dota. If Steam "
+                   "did not open, step 1 above does it by hand.")
+
+    # ---- closing ----------------------------------------------------------
     def shutdown(self) -> None:
         """A QThread destroyed while running takes the process with it, and
         closing the dialog mid-check is exactly when that happens."""

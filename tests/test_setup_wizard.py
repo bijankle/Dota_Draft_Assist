@@ -130,35 +130,84 @@ def test_the_wizard_is_needed_only_until_there_is_a_key(sandbox):
 
 # ------------------------------------------------------------- dialog ----
 
-def test_finishing_writes_both_and_downloads(qapp, sandbox, monkeypatch):
-    """Ticking the boxes is the whole interaction: an install that ends by
-    telling the user to find a menu item has not finished installing."""
+def _at(wizard, ident: str):
+    """Put the wizard on a step by name, as walking to it would."""
+    from draft_assist.ui.setup_wizard import STEPS
+    index = [step.ident for step in STEPS].index(ident)
+    wizard.reached.update(step.ident for step in STEPS[:index + 1])
+    wizard._show_step(index)
+    return wizard
+
+
+def test_each_step_writes_its_own_answer_as_you_leave_it(qapp, sandbox,
+                                                         monkeypatch):
+    """PER STEP, not all at the end. A stepped installer that only saves
+    on the last page loses every answer when somebody closes it on the
+    fourth, and the whole point of the banner is that what IS done stays
+    done."""
     monkeypatch.setattr(stratz.requests, "post", lambda *a, **k: Answer())
     wizard = SetupWizard()
-    wizard.key_box.setText("pasted-key")
-    wizard._apply_preset(("LEGEND", "ANCIENT"))
-    assert wizard.finish.isEnabled()
-    wizard._finish()
 
-    assert config.stratz_api_key() == "pasted-key"
+    wizard.key_box.setText("pasted-key")
+    wizard._next()
+    assert config.stratz_api_key() == "pasted-key", "the key waited"
+
+    wizard._apply_preset(("LEGEND", "ANCIENT"))
+    wizard._next()
     assert config.target_brackets() == ("LEGEND", "ANCIENT")
     wizard.deleteLater()
 
 
-def test_a_rejected_key_blocks_finish_and_an_unreachable_one_does_not(
+def test_the_friend_id_is_remembered_so_the_history_tab_opens_on_you(
+        qapp, sandbox, monkeypatch, tmp_path):
+    """It replaces opening on a professional player's public id —
+    "forget about topsons accoutn, that was a silly addition"."""
+    from draft_assist.history import store
+    monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
+
+    wizard = _at(SetupWizard(), "account")
+    wizard.account_box.setText("86680300")
+    wizard._next()
+    assert wizard.account_id == 86680300
+    assert [row["account_id"] for row in store.load()] == [86680300]
+    wizard.deleteLater()
+
+
+def test_a_steam64_is_converted_rather_than_refused(qapp, sandbox,
+                                                    monkeypatch, tmp_path):
+    """The box takes five shapes of id and a profile URL, and says which
+    it read — "converted from a 64 bit Steam ID" is the difference
+    between trusting the number and wondering whether the paste landed
+    whole."""
+    from draft_assist.history import store
+    monkeypatch.setattr(store, "STORE_FILE", tmp_path / "accounts.json")
+
+    wizard = _at(SetupWizard(), "account")
+    wizard.account_box.setText("76561198046946028")
+    assert not wizard.account_note.isHidden()
+    assert "64 bit" in wizard.account_note.text()
+    wizard._next()
+    assert wizard.account_id == 86680300
+    wizard.deleteLater()
+
+
+def test_a_rejected_key_blocks_the_step_and_an_unreachable_one_does_not(
         qapp, sandbox):
+    """THREE-VALUED, like every other "did the network answer" question
+    here: telling somebody with flaky wifi that their key is bad sends
+    them off to get another one they did not need."""
     wizard = SetupWizard()
     wizard.key_box.setText("something")
-    wizard._apply_preset(("ANCIENT",))
 
     wizard._checked(stratz.KeyCheck(False, "Stratz rejected that key."))
-    assert not wizard.finish.isEnabled()
-    assert wizard.key_note.property("warn") is True
+    wizard._next()
+    assert wizard.at == 0, "a rejected key walked straight past the step"
+    assert wizard.note.property("warn") is True
 
     # Could not ask is NOT a no.
     wizard._checked(stratz.KeyCheck(None, "Could not reach Stratz."))
-    assert wizard.finish.isEnabled()
-    assert wizard.key_note.property("warn") is False
+    wizard._next()
+    assert wizard.at == 1
     wizard.deleteLater()
 
 
@@ -166,22 +215,65 @@ def test_editing_the_key_forgets_the_last_answer(qapp, sandbox):
     """Otherwise a rejected key corrected by one character inherits the
     previous verdict."""
     wizard = SetupWizard()
-    wizard._apply_preset(("ANCIENT",))
     wizard.key_box.setText("bad")
     wizard._checked(stratz.KeyCheck(False, "no"))
     assert wizard.checked is False
     wizard.key_box.setText("bad-corrected")
     assert wizard.checked is None
-    assert wizard.finish.isEnabled()
     wizard.deleteLater()
 
 
-def test_no_ranks_ticked_cannot_be_finished(qapp, sandbox):
-    wizard = SetupWizard()
-    wizard.key_box.setText("a-key")
+def test_no_ranks_ticked_cannot_be_moved_past(qapp, sandbox):
+    wizard = _at(SetupWizard(), "ranks")
     wizard._apply_preset(())
-    assert not wizard.finish.isEnabled()
+    wizard._next()
+    assert wizard.at == 1, "it advanced with no ranks ticked"
     assert "at least one" in wizard.summary.text()
+    wizard.deleteLater()
+
+
+def test_an_empty_step_is_refused_but_skipping_it_is_not(qapp, sandbox):
+    """Skip is a DECISION and pressing Next with an empty box is not.
+    The difference is whether the app has been told to stop asking for
+    now, or is being walked past an unanswered question by accident."""
+    wizard = SetupWizard()
+    wizard._next()
+    assert wizard.at == 0, "an empty key walked past the step"
+    assert "Skip this step" in wizard.note.text()
+
+    wizard._skip()
+    assert wizard.at == 1
+    assert "key" in wizard.pending, "a skipped step must stay outstanding"
+    wizard.deleteLater()
+
+
+def test_you_cannot_jump_ahead_but_you_can_go_back(qapp, sandbox,
+                                                   monkeypatch):
+    """"a forced step by step like your typical install windows steps".
+    The sidebar shows where you are; it is not a way around the order.
+    Going BACK is different — correcting an answer is not skipping a
+    question."""
+    monkeypatch.setattr(stratz.requests, "post", lambda *a, **k: Answer())
+    wizard = SetupWizard()
+    wizard._jump_to("gsi")
+    assert wizard.at == 0, "the sidebar let somebody jump to the last step"
+
+    wizard.key_box.setText("a-key")
+    wizard._next()
+    assert wizard.at == 1
+    wizard._jump_to("key")
+    assert wizard.at == 0, "going back to a step already reached is allowed"
+    wizard.deleteLater()
+
+
+def test_the_sidebar_lists_every_step_in_order(qapp, sandbox):
+    """It is the progress indicator, so it is FIXED and always complete —
+    listing only what you have reached would make the rows move under the
+    cursor and would say nothing about how much is left."""
+    from draft_assist.ui.setup_wizard import STEPS
+    wizard = SetupWizard()
+    assert wizard.sections.order == [step.ident for step in STEPS]
+    assert wizard.sections.lit() == STEPS[0].ident
     wizard.deleteLater()
 
 

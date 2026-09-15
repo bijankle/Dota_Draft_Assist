@@ -838,13 +838,16 @@ class HistoryTab(QWidget):
         if rows:
             self._apply_remembered(rows[0])
             return
-        # NOTHING REMEMBERED YET, so the box opens on the example account
-        # rather than on nothing. It is a starting value and not a
-        # setting: run any account of your own and that one is remembered
-        # and adopted from then on, which is the branch above.
-        example = store.starting_account()
-        if example is not None:
-            self.account_box.setText(str(example))
+        # NOTHING REMEMBERED YET, so the box opens empty and says what
+        # it wants. It used to open on a professional player's public
+        # friend ID so that Run had something to show on a fresh
+        # install — "forget about topsons accoutn, that was a silly
+        # addition". First-run setup asks for YOUR id now and remembers
+        # it, which is a better answer to the same problem: the branch
+        # above then adopts it and this one is only reached by somebody
+        # who skipped that step.
+        self.account_box.setPlaceholderText(
+            "Your Dota friend ID — Settings ▸ Run first-time setup")
 
     def _pick_remembered(self, index: int) -> None:
         account_id = self.remembered.itemData(index)
