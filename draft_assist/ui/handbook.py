@@ -163,11 +163,21 @@ SECTIONS: tuple = (
         "Precedence is strict: what the game reports beats the screen, "
         "which beats what you entered by hand. A slot nothing resolved "
         "stays unknown rather than being guessed at.",
-        "Setting up game data is Settings ▸ Game data: it writes a config "
-        "file into your Dota install, and Dota needs the launch option "
-        "-gamestateintegration, which is the step everyone forgets. "
-        "Diagnose game data names the one link that is broken rather than "
-        "handing you the whole checklist.",
+        "Game data needs two things, and the app does one of them for "
+        "you. The config file in your Dota install is written at first "
+        "run and kept right at every start, with nothing in it for you "
+        "to set. The other is Dota's launch option, which no program can "
+        "set for you: Steam keeps it in a file it rewrites from memory "
+        "whenever it closes, so an edit made behind its back is thrown "
+        "away.",
+        "To add it: open Steam, go to your Library, right-click Dota 2 "
+        "and choose Properties. On the General page find the Launch "
+        "Options box and paste -gamestateintegration into it, after a "
+        "space if something is already there. Close the window — Steam "
+        "saves as you type — and restart Dota, which reads the option "
+        "only at startup. The banner's button copies it for you, and "
+        "Settings ▸ Game data ▸ Diagnose game data names the one link "
+        "that is broken rather than handing you the whole checklist.",
         "Recognition needs to know where the portraits are on your "
         "screen, and it works that out by itself. The pick slots are "
         "fractions of Dota's 16:9 HUD area rather than pixels, so one "

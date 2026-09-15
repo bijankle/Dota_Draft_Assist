@@ -4115,6 +4115,92 @@ credentials, and put the account at risk. Do not go there.
   reads `_index`, which caches ABSENCE, so asking it on a fresh install
   from a strip the live loop refreshes would cache "there are no
   portraits" on the first tick and never revisit it.
+  **GSI SETUP IS TWO HALVES, AND THE APP DOES ITS OWN**
+  (`gsi_install.ensure`, `gsi_install.LAUNCH_STEPS`,
+  `MainWindow._ensure_gsi_config` / `_launch_option_help` /
+  `_install_gsi_from_banner`, `ui_settings.setup_skipped`). Game data has
+  exactly two requirements and they are not alike. **The config file** in
+  `<dota 2 beta>/game/dota/cfg/gamestate_integration/` is a mkdir and a
+  write with NOTHING in it for anybody to decide — written at first run
+  and re-checked at every start. **`-gamestateintegration` in Steam's
+  launch options** cannot be automated by anything: Steam holds
+  `localconfig.vdf` in memory and rewrites it on exit, so an edit made
+  behind its back is discarded, and Dota reads the option only at launch
+  so it needs a restart besides.
+  **THE APP USED TO DO NEITHER AT SETUP** and then raised a banner naming
+  a menu item for the half it could have done itself — "check game data
+  should not jsut give an error and instruct you to download game data...
+  instead it should just facilitate the installation directly", and "why
+  is it not just auto run at setup with all the other crap like
+  portraits". There was no reason in the code: `_finish` saved the
+  brackets and the key and stopped, and the GSI install was an older
+  standalone menu item that predated the wizard. The two things that
+  could have been reasons both fail — the port is known by then (the
+  wizard is shown from `offer_setup` AFTER `show()`, long after the
+  server binds), and "it writes into somebody else's program folder" was
+  already true of the menu item.
+  **`ensure` RATHER THAN `install`, AND THE DIFFERENCE IS THE TOKEN.**
+  `install` mints a fresh token whenever it is not handed one, so its
+  text never matches what is on disk and it REWRITES ON EVERY CALL —
+  right for a button somebody pressed, and a bug at startup: a Dota
+  already in a match goes on sending the token it was given at launch,
+  which this app would then reject. Silently, because a rejected payload
+  looks exactly like no payload at all. `ensure` reuses
+  `read_installed_token`, so an unchanged config renders identical text,
+  `created` is False and nothing is written. A moved PORT still rewrites,
+  since a config pointing at a dead port is silence.
+  **AND THE TOKEN REACHES THE LISTENER IN THE SAME BREATH.** The server
+  is built with whatever token was on disk at startup — on a fresh
+  install, none — so a config written now against a listener still
+  expecting nothing would reject everything Dota sent.
+  **A SKIP IS NOT AN AGREEMENT** (`ui_settings.setup_skipped`, in
+  DEFAULTS because that dict is the write filter). Finishing setup is
+  what asks for the file; Skip is somebody who has not agreed to
+  anything yet. That is the ONE thing the flag decides, and the banner's
+  button clears it — otherwise the config would be written once there
+  and never kept right again.
+  **`needed()` ASKS ABOUT THE KEY ALONE**, so every existing install
+  skips the wizard entirely and would never have had the file written
+  for it. `offer_setup` therefore calls `_ensure_gsi_config` on the path
+  where the wizard does NOT show, which is what makes "setup happens at
+  startup" true for them rather than only for a fresh unzip.
+  **THE BANNER OFFERS WHICHEVER HALF IS MISSING.** Config absent →
+  "Install it", which does it; config present → "Show me how", which is
+  the procedure, because the only half left is the user's. Neither names
+  a menu.
+  **AND THE PROCEDURE IS SPELLED OUT, WHICH REVERSES "A SCREEN SAYS WHAT
+  A CONTROL WILL DO"** for this one case, at the user's request: "there
+  should be instruction at setup for the user to add the
+  -gamestateistegration in their steam... step by step instruction". The
+  rule that cut this app's prose is right about PARAGRAPHS and wrong
+  about a procedure carried out by hand in another program — naming the
+  option and leaving somebody to it is exactly how "add the launch
+  option" became a thing people were told and did not do. `LAUNCH_STEPS`
+  is seven numbered lines, ONE action each, and it lives in
+  `gsi/install.py` because the wizard's third card, the banner's dialog
+  and the manual all read it; three copies would be two going stale.
+  `test_gsi_setup` holds each step under 100 characters and `test_manual`
+  still holds every `paragraph()` under 120 — the cap changed shape
+  rather than going away.
+  **THE WIZARD SCROLLS NOW, AND THE THIRD CARD IS WHY.** A dialog is
+  sized to its contents, so three cards and a seven-step procedure came
+  to **1218px** — taller than the usable height of a 1080p screen, with
+  Finish below the bottom edge of that and of a 1366x768 laptop. Same
+  answer as the Debug tab (`app._scrolling`): the cards go in a
+  QScrollArea and ask for nothing, and the dialog takes 88% of the
+  available height. **Skip and Finish stay OUTSIDE it** — buttons that
+  scroll away with the content are the fault being fixed, not a smaller
+  version of it. Caught by rendering the dialog and looking at it; every
+  test passed.
+  **AND `_install_gsi` RAISED NameError FOR AS LONG AS THE FEATURE HAD
+  BEEN ATTACHED TO IT.** Five lines of `_update_status`'s vision note
+  landed inside it in cd0e72c, where neither `snap` nor `parts` exists —
+  so Settings ▸ Game data ▸ Set up game data (GSI) wrote the config and
+  then died, before handing the token to the listener and before the
+  dialog naming the launch option. The write was real and useless, and
+  nothing on screen said so. The block was displayed nowhere either, so
+  the status-line feature that commit shipped was never live. A test
+  walks that method's AST for the two names.
   **A FRESH INSTALL IS A WIZARD, NOT A BANNER NAMING A FILE**
   (`ui/setup_wizard.py`, `MainWindow.offer_setup` / `_run_setup`). The
   app opened to empty tiles over a strip telling the user to go and edit

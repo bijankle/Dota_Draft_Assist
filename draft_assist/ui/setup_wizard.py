@@ -1,10 +1,21 @@
-"""First-run setup: the key, the rank, and then get on with it.
+"""First-run setup: the key, the ranks, the game feed, and get on with it.
 
 A fresh install needs two things the app cannot work out for itself — a
 free Stratz API key, and which ranks the statistics should describe — and
 before this existed it asked for neither. It opened to a grid of empty
 plates with a banner naming a file, which is fine for the person who wrote
 it and no use at all to somebody who has just unzipped it.
+
+**AND A THIRD CARD THAT ASKS FOR ALMOST NOTHING.** Game data (GSI) has
+two halves: a config file in the Dota install, which this writes on
+Finish because there is nothing in it for anybody to decide, and
+`-gamestateintegration` in Steam's launch options, which cannot be
+automated at all — Steam holds that file in memory and rewrites it on
+exit. So the card does the first silently and spells the second out as a
+numbered procedure with the option on the clipboard, at the user's
+request. Neither half used to be here at all, and the app opened telling
+people to go and find a menu item for the half it could have done
+itself.
 
 **IT ASKS ONCE AND THEN DOES THE WORK.** Ticking the boxes is the whole
 interaction: on Finish it writes `.env`, saves the brackets, and starts
@@ -27,12 +38,14 @@ wizard opens again next time until setup is actually done.
 import webbrowser
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QVBoxLayout)
+from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
+                             QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+                             QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from ..config import (ALL_BRACKETS, DEFAULT_TARGET_BRACKETS, has_stratz_key,
                       save_stratz_key, save_target_brackets, target_brackets)
+from ..gsi import install as gsi_install
 
 KEY_URL = "https://stratz.com/api"
 
@@ -103,6 +116,27 @@ def paragraph(text: str, width: int = TEXT_WIDTH) -> QLabel:
     return label
 
 
+def steps(lines) -> QLabel:
+    """A numbered procedure, which is NOT a paragraph.
+
+    The rule on this dialog is that it asks rather than explains, and it
+    is held by a test: no `paragraph` over 120 characters, because four
+    of them about where statistics come from is what this screen was cut
+    back from. A PROCEDURE is a different shape and earns its place by
+    being the thing the user has to carry out by hand — it is scanned a
+    line at a time rather than read, and each line here is one action.
+    Cutting it to a sentence is what left "add the launch option" as a
+    thing people were told about and did not do.
+    """
+    label = QLabel("\n".join(f"{n}.  {line}"
+                              for n, line in enumerate(lines, 1)))
+    label.setWordWrap(True)
+    label.setTextInteractionFlags(
+        Qt.TextInteractionFlag.TextSelectableByMouse)
+    label.setMinimumHeight(label.heightForWidth(TEXT_WIDTH))
+    return label
+
+
 class SetupWizard(QDialog):
     """One dialog: what this needs, the key, the ranks, and Finish."""
 
@@ -113,25 +147,42 @@ class SetupWizard(QDialog):
         self.checked: bool | None = None       # what check_key last said
         self.worker: KeyWorker | None = None
 
-        lay = QVBoxLayout(self)
+        # THE CARDS SCROLL, and the third one is what made that necessary.
+        # A dialog is sized to its contents, so three cards and a
+        # seven-step procedure came to 1218px — taller than the usable
+        # height of a 1080p screen and half as tall again as a 1366x768
+        # laptop's, with Finish somewhere below the bottom of both. This
+        # is `app._scrolling`'s lesson in a dialog: a long page inside a
+        # scroll area asks for nothing, so the height becomes a choice
+        # rather than a demand. The buttons stay OUTSIDE it — Skip and
+        # Finish scrolling away with the content is the fault being
+        # fixed, not a smaller version of it.
+        shell = QVBoxLayout(self)
+        shell.setContentsMargins(0, 0, 0, 0)
+        page = QWidget()
+        page.setProperty("bare", True)
+        lay = QVBoxLayout(page)
         lay.setSpacing(10)
 
-        heading = QLabel("Two things and it is ready")
+        heading = QLabel("Three steps and it is ready")
         heading.setProperty("heading", True)
         lay.addWidget(heading)
 
         # ONE LINE. It was four, explaining where the numbers come from
-        # and why each of the two things below is being asked for — all
-        # true, all read once, and all of it between somebody and the
-        # only two controls on the screen. It is the manual's first page
-        # now (Help ▸ User manual).
+        # and why each thing below is being asked for — all true, all
+        # read once, and all of it between somebody and the controls
+        # they came for. It is the manual's first page now (Help ▸ User
+        # manual). What this line has to carry is the two facts somebody
+        # decides on: nothing leaves the machine, nothing is permanent.
         blurb = paragraph(
-            "Both are stored on this machine and can be changed later.")
+            "Everything here stays on this machine, and all of it can be "
+            "changed later in Settings.")
         blurb.setProperty("dim", True)
         lay.addWidget(blurb)
 
         lay.addWidget(self._key_section())
         lay.addWidget(self._bracket_section())
+        lay.addWidget(self._game_data_section())
 
         self.note = QLabel("")
         self.note.setWordWrap(True)
@@ -139,7 +190,15 @@ class SetupWizard(QDialog):
         self.note.setVisible(False)
         lay.addWidget(self.note)
 
+        lay.addStretch(1)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setWidget(page)
+        shell.addWidget(area, 1)
+
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(12, 0, 12, 12)
         self.skip = QPushButton("Skip for now")
         self.skip.setToolTip("The banner at the top is the way back.")
         self.skip.clicked.connect(self.reject)
@@ -150,22 +209,57 @@ class SetupWizard(QDialog):
         self.finish.setDefault(True)
         self.finish.clicked.connect(self._finish)
         buttons.addWidget(self.finish)
-        lay.addLayout(buttons)
+        shell.addLayout(buttons)
 
+        # AS TALL AS IT WANTS, UP TO WHAT THE SCREEN HAS. Asking for the
+        # full 1218 and letting the window manager clip it is how Finish
+        # ends up off the bottom edge with no way to reach it; asking for
+        # a fixed short height would make everybody scroll on a monitor
+        # with room to spare.
+        self.resize(660, self._fitting_height())
         self._update_summary()
 
-    # ---- the two sections ----------------------------------------------
+    @staticmethod
+    def _fitting_height(wanted: int = 1218) -> int:
+        """What the content wants, or what the screen can show, whichever
+        is less.
+
+        `wanted` is the measured height of all three cards laid out. The
+        ceiling is 88% of the AVAILABLE geometry rather than the screen's
+        -- available already excludes the taskbar -- which leaves the
+        dialog reading as a dialog rather than filling the display. The
+        520 floor is there for the degenerate case of a very short
+        screen, where scrolling is the answer rather than a dialog too
+        small to show a card.
+        """
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return 820
+        return max(520, min(wanted, int(screen.availableGeometry().height()
+                                        * 0.88)))
+
+    # ---- the three sections ----------------------------------------------
     def _key_section(self) -> QFrame:
         frame = QFrame()
         frame.setProperty("card", True)
         lay = QVBoxLayout(frame)
-        title = QLabel("1 · Your Stratz API key")
+        title = QLabel("1 · A Stratz API key")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = paragraph("Free, and it takes a minute. Skip it and the "
-                        "app still opens.")
+        # WHAT IT IS FOR, WHAT IT COSTS, WHERE IT GOES. The old line said
+        # only "free, and it takes a minute", which answers none of them:
+        # somebody being asked to go and sign up for a thing wants to
+        # know what stops working if they do not.
+        why = paragraph(
+            "Every win rate and matchup in the app comes from Stratz. "
+            "Free: sign in with Steam and copy the key.")
         why.setProperty("dim", True)
         lay.addWidget(why)
+        where = paragraph(
+            "It is written to .env beside the app and never sent anywhere "
+            "but Stratz.")
+        where.setProperty("dim", True)
+        lay.addWidget(where)
 
         row = QHBoxLayout()
         get = QPushButton("Open stratz.com/api")
@@ -193,13 +287,22 @@ class SetupWizard(QDialog):
         frame = QFrame()
         frame.setProperty("card", True)
         lay = QVBoxLayout(frame)
-        title = QLabel("2 · Which ranks")
+        title = QLabel("2 · Which ranks the advice describes")
         title.setProperty("heading", True)
         lay.addWidget(title)
-        why = paragraph("Rates differ by rank. One bracket above where "
-                        "you play is the usual choice.")
+        # WHY "ABOVE", which the old line asserted without saying. Two
+        # ticked rather than one is the other half and is why the presets
+        # are pairs: it roughly doubles the sample.
+        why = paragraph(
+            "Heroes perform differently by rank. Pick the bracket you "
+            "play in, or one above if you are climbing.")
         why.setProperty("dim", True)
         lay.addWidget(why)
+        pair = paragraph(
+            "Two adjacent brackets are combined, which doubles the sample "
+            "for a difference smaller than the noise.")
+        pair.setProperty("dim", True)
+        lay.addWidget(pair)
 
         # A GRID, NOT A ROW. Eight brackets and five presets across one
         # line each came out with every label elided — "Guardi", "Crusad",
@@ -233,6 +336,56 @@ class SetupWizard(QDialog):
         self.summary.setWordWrap(True)
         lay.addWidget(self.summary)
         return frame
+
+    def _game_data_section(self) -> QFrame:
+        """The third card: one half automatic, one half the user's.
+
+        It exists because the app used to ask for NEITHER half here and
+        then put a banner up about it — "why is it not just auto run at
+        setup with all the other crap like portraits". The config file is
+        auto-run now, on Finish, with nothing on this card to decide; the
+        launch option cannot be, so it gets the procedure.
+        """
+        frame = QFrame()
+        frame.setProperty("card", True)
+        lay = QVBoxLayout(frame)
+        title = QLabel("3 · Letting Dota tell the app about the draft")
+        title.setProperty("heading", True)
+        lay.addWidget(title)
+        why = paragraph(
+            "Dota can send the app the draft as it happens. Valve's own "
+            "feature: nothing is injected into the game.")
+        why.setProperty("dim", True)
+        lay.addWidget(why)
+        auto = paragraph(
+            "Finish writes the config file into your Dota install for "
+            "you. One step is yours, in Steam:")
+        auto.setProperty("dim", True)
+        lay.addWidget(auto)
+
+        lay.addWidget(steps(gsi_install.LAUNCH_STEPS))
+
+        row = QHBoxLayout()
+        self.copy_option = QPushButton(
+            f"Copy  {gsi_install.LAUNCH_OPTION}")
+        self.copy_option.clicked.connect(self._copy_launch_option)
+        row.addWidget(self.copy_option)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        self.gsi_note = QLabel("")
+        self.gsi_note.setWordWrap(True)
+        self.gsi_note.setProperty("dim", True)
+        self.gsi_note.setVisible(False)
+        lay.addWidget(self.gsi_note)
+        return frame
+
+    def _copy_launch_option(self) -> None:
+        """A press with no visible result is a press nobody trusts."""
+        QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
+        self._note(self.gsi_note,
+                   f"Copied. Paste {gsi_install.LAUNCH_OPTION} into Steam, "
+                   "then restart Dota.")
 
     # ---- state ----------------------------------------------------------
     @property
@@ -326,6 +479,15 @@ class SetupWizard(QDialog):
             self._note(self.note, f"Could not save the key: {failure}",
                        warn=True)
             return
+        # THE CONFIG ITSELF IS THE WINDOW'S, not this dialog's
+        # (`MainWindow._ensure_gsi_config`). It has to know the listener's
+        # real port and hand the new token to the running server in the
+        # same breath, and it is the same call that runs at every start
+        # for installs that never see this wizard — so writing it here
+        # too would be two implementations of one step. Accepting is what
+        # asks for it; a failure to find Dota is reported by the banner
+        # rather than blocking Finish, since setting the app up before
+        # installing Dota is a perfectly ordinary order to do it in.
         self.accept()
 
     def shutdown(self) -> None:
