@@ -3280,39 +3280,35 @@ credentials, and put the account at risk. Do not go there.
   the app wears says nothing about any of them, and it was competing with
   the five marks that are supposed to catch the eye.
 
-- **A RELATION'S FIGURE IS GOLD, AND THE WORDS AND THE BOX ARE BOTH
-  GONE** (`tilekit.delta_text`, `paint_badge(boxed=...)`,
-  `HeroTile.relation_kind`). Clicking a pick put "with +5.2" under each
-  ally and "vs -1.8" under each enemy. Four requests, each getting closer
-  to the same thing: "i dont think this is needed ... just use the
-  capital delta symbol", "actually no scrap that... just use a gold
-  rectangle aroudn the score (bottom right)", "no delta required at
-  all", and finally — REVERSING the rectangle — "instead of showing that
-  mini border around all heroes when you click on a 5 /5 portrait hero,
-  i want it to be that the number changes from green / red to gold".
-  (The delta glyph was withdrawn in the breath it was asked for and is
-  not in the code; the rectangle lasted two rounds and is not either.)
-  **WHAT THE COLOUR BUYS OVER THE FRAME.** Both say the same thing — this
-  figure is about the hero you clicked — and the frame had to be FITTED,
-  outside digits that are already haloed, which cost three terms of
-  arithmetic (`badge_ring_reach`), a measurement off the drawn text
-  rather than the tile, and a size step down on the narrowest tile to
-  make room for itself. A colour cannot crowd anything, cannot be
-  mistaken for part of the number, and cannot resize away from it.
-  **AND GOLD IS THE ONE CHANNEL THAT WAS FREE.** Green and red are
-  spoken for by every signed number in the app, where they mean good and
-  bad FOR YOU; a relation's figure is not a judgement, so painting it in
-  either was the one place those two colours said something the figure
-  did not mean. Gold is this app's "this one" — the window's frame, the
-  focus ring, the pin, the star, the role pills — and none of them means
-  good or bad.
-  The words were also saying what the PANEL already says: an ally tile
-  is in the ally panel.
-  `kind` survives all of it and still says WHETHER this is a relation; it
-  just no longer changes the text, and `relation_kind()` is where it is
-  asked for — an ally-to-ally pairing being scored as synergy and not as
-  a matchup is a fact about the app worth being able to check, and it was
-  only ever incidentally a fact about the label.
+- **A RELATION'S FIGURE IS AN ORDINARY SIGNED NUMBER, AND THAT IS THE END
+  OF FOUR ROUNDS OF TRYING TO MARK IT** (`tilekit.delta_text`,
+  `paint_badge(boxed=...)`, `HeroTile.relation_kind`). Clicking a pick
+  puts that hero's synergy or matchup on every other tile. Saying WHICH
+  kind of figure that is has now been asked for and withdrawn four times:
+  the words "with" and "vs"; "just use the capital delta symbol";
+  "actually no scrap that... just use a gold rectangle aroudn the score
+  (bottom right)"; then "instead of showing that mini border around all
+  heroes... i want it to be that the number changes from green / red to
+  gold"; and finally **"when i click on a hero portrait i dont want the
+  numbers to be gold, i actually prefer green / red... revert the change
+  plz"**. (The delta glyph was withdrawn in the breath it was asked for
+  and never reached the code; the rectangle and the gold both shipped and
+  both came back out.)
+  **WHAT THE FOUR ATTEMPTS HAVE IN COMMON IS WORTH MORE THAN ANY OF
+  THEM**: each was a second answer to a question the screen already
+  answered somewhere the eye was going anyway. Which hero the whole board
+  is measured against is said by the gold RING on that portrait. Whether
+  a figure is a synergy or a matchup is said by the PANEL the tile sits
+  in — an ally tile is in the ally panel. So the badge had nothing left
+  to say, and every mark tried for it was competing with the figure
+  itself for the one corner it has.
+  Green good, red bad, read from your own side, exactly like every other
+  signed number in the app.
+  `kind` and `_boxed` survive all of it and still say WHETHER this is a
+  relation — an ally-to-ally pairing being scored as synergy and not as a
+  matchup is a fact about the app worth being able to check — and
+  `relation_kind()` is where it is asked for. They just no longer change
+  anything drawn.
 
 - **EVERY MARK ON A TILE KISSES ONE MARGIN, AND IT IS MEASURED TO THE
   COLOUR** (`tilekit.MARGIN`, `paint_badge`, `star_box`). At the user's
@@ -3598,8 +3594,29 @@ credentials, and put the account at risk. Do not go there.
   of network with the figures above it unchanged, so without it a press
   is indistinguishable from a press that did nothing — which is the
   fault `_say` was written for one surface over.
-  INDETERMINATE on purpose: the run's stages have no totals known in
-  advance, so a percentage would be a number the widget invented.
+  **IT FILLS LEFT TO RIGHT** (`runner.STAGES`, `HistoryTab.progressed`,
+  `LoadBar.set_percent`), at the user's request — "the red loading bar
+  should move from left to right, making real progress, instead of just a
+  cycling moving loading indicator" — which REVERSES the indeterminate
+  block that stood here on the grounds that "a percentage would be a
+  number the widget invented". That was half right, and the wrong half
+  was load-bearing: the STAGES are real and the runner knows which one it
+  is in, so what could not be invented was a smooth fraction, not
+  progress as such.
+  **STAGES, NOT A SMOOTH FRACTION, AND THAT IS THE HONEST CEILING.** The
+  longest step by far is ONE HTTP request for the whole match list —
+  OpenDota takes a `limit` and answers once — so there is nothing to
+  count while it is in flight, and a bar that crept along during it would
+  be the invention the old rule was written against. The shares are
+  weighted to where the wall clock actually goes rather than spread
+  evenly, the bar NEVER GOES BACKWARDS (a stage reporting less than the
+  last one is a message out of order, not a run losing ground), and a
+  share of -1 puts the block back to CYCLING, so a caller that reports
+  nothing still gets an honest indeterminate bar.
+  The 0 and the 100 are stated by `_set_running`, at the two moments both
+  transitions are already known: a bar that opens where the last run left
+  it reads as a run already half done, and one that vanishes at 85% reads
+  as a run that gave up.
   PAINTED rather than a QProgressBar, for the scrollbars' reason — the
   stylesheet does not name that widget's sub-controls, and what a
   stylesheet does not name goes to the NATIVE style, which on Windows
@@ -3695,6 +3712,18 @@ credentials, and put the account at risk. Do not go there.
   second path to a run would be a second set of answers to all of those,
   and the first time they disagreed the callout would be describing a
   report nobody else had.
+  **BUT IT DOES NOT GO THERE**, at the user's request: "when i hit the
+  profile dropdown update, i dont want the view to change to the history
+  tab... i want the view to remain unchanged". The callout hangs off the
+  TITLE BAR, above both tabs and reachable from either, so a press there
+  is somebody asking for fresh numbers where they already are — usually
+  mid-draft — and moving them to another tab is the app deciding what
+  they came for. The feedback follows them instead: the bar under the
+  dropdown they just pressed, which is now the ONLY place a run started
+  from the callout is visible, and the reason it had to stop cycling and
+  start meaning something. Clicking the ACCOUNT ROW still opens the tab
+  (`_show_history_tab`) — a different gesture asking a different
+  question.
 
 - **THE APP'S NAME IS THE BODY FACE AT A WEIGHT THAT FACE REALLY HAS**
   (`theme.TITLE_PX` 22, `TITLE_WEIGHT` 700). "reduce the font size of the
@@ -4294,6 +4323,31 @@ credentials, and put the account at risk. Do not go there.
   than on the click, because the arrows are not the only route: the
   keyboard, Page Up and the accelerated repeat all arrive there, and a
   fix on the click would have left three of them highlighting.
+  **AND A TOOLTIP IS A WIDGET NOBODY HAD NAMED** (`QToolTip`,
+  `tests/test_tooltips.py`). "when i mouse over these text boxes i see a
+  weird black callout". `QToolTip` appeared NOWHERE in the stylesheet, so
+  every tip in the app — on every control, in every menu — was handed to
+  the native style.
+  **AND THE SYMPTOM IS PER PLATFORM, WHICH IS WHY IT SURVIVED SO LONG.**
+  Rendered on this machine the unstyled tip comes out in Fusion's own
+  pale yellow (#ffffdc) with black text: wrong for a dark app and
+  perfectly legible, so it never looked like a bug here. On Windows the
+  same omission drew a BLACK RECTANGLE. Neither the screenshot nor a
+  render on Linux says which is happening, exactly as with the
+  scrollbars, so the test checks the thing that DECIDES it on every
+  platform — that the rule exists, with a ground, an ink, an edge and
+  padding — as well as the pixels here.
+  It costs most on the tips that carry real information rather than a
+  label: a role filter's 1-to-3 scale, a star's two percentiles, why an
+  item icon is missing, which two date spans a delta compared. Those are
+  all places this file has already decided a tooltip is the right home
+  for something, which makes an unreadable tip a hole in several
+  features at once rather than a cosmetic fault.
+  A tip floats over whatever is behind it, so a background alone is not
+  enough — it needs an EDGE of its own — and `BG_DEEP` is the darkest
+  surface in the palette, which is what makes it read as sitting above a
+  card rather than in one.
+
   **The count box draws its own arrows** (`chrome.CountBox`), which is the
   tick box's lesson again: styling `QSpinBox::up-button` puts Qt on the
   stylesheet path for that sub-control, and a stylesheet can colour one

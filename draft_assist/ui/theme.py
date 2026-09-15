@@ -171,6 +171,31 @@ QWidget {{
    label that wants a background says so, and the pills below win on
    specificity. */
 QLabel {{ background: transparent; }}
+/* THE TOOLTIP WAS THE ONE WIDGET IN THIS APP NOBODY HAD NAMED —
+   "when i mouse over these text boxes i see a weird black callout".
+   Exactly the scrollbars' fault, and it hides in exactly the same place:
+   a fallback that this machine CANNOT REPRODUCE. Rendered here the
+   unstyled tip comes out in Fusion's own pale yellow (#ffffdc) with
+   black text, which is merely wrong for a dark app; on Windows the same
+   omission draws the BLACK RECTANGLE the user is looking at. So neither
+   the screenshot nor a render says what went wrong, and the thing to fix
+   is the same either way: name it.
+   It is every tooltip in the app, on every control — and the ones that
+   carry real information are the ones it cost most: a role filter's
+   1-to-3 scale, a star's two percentiles, why an item icon is missing,
+   which two date spans a delta compared.
+   A BORDER AND PADDING, not just a colour: a tip floats over whatever is
+   behind it, so it needs an edge of its own, and `BG_DEEP` is the
+   darkest surface here, which reads as sitting above a card rather than
+   in it. BOLD, because everything in this app is. */
+QToolTip {{
+    background: {BG_DEEP};
+    color: {TEXT};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-weight: bold;
+}}
 /* THE CARET THAT DROPS THE PROFILE CALLOUT. One of this app's clickable
    arrows, and they are all red now — "all of the up/down arrows
    (clickable) that ever feature in this app, i want them to be red....

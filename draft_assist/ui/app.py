@@ -1210,6 +1210,7 @@ class MainWindow(QMainWindow):
         # nothing. The tab is the one place that knows, so it says so
         # rather than the callout guessing from its own click.
         analysis.busy.connect(self.account_card.set_busy)
+        analysis.progressed.connect(self.account_card.set_percent)
         # AND THE RUN IT ALREADY HAS. `HistoryTab.__init__` loads the
         # cached run and assigns `report`, which emits - EIGHT LINES
         # ABOVE this connect, into nothing at all. So on a fresh start the
@@ -5060,7 +5061,18 @@ class MainWindow(QMainWindow):
         if index < 0:
             return
         tab.window_box.setCurrentIndex(index)
-        self._show_history_tab()
+        # AND IT LEAVES THE VIEW ALONE, at the user's request: "when i hit
+        # the profile dropdown update, i dont want the view to change to
+        # the history tab... i want the view to remain unchanged".
+        # The callout hangs off the TITLE BAR, which is above both tabs
+        # and is reachable from either — so a press there is somebody
+        # asking for fresh numbers where they already are, usually
+        # mid-draft, and throwing them onto another tab is the app
+        # deciding what they came for. The run's feedback follows them
+        # instead: the bar under the dropdown they just pressed.
+        # Opening the tab is still what clicking the ACCOUNT ROW does
+        # (`_show_history_tab`), which is a different gesture asking a
+        # different question.
         tab.start()
 
     def _show_history_tab(self) -> None:

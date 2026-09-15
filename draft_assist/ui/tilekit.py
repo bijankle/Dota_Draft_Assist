@@ -181,18 +181,22 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
                 base: QFont, boxed: bool = False) -> None:
     """The signed number, snug into the bottom-right, OUTLINED not plated.
 
-    **`boxed` NO LONGER DRAWS A BOX: IT TURNS THE FIGURE GOLD.** At the
-    user's request, and it REVERSES the gold rectangle that stood here:
-    "instead of showing that mini border around all heroes when you click
-    on a 5 /5 portrait hero, i want it to be that the number changes from
-    green / red to gold". Gold is this app's "this one" colour — the
-    window's border, the focus ring, the pin and the suggestion star all
-    wear it and none of them means good or bad — so a relation's figure
-    now says WHAT IT IS in the one channel that was still free, instead
-    of green and red going on claiming a judgement they no longer carry.
-    The colour costs the badge nothing: a frame had to be fitted outside
-    the digits, which on the narrowest tile stepped the figure down a
-    size to make room for it, and a colour cannot crowd anything.
+    **`boxed` DRAWS NOTHING AT ALL, and that is the end of four rounds.**
+    A relation's figure has worn the words "with"/"vs", a delta glyph, a
+    gold rectangle and finally the frame's own gold, each asked for and
+    each withdrawn on sight — the last of them at the user's request:
+    "when i click on a hero portrait i dont want the numbers to be gold,
+    i actually prefer green / red... revert the change plz". So a figure
+    measured against a clicked hero is printed exactly like every other
+    signed number in the app: GREEN GOOD, RED BAD, from your side.
+    Which is not a gap. What says WHICH hero everything is measured
+    against is the gold ring round that portrait, and what says what kind
+    of pairing each figure is, is the panel the tile is in — an ally tile
+    is in the ally panel. Every mark tried here was a second answer to a
+    question already answered somewhere the eye was going anyway.
+    `boxed` stays because `relation_kind()` reads it and a tile knowing
+    whether its figure is a synergy or a matchup is a fact worth being
+    able to check; it just no longer changes anything drawn.
 
     It used to sit on a solid black rounded plate. The plate is the part
     that hides the hero: even cut to the digits it is a rectangle of the
@@ -247,8 +251,7 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     edge = MARGIN
     left = box.right() + 1 - edge - width
     baseline = box.bottom() + 1 - edge
-    stroked(painter, QPointF(left, baseline), text,
-            focus_colour() if boxed else colour, font)
+    stroked(painter, QPointF(left, baseline), text, colour, font)
 
 
 def paint_number(painter: QPainter, box: QRect, text: str, colour: str,

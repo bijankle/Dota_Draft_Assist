@@ -1289,10 +1289,22 @@ class LoadBar(QWidget):
     underneath it, so without this a press looks exactly like a press
     that did nothing — the fault this app has a standing rule about.
 
-    INDETERMINATE ON PURPOSE. The run reports progress in stages whose
-    totals are not known in advance (a match list, then a shape, then
-    eleven analyses), so a percentage here would be a number this widget
-    invented. A block that keeps moving says "still working" honestly.
+    IT FILLS LEFT TO RIGHT, at the user's request — "the red loading bar
+    should move from left to right, making real progress, instead of just
+    a cycling moving loading indicator" — and it REVERSES the
+    indeterminate block that stood here on the grounds that "a percentage
+    would be a number this widget invented".
+    That was half right and the wrong half was load-bearing: the STAGES
+    are real and the runner knows which one it is in (`runner.STAGES`),
+    so what the bar could not invent was a smooth fraction, not progress
+    as such. It advances in steps as each stage begins.
+    **AND IT NEVER GOES BACKWARDS.** A bar that retreats says the run
+    lost ground, which is not a thing a run can do; the only way back to
+    nought is a new run, which `set_busy` is what announces.
+    A share of -1 means "this stage does not know", and the block goes
+    back to CYCLING for as long as that is the last thing it was told —
+    so a caller that reports nothing gets the honest indeterminate bar
+    rather than one frozen at nought.
 
     PAINTED, not a QProgressBar. This app's stylesheet does not name
     `QProgressBar`'s sub-controls, and once a stylesheet touches a widget
@@ -1316,6 +1328,7 @@ class LoadBar(QWidget):
         self.setFixedHeight(self.HEIGHT)
         self.setProperty("bare", True)
         self._at = 0.0
+        self._pct = -1
         self._busy = False
         self._timer = QTimer(self)
         self._timer.setInterval(self.PERIOD)
@@ -1328,6 +1341,7 @@ class LoadBar(QWidget):
             return
         self._busy = busy
         self._at = 0.0
+        self._pct = -1
         self.setVisible(busy)
         self._sync_timer()
         self.update()
@@ -1335,8 +1349,29 @@ class LoadBar(QWidget):
     def busy(self) -> bool:
         return self._busy
 
+    def set_percent(self, pct: int) -> None:
+        """How far through the run is, 0 to 100, or -1 for "no answer".
+
+        FORWARD ONLY: a stage reporting less than the last one is a
+        message arriving out of order, not the run losing ground.
+        """
+        pct = int(pct)
+        pct = -1 if pct < 0 else max(self._pct, min(100, pct))
+        if pct == self._pct:
+            return
+        self._pct = pct
+        self._sync_timer()
+        self.update()
+
+    def percent(self) -> int:
+        return self._pct
+
     def _sync_timer(self) -> None:
-        if self._busy and self.isVisible():
+        # THE TIMER IS THE CYCLING BLOCK'S, so it runs only while there is
+        # nothing better to draw. A determinate bar repaints when it is
+        # TOLD something, which is a handful of times per run rather than
+        # twenty-five times a second inside a menu.
+        if self._busy and self.isVisible() and self._pct < 0:
             if not self._timer.isActive():
                 self._timer.start()
         elif self._timer.isActive():
@@ -1371,11 +1406,22 @@ class LoadBar(QWidget):
         painter.setBrush(QColor(theme.BG_INPUT))
         painter.drawRoundedRect(QRectF(self.rect()), radius, radius)
         width = self.width()
-        block = max(1.0, width * self.BLOCK)
-        left = self._at * (width + block) - block
         painter.setBrush(QColor(theme.ACCENT))
-        painter.drawRoundedRect(
-            QRectF(left, 0.0, block, float(self.height())), radius, radius)
+        if self._pct >= 0:
+            # FROM THE LEFT EDGE, as far as the run has got. A nought-wide
+            # rectangle is not drawn at all, which is right: the start of
+            # a run has nothing behind it yet.
+            filled = width * self._pct / 100.0
+            if filled > 0:
+                painter.drawRoundedRect(
+                    QRectF(0.0, 0.0, filled, float(self.height())),
+                    radius, radius)
+        else:
+            block = max(1.0, width * self.BLOCK)
+            left = self._at * (width + block) - block
+            painter.drawRoundedRect(
+                QRectF(left, 0.0, block, float(self.height())),
+                radius, radius)
         painter.end()
 
 

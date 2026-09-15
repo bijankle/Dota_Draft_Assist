@@ -422,7 +422,10 @@ class Worker(QThread):
     signals, because touching a widget from another thread is how Qt
     applications crash in ways that never reproduce."""
 
-    progress = pyqtSignal(str, int, int)
+    # text, done, total, and HOW FAR THROUGH THE RUN IS — the last of
+    # them -1 when the stage does not know, so a caller can tell "no
+    # answer" from "nought per cent".
+    progress = pyqtSignal(str, int, int, int)
     finished_ok = pyqtSignal(object)
     failed = pyqtSignal(str)
 
@@ -438,8 +441,8 @@ class Worker(QThread):
         try:
             report = run_analysis(
                 self.options,
-                say=lambda text, done=0, total=0: self.progress.emit(
-                    text, done, total),
+                say=lambda text, done=0, total=0, pct=-1:
+                    self.progress.emit(text, done, total, pct),
                 cancelled=lambda: self._stop)
         except Refused as refused:
             self.failed.emit(str(refused))
@@ -460,6 +463,12 @@ class HistoryTab(QWidget):
     # WHETHER A RUN IS GOING, so a surface that is not this tab can say
     # so — the profile callout can start one from the title bar.
     busy = pyqtSignal(bool)
+    # HOW FAR THROUGH, 0 to 100, for the bar under the profile dropdown.
+    # Separate from `busy` because they answer different questions and
+    # arrive from different places: `busy` is the tab's own state and is
+    # emitted whether or not a worker was ever started, while this only
+    # exists while one is running.
+    progressed = pyqtSignal(int)
 
     def __init__(self, say=None, parent=None, settings=None):
         super().__init__(parent)
@@ -1084,10 +1093,21 @@ class HistoryTab(QWidget):
         # start one, and a press there with no acknowledgement anywhere is
         # a press that looks like it did nothing. One signal from the one
         # place that already knows, rather than each surface guessing.
+        #
+        # THE SHARE IS RESET ON THE WAY IN AND FILLED ON THE WAY OUT.
+        # A bar that opens wherever the last run left it reads as a run
+        # already half done, and one that vanishes at 85% reads as a run
+        # that gave up — so the two ends are stated here, where both
+        # transitions are already known, rather than left to whichever
+        # stage happened to report last.
+        self.progressed.emit(0 if running else 100)
         self.busy.emit(bool(running))
 
-    def _progress(self, text: str, done: int, total: int) -> None:
+    def _progress(self, text: str, done: int, total: int,
+                  pct: int = -1) -> None:
         self._note(self.status, f"{text} {done}/{total}" if total else text)
+        if pct >= 0:
+            self.progressed.emit(int(pct))
 
     def _fault(self, message: str) -> None:
         self._note(self.status, message, warn=True)

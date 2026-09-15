@@ -1,24 +1,30 @@
-"""A relation's figure is GOLD, and there is no box round anything.
+"""A relation's figure is an ordinary signed number, and that is the end
+of four rounds of trying to mark it.
 
-At the user's request, and it reverses the gold rectangle that stood
-here: "instead of showing that mini border around all heroes when you
-click on a 5 /5 portrait hero, i want it to be that the number changes
-from green / red to gold".
+Clicking a pick puts that hero's synergy or matchup on every other tile.
+Saying WHICH kind of figure that is has now been asked for and withdrawn
+four times: the words "with" and "vs", a capital delta, a gold rectangle
+round the digits, and finally the digits themselves in the frame's gold —
+"when i click on a hero portrait i dont want the numbers to be gold, i
+actually prefer green / red... revert the change plz".
 
-The box came out of three earlier messages ("i dont think this is needed
-... just use the capital delta symbol", then "just use a gold rectangle
-aroudn the score (bottom right)", then "no delta required at all"), each
-of which was trying to say the same thing: what a reader needs to know is
-that THIS figure is about the hero they clicked, and it must not cost the
-number any width. A colour costs it none at all, where a frame had to be
-fitted outside the digits and stepped the figure down a size to make room
-for itself on a narrow tile.
+So the figure is printed exactly like every other signed number in the
+app: green good, red bad, read from your own side. Which is not a gap.
+What says which hero the board is measured against is the gold RING on
+that portrait, and what says whether a figure is a synergy or a matchup
+is the panel the tile sits in — an ally tile is in the ally panel. Every
+mark tried here was a second answer to a question already answered
+somewhere the eye was going anyway.
 
-The second half of the same request is the tile's PAGE MARGIN: "the
-number needs to be tucked right into the corner and the heart ans shield
-a little closer to the corner aswell so that they dont clash.... see page
-margin i drew in green, i wanna kiss that for all 3, heart, shield,
-number".
+`kind` and `_boxed` survive all of it and still say WHETHER this is a
+relation: an ally-to-ally pairing being scored as synergy rather than as
+a matchup is a fact about the app worth being able to check. It just no
+longer changes anything drawn.
+
+The PAGE MARGIN from the same round does stand: "the number needs to be
+tucked right into the corner and the heart ans shield a little closer to
+the corner aswell so that they dont clash.... see page margin i drew in
+green, i wanna kiss that for all 3, heart, shield, number".
 """
 
 import os
@@ -100,50 +106,44 @@ def test_the_figure_is_the_whole_text(qapp):
 
 # ---- the colour --------------------------------------------------------
 
-def test_a_relation_is_gold_and_a_resting_figure_keeps_its_own_colour(qapp):
-    """"i want it to be that the number changes from green / red to
-    gold"."""
+def test_a_relation_keeps_green_and_red_like_every_other_figure(qapp):
+    """"i dont want the numbers to be gold, i actually prefer green /
+    red... revert the change plz"."""
     gold = tilekit.focus_colour()
-    assert _near(_drawn("+5.2", True), gold), "a relation is not gold"
-    assert not _near(_drawn("+5.2", False), gold), (
-        "a resting figure wears the relation's colour")
-    assert _near(_drawn("+5.2", False), theme.GOOD), (
-        "a resting figure lost its own green")
-    # And a NEGATIVE relation is gold too — the box it replaces never
-    # cared about the sign either, and green/red are what is being taken
-    # away from a figure that is not a judgement.
-    assert _near(_drawn("-1.8", True, colour=theme.BAD), gold)
-    assert not _near(_drawn("-1.8", True, colour=theme.BAD), theme.BAD)
+    for text, colour in (("+5.2", theme.GOOD), ("-1.8", theme.BAD)):
+        marked = _drawn(text, True, colour=colour)
+        assert _near(marked, colour), f"{text} lost its own colour"
+        assert not _near(marked, gold), f"{text} is still gold"
 
 
-def test_gold_is_the_apps_this_one_colour(qapp):
-    """The window's border, the focus ring, the star and the pin all wear
-    it, and none of them means good or bad — which is exactly why it can
-    be spent on a figure that is not a judgement."""
-    assert tilekit.focus_colour() == theme.FRAME_GOLD
-    assert theme.GOOD != tilekit.focus_colour()
-    assert theme.BAD != tilekit.focus_colour()
+def test_a_relation_and_a_resting_figure_are_drawn_identically(qapp):
+    """Nothing about the badge says which it is any more — not the text,
+    not the colour, not a mark. The RING on the clicked portrait says
+    which hero, and the panel says which kind of pairing."""
+    for text, colour in (("+5.2", theme.GOOD), ("-1.8", theme.BAD)):
+        relation = _ink(_drawn(text, True, colour=colour))
+        resting = _ink(_drawn(text, False, colour=colour))
+        assert _box(relation) == _box(resting)
+        assert len(relation) == len(resting)
 
 
-def test_there_is_no_box_round_anything_any_more(qapp):
-    """"instead of showing that mini border around all heroes".
-
-    The gold has to be the DIGITS, so a relation badge covers no more of
-    the tile than a resting one: same glyphs, same ink, same corner.
-    """
-    bare = _ink(_drawn("+5.2", False))
-    boxed = _ink(_drawn("+5.2", True))
-    assert _box(bare) == _box(boxed), "the relation badge is bigger"
-    # A rectangle would be a LOT more ink than a "+5.2".
-    assert abs(len(boxed) - len(bare)) <= len(bare) * 0.05
+def test_nothing_is_drawn_round_the_digits(qapp):
+    """The rectangle and every constant behind it are gone rather than
+    left switched off: dead drawing code goes stale and then gets read as
+    documentation."""
     assert not hasattr(tilekit, "badge_ring_reach")
+    assert not hasattr(tilekit, "_ring_the_badge")
     assert not hasattr(tilekit, "BADGE_RING_PAD")
+    # And no gold anywhere near a relation badge, at any sign.
+    for text, colour in (("+5.2", theme.GOOD), ("-1.8", theme.BAD)):
+        assert not _near(_drawn(text, True, colour=colour),
+                         theme.FRAME_GOLD)
 
 
 def test_a_relation_costs_the_figure_no_width(qapp):
     """The frame had to be fitted OUTSIDE the digits, so on a narrow tile
-    it stepped the figure down a size to make room for itself. A colour
-    cannot crowd anything, so both badges are now the same size."""
+    it stepped the figure down a size to make room for itself. Nothing is
+    drawn outside them now, so both badges are the same size."""
     narrow = (64, 36)
     bare = _box(_ink(_drawn("+21.7", False, narrow)))
     boxed = _box(_ink(_drawn("+21.7", True, narrow)))
@@ -207,7 +207,7 @@ def test_the_margin_is_one_number_read_by_both_painters(qapp):
 
 # ---- what the tiles do with it ----------------------------------------
 
-def test_a_pick_tile_golds_a_relation_and_forgets_it_again(qapp):
+def test_a_pick_tile_still_knows_which_kind_of_figure_it_holds(qapp):
     tile = teams.HeroTile("ally", 0)
     tile.set_pick("Lion", None, 26)
     assert not tile._boxed and tile.relation_kind() == ""

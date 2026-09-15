@@ -512,6 +512,16 @@ class ProfileCard(QWidget):
         """Run under way, or not. The bar is the only thing that moves."""
         self.load_bar.set_busy(busy)
 
+    def set_percent(self, pct: int) -> None:
+        """How far through the run is, for the bar under the dropdown.
+
+        The press that starts a run is here, so the answer to "is it
+        doing anything" has to be here too — and since the Update button
+        no longer moves the user to the History tab, this bar is now the
+        ONLY place a run started from the callout is visible at all.
+        """
+        self.load_bar.set_percent(pct)
+
     def busy(self) -> bool:
         return self.load_bar.busy()
 

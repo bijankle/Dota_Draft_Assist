@@ -39,8 +39,38 @@ NO_MATCHES = (
     "mean the ID belongs to somebody who has not played.")
 
 
+# HOW FAR THROUGH A RUN EACH STAGE IS, so the bar under the profile
+# dropdown can move LEFT TO RIGHT instead of cycling: "the red loading
+# bar should move from left to right, making real progress, instead of
+# just a cycling moving loading indicator".
+#
+# **THESE ARE STAGES, NOT A SMOOTH FRACTION, AND THAT IS THE HONEST
+# CEILING HERE.** The longest step by far is one HTTP request for the
+# whole match list — OpenDota takes a `limit` and answers once, so there
+# is nothing to count while it is in flight, and a bar that crept along
+# during it would be this app inventing a number, which is the rule the
+# indeterminate version was written under in the first place. What IS
+# real is which stage is running, so each one names the point it has
+# reached and the bar never goes backwards.
+#
+# The shares are measured rather than spread evenly: the match list is
+# most of the wall clock on any real account, so it gets most of the
+# track, and `Measuring…` is a second or so of arithmetic at the end.
+STAGES = {
+    "account": 4,
+    "heroes": 10,
+    "matches": 18,
+    "shaping": 62,
+    "items": 70,
+    "measuring": 85,
+}
+
+
 def run(options: Options, say=None, cancelled=None) -> Report:
-    say = say or (lambda text, done=0, total=0: None)
+    # `pct` IS OPTIONAL ON THE CALLBACK, because a caller that only wants
+    # the words (a console tool, a test) should not have to grow an
+    # argument for a progress bar it does not draw.
+    say = say or (lambda text, done=0, total=0, pct=-1: None)
     cancelled = cancelled or (lambda: False)
 
     # THE DISPLAY NAME FIRST, because everything after it can then say
@@ -49,7 +79,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     # name can be resolved without the tab making a network call of its
     # own. Cosmetic: "" is a perfectly good answer and the number stands
     # on its own, exactly as it did before.
-    say("Looking up the account…")
+    say("Looking up the account…", pct=STAGES["account"])
     who = opendota.profile(options.account_id)
     name = who.name
     if cancelled():
@@ -62,8 +92,8 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     # means the row draws its fallback, which is a normal state.
     avatars.ensure(options.account_id, who.avatar)
 
-    say(f"Reading the hero list… ({name})" if name
-        else "Reading the hero list…")
+    say((f"Reading the hero list… ({name})" if name
+         else "Reading the hero list…"), pct=STAGES["heroes"])
     heroes = opendota.heroes()
     if cancelled():
         raise Refused("Stopped.")
@@ -75,7 +105,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     # and splitting it here costs the same ONE request the run always
     # made — where asking twice cost two against a free API, for two
     # figures in a callout.
-    say("Asking OpenDota for the match list…")
+    say("Asking OpenDota for the match list…", pct=STAGES["matches"])
     limit, span = fetch_span(options)
     rows = opendota.matches(options.account_id, limit, span)
     if not rows:
@@ -95,7 +125,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     # the delta claims the two are the same length.
     trimmed = len(recent) < len(rows) - len(earlier)
 
-    say("Shaping the matches…")
+    say("Shaping the matches…", pct=STAGES["shaping"])
     shaped = shape.shape(recent, heroes, days=options.days,
                          no_turbo=options.no_turbo,
                          ranked_only=options.ranked_only)
@@ -107,7 +137,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
 
     item_names = {}
     if options.picked.get("items"):
-        say("Reading the item list…")
+        say("Reading the item list…", pct=STAGES["items"])
         # THE BUNDLED MAP UNDERNEATH, always. `opendota.item_names`
         # answers {} on any ApiError, so a fetch that fails used to leave
         # the block printing numeric ids with nothing saying why.
@@ -124,7 +154,7 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     before = measure_before(earlier, options, heroes,
                             clipped=trimmed or clipped(rows, options, limit))
 
-    say("Measuring…")
+    say("Measuring…", pct=STAGES["measuring"])
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
                                   options.picked, item_names,
                                   ds=analyse.ranked_dataset())
