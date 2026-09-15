@@ -800,7 +800,7 @@ class MainWindow(QMainWindow):
         self.report_button = QPushButton("Report")
         self.report_button.clicked.connect(self._show_latest_report)
 
-        self.force_check = QCheckBox("Force recognition")
+        self.force_check = chrome.TickBox("Force recognition")
         self.force_check.toggled.connect(self._set_forced)
         # No expanding spacer: on the tab strip the toolbar is sized to
         # its contents, and a spacer there would push the controls off the

@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog,
                              QRadioButton, QSpinBox, QVBoxLayout)
 
 from ..config import DEFAULT_PAIR_SOURCE
-from . import settings as ui_settings
+from . import chrome, settings as ui_settings
 
 # Which site's matchup and synergy numbers the matrices are built from.
 # Exactly one at a time, so these are radio buttons: averaging two sites'
@@ -62,7 +62,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(heading)
 
         for key, label, explanation in SWITCHES:
-            box = QCheckBox(label)
+            box = chrome.TickBox(label)
             # `ui_settings.DEFAULTS` decides, not a `True` written here: a
             # switch that defaults on because the loop said so is a switch
             # nobody chose.

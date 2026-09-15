@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QFrame,
 
 from ..config import DEFAULT_PAIR_SOURCE
 from . import settings as ui_settings
-from .chrome import CountBox
+from .chrome import CountBox, TickBox
 from .settings_dialog import PAIR_SOURCES, SWITCHES
 
 
@@ -88,7 +88,7 @@ class GeneralPage(QWidget):
         layout.addWidget(_heading("What the app reads, and what it does "
                                   "with it"))
         for key, label, explanation in SWITCHES:
-            box = QCheckBox(label)
+            box = TickBox(label)
             # `ui_settings.DEFAULTS` decides, not a `True` written here: a
             # switch that defaults on because the loop said so is a switch
             # nobody chose.

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel,
                              QPushButton, QVBoxLayout)
 
 from ..config import ALL_BRACKETS
+from .chrome import TickBox
 
 # Where a player of each rank is usually best served pulling stats from.
 SUGGESTIONS = [
@@ -50,7 +51,7 @@ class BracketDialog(QDialog):
 
         self.boxes: dict[str, QCheckBox] = {}
         for bracket in ALL_BRACKETS:
-            box = QCheckBox(bracket.title())
+            box = TickBox(bracket.title())
             box.setChecked(bracket in current)
             box.toggled.connect(self._update_summary)
             layout.addWidget(box)

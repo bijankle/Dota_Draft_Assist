@@ -2257,6 +2257,30 @@ credentials, and put the account at risk. Do not go there.
   for. It also puts this card back in step with Suggested items, which
   has had its count on the heading throughout.
 
+- **EVERY ON/OFF BOX IN THE APP DRAWS AN ACTUAL TICK**
+  (`chrome.TickBox`), at the user's request: "if something is a tick box
+  on/off I want it to have a tick box". This app had already found the
+  fault and fixed it in ONE place — the Auto tick on the tab row — and
+  left five others using a plain QCheckBox: the rank pickers in the
+  setup wizard and in `bracket_dialog`, both settings pages, and Force
+  recognition.
+  The cause is stated in `TickBox`'s own docstring and is worth the
+  repetition: Qt's stylesheet can COLOUR an indicator but cannot put a
+  mark in it without an image file, so `QCheckBox::indicator:checked`
+  fills the square with the accent and stops. A solid red block says
+  something is DIFFERENT about a control, not that it is switched on —
+  and eight rank boxes where two are red squares is a rank picker you
+  cannot read at a glance.
+  `tests/test_ui_smoke.test_every_on_off_box_in_the_app_draws_an_actual_
+  tick` scans the SOURCE rather than pixels, because the fault is that a
+  plain QCheckBox can never draw a tick here whatever it is asked to
+  render — so a new one added tomorrow is wrong the same way, and a
+  pixel test would only catch the ones somebody remembered to render.
+  Same family as the painted window buttons, the painted rules between
+  menu items and the count box's painted arrows: once a stylesheet
+  touches a widget, the parts it does not name are not left alone, they
+  are handed to somebody else to draw.
+
 - **THE CHROME MOVED, AND THE ORDER IT MOVED IN IS THE RECORD.** Five
   requests in one sitting, several reversing the one before, so what
   matters here is where it ENDED and which arguments survived.

@@ -4173,3 +4173,35 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
                                ("shield", window.shield_box))}
     assert len(set(lefts.values())) == 1, (
         f"the three count boxes do not line up: {lefts}")
+
+
+def test_every_on_off_box_in_the_app_draws_an_actual_tick(styled, qapp):
+    """"if something is a tick box on/off I want it to have a tick box."
+
+    Qt's stylesheet can COLOUR an indicator but cannot put a mark in it
+    without an image file, so `QCheckBox::indicator:checked` fills the
+    square with the accent and nothing else — a red block, which says
+    something is different about the control rather than that it is
+    switched on. `chrome.TickBox` paints the mark, and the app had
+    solved this once, for ONE control, and left five other places using
+    a plain QCheckBox: the rank pickers in the wizard and the bracket
+    dialog, both settings pages, and Force recognition.
+
+    Checked by SOURCE rather than by pixels because the fault is that a
+    plain QCheckBox can never draw a tick here, whatever it is asked to
+    render — and a new one added tomorrow would be wrong the same way.
+    """
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    offenders = []
+    for path in (root / "draft_assist" / "ui").rglob("*.py"):
+        if path.name == "chrome.py":
+            continue            # TickBox subclasses it, which is the point
+        for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"(?<![.\w])QCheckBox\s*\(", line):
+                offenders.append(f"{path.name}:{number}: {line.strip()}")
+    assert not offenders, (
+        "these draw a filled square instead of a tick; use chrome.TickBox:\n"
+        + "\n".join(offenders))
