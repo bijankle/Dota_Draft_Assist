@@ -89,6 +89,76 @@ def test_the_ring_is_the_apps_this_one_colour(qapp):
     assert theme.BAD != tilekit.focus_colour()
 
 
+def test_the_ring_is_the_focus_rings_own_pen(qapp):
+    """"i want the golden box to be the same line weight as the border on
+    the selected hero".
+
+    It was a 1px hairline beside a three-pixel ring on the tile next to
+    it. `FOCUS_WIDTH` is the one number the app's gold lines are drawn
+    at — the window's frame, the focus ring — so the box reads as the
+    same kind of mark rather than as a thinner relative of one.
+    """
+    from draft_assist.ui import ornate
+
+    assert tilekit.FOCUS_WIDTH == ornate.WIDTH
+
+    seen = []
+    real = tilekit.QPen
+
+    class Spy(real):
+        def __init__(self, *args):
+            super().__init__(*args)
+            if len(args) > 1:
+                seen.append(args[1])
+
+    tilekit.QPen = Spy
+    try:
+        _drawn("+5.2", True)
+    finally:
+        tilekit.QPen = real
+    assert tilekit.FOCUS_WIDTH in seen, seen
+
+
+def test_the_ring_hugs_the_ink_rather_than_the_fonts_ascent(qapp):
+    """"and to be smaller as per the green box i drew".
+
+    It was drawn round `metrics.ascent()`, which is the tallest thing the
+    FACE can draw — and these are digits, so the box carried a band of
+    empty portrait along its top. `tightBoundingRect` is what the glyphs
+    actually cover.
+    """
+    from PyQt6.QtGui import QFont, QFontMetricsF
+
+    text = "+5.2"
+    font = QFont()
+    font.setPixelSize(tilekit.number_px())
+    font.setBold(True)
+    metrics = QFontMetricsF(font)
+    marks = _gold(_drawn(text, True))
+    tall = max(y for _x, y in marks) - min(y for _x, y in marks)
+    # The frame's own two pens and its padding, and nothing else.
+    over = 2 * (tilekit.badge_ring_reach() + tilekit.FOCUS_WIDTH / 2)
+    assert tall <= metrics.tightBoundingRect(text).height() + over + 2
+    assert tall < metrics.ascent() + over, "still drawn round the ascent"
+
+
+def test_the_frame_takes_the_corner_the_digits_would_have(qapp):
+    """A boxed badge and a bare one line up along the same two edges:
+    the figure moves in by exactly what the frame reaches, so the GOLD
+    lands where the digits sit on every other tile."""
+    bare = _drawn("+5.2", False)
+    boxed = _drawn("+5.2", True)
+    ink = [(x, y) for x in range(bare.width()) for y in range(bare.height())
+           if QColor(bare.pixel(x, y)) != QColor(theme.BG_DEEP)]
+    marks = _gold(boxed)
+    # Within the halo's own reach: the bare badge's ink includes the
+    # black stroke, which spills a pixel or two past the baseline and
+    # past the last glyph, and the frame is placed against the GLYPHS.
+    slack = tilekit.stroke_width() + 1
+    assert abs(max(x for x, _y in marks) - max(x for x, _y in ink)) <= slack
+    assert abs(max(y for _x, y in marks) - max(y for _x, y in ink)) <= slack
+
+
 def test_the_ring_encloses_the_digits_and_stays_inside_the_tile(qapp):
     image = _drawn("-12.3", True)
     marks = _gold(image)

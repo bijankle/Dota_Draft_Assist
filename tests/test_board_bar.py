@@ -240,6 +240,35 @@ def test_the_border_goes_round_the_field_and_not_the_arrows(styled, qapp):
     box.deleteLater()
 
 
+def test_stepping_a_count_box_does_not_highlight_its_own_number(styled,
+                                                                qapp):
+    """"when i click the up and down arrow the text box content is still
+    highlighted... dont want the highlighted look".
+
+    `QAbstractSpinBox.stepBy` selects the whole field on every step,
+    which is right for a box you are about to type over and wrong for one
+    you are clicking up and down — and on this app's palette the
+    selection is the ACCENT, the deep red that means "the one action this
+    screen wants", so a number nudged by one arrived looking like a
+    warning.
+
+    EVERY ROUTE, not just the arrows: the keyboard, Page Up and the
+    accelerated repeat all arrive through `stepBy`, which is why the fix
+    is there rather than on the click.
+    """
+    box = chrome.CountBox(20, 0, 33)
+    box.ensurePolished()
+    box.show()
+    qapp.processEvents()
+    edit = box.lineEdit()
+    for act in (box.stepUp, box.stepDown, lambda: box.stepBy(5)):
+        edit.selectAll()
+        assert edit.selectedText(), "the fixture did not select anything"
+        act()
+        assert edit.selectedText() == "", "the number came back highlighted"
+    box.deleteLater()
+
+
 def test_no_control_in_the_app_wears_the_frames_gold(styled, qapp):
     """THIS REVERSES "a gold border on every button", at the user's
     request one message after they asked for it: "remove the gold border

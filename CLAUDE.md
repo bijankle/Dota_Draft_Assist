@@ -3299,6 +3299,21 @@ credentials, and put the account at risk. Do not go there.
   ring's own padding comes out of the room the figure is allowed, or a
   relation badge on the narrowest tile would fit its digits exactly and
   then hang its box over the edge.
+  **THE PEN IS `FOCUS_WIDTH` AND THE BOX HUGS THE INK**, at the user's
+  request: "i want the golden box to be the same line weight as the
+  border on the selected hero and to be smaller as per the green box i
+  drew". It was a 1px pen round the font's ASCENT, which is two faults
+  at once — a hairline sitting beside the three-pixel ring on the tile
+  next to it, and a box with a band of empty portrait along its top,
+  since the ascent is the tallest thing the FACE can draw and these are
+  digits. `tightBoundingRect` is what the glyphs actually cover.
+  `badge_ring_reach` is the three terms that decide how far outside them
+  the frame lands — the figure's own HALO (drawn outside the
+  letterforms, so a frame ignoring it is touched by black on every
+  glyph), the gap, and HALF THE PEN, because an odd pen is centred on
+  its coordinate — and `paint_badge` moves the text IN by exactly that,
+  so the GOLD takes the corner the digits take on every other tile
+  rather than hanging over it.
   `kind` survives the change and still says WHETHER this is a relation;
   it just no longer changes the text, and `relation_kind()` is where it
   is asked for — an ally-to-ally pairing being scored as synergy and not
@@ -4005,6 +4020,17 @@ credentials, and put the account at risk. Do not go there.
   renders with Fusion, and the fault is a Windows-native fallback — so
   `tests/test_scrollbars.py` checks the thing that DECIDES it (every
   sub-control named) rather than how it looks.
+  **AND STEPPING IT DOES NOT HIGHLIGHT ITS OWN NUMBER**
+  (`CountBox.stepBy`). `QAbstractSpinBox.stepBy` selects the whole field
+  on every step — right for a box you are about to type over, wrong for
+  one you are clicking up and down: "when i click the up and down arrow
+  the text box content is still highlighted... dont want the highlighted
+  look". On this palette the selection is the ACCENT, the deep red that
+  means "the one action this screen wants", so a number nudged by one
+  arrived looking like a warning. The deselect goes in `stepBy` rather
+  than on the click, because the arrows are not the only route: the
+  keyboard, Page Up and the accelerated repeat all arrive there, and a
+  fix on the click would have left three of them highlighting.
   **The count box draws its own arrows** (`chrome.CountBox`), which is the
   tick box's lesson again: styling `QSpinBox::up-button` puts Qt on the
   stylesheet path for that sub-control, and a stylesheet can colour one

@@ -1124,6 +1124,28 @@ class CountBox(QSpinBox):
         self.update()
         super().leaveEvent(event)
 
+    def stepBy(self, steps: int) -> None:           # noqa: N802 - Qt naming
+        """Step the value and leave the text UNSELECTED.
+
+        `QAbstractSpinBox.stepBy` selects the whole field on every step,
+        which is right for a box you are about to type over and wrong for
+        one you are clicking up and down: "when i click the up and down
+        arrow the text box content is still highlighted... dont want the
+        highlighted look". On this app's palette the selection is the
+        ACCENT — the deep red that means "the one action this screen
+        wants" — so a number nudged by one arrived looking like a
+        warning.
+
+        HERE rather than in `mousePressEvent`, because the arrows are not
+        the only way to step one: the keyboard, Page Up and the
+        accelerated repeat all come through this, and a fix on the click
+        would have left three of them highlighting.
+        """
+        super().stepBy(steps)
+        edit = self.lineEdit()
+        if edit is not None:
+            edit.deselect()
+
     def mousePressEvent(self, event) -> None:       # noqa: N802 - Qt naming
         """The arrows are painted, so the clicks on them are ours too."""
         point = event.position().toPoint()

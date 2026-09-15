@@ -189,8 +189,8 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # has to fit — without this a relation badge on the narrowest tile
     # would step its figure down to exactly the room available and then
     # hang its box over the edge.
-    if boxed:
-        room -= 2 * BADGE_RING_PAD
+    reach = badge_ring_reach() if boxed else 0.0
+    room -= 2 * reach
     size = number_px()
     while width > room and size > NUMBER_MIN_PX:
         size -= 1
@@ -213,24 +213,43 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # on the font at all, so a badge that stepped down to fit still stands
     # exactly where its neighbours do. Only the stroke reaches below it,
     # and `edge` is what leaves it room.
-    edge = BADGE_INSET + stroke_width() / 2
+    # AND THE RING TAKES THE CORNER WHEN THERE IS ONE. The figure moves
+    # in by exactly what the frame reaches, so the GOLD sits where the
+    # digits sit on every other tile — a boxed badge and a bare one line
+    # up along the same two edges instead of the box hanging over them.
+    edge = BADGE_INSET + stroke_width() / 2 + reach
     left = box.right() - edge - width
     baseline = box.bottom() - edge
     if boxed:
-        _ring_the_badge(painter, metrics, left, baseline, width)
+        _ring_the_badge(painter, metrics, left, baseline, text)
     stroked(painter, QPointF(left, baseline), text, colour, font)
 
 
-# How far the gold sits off the digits it encloses, and how round its
-# corners are. Small: the box has to read as a frame round THIS number
-# rather than as a plate, which is the argument that took the badge's
-# black plate away in the first place.
-BADGE_RING_PAD = 3.0
-BADGE_RING_RADIUS = 3.0
+# How far the gold clears the INK it encloses, over and above the black
+# halo the figure already wears, and how round its corners are. One pixel:
+# the box has to read as a frame round THIS number rather than as a plate,
+# which is the argument that took the badge's black plate away.
+BADGE_RING_PAD = 1.0
+BADGE_RING_RADIUS = 2.0
+
+
+def badge_ring_reach() -> float:
+    """How far outside the digits' ink the frame's outer edge lands.
+
+    Three terms, and leaving any of them out has a visible cost: the
+    figure's own HALO (drawn outside the letterforms, so a frame that
+    ignored it would be touched by black on every glyph), the gap
+    (`BADGE_RING_PAD`), and HALF THE PEN, because an odd pen is centred
+    on its coordinate. `paint_badge` moves the text in by this much so
+    the frame — not the digits — takes the tile's corner, and takes it
+    out of the room the figure is allowed so a narrow tile cannot end up
+    with its box hanging over the edge.
+    """
+    return stroke_width() / 2.0 + BADGE_RING_PAD + FOCUS_WIDTH / 2.0
 
 
 def _ring_the_badge(painter: QPainter, metrics: QFontMetricsF,
-                    left: float, baseline: float, width: float) -> None:
+                    left: float, baseline: float, text: str) -> None:
     """A gold rectangle round a RELATION's figure.
 
     At the user's request, replacing the words "with" and "vs": "just use
@@ -240,23 +259,32 @@ def _ring_the_badge(painter: QPainter, metrics: QFontMetricsF,
     bad. Green and red are spoken for by the figure INSIDE the box, so a
     frame in either would argue with it.
 
+    **THE SAME PEN AS THE FOCUS RING, AND TIGHT TO THE INK**, at the
+    user's request: "i want the golden box to be the same line weight as
+    the border on the selected hero and to be smaller as per the green
+    box i drew". It was a 1px pen round the font's ASCENT, which is two
+    faults at once — a hairline beside the three-pixel ring on the tile
+    next to it, and a box with a band of empty portrait along its top,
+    because the ascent is the tallest thing the FACE can draw and these
+    are digits. `FOCUS_WIDTH` is the one number the app's gold lines are
+    drawn at; `tightBoundingRect` is what the glyphs actually cover.
+
     MEASURED OFF THE TEXT, never off the tile: the badge steps its own
     size down when a wide figure will not fit, so a box derived from the
     tile's corner would come away from the digits exactly when they
     moved. Same rule as the grid's team outlines, which trace the
     rectangle the painter actually drew rather than an inset computed
     from a constant.
-
-    HALF A PIXEL IN, because a 1px pen is centred on its coordinate.
     """
-    ring = QRectF(left - BADGE_RING_PAD,
-                  baseline - metrics.ascent() - BADGE_RING_PAD,
-                  width + 2 * BADGE_RING_PAD,
-                  metrics.ascent() + 2 * BADGE_RING_PAD)
-    ring = ring.adjusted(0.5, 0.5, -0.5, -0.5)
+    ink = metrics.tightBoundingRect(text)
+    pad = stroke_width() / 2.0 + BADGE_RING_PAD
+    ring = QRectF(left + ink.left() - pad,
+                  baseline + ink.top() - pad,
+                  ink.width() + 2 * pad,
+                  ink.height() + 2 * pad)
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setPen(QPen(QColor(focus_colour()), 1))
+    painter.setPen(QPen(QColor(focus_colour()), FOCUS_WIDTH))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRoundedRect(ring, BADGE_RING_RADIUS, BADGE_RING_RADIUS)
     painter.restore()
