@@ -10,6 +10,7 @@ top and a line of interface text below it - and the test is that the
 answer is the bar.
 """
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -321,3 +322,90 @@ def test_every_resolution_the_app_cares_about_is_allowed():
                           (1920, 1200), (2560, 1440), (3440, 1440),
                           (5120, 1440)]:
         assert not_a_client(width, height) == "", f"{width}x{height} refused"
+
+
+# ---------------------------------------------------------------- the fit
+
+def _frames(drop: int, stretch: int):
+    """Frames whose bar sits `drop` px below, and `stretch` px taller
+    than, the shipped fractions predict — at three different aspects, so
+    a reading that only works at 16:9 cannot pass."""
+    from draft_assist.vision.layout import hud_box
+
+    out = []
+    for w, h in ((1920, 1080), (1920, 1200), (1024, 768)):
+        ax, ay, aw, ah = fp.app_boxes(w, h)[0]
+        left, span = hud_box(w, h)
+        top, high = ay - drop, ah + stretch
+        pitch = round(0.0640 * span)
+        dire = ax + round(0.5675 * span)
+        out.append({
+            "file": f"{w} x {h}.png", "w": w, "h": h,
+            "aspect": round(w / h, 4), "heroes": 10,
+            "bar_top_px": top, "slot_h_px": high,
+            "radiant_x_px": ax, "dire_x_px": dire,
+            "slot_w_px": aw, "pitch_px": pitch,
+            "x_of_hudbox": (ax - left) / span,
+            "dire_x_of_hudbox": (dire - left) / span,
+            "slot_w_of_hudbox": aw / span,
+            "pitch_of_hudbox": pitch / span,
+            "y_of_window": top / h,
+            "slot_h_of_window": high / h,
+        })
+    return out
+
+
+def test_the_offset_the_frames_carry_is_the_offset_that_comes_back(capsys):
+    """THE WHOLE POINT OF THE BLOCK. Frames built 13px low and 21px tall
+    must report 13px low and 21px tall — otherwise the number somebody
+    is being invited to paste into `DraftLayout` is not the number the
+    pictures hold."""
+    fp._boxes_against_the_bar(_frames(drop=13, stretch=21))
+    out = capsys.readouterr().out
+    median = [ln for ln in out.splitlines() if "median of" in ln]
+    assert median, out
+    assert "+13" in median[0] and "-21" in median[0], median[0]
+
+
+def test_the_fitted_fractions_recover_the_shipped_ones_from_a_clean_bar(
+        capsys):
+    """A bar exactly where the app expects it must measure as the
+    fractions already in the code. Without this the block could be
+    reporting a constant offset of its own and nothing would say so."""
+    fp._fitted_layout(_frames(drop=0, stretch=0))
+    out = capsys.readouterr().out
+    for name in ("radiant_x", "slot_w", "pitch", "y", "slot_h"):
+        line = [ln for ln in out.splitlines()
+                if ln.strip().startswith(name + " ")]
+        assert line, f"{name} not reported:\n{out}"
+        assert "  +0 px" in line[0] or "   +0 px" in line[0], line[0]
+
+
+def test_every_fraction_the_app_ships_is_measured(capsys):
+    """A seventh number added to `DraftLayout` must not be able to go
+    unmeasured — which is exactly how `dire_x` came to be the one
+    shipped fraction this tool could not check."""
+    from draft_assist.vision.layout import DraftLayout
+
+    measured = {name for name, _key, _against in fp.FRACTIONS}
+    # The role-icon pair is DECLARED out of scope rather than silently
+    # absent: this tool searches for hero portraits, and a located pick
+    # bar says nothing about where a role icon sits under one.
+    measured |= set(fp.NOT_MEASURED_HERE)
+    shipped = {f.name for f in dataclasses.fields(DraftLayout)}
+    assert shipped <= measured, shipped - measured
+    assert not set(fp.NOT_MEASURED_HERE) & {
+        name for name, _key, _against in fp.FRACTIONS}, (
+        "a fraction cannot be both measured and declared unmeasurable")
+
+
+def test_the_fit_is_reported_and_never_applied(capsys):
+    """`DraftLayout`'s defaults are what the app cuts with, and this tool
+    reports. A run that quietly moved them would invalidate every saved
+    calibration with nothing on screen saying so."""
+    from draft_assist.vision.layout import DraftLayout
+
+    before = dataclasses.asdict(DraftLayout())
+    fp._fitted_layout(_frames(drop=30, stretch=40))
+    assert dataclasses.asdict(DraftLayout()) == before
+    assert "NOT APPLIED" in capsys.readouterr().out

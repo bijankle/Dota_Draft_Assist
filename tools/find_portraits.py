@@ -952,6 +952,10 @@ def measure(path: Path, into: Path, art: dict, loud=False,
         # BOTH READINGS, so the model can be derived rather than assumed.
         "x_of_width": round(radiant_x / width, 5),
         "x_of_hudbox": round((radiant_x - left) / span, 5) if span else None,
+        # THE SECOND BANK'S OWN ORIGIN. `banks_from` has always measured
+        # it and the row kept only Radiant's, so `dire_x` was the one
+        # shipped fraction nothing here could check.
+        "dire_x_of_hudbox": round((dire_x - left) / span, 5) if span else None,
         "pitch_of_width": round(pitch / width, 5),
         "pitch_of_hudbox": round(pitch / span, 5) if span else None,
         "slot_w_of_hudbox": round(slot_w / span, 5) if span else None,
@@ -1398,6 +1402,8 @@ def _consensus(good: list) -> None:
         for off, name in bad[:6]:
             print(f"    {off:.4f}  {name}")
     _vertical(good)
+    _boxes_against_the_bar(good)
+    _fitted_layout(good)
 
 
 # 16:9 to four decimal places. A shot at this aspect cannot vote on the
@@ -1554,6 +1560,130 @@ def _name_the_winner(best: str) -> None:
         print("     That is NOT what `SlotRect.to_pixels` does today. "
               "Changing it silently invalidates every saved "
               "calibration_local.json, so read CLAUDE.md first.")
+
+
+# The six fractions a `DraftLayout` is made of, each with the reading it
+# is expressed in. The SPAN ones are fractions of Dota's 16:9 HUD box -
+# settled from a real 3440x1440 client, where a fraction of the full
+# width landed the boxes 440px left of the portraits. The HEIGHT ones
+# are fractions of the whole window, which is what `SlotRect.to_pixels`
+# does and what the proof sheet says is landing low.
+FRACTIONS = (
+    ("radiant_x", "x_of_hudbox", "span"),
+    ("dire_x", "dire_x_of_hudbox", "span"),
+    ("slot_w", "slot_w_of_hudbox", "span"),
+    ("pitch", "pitch_of_hudbox", "span"),
+    ("y", "y_of_window", "height"),
+    ("slot_h", "slot_h_of_window", "height"),
+)
+
+# THE TWO THIS TOOL CANNOT MEASURE, named rather than left out. They
+# are the ranked-role icon's offset below a portrait and its height, and
+# everything here searches for HERO PORTRAITS - so there is nothing in a
+# located bar that says where a role icon sits. Declaring them is what
+# keeps the guard sharp: a SEVENTH fraction added to `DraftLayout` still
+# fails `test_every_fraction_the_app_ships_is_measured`, which is how
+# `dire_x` was found to be the one shipped number nothing here checked.
+NOT_MEASURED_HERE = ("role_dy", "role_h")
+
+# What the table converts to pixels against. 16:9, so the span IS the
+# width and the two readings cannot be confused in the arithmetic - the
+# column is there to turn a fraction into something a person can judge,
+# not to make a claim about a resolution.
+AT = (1920, 1080)
+
+
+def _boxes_against_the_bar(good: list) -> None:
+    """THE PROOF SHEET AS NUMBERS, which is the half it cannot give.
+
+    The sheet shows what the app's own boxes cut out, and a row that has
+    caught the player's name instead of the portrait is obvious at a
+    glance - but "obvious" is where this went wrong last time. A crop
+    that looks low is not a measurement, and a measurement is what it
+    takes to move six numbers that every saved calibration depends on.
+
+    Every frame here has BOTH: `app_boxes` put the shipped fractions
+    through `SlotRect.to_pixels`, and the search found where Dota
+    actually drew the bar. The difference is the fix, in pixels, per
+    picture - and it has been computed on every run since the sheet was
+    written and never once printed.
+
+    A POSITIVE NUMBER MEANS THE APP'S BOX IS LOWER, TALLER OR FURTHER
+    RIGHT than the bar it is supposed to be on.
+    """
+    # EVERY key this needs, not a couple of them. A row reaches here
+    # from several paths and a partial one is normal; asking for the
+    # two that were convenient and indexing the rest is how this block
+    # took out fourteen tests whose fixtures carry only the fractions.
+    needs = ("bar_top_px", "slot_h_px", "radiant_x_px", "slot_w_px",
+             "w", "h")
+    rows = [r for r in good if all(r.get(k) is not None for k in needs)]
+    if not rows:
+        return
+    print("\nWHERE THE SHIPPED BOXES LAND AGAINST THE BAR THAT WAS FOUND")
+    print("  (+ is the app's box lower / taller / further right than "
+          "Dota's own)")
+    print(f"  {'picture':<24}{'top':>8}{'height':>9}{'first x':>10}"
+          f"{'width':>8}")
+    offs = {"top": [], "height": [], "x": [], "width": []}
+    for r in sorted(rows, key=lambda r: (r["w"], r["h"])):
+        ax, ay, aw, ah = app_boxes(r["w"], r["h"])[0]
+        d = {"top": ay - r["bar_top_px"], "height": ah - r["slot_h_px"],
+             "x": ax - r["radiant_x_px"], "width": aw - r["slot_w_px"]}
+        for k, v in d.items():
+            offs[k].append(v)
+        print(f"  {r['file'][:23]:<24}{d['top']:>+8}{d['height']:>+9}"
+              f"{d['x']:>+10}{d['width']:>+8}")
+    print(f"  {'median of ' + str(len(rows)):<24}"
+          + "".join(f"{int(round(float(np.median(offs[k])))):>+{w}}"
+                    for k, w in (("top", 8), ("height", 9), ("x", 10),
+                                 ("width", 8))))
+
+
+def _fitted_layout(good: list) -> None:
+    """THE SIX FRACTIONS THESE SCREENSHOTS MEASURE, beside the six shipped.
+
+    This is the number the whole exercise has been circling. `_consensus`
+    prints how TIGHTLY the frames agree and `_vertical` prints which
+    reading is most consistent; neither has ever printed WHAT the
+    agreed value is, so a run could say "consistent to 0.0057" about a
+    figure nobody could compare with the one in the code.
+
+    It REPORTS AND DOES NOT WRITE, which is the rule the whole tool
+    follows: changing these silently invalidates every saved
+    `calibration_local.json`, and a median over a handful of frames is a
+    measurement rather than a decision. The line at the bottom is there
+    to be read and pasted by somebody who has decided, not applied by
+    this.
+
+    Each fraction carries its own WORST MISS, because a median is only
+    worth pasting if the frames behind it agree - and the two that do
+    not (800x600, 1440x900) are excluded here for the same reason
+    `_consensus` excludes them: a bank's origin is read off the first
+    portrait found in it, so a partial fit measures something else.
+    """
+    shipped = DraftLayout()
+    rows = []
+    for name, key, against in FRACTIONS:
+        column = [r[key] for r in good if r.get(key) is not None]
+        if not column:
+            return
+        column = np.array(column, dtype=float)
+        mid = float(np.median(column))
+        rows.append((name, mid, float(np.max(np.abs(column - mid))),
+                     getattr(shipped, name), against))
+    print(f"\nWHAT THESE {len(good)} PICTURES MEASURE THE SIX FRACTIONS "
+          f"TO BE")
+    print(f"  {'fraction':<11}{'measured':>10}{'shipped':>10}"
+          f"{'worst miss':>12}    at {AT[0]}x{AT[1]}")
+    for name, mid, miss, now, against in rows:
+        scale = AT[0] if against == "span" else AT[1]
+        print(f"  {name:<11}{mid:>10.4f}{now:>10.4f}{miss:>12.4f}"
+              f"    {round((mid - now) * scale):>+5} px")
+    print("  " + ", ".join(f"{name}={mid:.4f}" for name, mid, *_ in rows))
+    print("  NOT APPLIED. These are what the pictures say; changing the "
+          "shipped six invalidates every saved calibration_local.json, "
+          "so it is a decision rather than a readout.")
 
 
 def _failures(bad: list) -> None:
