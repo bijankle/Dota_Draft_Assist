@@ -2280,6 +2280,29 @@ credentials, and put the account at risk. Do not go there.
   menu items and the count box's painted arrows: once a stylesheet
   touches a widget, the parts it does not name are not left alone, they
   are handed to somebody else to draw.
+  **AND A TICK BOX ON A MENU IS STILL A TICK BOX — "Always, across the
+  board"** (`QMenu::indicator`, `chrome.paint_tick` / `tick_pixmap`,
+  `theme.install_tick`). Fixing the QCheckBoxes left the CHECKABLE MENU
+  ITEMS — View ▸ Greyscale, the four section toggles, Run ▸ Auto, the
+  slot menu's "my pick" and "locked" — falling back to whatever the
+  native style draws, because `QMenu::item` was styled and
+  `QMenu::indicator` was not. That is the scrollbars' fault exactly.
+  A stylesheet can colour a box and CANNOT put a mark in one, so the
+  indicator is pointed at an IMAGE — which is the one thing it can do —
+  and the image is generated at runtime from the same `paint_tick` the
+  widget uses. ONE SHAPE: two hand-drawn ticks would be two of them
+  drifting.
+  **GENERATED, NEVER COMMITTED.** It is eleven lines of drawing against
+  two colours that both follow the palette, so a committed PNG would be
+  a binary nobody can diff that goes stale the moment the accent
+  changes — and it would be WRONG in greyscale, which is why
+  `_apply_greyscale` re-renders it. Gitignored beside
+  `app-generated.ico`, which it is the same kind of file as.
+  **AND NEVER BEFORE THE QApplication.** It reaches a QPixmap, and
+  touching one before the application exists does not raise, it ABORTS —
+  so `TICK_URL` starts empty, the stylesheet is valid without the file,
+  and an unchecked item is a plain outlined box either way. The fallback
+  is correct rather than merely harmless.
 
 - **THE CHROME MOVED, AND THE ORDER IT MOVED IN IS THE RECORD.** Five
   requests in one sitting, several reversing the one before, so what

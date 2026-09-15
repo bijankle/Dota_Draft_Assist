@@ -4205,3 +4205,55 @@ def test_every_on_off_box_in_the_app_draws_an_actual_tick(styled, qapp):
     assert not offenders, (
         "these draw a filled square instead of a tick; use chrome.TickBox:\n"
         + "\n".join(offenders))
+
+
+def test_a_checkable_menu_item_draws_the_apps_own_tick(window, qapp, tmp_path):
+    """"Always, across the board." A tick box on a menu is still a tick
+    box, and `QMenu::item` is styled — so once a stylesheet touches the
+    widget, the parts it does not NAME are handed to somebody else to
+    draw. That is the scrollbars' lesson, which cost a clump of white
+    specks through a translucent window.
+
+    A stylesheet can colour a box and cannot put a MARK in one, so the
+    indicator is pointed at a picture, and the picture is generated from
+    the same `paint_tick` the tick box widget uses — two hand-drawn
+    ticks would be two of them drifting.
+    """
+    from draft_assist.ui import theme
+    assert "QMenu::indicator" in theme.STYLESHEET, "the indicator is unnamed"
+    assert "image: url(" in theme.STYLESHEET, (
+        "nothing points the checked indicator at a mark")
+
+    # The file is real and is a picture with something drawn on it.
+    from PyQt6.QtGui import QImage
+    import re
+    found = re.search(r"image: url\(([^)]+)\)", theme.STYLESHEET)
+    picture = QImage(found.group(1))
+    assert not picture.isNull(), "the tick file did not load"
+    drawn = sum(1 for y in range(picture.height())
+                for x in range(picture.width())
+                if picture.pixelColor(x, y).alpha() > 0)
+    assert drawn > 20, "the tick is blank"
+
+
+def test_the_menu_tick_follows_the_palette(window, qapp):
+    """It is a generated PNG, so greyscale has to re-render it — else the
+    View menu that turned the colour off keeps a red tick in it."""
+    from draft_assist.ui import theme
+    window.settings["greyscale"] = True
+    window._apply_greyscale()
+    try:
+        import re
+        from PyQt6.QtGui import QImage
+        found = re.search(r"image: url\(([^)]+)\)", theme.STYLESHEET)
+        picture = QImage(found.group(1))
+        opaque = [picture.pixelColor(x, y)
+                  for y in range(picture.height())
+                  for x in range(picture.width())
+                  if picture.pixelColor(x, y).alpha() > 200]
+        assert opaque, "nothing was drawn"
+        assert all(c.red() == c.green() == c.blue() for c in opaque), (
+            "the menu tick kept its colour in greyscale")
+    finally:
+        window.settings["greyscale"] = False
+        window._apply_greyscale()

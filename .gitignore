@@ -60,3 +60,4 @@ installed_version.json
 # beside history_accounts.json: a copy of this app carries nobody else's
 # match history.
 history_cache/
+assets/tick-generated.png

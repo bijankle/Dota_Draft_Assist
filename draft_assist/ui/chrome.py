@@ -722,6 +722,56 @@ class ResizeBorder(QObject):
             self._shaped = None
 
 
+def paint_tick(painter, box) -> None:
+    """The app's tick, drawn inside `box`.
+
+    ONE SHAPE, because there are now two things that draw it: the tick
+    box widget, and the small pixmap the stylesheet points `QMenu::
+    indicator:checked` at. Two hand-drawn ticks is two of them drifting.
+
+    Three points, thick and round-capped, so it still reads as a tick at
+    fifteen pixels rather than as a smudge.
+    """
+    pen = QPen(QColor("#ffffff"), max(1.6, box.width() * 0.13))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    left, top, size = box.left(), box.top(), box.width()
+    painter.drawPolyline(QPolygonF([
+        QPointF(left + size * 0.24, top + size * 0.52),
+        QPointF(left + size * 0.42, top + size * 0.71),
+        QPointF(left + size * 0.78, top + size * 0.29)]))
+
+
+def tick_pixmap(size: int = 15) -> "QPixmap":
+    """The same tick in its own box, as a picture.
+
+    A STYLESHEET CANNOT DRAW A MARK. It can colour `QMenu::indicator`
+    and it can point it at an IMAGE, and that is the whole reason this
+    exists: a checkable menu item — View ▸ Greyscale, the four section
+    toggles, Run ▸ Auto — otherwise falls back to whatever the native
+    style draws, which is the scrollbars' lesson one widget-kind over.
+
+    Generated at runtime rather than committed: it is eleven lines of
+    drawing against two colours that both follow the palette, so a
+    committed PNG would be a binary nobody can diff that goes stale the
+    moment the accent or greyscale changes.
+    """
+    from PyQt6.QtGui import QPixmap
+
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    box = QRectF(0, 0, size, size)
+    painter.setPen(QPen(QColor(theme.ACCENT), 1))
+    painter.setBrush(QColor(theme.ACCENT))
+    painter.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+    paint_tick(painter, box)
+    painter.end()
+    return pixmap
+
+
 class TickBox(QCheckBox):
     """A check box that draws an actual TICK when it is on.
 
@@ -749,17 +799,7 @@ class TickBox(QCheckBox):
                          else QColor(theme.BG_INPUT))
         painter.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
         if self.isChecked():
-            # Three points, thick and round-capped, so it still reads as a
-            # tick at fifteen pixels rather than as a smudge.
-            pen = QPen(QColor("#ffffff"), 2.0)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            left, top_y = box.left(), box.top()
-            painter.drawPolyline(QPolygonF([
-                QPointF(left + self.BOX * 0.24, top_y + self.BOX * 0.52),
-                QPointF(left + self.BOX * 0.42, top_y + self.BOX * 0.71),
-                QPointF(left + self.BOX * 0.78, top_y + self.BOX * 0.29)]))
+            paint_tick(painter, box)
         # THE LABEL TAKES THE STYLESHEET'S COLOUR, not a hardcoded one.
         # Painting the text ourselves means the `color:` rule that dims
         # every other label on this row never reached it, so "Auto" sat

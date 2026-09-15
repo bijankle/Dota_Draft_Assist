@@ -51,7 +51,8 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QVBoxLayout, QWidget)
 
 from ..gsi.state import DRAFTING_STATES
-from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
+from ..config import (ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
+                      RECORDINGS_DIR,
                        REPO_ROOT, RULES_FILE, pair_source,
                        save_pair_source, save_target_brackets,
                        target_brackets)
@@ -2389,6 +2390,14 @@ class MainWindow(QMainWindow):
 
         want = bool(self.settings.get("greyscale"))
         theme.set_greyscale(want)
+        # AND THE MENUS' TICK FOLLOWS THE PALETTE. It is a generated
+        # PNG, so it has to be re-rendered when the colours change —
+        # otherwise greyscale leaves a red tick in the View menu that
+        # opened it. Written beside the generated app icon, and
+        # gitignored with it: it is derived from two colours in this
+        # file, so committing it would be a binary nobody can diff that
+        # goes stale the moment either changes.
+        theme.install_tick(ASSETS_DIR / "tick-generated.png")
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(theme.STYLESHEET)

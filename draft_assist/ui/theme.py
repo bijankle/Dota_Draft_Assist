@@ -128,6 +128,21 @@ QMenu {{ background: {BG_ELEVATED}; border: 1px solid {BORDER}; padding: 4px; }}
 QMenu::item {{ padding: 6px 24px 6px 12px; }}
 QMenu::item:selected {{ background: {ACCENT}; color: #ffffff; }}
 QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 8px; }}
+/* A CHECKABLE MENU ITEM DRAWS THE APP'S OWN TICK. `QMenu::item` is
+   styled, and once a stylesheet touches a widget the parts it does not
+   name are handed to somebody else to draw — the scrollbars' lesson,
+   which cost a clump of white specks through a translucent window. So
+   the indicator is named, and it is pointed at a picture, because a
+   stylesheet can colour a box and cannot put a MARK in one.
+   `{TICK_URL}` is empty until `install_tick()` has written the file,
+   which cannot happen before the QApplication exists — an unchecked
+   item is a plain outlined box either way, so the fallback is correct
+   rather than merely harmless. */
+QMenu::indicator {{
+    width: 15px; height: 15px; margin-left: 6px;
+    border-radius: 3px; border: 1px solid {BORDER}; background: {BG_INPUT};
+}}
+QMenu::indicator:checked {{ {TICK_URL} border-color: {ACCENT}; }}
 
 QToolBar {{
     background: {BG_DEEP};
@@ -514,6 +529,10 @@ _TRUE = {name: globals()[name] for name in _COLOURS}
 
 GREYSCALE = False
 
+# Where the generated tick lives once something has asked for it. Empty
+# until then, so the stylesheet is valid with or without the file.
+TICK_URL = ""
+
 # TWO COLOURS ARE NOT DESATURATED BY LUMINANCE, because that is exactly
 # what makes them useless: #23a55a and #f23f43 — the green and red every
 # signed number in this app is printed in — both land on a mid grey
@@ -613,3 +632,33 @@ def greyed(pixmap):
     grey.setAlphaChannel(
         source.convertToFormat(QImage.Format.Format_Alpha8))
     return QPixmap.fromImage(grey)
+
+
+def install_tick(path) -> None:
+    """Render the app's tick to `path` and point the menus at it.
+
+    CALLED AFTER THE QApplication EXISTS and never at import: this
+    reaches a QPixmap, and touching one before the application is
+    constructed does not raise, it ABORTS the process — the trap
+    `appicon.gui_ready` carries the same note about.
+
+    The caller re-applies `STYLESHEET` afterwards. Never fatal: if the
+    file cannot be written the menus keep an outlined box with no mark
+    in it, which is what they had before.
+    """
+    global TICK_URL, STYLESHEET
+    from pathlib import Path
+
+    try:
+        from .chrome import tick_pixmap
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not tick_pixmap().save(str(target), "PNG"):
+            return
+    except Exception:               # noqa: BLE001 - a mark, not the app
+        return
+    # Forward slashes: a Qt stylesheet url() takes them on every
+    # platform, and a Windows backslash is an escape inside one.
+    TICK_URL = f"image: url({target.as_posix()});"
+    sheet = _build_stylesheet()
+    STYLESHEET = _grey_every_literal(sheet) if GREYSCALE else sheet
