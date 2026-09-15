@@ -282,24 +282,44 @@ def test_the_containers_say_they_are_bare(window):
 
 # ---- the roles cards ----------------------------------------------------
 
-def test_each_roles_block_sits_EXACTLY_under_its_own_team(window):
+def test_each_roles_block_shares_a_card_with_its_own_team(window):
     """"see the padding on the background that allows you to know that 5
     heroes at the pick menu are radiant? that padding should encapsulate
-    the roles".
+    the roles" — and then, when it still did not quite: "i dont like
+    that the padding is not joined between the pills and the 5 / 5
+    portaits sectrions... they belong in the same section.. obviously
+    dire and radiant would stay seperate pads though."
 
-    The card IS the label. That only works if it lines up with the panel
-    above it, so the two rows carry the same spacing and the same
-    stretch — and this checks the pixels rather than the intent, because
-    a card one pixel out reads as a different column.
+    So it is ONE card per side holding both, rather than two cards lined
+    up. Lining them up was the old way of saying this and it is what
+    made a side read as two stacked sections; the alignment it needed is
+    now free, because they are in the same card.
     """
     for width in (1900, 1610, 1200, 940):
         settle(window, width)
         for side in ("ally", "enemy"):
             panel = window.team_panels[side]
-            block = window.roles_cards[side]
-            assert (block.mapTo(window, block.rect().topLeft()).x()
-                    == panel.mapTo(window, panel.rect().topLeft()).x()), side
-            assert block.width() == panel.width(), side
+            pills = window.role_bar.bars[side]
+            card = window.side_cards[side]
+            assert card.isAncestorOf(panel), side
+            assert card.isAncestorOf(pills), side
+            # The pills sit UNDER the picks, not beside them.
+            assert (pills.mapTo(card, pills.rect().topLeft()).y()
+                    >= panel.mapTo(card, panel.rect().bottomLeft()).y()), side
+
+
+def test_the_two_sides_are_still_two_separate_cards(window):
+    """"obviously dire and radiant would stay seperate pads though." The
+    card is what says which five are whose, so merging the pills into it
+    must not merge the sides."""
+    settle(window, 1610)
+    ally = window.side_cards["ally"]
+    enemy = window.side_cards["enemy"]
+    assert ally is not enemy
+    assert not ally.isAncestorOf(enemy) and not enemy.isAncestorOf(ally)
+    left = ally.mapTo(window, ally.rect().topRight()).x()
+    right = enemy.mapTo(window, enemy.rect().topLeft()).x()
+    assert right > left, "the two sides' cards are touching or overlapping"
 
 
 def test_neither_roles_card_has_a_heading(window):
@@ -309,9 +329,8 @@ def test_neither_roles_card_has_a_heading(window):
     from draft_assist.model import roles as roles_mod
     for side in ("ally", "enemy"):
         words = {w.text().strip().lower()
-                 for w in window.roles_cards[side].findChildren(QLabel)}
+                 for w in window.role_bar.bars[side].findChildren(QLabel)}
         assert "roles" not in words
-        assert "radiant" not in words and "dire" not in words
         # What IS there is the eight role names.
         assert {r.lower() for r in roles_mod.ROLES} <= words
 
@@ -321,8 +340,8 @@ def test_there_is_no_rule_drawn_between_them(window):
     well would be this tab saying the same thing twice, which is what
     the Radiant/Dire headings were removed for."""
     settle(window, 1610)
-    ally = window.roles_cards["ally"]
-    enemy = window.roles_cards["enemy"]
+    ally = window.side_cards["ally"]
+    enemy = window.side_cards["enemy"]
     gap_left = (ally.mapTo(window, ally.rect().topRight()).x())
     gap_right = (enemy.mapTo(window, enemy.rect().topLeft()).x())
     picture = window.grab().toImage()

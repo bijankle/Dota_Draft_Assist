@@ -926,11 +926,9 @@ class MainWindow(QMainWindow):
                     lambda pos, side=side, i=index:
                         self._slot_menu(side, i, pos))
                 b.dropped_on.connect(self._on_slot_dropped)
-            teams_row.addWidget(panel, 1)
         # ONE tile size for the whole app: the panel computes it from the
         # width it was given, and the strips below follow it.
         self.team_panels["ally"].tile_resized.connect(self._resize_strips)
-        outer.addLayout(teams_row)
 
         # WHAT THE TWO LINE-UPS ARE MADE OF, between the board and the
         # advice about it, at the user's request. It reads in the same
@@ -939,54 +937,65 @@ class MainWindow(QMainWindow):
         # below answer what to do about it. Valve's own 0-to-3 role
         # ratings, normalised by how many picks each side has made so a
         # 3v5 board is still a comparison (`model/roles.py`).
-        # ONE CARD PER SIDE, UNDER THE SIDE IT IS ABOUT, at the user's
-        # request: "see the padding on the background that allows you to
-        # know that 5 heroes at the pick menu are radiant? that padding
-        # should encapsulate the roles". The board already says which
-        # team is which by putting each five in its own card, so a roles
-        # block in its own card under that one needs nothing else to say
-        # whose it is — which is the argument that removed the
-        # Radiant/Dire headings, carried one step further. A centre rule
-        # inside one wide card was a second way of drawing a division
-        # this tab already had.
-        # AND NO HEADING ON EITHER: "you don't need to state roles, it's
-        # obvious from the content."
-        # Same spacing and the same stretch as `teams_row`, so the two
-        # cards sit exactly under the two panels.
-        self.roles_row = roles_row = QHBoxLayout()
-        roles_row.setSpacing(teams_row.spacing())
+        #
+        # ONE CARD PER SIDE HOLDING BOTH, at the user's request: "i dont
+        # like that the padding is not joined between the pills and the
+        # 5 / 5 portaits sectrions... they belong in the same section..
+        # obviously dire and radiant would stay seperate pads though."
+        # This is the last step of an argument that started with "see the
+        # padding on the background that allows you to know that 5 heroes
+        # at the pick menu are radiant? that padding should encapsulate
+        # the roles". It did not, quite: the roles sat in a SECOND card
+        # under the first, so a side read as two stacked sections rather
+        # than one. Now the padding genuinely encapsulates both, and the
+        # only division the tab draws is the one that means something —
+        # Radiant from Dire.
+        # AND NO HEADING ON THE ROLES: "you don't need to state roles,
+        # it's obvious from the content."
         self.role_bar = rolebar.RoleCards()
-        self.roles_cards = {}
+        self.side_cards = {}
         for side in ("ally", "enemy"):
             side_card, slay = card()
+            slay.setSpacing(6)
+            slay.addWidget(self.team_panels[side])
             slay.addWidget(self.role_bar.bars[side])
-            self.roles_cards[side] = side_card
-            roles_row.addWidget(side_card, 1)
-        # IN A BLOCK OF ITS OWN, so View can hide the whole thing with
-        # one `setVisible`. Hiding the two CARDS instead leaves the row
-        # in the column: a layout whose children are all hidden still
-        # takes the spacing either side of it, which is a double gap
-        # where a block used to be. `bare`, since it holds a layout
-        # rather than being a surface - see the QWidget[bare] rule.
-        roles_row.setContentsMargins(0, 0, 0, 0)
-        self.roles_block = QWidget()
-        self.roles_block.setProperty("bare", True)
-        self.roles_block.setLayout(roles_row)
-        outer.addWidget(self.roles_block)
+            self.side_cards[side] = side_card
+            teams_row.addWidget(side_card, 1)
+        outer.addLayout(teams_row)
+        # VIEW HIDES THE TWO BARS THEMSELVES now that there is no block
+        # of their own to hide. `_apply_sections` takes a sequence for
+        # exactly this: a section can be two widgets in two cards. There
+        # is no row left to leave an empty double gap behind, which is
+        # what the wrapper widget was for.
+        self.roles_block = [self.role_bar.bars[side]
+                            for side in ("ally", "enemy")]
 
         # The board is the top of the screen and everything under it is
         # advice about the board: first which hero to take, then what to
         # build against what is already there.
         self.count_boxes = {}
-        # THE HEADING ON ITS OWN LINE, with everything else a row below
-        # it, at the user's request: "i think it would look better if
+        # THE COUNT RIDES ON THE HEADING, and the legend sits below it.
+        # "you dont need suggested picks and pick suggestions - please
+        # rearrange": the card was headed "Suggested picks" and its first
+        # body row read "Pick suggestions = 20", which is the same two
+        # words twice with a number after one of them. So the number
+        # joins the heading it was paraphrasing and that row goes.
+        #
+        # This is a PARTIAL reversal of "i think it would look better if
         # 'suggested picks' header was above all the text - shift the
-        # rest down so it's all level 1 row lower than the header".
-        # The controls stop being the card's CORNER and become the first
-        # thing in its body, which also hands them the card's full width
-        # rather than whatever the heading row had spare — so the filter
-        # no longer needs to be told it may grow.
-        picks_card, playy = card("Suggested picks")
+        # rest down so it's all level 1 row lower than the header", and
+        # only partial on purpose. What that asked for was the TEXT off
+        # the heading line, and the legend — the two mark rows and the
+        # role filter — stays exactly where that put it. A corner is
+        # sized to itself, so a count box is the one thing that can ride
+        # there; the filter REFLOWS and still must have the card's full
+        # width in the body, or it cannot tell how many columns it has
+        # room for.
+        #
+        # It also puts this card back in step with Suggested items,
+        # which has had its count on the heading throughout.
+        self.suggested_box = self._count_box("suggested_picks")
+        picks_card, playy = card("Suggested picks", self.suggested_box)
         playy.addWidget(self._picks_controls())
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
@@ -2298,8 +2307,12 @@ class MainWindow(QMainWindow):
         for key, _label, attr in self.SECTIONS:
             shown = bool(self.settings.get(key, True))
             block = getattr(self, attr, None)
-            if block is not None:
-                block.setVisible(shown)
+            # A SECTION MAY BE SEVERAL WIDGETS. The roles are one block
+            # to the reader and two widgets in two cards, one per side,
+            # since the picks and the pills for a side share a card now.
+            for widget in (block if isinstance(block, (list, tuple))
+                           else [block] if block is not None else []):
+                widget.setVisible(shown)
             act = getattr(self, "section_actions", {}).get(key)
             if act is not None and act.isChecked() != shown:
                 act.blockSignals(True)
@@ -3543,11 +3556,14 @@ class MainWindow(QMainWindow):
         if want == self._panel_order:
             return
         self._panel_order = want
+        # THE CARDS MOVE, not the panels inside them: a side's five picks
+        # and its role pills are one card now, and seating the panel
+        # alone would leave its pills behind under the other team.
         for side in want:
-            self.teams_row.removeWidget(self.team_panels[side])
+            self.teams_row.removeWidget(self.side_cards[side])
         for side in want:
-            self.teams_row.addWidget(self.team_panels[side], 1)
-            self.team_panels[side].show()
+            self.teams_row.addWidget(self.side_cards[side], 1)
+            self.side_cards[side].show()
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -4008,12 +4024,15 @@ class MainWindow(QMainWindow):
         return box
 
     def _picks_controls(self) -> QWidget:
-        """How many suggestions, and how many of them get each mark.
+        """The legend: which mark means what, and how many get it.
 
-        ALL THREE ON THE HEADING, at the user's request: "it makes sense
-        to have the number of shields / hearts setting to be right next
-        to the quantity dropdown for number of hero suggestions, and this
-        should be the same kind of entry field."
+        ALL THREE COUNTS ON THIS CARD, at the user's request: "it makes
+        sense to have the number of shields / hearts setting to be right
+        next to the quantity dropdown for number of hero suggestions, and
+        this should be the same kind of entry field." The strip's own
+        count rides on the heading a line above these two, which is near
+        enough to satisfy that and near enough to the words "Suggested
+        picks" not to have to repeat them.
 
         Which is the rule this row already followed for the first of
         them - a number you tune by looking at the result belongs beside
@@ -4036,14 +4055,18 @@ class MainWindow(QMainWindow):
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(10)
 
-        # THREE ROWS, AND THE LAST TWO ARE A LEGEND, at the user's
-        # request: "i want a legend added to the title (suggested
-        # picks)... so i want 1 row below the header to show the symbols
-        # and what they mean", laid out as
+        # TWO ROWS, AND THEY ARE A LEGEND, at the user's request: "i
+        # want a legend added to the title (suggested picks)... so i
+        # want 1 row below the header to show the symbols and what they
+        # mean", laid out as
         #
-        #     Pick suggestions        = N
-        #     <heart>  = comfort      = N
-        #     <shield> = counter      = N
+        #     Suggested picks   [N]      <- the card's heading
+        #     <heart>  = comfort    = N
+        #     <shield> = counter    = N
+        #
+        # It was three, with "Pick suggestions = N" leading — which said
+        # the heading's own words back at it. The count moved up to join
+        # them.
         #
         # The marks have carried their meaning in a TOOLTIP since they
         # were drawn, which is a poor place for the one thing a reader
@@ -4065,15 +4088,6 @@ class MainWindow(QMainWindow):
         stack.setHorizontalSpacing(6)
         stack.setVerticalSpacing(2)
 
-        # NOT THE HEADING FONT, at the user's request - "the XXX can be
-        # formated same as others, no need ot be header font". The card
-        # already carries "Suggested picks" above this in heading
-        # weight; a second line in the same weight would read as two
-        # headings rather than as a heading and its controls.
-        stack.addWidget(QLabel("Pick suggestions", counts), 0, 0, 1, 3)
-        self.suggested_box = self._count_box("suggested_picks")
-        stack.addWidget(self.suggested_box, 0, 3)
-
         # TWO COUNTS AGAIN, WHICH REVERSES THE ONE THAT REPLACED THEM.
         # They were merged on the argument that the marks answer the
         # same question - how far down the strip is worth marking - and
@@ -4083,7 +4097,7 @@ class MainWindow(QMainWindow):
         # places to read one setting is two places for it to go stale.
         for line_no, (shield, word, key) in enumerate(
                 ((False, "comfort", "heart_count"),
-                 (True, "counter", "shield_count")), start=1):
+                 (True, "counter", "shield_count"))):
             stack.addWidget(MarkLabel(shield, counts), line_no, 0)
             stack.addWidget(QLabel("=", counts), line_no, 1)
             stack.addWidget(QLabel(word, counts), line_no, 2)
@@ -4314,7 +4328,14 @@ class MainWindow(QMainWindow):
         as a recommendation.
         """
         if not draft.allies and not draft.enemies:
-            self.suggest_row.show_heroes([])
+            # THE BLANKS ARE THE COUNT THIS STRIP IS SET TO. An empty
+            # panel is the SHAPE of its answer, and five plates under a
+            # strip set to twenty is the wrong shape — the card grew the
+            # moment the first pick landed. `_how_many` also resolves
+            # nought, which means "as many as fit on one row", so the
+            # plates then fill the width exactly.
+            self.suggest_row.show_heroes(
+                [], blanks=self._how_many("suggested_picks"))
             return
         # ONE LABELLED LINE PER FIGURE, at the user's request. It was a
         # sentence — "fit +12.43  (vs +6.46, with +5.97)" — carrying a
@@ -4341,7 +4362,8 @@ class MainWindow(QMainWindow):
             "No hero left in the draft is "
             + ", ".join(f"{role} {least}" for role, least in wanted.items())
             + " — turn one down to widen it."
-            if wanted and not rows else ""))
+            if wanted and not rows else ""),
+            blanks=self._how_many("suggested_picks"))
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.
@@ -4465,7 +4487,8 @@ class MainWindow(QMainWindow):
                       if h != draft.my_hero]
         if not enemy_names and not ally_names:
             self._last_advice = []
-            self.item_row.show_items([])
+            self.item_row.show_items(
+                [], blanks=self._how_many("suggested_items"))
             return
         advice = items_mod.recommend(
             self.rules, enemy_names, ally_names, draft.my_role,
@@ -4477,7 +4500,8 @@ class MainWindow(QMainWindow):
         # Kept so a click on a tile can be answered without recomputing
         # the advice — and so the answer is the one on screen.
         self._last_advice = advice
-        self.item_row.show_items(advice)
+        self.item_row.show_items(
+            advice, blanks=self._how_many("suggested_items"))
         # One missing icon is normal; NONE at all means the pack has never
         # been fetched, and a strip of grey plates looks broken rather than
         # unconfigured.

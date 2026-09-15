@@ -84,9 +84,15 @@ from . import theme
 # asked `heightForWidth` for. Ten tiles were laid out below the strip's
 # own bottom edge. Smaller pills fit another group across the same width,
 # which is a row of roles fewer, which is the height back.
-PILL_W = 13
-PILL_H = 10
-PILL_GAP = 3
+# BIGGER THAN THEY WERE (13x10, gap 3), at the user's request: "it would
+# be nice to increase the size of the pills and shuffle thigns around so
+# that the space is utilized better". The card is two columns of eight
+# roles and the cells did not come close to filling it, so there was
+# room to spend and the pills are what the card is FOR — five marks 13px
+# wide read as punctuation beside the name rather than as a figure.
+PILL_W = 18
+PILL_H = 13
+PILL_GAP = 4
 RADIUS = 2.5
 EMPTY_PEN = 1.2
 
@@ -364,13 +370,32 @@ class RoleBar(ReflowGrid):
                            | Qt.AlignmentFlag.AlignVCenter)
             name.show()
             pills.show()
-        # A FIXED GAP BETWEEN CELLS AND THE SLACK AT THE END, so the two
-        # cards hold their cells the same distance apart whatever width
-        # they are given. Spread by stretch instead, each card's spacing
-        # would follow its own width and the pair would stop matching.
+        # THE SLACK GOES BETWEEN THE CELLS, NOT ALL AT THE END. It used
+        # to land in one trailing spacer column, which is the empty
+        # quarter of the card the user drew a circle round — "there is
+        # empty space here... shuffle thigns around so that the space is
+        # utilized better".
+        #
+        # The rule this REPLACES was "a fixed gap between cells and the
+        # slack at the end, so the two cards hold their cells the same
+        # distance apart whatever width they are given; spread by
+        # stretch, each card's spacing would follow its own width and the
+        # pair would stop matching." The hazard was real and does not
+        # apply: the two cards are given EQUAL stretch in the same row,
+        # so they are the same width, so spreading gives both the same
+        # spacing by construction. A test holds that equality, which is
+        # what makes this safe to spend.
+        #
+        # `GAP` stays as the MINIMUM, so the cells can never end up
+        # closer together than they were — only further apart.
         for column in range(columns - 1):
-            grid.setColumnMinimumWidth(column * 3 + 2, self.GAP)
-        grid.setColumnStretch((columns - 1) * 3 + 2, 1)
+            separator = column * 3 + 2
+            grid.setColumnMinimumWidth(separator, self.GAP)
+            grid.setColumnStretch(separator, 1)
+        if columns == 1:
+            # Nothing to spread between, so the slack has to go
+            # somewhere; at the end is the only place it can.
+            grid.setColumnStretch(2, 1)
 
     def _align_names(self) -> None:
         widest = 0

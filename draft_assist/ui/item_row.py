@@ -265,7 +265,15 @@ class ItemRow(QWidget):
         self.note.setText(text)
         self.note.setVisible(bool(text))
 
-    def show_items(self, advice: list, empty: str = "") -> None:
+    def show_items(self, advice: list, empty: str = "",
+                   blanks: int | None = None) -> None:
+        """`blanks` is how many placeholders the empty state draws.
+
+        The caller passes the count this strip is SET to, so an empty
+        card is the shape of the card it will become rather than a fixed
+        five — see `SuggestRow.show_heroes` for the whole argument. None
+        falls back to `PLACEHOLDERS`.
+        """
         for tile in self._tiles + self._blanks:
             self.row.removeWidget(tile)
             tile.deleteLater()
@@ -276,7 +284,8 @@ class ItemRow(QWidget):
         self.message.setText(empty if not advice else "")
         self.message.setVisible(bool(empty) and not advice)
         if not advice:
-            for _ in range(PLACEHOLDERS):
+            wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
+            for _ in range(wanted):
                 blank = PlaceholderTile(self, self._blank_size)
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)

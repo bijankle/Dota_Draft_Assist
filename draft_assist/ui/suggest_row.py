@@ -314,8 +314,22 @@ class SuggestRow(QWidget):
         return self._tile_size[0]
 
     def show_heroes(self, rows: list[tuple[int, str, float, str]],
-                    empty: str = "") -> None:
-        """`rows` is (hero id, name, fit, tooltip), already in order."""
+                    empty: str = "", blanks: int | None = None) -> None:
+        """`rows` is (hero id, name, fit, tooltip), already in order.
+
+        `blanks` is HOW MANY PLACEHOLDERS the empty state draws, and the
+        caller passes the count the strip is actually set to — "it would
+        look nicer if the placeholder boxes extended out to suit the
+        width of the window according to the quantity selected / set".
+        An empty panel is meant to be the SHAPE of its answer, and five
+        plates under a strip set to twenty was the wrong shape: the card
+        grew the moment the first pick landed. With the count left at
+        nought, which means "as many as fit on one row", the caller
+        works that out and the blanks fill the width exactly.
+
+        None falls back to `PLACEHOLDERS` for a caller that has no
+        opinion, which is what the tests and the first paint use.
+        """
         for tile in self._tiles + self._blanks:
             self.row.removeWidget(tile)
             tile.deleteLater()
@@ -323,7 +337,8 @@ class SuggestRow(QWidget):
         self.message.setText(empty if not rows else "")
         self.message.setVisible(bool(empty) and not rows)
         if not rows:
-            for _ in range(PLACEHOLDERS):
+            wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
+            for _ in range(wanted):
                 blank = PlaceholderTile(self, self._tile_size)
                 self.row.insertWidget(len(self._blanks), blank)
                 self._blanks.append(blank)

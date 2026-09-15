@@ -84,10 +84,22 @@ def test_the_ten_picks_are_not_one_of_the_sections():
 
 # --- what the window does with them ------------------------------------
 
+def _widgets(block):
+    """A section is one widget or several.
+
+    The roles are one block to the reader and TWO widgets in two cards,
+    one per side, since a side's five picks and its role pills share a
+    card — "they belong in the same section.. obviously dire and radiant
+    would stay seperate pads though".
+    """
+    return block if isinstance(block, (list, tuple)) else [block]
+
+
 def test_a_fresh_window_draws_three_of_the_four(window):
     for key, label, attr in MainWindow.SECTIONS:
         block = getattr(window, attr)
-        assert block.isVisible() == ui_settings.DEFAULTS[key], label
+        for widget in _widgets(block):
+            assert widget.isVisible() == ui_settings.DEFAULTS[key], label
 
 
 def test_the_matrices_are_gone_rather_than_empty(window):
@@ -144,7 +156,7 @@ def test_the_setting_is_what_the_tick_follows_rather_than_the_reverse(
     window.settings["show_roles"] = False
     window._apply_sections()
     _settle()
-    assert not window.roles_block.isVisible()
+    assert not any(bar.isVisible() for bar in window.roles_block)
     assert not window.section_actions["show_roles"].isChecked()
     # And correcting a tick is not the user pressing it.
     assert window.settings["show_roles"] is False

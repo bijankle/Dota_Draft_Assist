@@ -501,7 +501,15 @@ class TeamPanel(QFrame):
     def __init__(self, side: str, caption: str, parent=None):
         super().__init__(parent)
         self.side = side
-        self.setProperty("card", True)
+        # BARE, NOT A CARD, and the card is now one level up. The five
+        # picks and that side's role pills are ONE section — "i dont like
+        # that the padding is not joined between the pills and the 5 / 5
+        # portaits sectrions... they belong in the same section" — so the
+        # surface and its padding belong to the thing holding both, and a
+        # card inside a card would draw the lighter rectangle this rule
+        # exists to prevent. Radiant and Dire stay two separate cards,
+        # which is what says which five are whose.
+        self.setProperty("bare", True)
         self.setMinimumWidth(minimum_panel_width())
         self._told: tuple[int, int] | None = None
         # Activating a layout can deliver a resize, which lands back here.

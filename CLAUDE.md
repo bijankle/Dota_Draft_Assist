@@ -2043,9 +2043,44 @@ credentials, and put the account at risk. Do not go there.
   halves** — the rule unknown slots already follow, and the alternative
   reports a team as WORSE at every role for having picked a hero the
   bundled file has not been cut for yet.
-  **IT IS TWO CARDS, ONE PER SIDE, UNDER THE PANEL IT IS ABOUT**
-  (`rolebar.RoleBar(side)`, `rolebar.RoleCards`), and that is the THIRD
-  and current shape. At the user's request: "see the padding on the
+  **IT SHARES A CARD WITH THE FIVE PICKS IT IS ABOUT**
+  (`MainWindow.side_cards`, `TeamPanel` now `bare` rather than `card`),
+  and that is the FOURTH and current shape. At the user's request: "i
+  dont like that the padding is not joined between the pills and the 5 /
+  5 portaits sectrions... they belong in the same section.. obviously
+  dire and radiant would stay seperate pads though."
+  It is the last step of an argument that began with "that padding
+  should encapsulate the roles". It did not, quite — the roles sat in a
+  SECOND card under the first, lined up with it to the pixel, so a side
+  still read as two stacked sections. One card holding both makes the
+  alignment free instead of something to check, and leaves exactly one
+  division on the tab: Radiant from Dire.
+  **A CARD INSIDE A CARD WOULD DRAW THE LIGHTER RECTANGLE** the `bare`
+  rule exists to prevent, so `TeamPanel` gives up `card` and the surface
+  belongs to the thing holding both. `_order_panels` seats the CARDS
+  now — moving the panel alone would leave its pills under the other
+  team — and View hides the two `RoleBar`s directly, since there is no
+  row of their own left to leave a double gap behind. `_apply_sections`
+  takes a widget OR a sequence for exactly that.
+  **AND THE PILLS ARE BIGGER, WITH THE SLACK SPREAD BETWEEN THE
+  COLUMNS** (`PILL_W` 13 to 18, `PILL_H` 10 to 13, `PILL_GAP` 3 to 4;
+  the separator columns take the stretch). "there is empty space here...
+  it would be nice to increase the size of the pills and shuffle thigns
+  around so that the space is utilized better" — two columns of cells
+  did not come close to filling the card and every spare pixel went into
+  one trailing spacer.
+  **THAT REVERSES "A FIXED GAP BETWEEN CELLS AND THE SLACK AT THE END",**
+  whose stated hazard was that spreading by stretch would make each
+  card's spacing follow its own width and stop the pair matching. Real,
+  and it does not apply: the two cards are given EQUAL stretch in the
+  same row, so they are the same width, so they get the same spacing by
+  construction — and a test holds that equality. `GAP` stays as the
+  MINIMUM, so cells can only end further apart than before, never
+  closer. With one column there is nothing to spread between and the
+  slack still goes at the end, because there is nowhere else.
+
+  **THE SHAPE BEFORE THIS ONE was two cards, one per side, under the
+  panel it was about** (`rolebar.RoleBar(side)`, `rolebar.RoleCards`). At the user's request: "see the padding on the
   background that allows you to know that 5 heroes at the pick menu are
   radiant? that padding should encapsulate the roles". The board already
   says which team is which by putting each five in its own card, so a
@@ -2172,7 +2207,23 @@ credentials, and put the account at risk. Do not go there.
   on every start — the guard `TitleBar.set_pinned` carries for the same
   reason.
 
-- **THE SUGGESTION COUNTS ARE THREE ROWS, AND THE LAST TWO ARE A LEGEND**
+- **THE STRIP'S COUNT RIDES ON THE HEADING AND THE LEGEND IS TWO ROWS
+  UNDER IT** (`_picks_controls`, `card(title, corner)`). It was three
+  rows, the first reading "Pick suggestions = 20" under a card headed
+  "Suggested picks" — the same two words twice with a number after one
+  of them: "you dont need suggested picks and pick suggestions - please
+  rearrange". So the number joins the heading it was paraphrasing and
+  that row goes.
+  **A PARTIAL REVERSAL OF "the header above all the text", and partial
+  on purpose.** What that asked for was the TEXT off the heading line,
+  and the legend and the role filter stay exactly where it put them. A
+  corner is sized to ITSELF, so a count box is the one thing that can
+  ride there; the role filter REFLOWS and still needs the card's full
+  width in the body, or it cannot work out how many columns it has room
+  for. It also puts this card back in step with Suggested items, which
+  has had its count on the heading throughout.
+
+- **THE SUGGESTION COUNTS ARE A LEGEND, AND THE MARKS NAME THEMSELVES**
   (`_picks_controls`), at the user's request: "i want a legend added to
   the title (suggested picks)... so i want 1 row below the header to
   show the symbols and what they mean", laid out as
@@ -2814,6 +2865,17 @@ credentials, and put the account at risk. Do not go there.
   looking at the result. Items are filtered by severity FIRST and then cut
   to the cap, so raising it to twenty does not produce twenty items — it
   only stops advice that already cleared the floor being truncated.
+  **AND THE EMPTY STRIP DRAWS THAT MANY PLATES** (`show_heroes(blanks=)`,
+  `show_items(blanks=)`), at the user's request: "it would look nicer if
+  the placeholder boxes extended out to suit the width of the window
+  according to the quantity selected / set". Both strips drew a fixed
+  five, which is the wrong SHAPE for a strip set to twenty — and the
+  whole argument for drawing an outline at all is that it is the shape
+  of the answer standing where the answer will appear, so the card
+  growing the moment the first pick lands is the fault it exists to
+  prevent. `PLACEHOLDERS` survives as the fallback for a caller with no
+  opinion. With the count left at nought the window resolves it to the
+  row capacity, so the plates fill the width exactly.
   **Nought means "as many as fit on one row"**, and that is the default,
   because a fixed eight is too many on a narrow window and too few on a
   wide one (`flowlayout.fits_in_one_row`). Setting the box makes the

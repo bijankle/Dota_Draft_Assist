@@ -99,13 +99,38 @@ def test_items_are_live_from_the_first_enemy_pick(window):
 
 def test_an_empty_draft_shows_the_shape_of_the_strip_not_a_sentence(qapp):
     """A line saying items appear later is read once and skipped forever.
-    Blank plates say the same thing in the place the answer will be."""
+    Blank plates say the same thing in the place the answer will be.
+
+    AND THERE ARE AS MANY AS THE STRIP IS SET TO, which is the whole
+    point of showing a shape at all — "it would look nicer if the
+    placeholder boxes extended out to suit the width of the window
+    according to the quantity selected / set". Five plates under a strip
+    set to twenty is the wrong shape: the card grows the moment the
+    first pick lands, which is exactly what an empty state exists to
+    stop.
+    """
     window = blank_window(qapp)
     try:
-        window.refresh()
+        # `_refresh_views`, not `refresh`: the strips are rebuilt when a
+        # PICK changes, so a plain refresh over an unchanged board does
+        # not redraw them. That is why the count box calls this itself —
+        # otherwise a new number would sit in the settings file until the
+        # next hero was picked.
+        window.settings["suggested_items"] = 7
+        window.settings["suggested_picks"] = 12
+        window._refresh_views()
         assert window.item_row.items == []
         assert window.item_row.message.text() == ""
-        assert len(window.item_row._blanks) == item_row_mod.PLACEHOLDERS
+        assert len(window.item_row._blanks) == 7
+        assert len(window.suggest_row._blanks) == 12
+
+        # And nought means "as many as fit on one row", which the window
+        # resolves — so the plates fill the width rather than falling
+        # back to a fixed five.
+        window.settings["suggested_items"] = 0
+        window._refresh_views()
+        assert (len(window.item_row._blanks)
+                == window._how_many("suggested_items"))
     finally:
         window.close()
 
@@ -2776,10 +2801,16 @@ def test_radiant_is_always_the_left_panel(window, qapp):
     window._update_team_captions(Snap())
     assert window.team_captions["ally"].text() == "Dire"
     assert window.team_captions["enemy"].text() == "Radiant"
-    # The ENEMY panel (Radiant) is now the left-hand one.
+    # The ENEMY side (Radiant) is now the left-hand one. It is the CARD
+    # that moves: a side's five picks and its role pills share one card,
+    # so seating the panel alone would leave its pills under the other
+    # team.
     order = [window.teams_row.itemAt(i).widget()
              for i in range(window.teams_row.count())]
-    assert order[0] is window.team_panels["enemy"]
+    assert order[0] is window.side_cards["enemy"]
+    assert order[0].isAncestorOf(window.team_panels["enemy"])
+    assert order[0].isAncestorOf(window.role_bar.bars["enemy"]), (
+        "the pills stayed behind under the other team")
     # AND THE GRIDS DID NOT GO WITH IT. Both cards carry both teams, so
     # neither belongs to a side and there is nothing for the seating to
     # follow — "it should never swap... synergies left, counters right".
@@ -2793,7 +2824,7 @@ def test_radiant_is_always_the_left_panel(window, qapp):
     assert window.team_captions["ally"].text() == "Radiant"
     order = [window.teams_row.itemAt(i).widget()
              for i in range(window.teams_row.count())]
-    assert order[0] is window.team_panels["ally"]
+    assert order[0] is window.side_cards["ally"]
     # Still where they were, having never moved in either direction.
     grids = [window.grids_row.itemAt(i).widget()
              for i in range(window.grids_row.count())]
@@ -4044,3 +4075,39 @@ def test_an_absent_calibration_file_is_no_longer_a_banner(qapp, monkeypatch,
         assert not win.banner.isVisible(), win.banner_label.text()
     finally:
         win.close()
+
+
+def test_the_picks_card_does_not_say_its_own_heading_back_at_itself(
+        window, qapp):
+    """"you dont need suggested picks and pick suggestions - please
+    rearrange."
+
+    The card was headed "Suggested picks" and its first body row read
+    "Pick suggestions = 20" — the same two words twice with a number
+    after one of them. The number joins the heading it was paraphrasing
+    and that row goes. The legend below keeps its labels, because
+    "comfort" and "counter" name the MARKS rather than the card.
+    """
+    from PyQt6.QtWidgets import QLabel
+    window.show()
+    qapp.processEvents()
+    labels = [label.text().strip().lower()
+              for label in window.picks_card.findChildren(QLabel)
+              if label.text().strip()]
+    assert "suggested picks" in labels, "the heading went with it"
+    assert "pick suggestions" not in labels, (
+        "the card is paraphrasing its own heading again")
+
+    # The count is still on this card, under the name everything else
+    # uses, and it rides on the HEADING line. That is the whole
+    # rearrangement: a corner is sized to itself, so a count box can sit
+    # there while the reflowing role filter still cannot.
+    assert window.picks_card.isAncestorOf(window.suggested_box)
+    heading = next(label for label in window.picks_card.findChildren(QLabel)
+                   if label.text().strip() == "Suggested picks")
+    box_y = window.suggested_box.mapTo(
+        window.picks_card, window.suggested_box.rect().center()).y()
+    head_y = heading.mapTo(
+        window.picks_card, heading.rect().center()).y()
+    assert abs(box_y - head_y) <= 8, (
+        f"the count box is not on the heading's line ({box_y} vs {head_y})")
