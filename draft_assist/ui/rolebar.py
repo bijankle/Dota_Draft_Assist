@@ -68,10 +68,10 @@ window's minimum; a card that reflows has to ask for one column.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import (QColor, QPainter, QPainterPath, QPen, QPolygonF)
 from PyQt6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel,
-                             QSizePolicy, QWidget)
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 from ..model import roles as roles_mod
 from . import theme
@@ -98,23 +98,38 @@ EMPTY_PEN = 1.2
 
 
 class PillRow(QWidget):
-    """One side's share of one role, as `roles_mod.PILLS` pills."""
+    """A role as pills: `count` of them, `filled` of those solid.
 
-    def __init__(self, grows_right: bool, parent=None):
+    **THE COUNT IS A PARAMETER because two different scales are drawn in
+    it.** A TEAM's row is a SHARE — `roles_mod.PILLS` of them, because a
+    side's five picks can carry any fraction of what they could have
+    scored — while one HERO's row is Valve's own 0-to-3 rating, and
+    drawing three levels across five pills would invent a precision the
+    game does not publish. Same pills either way, which is the point: the
+    callout over a pick and the card under the board read as one kind of
+    object.
+    """
+
+    def __init__(self, grows_right: bool, parent=None, count: int = None):
         super().__init__(parent)
         # Which end the filled pills start from. Both sides start at the
         # role's name and grow away from it, so the ALLY row — which sits
         # to the left of the name — fills from its right-hand end.
         self._grows_right = bool(grows_right)
+        self._count = roles_mod.PILLS if count is None else max(1, int(count))
         self._filled = 0
         self._lead = 0
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setFixedSize(
-            roles_mod.PILLS * PILL_W + (roles_mod.PILLS - 1) * PILL_GAP,
+            self._count * PILL_W + (self._count - 1) * PILL_GAP,
             PILL_H + 6)
 
+    @property
+    def count(self) -> int:
+        return self._count
+
     def set_share(self, filled: int, lead: int) -> None:
-        filled = max(0, min(int(filled), roles_mod.PILLS))
+        filled = max(0, min(int(filled), self._count))
         if (filled, int(lead)) == (self._filled, self._lead):
             return
         self._filled, self._lead = filled, int(lead)
@@ -143,10 +158,10 @@ class PillRow(QWidget):
         top = (self.height() - PILL_H) / 2.0
         fill = self._colour()
         outline = QPen(QColor(theme.BORDER), EMPTY_PEN)
-        for slot in range(roles_mod.PILLS):
+        for slot in range(self._count):
             # `slot` counts from the end the bar grows FROM, so the first
             # filled pill of each side is the one nearest the role name.
-            at = slot if self._grows_right else roles_mod.PILLS - 1 - slot
+            at = slot if self._grows_right else self._count - 1 - slot
             box = QRectF(at * (PILL_W + PILL_GAP), top, PILL_W, PILL_H)
             if slot < self._filled:
                 painter.setPen(Qt.PenStyle.NoPen)
@@ -607,3 +622,210 @@ def _explain(mine, yours, ours: str = "", theirs: str = "") -> str:
             f"{lead}\n"
             f"Out of 3 per pick, so the two are comparable "
             f"before both teams are full.")
+
+
+# The callout's own geometry. Its gaps are DELIBERATELY tighter than the
+# Roles card's, at the user's request — "with the same pill look at the
+# one for the team, but more ocmpact (there is too much space between
+# carry and durable, support and escape".
+# The card spreads its slack between its two columns on purpose (see
+# `RoleBar._relayout`), which is right for a block as wide as the board
+# and wrong for a box hanging over one portrait: there the gap the card
+# earns is most of the width. So this one has a FIXED gap and no stretch
+# at all — it is sized to its contents rather than given a width to fill.
+CALLOUT_GAP = 16
+# TIGHT, because the height is what decides whether it fits ABOVE the
+# tile — which is where it was asked for, and the pick tiles are already
+# near the top of the page. Below is the fallback and it is a poor one:
+# directly under a pick is the side's own Roles card, drawn in the very
+# same pills, so a callout that lands there reads as part of it.
+CALLOUT_PAD = 7
+CALLOUT_ROWS = 2
+POINTER_W = 14
+POINTER_H = 6
+CALLOUT_RADIUS = 6
+
+
+class HeroRoles(QWidget):
+    """One hero's eight ratings, two columns of four.
+
+    VALVE'S OWN 0-TO-3, not a share. The Roles card under the board asks
+    "how much of what this side COULD have scored did it score", which is
+    a fraction and is drawn across five pills; one hero has no fraction to
+    take — it has the rating the game publishes — so it gets three pills
+    and each one is a level.
+
+    ALL EIGHT ROLES, ALWAYS, even the zeros. A list cut to what a hero
+    scores would change shape from hero to hero, and "no initiation at
+    all" is exactly the answer somebody clicks a portrait to get; the
+    Roles card, the role filter and the History sidebar all keep their
+    full list for the same reason.
+    """
+
+    COLUMNS = 2
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setProperty("bare", True)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(1)
+        self._cells: dict[str, tuple[QLabel, PillRow]] = {}
+        per = -(-len(roles_mod.ROLES) // self.COLUMNS)
+        for index, role in enumerate(roles_mod.ROLES):
+            line, column = index % per, (index // per) * 3
+            name = QLabel(role, self)
+            name.setProperty("dim", True)
+            name.setAlignment(Qt.AlignmentFlag.AlignRight
+                              | Qt.AlignmentFlag.AlignVCenter)
+            pills = PillRow(grows_right=True, parent=self,
+                            count=roles_mod.MAX_LEVEL)
+            grid.addWidget(name, line, column,
+                           Qt.AlignmentFlag.AlignRight
+                           | Qt.AlignmentFlag.AlignVCenter)
+            grid.addWidget(pills, line, column + 1,
+                           Qt.AlignmentFlag.AlignLeft
+                           | Qt.AlignmentFlag.AlignVCenter)
+            self._cells[role] = (name, pills)
+        # A FIXED gap between the two columns and NO stretch. See
+        # `CALLOUT_GAP`.
+        grid.setColumnMinimumWidth(2, CALLOUT_GAP)
+        self._align_names()
+
+    def _align_names(self) -> None:
+        widest = 0
+        for name, _pills in self._cells.values():
+            name.ensurePolished()     # or the font is not the stylesheet's
+            widest = max(widest, name.sizeHint().width())
+        for name, _pills in self._cells.values():
+            name.setFixedWidth(widest)
+
+    def set_hero(self, hero_id: int) -> bool:
+        """Draw this hero's ratings. False when the table has none.
+
+        A hero the bundled file has not been cut for yet is the same
+        "unknown is a real state" this app follows everywhere: the caller
+        shows nothing rather than eight empty rows, which would read as a
+        hero that is good at nothing.
+        """
+        levels = roles_mod.levels_for(hero_id)
+        if not levels:
+            return False
+        for role, (name, pills) in self._cells.items():
+            rating = int(levels.get(role, 0))
+            pills.set_share(rating, 0)
+            tip = f"{role}: {rating} of {roles_mod.MAX_LEVEL} — Valve's own"
+            name.setToolTip(tip)
+            pills.setToolTip(tip)
+        return True
+
+    def rating(self, role: str) -> int:
+        """What is DRAWN for one role, for a test to read."""
+        return self._cells[role][1].filled
+
+
+class RoleCallout(QWidget):
+    """What a clicked hero is made of, in a box pointing down at it.
+
+    At the user's request: "when i click on a hero in addition to the
+    gold border i want to see the stats show up above in a callout above
+    the hero". The gold ring says WHICH hero the board is being measured
+    against; this says what that hero IS, which is the one thing the
+    board around it cannot.
+
+    **A CHILD OF THE WINDOW, NEVER A TOP-LEVEL WIDGET.** A parentless
+    QWidget is a WINDOW the moment anything shows it, and this app has
+    opened a stray second "Dota Draft Assist" that way three times. It is
+    raised over its siblings instead, which is all "floating" has to mean
+    inside one window.
+
+    **AND IT FLIPS RATHER THAN OVERHANGING.** Above the tile is where it
+    was asked for and where it goes — but the pick tiles sit at the top
+    of the page, so on a short window there is no room up there and the
+    honest answer is to put it under the tile rather than over the title
+    bar. Same rule as every other placement here: clamped to the room
+    that exists.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("roleCallout")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._below = False
+        self._point_at = 0.5          # where the pointer sits, 0..1 across
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(CALLOUT_PAD, CALLOUT_PAD + POINTER_H,
+                               CALLOUT_PAD, CALLOUT_PAD + POINTER_H)
+        lay.setSpacing(0)
+        # NO NAME ON IT. The tile it points at is an inch below with the
+        # hero's own portrait on it — and where there is no artwork yet,
+        # that tile draws the name. A callout that opens by repeating
+        # what it is pointing at is the profile callout's lesson, and the
+        # two rows it costs are exactly what decides whether this fits
+        # ABOVE the tile, which is where it was asked for.
+        self.roles = HeroRoles(self)
+        lay.addWidget(self.roles)
+        self.setVisible(False)
+
+    def show_hero(self, hero_id: int, name: str = "") -> bool:
+        if not self.roles.set_hero(hero_id):
+            self.setVisible(False)
+            return False
+        self.setToolTip(name or "")
+        self.adjustSize()
+        return True
+
+    def point_at(self, target: QRect, room: QRect = None) -> None:
+        """Sit over `target`, inside `room` (both in the parent's space).
+
+        `room` is the TAB'S CONTENT AREA rather than the whole window, so
+        the box can never be pushed up over the title bar and the tabs —
+        the chrome is not somewhere a callout about a portrait may go,
+        and covering the window buttons with one would be worse than
+        moving it. Left out, it falls back to the parent's own rect.
+
+        IT FLIPS rather than overhanging: above the tile is where this was
+        asked for, and on a short window there is no above, so it goes
+        under. The pointer follows the TILE rather than the box, so a
+        callout pushed sideways to stay inside still names the portrait
+        it is about — which is the whole job of the pointer.
+        """
+        if room is None or room.isEmpty():
+            parent = self.parentWidget()
+            room = parent.rect() if parent is not None else QRect()
+        size = self.sizeHint()
+        above = target.top() - size.height()
+        self._below = bool(room.height()) and above < room.top()
+        top = target.bottom() if self._below else above
+        left = target.center().x() - size.width() // 2
+        if room.width():
+            left = max(room.left(), min(left, room.right() - size.width()))
+        self.setGeometry(left, top, size.width(), size.height())
+        span = max(1, size.width())
+        self._point_at = min(1.0, max(0.0,
+                                      (target.center().x() - left) / span))
+        self.update()
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        body = QRectF(self.rect()).adjusted(0.5, POINTER_H + 0.5,
+                                            -0.5, -POINTER_H - 0.5)
+        path = QPainterPath()
+        path.addRoundedRect(body, CALLOUT_RADIUS, CALLOUT_RADIUS)
+        # The pointer, on whichever edge faces the tile.
+        tip_y = body.bottom() + POINTER_H if not self._below else body.top() \
+            - POINTER_H
+        mid = body.left() + self._point_at * body.width()
+        mid = min(max(mid, body.left() + POINTER_W),
+                  body.right() - POINTER_W)
+        edge = body.bottom() if not self._below else body.top()
+        arrow = QPolygonF([QPointF(mid - POINTER_W / 2, edge),
+                           QPointF(mid + POINTER_W / 2, edge),
+                           QPointF(mid, tip_y)])
+        path.addPolygon(arrow)
+        painter.setPen(QPen(QColor(theme.FRAME_GOLD), 1))
+        painter.setBrush(QColor(theme.BG_ELEVATED))
+        painter.drawPath(path.simplified())
+        painter.end()

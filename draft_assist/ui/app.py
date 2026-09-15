@@ -1158,7 +1158,22 @@ class MainWindow(QMainWindow):
         # back and nothing is ever cut off: at any ordinary size there is
         # nothing to scroll, and on a short screen the tab scrolls instead
         # of hiding its last row of tiles.
-        tabs.addTab(_scrolling(draft_widget), "Draft")
+        self.draft_scroll = _scrolling(draft_widget)
+        tabs.addTab(self.draft_scroll, "Draft")
+        # WHAT A CLICKED HERO IS MADE OF, in a box pointing down at it,
+        # at the user's request: "when i click on a hero in addition to
+        # the gold border i want to see the stats show up above in a
+        # callout above the hero".
+        # A CHILD OF THE SHELL rather than of the Draft page, so it can
+        # sit above tiles that are themselves at the top of the page —
+        # inside the page it would be clipped by the viewport exactly
+        # where it is wanted. The cost is that it does not scroll with
+        # the page, so it is repositioned when the page scrolls.
+        self.role_callout = rolebar.RoleCallout(shell)
+        self.draft_scroll.verticalScrollBar().valueChanged.connect(
+            self._place_role_callout)
+        self.draft_scroll.horizontalScrollBar().valueChanged.connect(
+            self._place_role_callout)
 
         # ----- History tab: one account's match history, measured.
         # It used to be the ranked list of every hero NOT in this game,
@@ -4178,6 +4193,82 @@ class MainWindow(QMainWindow):
         self.focus = None if self.focus == (side, hero_id) else (side, hero_id)
         self._update_relations()
 
+    def _update_role_callout(self) -> None:
+        """Show the clicked hero's own ratings over the tile it is on.
+
+        ONE SELECTION, so this follows `self.focus` like everything else
+        rather than hanging off a click: a hero clicked on a suggestion
+        gets the same box over the same kind of tile, and clicking it
+        again clears both the ring and this.
+
+        A GRID AXIS is deliberately not covered. It is the same hero and
+        the same selection, but a header SECTION is not a widget with a
+        rectangle of its own to point at, and a callout pointing at
+        roughly the right column would be worse than none.
+        """
+        callout = getattr(self, "role_callout", None)
+        if callout is None:
+            return
+        tile = self._focused_tile()
+        if tile is None or not tile.isVisible():
+            callout.setVisible(False)
+            return
+        hero = tile.property("hero_id")
+        if hero is None:
+            hero = getattr(tile, "hero_id", None)
+        # A hero the bundled role table has not been cut for yet draws
+        # NOTHING rather than eight empty rows, which would read as a
+        # hero that is good at none of them.
+        if hero is None or not callout.show_hero(int(hero),
+                                                 self.ds.name(int(hero))):
+            callout.setVisible(False)
+            return
+        callout.setVisible(True)
+        callout.raise_()
+        self._place_role_callout()
+
+    def _focused_tile(self):
+        """The widget the current selection is drawn on, or None."""
+        if not self.focus:
+            return None
+        where, hid = self.focus
+        if where == "suggest":
+            for tile in getattr(self.suggest_row, "tiles", []):
+                if tile.hero_id == hid:
+                    return tile
+            return None
+        panel = self.team_panels.get(where)
+        if panel is None:
+            return None
+        for tile in panel.slots:
+            if tile.property("hero_id") == hid:
+                return tile
+        return None
+
+    def _place_role_callout(self) -> None:
+        """Point it at whatever the selection is on, in SHELL coordinates.
+
+        Called again on every scroll of the Draft page, because the
+        callout is a child of the shell rather than of the page — see
+        where it is built. Cheap: one `mapTo` and a `setGeometry`.
+        """
+        callout = getattr(self, "role_callout", None)
+        if callout is None or not callout.isVisible():
+            return
+        tile = self._focused_tile()
+        shell = callout.parentWidget()
+        if tile is None or shell is None or not tile.isVisible():
+            callout.setVisible(False)
+            return
+        at = tile.mapTo(shell, tile.rect().topLeft())
+        # THE ROOM IS THE TAB'S CONTENT, not the window. Pushed up
+        # against the shell's own top the box would sit over the title
+        # bar and the tabs, and covering the window buttons with a
+        # callout about a portrait is worse than moving it.
+        page = self.draft_scroll.viewport()
+        room = QRect(page.mapTo(shell, page.rect().topLeft()), page.size())
+        callout.point_at(QRect(at, tile.size()), room)
+
     def _update_grid_focus(self) -> None:
         """Read both cards against the focused hero, or against none.
 
@@ -4233,6 +4324,7 @@ class MainWindow(QMainWindow):
         self._update_team_totals(draft)
         self._drop_focus_if_off_screen(draft)
         self._update_grid_focus()
+        self._update_role_callout()
         if self.focus is None:
             # Nothing clicked, so every tile says what that pick is worth
             # overall rather than nothing at all — the tile has a line for

@@ -3506,6 +3506,61 @@ credentials, and put the account at risk. Do not go there.
   digit inside a heart or a shield is drawn in it, so removing it with
   the title rule would have taken those figures with it.
 
+- **A CLICKED HERO SAYS WHAT IT IS, IN A BOX POINTING DOWN AT IT**
+  (`rolebar.HeroRoles`, `rolebar.RoleCallout`,
+  `MainWindow._update_role_callout` / `_focused_tile` /
+  `_place_role_callout`), at the user's request: "when i click on a hero
+  in addition to the gold border i want to see the stats show up above in
+  a callout above the hero.... with the same pill look at the one for the
+  team, but more ocmpact".
+  The gold ring says WHICH hero the whole board is being measured
+  against; this says what that hero IS, which is the one thing the board
+  around it cannot — the grids answer pairs and the Roles card answers
+  the SIDE.
+  **VALVE'S OWN 0-TO-3, NOT A SHARE.** The Roles card asks how much of
+  what a side COULD have scored it scored, which is a fraction and is
+  drawn across `roles_mod.PILLS` of them; one hero has no fraction to
+  take, so it gets `MAX_LEVEL` pills and each one is a level. Spreading
+  three levels over five pills would invent a precision Valve does not
+  publish. `PillRow` therefore takes a COUNT — same pills either way,
+  which is the point: the callout and the card read as one kind of
+  object.
+  **ALL EIGHT ROLES, ALWAYS, INCLUDING THE ZEROS**, the same rule the
+  role filter and the History sidebar follow: a list cut to what a hero
+  scores would change shape from hero to hero, and "no initiation at
+  all" is exactly the answer somebody clicks a portrait to get.
+  **AND A HERO THE BUNDLED TABLE HAS NOT BEEN CUT FOR DRAWS NOTHING** —
+  eight empty rows would read as a hero that is good at none of them.
+  **IT IS COMPACT WHERE THE CARD IS SPREAD**, and that is a deliberate
+  split rather than an inconsistency. `RoleBar._relayout` spreads its
+  slack BETWEEN its columns, which was asked for and is right for a
+  block as wide as the board; here the same gap would be most of the
+  width — "there is too much space between carry and durable, support
+  and escape" — so this grid has a fixed separator and no stretch at
+  all, and carries NO NAME of its own, since the tile it points at is an
+  inch below with that hero's portrait on it (and with no artwork, its
+  name). The rows those two things save are what decide whether it fits
+  ABOVE the tile, which is where it was asked for.
+  **A CHILD OF THE SHELL, NEVER A TOP-LEVEL WIDGET** — a parentless
+  QWidget is a window the moment anything shows it. Of the shell rather
+  than of the Draft PAGE, because the pick tiles are near the top of
+  that page and inside it the box would be clipped by the viewport
+  exactly where it is wanted; the cost is that it does not scroll with
+  the page, so it is repositioned from the scrollbars.
+  **CLAMPED TO THE TAB'S CONTENT, NOT THE WINDOW.** Pushed against the
+  shell's own top it would sit over the title bar and the tabs, and
+  covering the window buttons with a callout about a portrait is worse
+  than moving it. Below the tile is the FALLBACK and a poor one —
+  directly under a pick is that side's own Roles card, in the very same
+  pills, so a callout landing there reads as part of it — which is why
+  the height is fought for rather than spent.
+  **ONE SELECTION, so it follows `focus`** rather than hanging off a
+  click: a hero clicked on a suggestion gets the same box, and clicking
+  it again clears the ring and this together. A GRID AXIS is deliberately
+  not covered — same hero, same selection, but a header section is not a
+  widget with a rectangle of its own to point at, and a pointer aimed at
+  roughly the right column would be worse than none.
+
 - **A STAR IS WHERE THE TWO TABS MEET** (`history/stars.py`,
   `SuggestTile.set_star`, `tilekit.paint_star`,
   `MainWindow._history_run_changed`), at the user's request. The
