@@ -38,6 +38,14 @@ from dataclasses import dataclass, field
 # beside an n of one is noise wearing a number.
 MIN_GAMES = 2
 
+# HOW MUCH MORE A WIN RATE COUNTS THAN A PICK RATE, at the user's
+# request: "i think i value win rate over pick rate a bit more". It is
+# also the whole of what separates a hero standing 48th on wins and
+# 100th on picks from one standing 100th and 48th - see
+# `HeroForm.combined`, where an unweighted compounding gave those two
+# the very same number.
+WIN_WEIGHT = 1.2
+
 
 @dataclass(frozen=True)
 class HeroForm:
@@ -58,11 +66,29 @@ class HeroForm:
 
     @property
     def combined(self) -> float:
-        """ONE number to rank on: the two percentiles COMPOUNDED, at the
-        user's request - "multiply them instead of adding them... e.g
-        pick rate may be 20%, winrate 30% (1.2*1.3 -1)*100".
+        """ONE number to rank on: the two percentiles compounded, with
+        the WIN RATE WEIGHTED, at the user's request - "i think i value
+        win rate over pick rate a bit more... so is X is winrate and y
+        is pick rate, its 1.2X + Y + XY". `WIN_WEIGHT` is that 1.2,
+        spelled once.
 
-        THIS REVERSES THE MEAN THAT STOOD HERE, and the mean's own
+        **THE WEIGHT IS WHAT KILLS THE SYMMETRY**, which is the defect
+        the plain compounding left behind and which the user named in
+        the same breath. `a + b + ab` is symmetric, so a hero standing
+        48th on wins and 100th on picks scored exactly what one standing
+        100th and 48th did - two quite different heroes the formula
+        could not tell apart. Weighting one axis separates them by
+        `WIN_WEIGHT - 1` times the gap between them: 2.1600 against
+        2.0560 on that pair. Ties fall again, 23% of strips to 19%.
+
+        **IT REORDERS HEROES, WHICH IS THE POINT AND IS WORTH SEEING.**
+        The two that started this - 3 games at 100% against 17 games at
+        53% - swap places: compounded they were 1.9600 and 2.0132 with
+        the much-played hero ahead, weighted they are 2.1600 and 2.1372
+        and the perfect record takes it. That is what "I value win rate
+        a bit more" buys, stated here rather than discovered later.
+
+        THE MEAN BOTH OF THESE REPLACED, and the mean's own
         defect is why. A percentile is a RANK, so with 50 heroes it
         takes only 50 values, 2% apart; the mean of two of them lands on
         a lattice of about 99 rungs, and twenty tiles dropped onto 99
@@ -90,14 +116,14 @@ class HeroForm:
         ordering intent, and a much-played average hero still wins
         comfortably (0.98/0.50 scores 1.970 against 0.10/1.00 at 1.200).
 
-        WHAT STILL TIES, honestly: the formula is symmetric, so a hero
-        at (48th, 100th) compounds to the same figure as one at (100th,
-        48th). Of the ties left, 57% are two heroes on an IDENTICAL pair
-        of percentiles - the same evidence, which `rank_fraction`'s own
-        rule says must share a place - 30% are that swapped pair, and
-        13% are genuine collisions.
+        WHAT STILL TIES, honestly: two heroes on an IDENTICAL pair of
+        percentiles, which is 65% of what is left and is the same
+        evidence - `rank_fraction`'s own rule says those must share a
+        place. The rest are genuine collisions of different pairs. The
+        swapped pair is gone, which is what the weight was for.
         """
-        return (1.0 + self.pick_pct) * (1.0 + self.win_pct) - 1.0
+        return (WIN_WEIGHT * self.win_pct + self.pick_pct
+                + self.win_pct * self.pick_pct)
 
     @property
     def eligible(self) -> bool:

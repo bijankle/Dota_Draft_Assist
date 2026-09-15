@@ -2858,9 +2858,13 @@ credentials, and put the account at risk. Do not go there.
   far as this rule can tell, and splitting them by whatever `sorted`
   did would star one and not the other on identical evidence.
   **AND THE RANK ON THE MARK COMPOUNDS THE TWO PERCENTILES RATHER THAN
-  AVERAGING THEM** (`HeroForm.combined`), at the user's request:
+  AVERAGING THEM, WITH THE WIN RATE WEIGHTED** (`HeroForm.combined`,
+  `stars.WIN_WEIGHT` = 1.2). Two requests, one after the other:
   "multiply them instead of adding them... e.g pick rate may be 20%,
-  winrate 30% (1.2*1.3 -1)". This REVERSES the mean that stood here,
+  winrate 30% (1.2*1.3 -1)", then "i think i value win rate over pick
+  rate a bit more... so is X is winrate and y is pick rate, its 1.2X +
+  Y + XY". So the score is `1.2 * win_pct + pick_pct + win_pct *
+  pick_pct`. This REVERSES the mean that stood here,
   and it is a lattice problem rather than a taste one. A percentile is
   a RANK, so a 50-hero run has only 50 of them, 2% apart; the mean of
   two lands on about 99 rungs, and twenty tiles on 99 rungs collide —
@@ -2879,10 +2883,19 @@ credentials, and put the account at risk. Do not go there.
   that. `(1+a)(1+b) - 1` is `a + b + ab`: the sum, plus a bonus for
   standing well on both, so it is never below the ordering the mean
   was protecting. 0.98/0.50 scores 1.970 against 0.10/1.00 at 1.200.
-  It is SYMMETRIC, so (48th, 100th) still ties (100th, 48th). Of the
-  ties left, 57% are an identical PAIR of percentiles, which is the
-  same evidence and must share a place by the rule above; 30% are that
-  swap; 13% are genuine collisions. Stated rather than hidden.
+  **AND THE WEIGHT IS WHAT KILLS THE SYMMETRY.** Plain compounding is
+  symmetric, so a hero standing 48th on wins and 100th on picks scored
+  exactly what one standing 100th and 48th did — two quite different
+  heroes with one number between them, and the user named that in the
+  same breath as the fix. Weighting one axis parts them by `1.2 - 1`
+  times the gap: 2.1600 against 2.0560. Ties fall again, 23% to 19%,
+  and 65% of what is left is an identical PAIR of percentiles, which is
+  the same evidence and must share a place by the rule above.
+  **IT REORDERS HEROES, AND THAT IS THE POINT.** The two that started
+  this — 3 games at 100% against 17 at 53% — swap: compounded they were
+  1.9600 and 2.0132 with the much-played hero ahead, weighted they are
+  2.1600 and 2.1372 and the perfect record takes it. What "I value win
+  rate a bit more" buys, said out loud rather than found later.
   **AND THERE IS STILL A GAMES FLOOR** (`stars.MIN_GAMES`, 2, the same
   number as `analyse.MIN_DISPLAY`). The pick percentile very nearly does
   this by itself — a one-game hero sinks to the bottom of that ranking —

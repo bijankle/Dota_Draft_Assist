@@ -155,9 +155,21 @@ def _row(pick, win, games=10):
                           rate=0.5, pick_pct=pick, win_pct=win)
 
 
-def test_the_two_percentiles_are_compounded_not_averaged():
-    """The user's own formula: "(1.2*1.3 -1)"."""
-    assert _row(0.20, 0.30).combined == pytest.approx(1.2 * 1.3 - 1.0)
+def test_the_two_percentiles_are_compounded_with_the_win_rate_weighted():
+    """The user's own formula: "is X is winrate and y is pick rate, its
+    1.2X + Y + XY"."""
+    pick, win = 0.20, 0.30
+    assert _row(pick, win).combined == pytest.approx(
+        stars.WIN_WEIGHT * win + pick + win * pick)
+
+
+def test_the_weight_is_on_the_win_rate_and_not_the_pick_rate():
+    """"I value win rate over pick rate a bit more." Of two heroes with
+    the same pair of standings the other way round, the one standing
+    higher on WINS must win — which is also the whole of what broke the
+    symmetry the plain compounding had."""
+    assert _row(pick=0.48, win=1.00).combined > _row(
+        pick=1.00, win=0.48).combined
 
 
 def test_the_pair_that_put_two_hearts_wearing_a_one_on_one_strip():
@@ -168,14 +180,19 @@ def test_the_pair_that_put_two_hearts_wearing_a_one_on_one_strip():
     assert (rare_and_perfect.pick_pct + rare_and_perfect.win_pct
             == played_and_average.pick_pct + played_and_average.win_pct), (
         "the mean could not separate these, which is the whole point")
-    assert played_and_average.combined > rare_and_perfect.combined
+    # AND THE WEIGHT PUTS THE PERFECT RECORD AHEAD, which is the point
+    # of weighting: unweighted these were 2.0132 to 1.9600 the other
+    # way. Separated either way, which is all the heart rank needs.
+    assert rare_and_perfect.combined > played_and_average.combined
 
 
 def test_a_hero_picked_constantly_still_beats_a_rare_perfect_one():
     """The objection the MEAN was chosen over `a * b` for. It does not
-    apply to `(1+a)(1+b)-1`, which is `a + b + ab` — the sum plus a
-    bonus — and this holds it to that."""
-    assert _row(0.98, 0.50).combined > _row(0.10, 1.00).combined
+    apply to `1.2X + Y + XY`, which is a SUM plus a bonus rather than a
+    product, and this holds it to that: a hero picked constantly at an
+    average rate must still outrank one played three times."""
+    assert _row(pick=0.98, win=0.50).combined > _row(
+        pick=0.10, win=1.00).combined
 
 
 def test_compounding_is_never_worse_than_the_mean_it_replaced():
@@ -217,7 +234,8 @@ def test_far_fewer_strips_carry_a_tie_than_before():
             tied += len(set(seen)) != len(seen)
         return tied / 300
 
-    averaged = tie_rate(lambda a, b: (a + b) / 2)
-    compounded = tie_rate(lambda a, b: (1 + a) * (1 + b) - 1)
+    averaged = tie_rate(lambda pick, win: (pick + win) / 2)
+    weighted = tie_rate(
+        lambda pick, win: stars.WIN_WEIGHT * win + pick + win * pick)
     assert averaged > 0.8, averaged
-    assert compounded < averaged / 2, (averaged, compounded)
+    assert weighted < averaged / 3, (averaged, weighted)
