@@ -372,17 +372,91 @@ def test_a_picture_that_cannot_be_written_says_so_and_does_not_raise(
     tool = _tool()
     art = np.zeros((40, 60, 3), np.uint8)
     good = tmp_path / "sheet.png"
-    assert tool.save_png(good, art) == ""
+    where, note = tool.save_png(good, art)
+    assert where == good and note == ""
     assert good.stat().st_size > 0
     import cv2
     back = cv2.imread(str(good))
     assert back is not None and back.shape == art.shape
 
-    why = tool.save_png(tmp_path / "no-such-folder" / "sheet.png", art)
-    assert why, "a failed write reported nothing at all"
-    assert "60x40" in why, f"the picture's size is not in {why!r}"
-    assert "bytes" in why
-    assert "folder" in why
+    where, note = tool.save_png(tmp_path / "no-such-folder" / "sheet.png", art)
+    assert where is None, "a folder that does not exist wrote something"
+    assert note, "a failed write reported nothing at all"
+    assert "60x40" in note, f"the picture's size is not in {note!r}"
+    assert "bytes" in note
+    assert "folder" in note
+
+
+def test_a_name_it_cannot_have_is_not_a_reason_to_lose_the_picture(
+        tmp_path, monkeypatch):
+    """At the user's request: "make sure that a copy of the file gets
+    created with a new name if it is not able to be created".
+
+    The proof sheet is the ONE file here written to the same name every
+    run — the per-picture files are named after their picture — so it is
+    the one that can be open in a viewer while the next run tries to
+    overwrite it, which on Windows is a locked file and a refused write.
+    Twenty minutes of measurement should not be lost to a name.
+    """
+    tool = _tool()
+    art = np.zeros((20, 30, 3), np.uint8)
+    taken = tmp_path / "proof-sheet.png"
+    taken.write_bytes(b"pretend this is open in a viewer")
+
+    import builtins
+    real_open = builtins.open
+
+    def boom(file, mode="r", *args, **kwargs):
+        if "w" in mode and Path(file).name == taken.name:
+            raise OSError(22, "Invalid argument")
+        return real_open(file, mode, *args, **kwargs)
+    monkeypatch.setattr(builtins, "open", boom)
+
+    where, note = tool.save_png(taken, art)
+    monkeypatch.undo()
+    assert where is not None, "the picture was lost to a name"
+    assert where.name == "proof-sheet-2.png", where.name
+    assert where.read_bytes()[:4] == b"\x89PNG"
+    # THE ONE THAT COULD NOT BE WRITTEN IS UNTOUCHED — whatever is
+    # holding it keeps it.
+    assert taken.read_bytes() == b"pretend this is open in a viewer"
+    # AND THE CALLER IS TOLD, because a file that quietly appears under
+    # a name nobody was given is a file nobody opens.
+    assert "proof-sheet.png" in note and "proof-sheet-2.png" in note
+
+
+def test_the_fallback_is_a_last_resort_rather_than_the_habit(tmp_path):
+    """Overwriting is right — a folder of proof-sheet-2, -3, -4 nobody
+    can tell apart is worse than one sheet that is always the latest."""
+    tool = _tool()
+    art = np.zeros((20, 30, 3), np.uint8)
+    for _ in range(3):
+        where, note = tool.save_png(tmp_path / "proof-sheet.png", art)
+        assert where.name == "proof-sheet.png" and note == ""
+    assert [f.name for f in tmp_path.iterdir()] == ["proof-sheet.png"]
+
+
+def test_the_marked_SHEET_line_names_the_file_that_was_actually_written(
+        tmp_path, monkeypatch):
+    """The window opens what that line names, so a sheet that fell back
+    to another name and a line still naming the first one is a window
+    opening a stale picture — or none."""
+    tool = _tool()
+    row = np.zeros((166, 400, 3), np.uint8)
+    (tmp_path / tool.SHEET_NAME).write_bytes(b"held open")
+
+    import builtins
+    real_open = builtins.open
+
+    def boom(file, mode="r", *args, **kwargs):
+        if "w" in mode and Path(file).name == tool.SHEET_NAME:
+            raise OSError(22, "Invalid argument")
+        return real_open(file, mode, *args, **kwargs)
+    monkeypatch.setattr(builtins, "open", boom)
+    where = tool.proof_sheet([("1920x1080", row)], tmp_path)
+    monkeypatch.undo()
+    assert where is not None and where.name != tool.SHEET_NAME
+    assert where.exists() and where.stat().st_size > 0
 
 
 def test_every_picture_this_tool_writes_goes_through_one_writer():

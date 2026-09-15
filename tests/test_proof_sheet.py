@@ -104,7 +104,13 @@ def test_a_write_that_fails_costs_the_picture_and_nothing_else(
     real_open = builtins.open
 
     def boom(file, mode="r", *args, **kwargs):
-        if "w" in mode and str(file).endswith(fp.SHEET_NAME):
+        # EVERY name, not just the first: a refused name now falls back
+        # to `proof-sheet-2.png` and so on, so blocking one only proves
+        # the fallback works (which `test_recognition_menu` checks). The
+        # question HERE is what happens when nothing can be written at
+        # all, and the answer must still be a sentence rather than a
+        # traceback out of the last line of a twenty-minute run.
+        if "w" in mode and "proof-sheet" in Path(file).name:
             raise OSError(22, "Invalid argument")
         return real_open(file, mode, *args, **kwargs)
     monkeypatch.setattr(builtins, "open", boom)

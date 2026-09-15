@@ -55,6 +55,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 import cv2
@@ -1082,8 +1083,8 @@ BOX_CONTEXT = 0.6
 CHUNK = 1 << 20
 
 
-def save_png(path: Path, image) -> str:
-    """Write a picture; answer "" or WHY IT COULD NOT BE WRITTEN.
+def save_png(path: Path, image) -> tuple:
+    """Write a picture; answer (where it landed, what went wrong).
 
     **A PICTURE NOBODY CAN OPEN IS A MEASUREMENT NOBODY TOOK.** The
     proof sheet is the one output of this tool that is read rather than
@@ -1091,10 +1092,25 @@ def save_png(path: Path, image) -> str:
     `OSError: [Errno 22] Invalid argument` where the sheet should have
     been - on a path that is plain ASCII, in a folder the same run had
     just written eighteen other pictures into. "Invalid argument" names
-    nothing, so this reports what it was asked to write and whether the
-    FOLDER can be written at all, which is the difference between a
+    nothing, so the note reports what it was asked to write and whether
+    the FOLDER can be written at all, which is the difference between a
     picture too big for the encoder and a directory this process cannot
     touch.
+
+    **AND A NAME IT CANNOT HAVE IS NOT A REASON TO LOSE THE PICTURE**,
+    at the user's request: "make sure that a copy of the file gets
+    created with a new name if it is not able to be created". The sheet
+    is the one file here written to the SAME NAME on every run - the
+    per-picture files are named after their picture - so it is the one
+    that can be OPEN IN A VIEWER while the next run tries to overwrite
+    it, which on Windows is a locked file and a refused write. Losing a
+    twenty-minute run's only readable output to that is absurd when the
+    answer is another name: `proof-sheet-2.png`, `-3`, and a stamped one
+    after that. The fallback is a LAST RESORT rather than the habit -
+    overwriting is right, or the folder fills with sheets nobody can
+    tell apart - and the caller SAYS which name it got, because a file
+    that quietly appears under a name nobody was told is a file nobody
+    opens.
 
     ONE implementation for all six writers here. They were six copies of
     encode-and-write, of which only the sheet had a message when it
@@ -1104,18 +1120,44 @@ def save_png(path: Path, image) -> str:
     """
     ok, buffer = cv2.imencode(".png", image)
     if not ok:
-        return (f"the PNG encoder refused a "
-                f"{image.shape[1]}x{image.shape[0]} picture")
+        return None, (f"the PNG encoder refused a "
+                      f"{image.shape[1]}x{image.shape[0]} picture")
     data = buffer.tobytes()
-    try:
-        with open(path, "wb") as handle:
-            for at in range(0, len(data), CHUNK):
-                handle.write(data[at:at + CHUNK])
-    except (OSError, ValueError) as bad:
-        return (f"{type(bad).__name__}: {bad}"
-                f"  [{image.shape[1]}x{image.shape[0]}, "
-                f"{len(data)} bytes, {folder_note(path.parent)}]")
-    return ""
+    first = ""
+    for where in _other_names(path):
+        try:
+            with open(where, "wb") as handle:
+                for at in range(0, len(data), CHUNK):
+                    handle.write(data[at:at + CHUNK])
+        except (OSError, ValueError) as bad:
+            if not first:
+                first = (f"{type(bad).__name__}: {bad}"
+                         f"  [{image.shape[1]}x{image.shape[0]}, "
+                         f"{len(data)} bytes, {folder_note(path.parent)}]")
+            continue
+        if where == path:
+            return where, ""
+        return where, (f"{path.name} could not be written ({first}), so it "
+                       f"went to {where.name} instead")
+    return None, first or "no name in that folder could be written"
+
+
+# HOW MANY OTHER NAMES TO TRY before giving up. Small deliberately: if
+# nine numbered names and a stamped one all fail, the fault is the
+# FOLDER rather than the name, and going on would write a hundred lines
+# of the same refusal.
+OTHER_NAMES = 9
+
+
+def _other_names(path: Path):
+    """The asked-for name, then `-2`, `-3`, ... then one with the clock
+    on it — which cannot collide with a run from a minute ago the way a
+    number can."""
+    yield path
+    for nth in range(2, OTHER_NAMES + 2):
+        yield path.with_name(f"{path.stem}-{nth}{path.suffix}")
+    yield path.with_name(
+        f"{path.stem}-{time.strftime('%H%M%S')}{path.suffix}")
 
 
 def _save_beside(into: Path, path: Path, what: str, image) -> None:
@@ -1125,9 +1167,9 @@ def _save_beside(into: Path, path: Path, what: str, image) -> None:
     or a write that was refused left no file and said NOTHING - and the
     closing advice goes on telling the reader to open them.
     """
-    why = save_png(into / f"{path.stem}-{what}.png", image)
-    if why:
-        print(f"  ({path.stem}-{what}.png could not be written: {why})")
+    _where, note = save_png(into / f"{path.stem}-{what}.png", image)
+    if note:
+        print(f"  ({path.stem}-{what}.png: {note})")
 
 
 def folder_note(folder: Path) -> str:
@@ -1243,11 +1285,13 @@ def proof_sheet(rows: list, into: Path):
     # full disk costs the recording and never the draft. It says what
     # went wrong and names the exact path, because "Invalid argument"
     # on a path nobody can see is unanswerable.
-    why = save_png(where, sheet)
-    if why:
-        print(f"  (the proof sheet could not be written to {where}: {why})")
+    landed, note = save_png(where, sheet)
+    if landed is None:
+        print(f"  (the proof sheet could not be written to {where}: {note})")
         return None
-    return where
+    if note:
+        print(f"  ({note})")
+    return landed
 
 
 NAME_OF = {}          # hero id -> display name, read off the library labels

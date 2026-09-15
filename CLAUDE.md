@@ -5619,6 +5619,27 @@ credentials, and put the account at risk. Do not go there.
   `if ok:` and nothing else, so an encode that failed or a write that
   was refused left no file and said NOTHING — while the closing advice
   went on telling the reader to open them.
+  **AND A NAME IT CANNOT HAVE IS NOT A REASON TO LOSE THE PICTURE**
+  (`_other_names`, `OTHER_NAMES`), at the user's request: "make sure
+  that a copy of the file gets created with a new name if it is not able
+  to be created". Their diagnosis, and it fits the evidence better than
+  anything measured from here: the sheet is the ONE file this tool
+  writes to the same name on every run — the per-picture files are named
+  after their picture — so it is the one that can be OPEN IN A VIEWER
+  while the next run tries to overwrite it, which on Windows is a locked
+  file and a refused write. That is why the folder took eighteen other
+  pictures in the same second.
+  So a refused write falls through `proof-sheet-2.png`, `-3`, and a
+  clock-stamped name after those. **A LAST RESORT RATHER THAN THE
+  HABIT** — overwriting is right, or the folder fills with sheets nobody
+  can tell apart — and the caller SAYS which name it got, because a file
+  that quietly appears under a name nobody was given is a file nobody
+  opens. The `SHEET` line carries the name that was actually WRITTEN, so
+  the window opens the new sheet rather than a stale one. The refused
+  file is never touched: whatever is holding it keeps it.
+  Nine numbered names and a stamped one all failing is the FOLDER rather
+  than the name, and the run says so once instead of printing the same
+  refusal ten times.
   **THE BAR'S TOP AND THE PORTRAIT'S HEIGHT ARE REPORTED APART, because
   only one of them can decide anything** (`TOP_IS_COARSE`). Folded
   together with a `max()`, the verdict printed "the bar is measured
