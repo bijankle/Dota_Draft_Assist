@@ -521,6 +521,16 @@ class TeamPanel(QFrame):
     """
 
     tile_resized = pyqtSignal(int, int)
+    # Where the row of five actually starts and stops inside this panel,
+    # as a left and a right inset. It is NOT `PANEL_MARGIN`: the tiles are
+    # square and the leftover of dividing the width by five goes to the
+    # stretches either side, so the real edge moves by a pixel or two as
+    # the window is dragged. The Roles card under this one is aligned to
+    # it — "allign the pills to the right edge of the portraits ... and
+    # also align to the left edge of the protrait" — and a card lined up
+    # with a CONSTANT rather than with the picture would be out by
+    # whatever that leftover happened to be.
+    tiles_placed = pyqtSignal(int, int)
 
     def __init__(self, side: str, caption: str, parent=None):
         super().__init__(parent)
@@ -597,6 +607,7 @@ class TeamPanel(QFrame):
         lay.addWidget(self.header)
 
         self.spacing = TILE_GAP
+        self._placed: tuple[int, int] | None = None
         row = QHBoxLayout()
         row.setSpacing(self.spacing)
         row.addStretch(1)
@@ -700,6 +711,23 @@ class TeamPanel(QFrame):
             edge = now
         for tile in self.slots:
             tile.set_edge(edge)
+        # WORKED OUT, NOT MEASURED. Qt defers layout, so reading the first
+        # tile's own x() here answers for the PREVIOUS size — the trap the
+        # height floor below carries its own paragraph about.
+        #
+        # The two stretches either side split whatever dividing the width
+        # by five left over, which is nought to four pixels, and Qt hands
+        # the ODD ONE to the FIRST of them. That is observed rather than
+        # documented, so `test_the_card_below_knows_where_the_tiles_are`
+        # renders a laid-out panel and holds this against the real
+        # geometry: if Qt ever distributes it the other way the test says
+        # so, rather than the Roles card quietly sitting a pixel out.
+        slack = max(0, inner - 5 * edge)
+        placed = (margins.left() + (slack + 1) // 2,
+                  margins.right() + slack // 2)
+        if placed != self._placed:
+            self._placed = placed
+            self.tiles_placed.emit(*placed)
         # **THE HEIGHT FLOOR HAS TO BE PUT BACK BY HAND.**
         # `SetNoConstraint` frees the widget from its layout's minimum in
         # BOTH axes, and only the WIDTH was ever the problem. Left free
@@ -734,6 +762,14 @@ class TeamPanel(QFrame):
         if size is not None and (size.width(), size.height()) != self._told:
             self._told = (size.width(), size.height())
             self.tile_resized.emit(size.width(), size.height())
+
+    def tile_inset(self) -> tuple[int, int]:
+        """How far the row of five sits inside this panel, left and right.
+
+        What the Roles card below is aligned to, so that the pills and the
+        portraits share two edges rather than two different ones.
+        """
+        return self._placed or (PANEL_MARGIN, PANEL_MARGIN)
 
     def set_total(self, value: float | None) -> None:
         """The signed figure beside the side's name, or nothing at all.

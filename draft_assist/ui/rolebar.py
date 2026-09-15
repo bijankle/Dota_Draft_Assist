@@ -332,6 +332,13 @@ class RoleBar(ReflowGrid):
     keep in step.
     """
 
+    # How much harder the gap BETWEEN two cells pulls than the gap inside
+    # one. The pill columns have to stretch at all, or the last row of
+    # pills cannot reach the card's right edge; they must not stretch as
+    # hard as the space between cells, or a role's name and its own pills
+    # drift apart.
+    SPREAD = 3
+
     def __init__(self, side: str, parent=None):
         super().__init__(parent)
         self.side = side
@@ -345,7 +352,14 @@ class RoleBar(ReflowGrid):
         for role in roles_mod.ROLES:
             name = QLabel(role, self)
             name.setProperty("dim", True)
-            name.setAlignment(Qt.AlignmentFlag.AlignRight
+            # LEFT, at the user's request — "the text aligns left, so all
+            # 8 align left" — which is what lets the first column's names
+            # start exactly where the portraits above them do. They were
+            # right-aligned so that each name finished against its own
+            # pills; `_align_names` gives them all one width, so they line
+            # up with each other either way and only the end they hang
+            # from changes.
+            name.setAlignment(Qt.AlignmentFlag.AlignLeft
                               | Qt.AlignmentFlag.AlignVCenter)
             # BOTH CARDS GROW THE SAME WAY, each pill row starting at its
             # own name. The original bars grew OUTWARD from one shared
@@ -378,10 +392,10 @@ class RoleBar(ReflowGrid):
             line, column = index % per, (index // per) * 3
             name, pills = self._cells[role]
             grid.addWidget(name, line, column,
-                           Qt.AlignmentFlag.AlignRight
+                           Qt.AlignmentFlag.AlignLeft
                            | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(pills, line, column + 1,
-                           Qt.AlignmentFlag.AlignLeft
+                           Qt.AlignmentFlag.AlignRight
                            | Qt.AlignmentFlag.AlignVCenter)
             name.show()
             pills.show()
@@ -406,10 +420,32 @@ class RoleBar(ReflowGrid):
         for column in range(columns - 1):
             separator = column * 3 + 2
             grid.setColumnMinimumWidth(separator, self.GAP)
-            grid.setColumnStretch(separator, 1)
+            grid.setColumnStretch(separator, self.SPREAD)
+        # AND EACH ROW OF PILLS HANGS FROM THE RIGHT OF ITS OWN CELL, at
+        # the user's request: "i think it will look better if you allign
+        # the pills to the right edge of the portraits, and the text
+        # aligns left". The pill columns take a share of the stretch too,
+        # so the LAST one reaches the card's right edge — which, with the
+        # card inset to match the tile row (`set_inset`), is the right
+        # edge of the fifth portrait. With one column it is the only
+        # thing stretching, which is also what stops the slack piling up
+        # in a trailing spacer.
+        #
+        # Their share is DELIBERATELY SMALLER than a separator's: stretch
+        # inside a cell opens a gap between a role's name and its own
+        # pills, and that gap has to stay the smaller of the two, or the
+        # block stops reading as eight cells and starts reading as
+        # sixteen loose controls — the fault the slack was moved off the
+        # end to avoid in the first place.
+        for column in range(columns):
+            grid.setColumnStretch(column * 3 + 1, 1)
         if columns == 1:
-            # Nothing to spread between, so the slack has to go
-            # somewhere; at the end is the only place it can.
+            # ONE COLUMN has no between to spread, and the two halves of
+            # the request pull apart there: a name at the card's left edge
+            # and pills at its right edge would be a role and its own
+            # pills at opposite ends of the window. The name keeps the
+            # edge — it is the half that reads as a list — and the slack
+            # goes after the pills.
             grid.setColumnStretch(2, 1)
 
     def _align_names(self) -> None:
@@ -419,6 +455,27 @@ class RoleBar(ReflowGrid):
             widest = max(widest, name.sizeHint().width())
         for name, _pills in self._cells.values():
             name.setFixedWidth(widest)
+
+    def set_inset(self, left: int, right: int) -> None:
+        """Sit exactly under the row of portraits, not under the card.
+
+        The panel above shares this card and insets its five tiles inside
+        it — `teams.PANEL_MARGIN`, plus whatever dividing the width by
+        five left over — so a block drawn edge to edge across the card is
+        a dozen pixels wider than the thing it describes. At the user's
+        request: "allign the pills to the right edge of the portraits...
+        but the left 4 align left and also align to the left edge of the
+        protrait - do for both radiant and dire".
+
+        TOLD rather than measured: the tile row's own geometry is not
+        settled when this needs to be right, so the panel works the two
+        numbers out where it works the tile size out and says so.
+        """
+        margins = self._grid.contentsMargins()
+        if (margins.left(), margins.right()) == (left, right):
+            return
+        self._grid.setContentsMargins(left, margins.top(),
+                                      right, margins.bottom())
 
     # ---- what it says ---------------------------------------------------
     def set_role(self, role: str, pills: int, lead: int, tip: str) -> None:

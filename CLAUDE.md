@@ -3445,6 +3445,42 @@ credentials, and put the account at risk. Do not go there.
   because Qt's own default of 2 bevels an apex that sharp into a visible
   flat.
 
+- **THE PILLS SIT UNDER THE PORTRAITS, NOT UNDER THE CARD**
+  (`TeamPanel.tiles_placed` / `tile_inset`, `RoleBar.set_inset`, names
+  `AlignLeft` and pill rows `AlignRight`), at the user's request: "i think
+  it will look better if you allign the pills to the right edge of the
+  portraits, and the text aligns left , so all 8 align left, but the left
+  4 align left and also align to the left edge of the protrait - do for
+  both radiant and dire".
+  The two blocks share a card, and the panel INSETS its five tiles inside
+  that card — `PANEL_MARGIN`, plus whatever dividing the width by five
+  leaves over — so a roles block drawn edge to edge across the card was a
+  dozen pixels wider than the thing it describes, at both ends. Which is
+  the whole argument for the two being in one card at all: they are one
+  block about one team, and two edges that nearly agree read worse than
+  two that obviously do not.
+  **THE NAMES TURNED ROUND AND THE PILLS DID NOT MOVE.** Each name was
+  right-aligned so that it finished against its own pills; `_align_names`
+  gives them all one width, so they line up with each other whichever end
+  they hang from — and hanging from the LEFT is what lets the first
+  column's names start exactly where the portraits do.
+  **THE INSET IS WORKED OUT, NOT MEASURED.** Qt defers layout, so reading
+  the first tile's own `x()` answers for the PREVIOUS size — the trap the
+  panel's height floor and the History tab's `_hold_still` both carry. So
+  `_resize_tiles` computes it where it computes the tile size and emits
+  it. The one thing it cannot derive is which of the two stretches gets
+  the ODD pixel when the division leaves one over; that is OBSERVED to be
+  the first, and `test_the_card_below_knows_where_the_tiles_are` renders a
+  laid-out panel at sixteen consecutive widths and holds the arithmetic
+  against the real geometry, so a change in Qt fails a test rather than
+  moving the card a pixel.
+  **AND AT ONE COLUMN THE TWO HALVES OF THE REQUEST PULL APART**, so the
+  NAME keeps the edge: a role's name at the card's left edge with its own
+  pills at the right edge is one cell spanning the window. Nothing else
+  changed about the spread — the slack still goes BETWEEN the cells, and
+  the pill columns' own stretch is smaller than a separator's deliberately,
+  because stretch inside a cell is a gap between a role and its own pills.
+
 - **THE WINDOW CONTROLS TOUCH, WITH A RULE AT EVERY JOIN**
   (`TitleBar.controls` / `_joint`, `chrome.Divider(width=, height=)`), at
   the user's request: "between these buttons there is actually dead space,

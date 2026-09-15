@@ -368,3 +368,90 @@ def test_an_empty_bar_still_draws_its_outlines(host):
                 for x in range(picture.width())
                 for y in range(picture.height()))
     assert drawn > 50, "an unfilled bar drew nothing at all"
+
+
+# ---- the pills sit under the portraits, not under the card -------------
+
+def test_the_card_below_knows_where_the_tiles_are(styled):
+    """`TeamPanel.tile_inset` is WORKED OUT rather than measured, because
+    Qt defers layout and the tile row's geometry is not settled when the
+    Roles card needs the answer.
+
+    What it cannot work out from the documentation is which of the two
+    stretches either side gets the odd pixel when dividing the width by
+    five leaves one over — observed to be the FIRST — so this renders a
+    laid-out panel and holds the arithmetic against the real thing. If Qt
+    ever distributes it the other way, this fails rather than the card
+    quietly sitting a pixel out.
+    """
+    from draft_assist.ui import teams
+
+    panel = teams.TeamPanel("ally", "Radiant")
+    panel.show()
+    for width in range(700, 716):          # every remainder of five
+        panel.resize(width, panel.height())
+        panel.layout().activate()
+        styled.processEvents()
+        left, right = panel.tile_inset()
+        assert panel.slots[0].x() == left, (width, panel.slots[0].x(), left)
+        assert panel.width() - panel.slots[4].geometry().right() - 1 == right, (
+            width, right)
+    panel.close()
+
+
+def test_every_role_name_is_left_aligned(styled):
+    """"the text aligns left, so all 8 align left". They were right-
+    aligned, each finishing against its own pills; `_align_names` gives
+    them one width, so they line up with each other either way and only
+    the end they hang from changes."""
+    from PyQt6.QtCore import Qt
+
+    bar = rolebar.RoleBar("ally")
+    for role in roles_mod.ROLES:
+        name, _pills = bar._cells[role]
+        assert name.alignment() & Qt.AlignmentFlag.AlignLeft
+        assert not (name.alignment() & Qt.AlignmentFlag.AlignRight)
+    bar.deleteLater()
+
+
+def test_the_pills_and_the_portraits_share_two_edges(styled):
+    """"allign the pills to the right edge of the portraits, and the text
+    aligns left ... but the left 4 align left and also align to the left
+    edge of the protrait - do for both radiant and dire".
+
+    BOTH SIDES, because each panel tells its own card: the two are the
+    same width only by construction, and a panel a pixel out is a pixel
+    out on its own side.
+    """
+    from draft_assist.config import RULES_FILE
+    from draft_assist.model import items as items_mod
+    from draft_assist.ui.app import MainWindow
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.providers import DemoProvider
+
+    ds = demo_dataset()
+    provider = DemoProvider(ds)
+    provider.draft.started -= 45
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, provider, rules, meta)
+    win.timer.stop()
+    win.resize(1500, 1050)
+    win.show()
+    styled.processEvents()
+    win.refresh()
+    for _ in range(6):
+        styled.processEvents()
+
+    def left_of(widget):
+        return widget.mapTo(win, widget.rect().topLeft()).x()
+
+    for side in ("ally", "enemy"):
+        panel = win.team_panels[side]
+        bar = win.role_bar.bars[side]
+        assert bar.columns > 1, "the window is too narrow to be reading this"
+        first = bar._cells[roles_mod.ROLES[0]][0]
+        last = bar._cells[roles_mod.ROLES[-1]][1]
+        assert left_of(first) == left_of(panel.slots[0]), side
+        assert (left_of(last) + last.width()
+                == left_of(panel.slots[4]) + panel.slots[4].width()), side
+    win.close()

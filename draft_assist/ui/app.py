@@ -1016,6 +1016,16 @@ class MainWindow(QMainWindow):
         # AND NO HEADING ON THE ROLES: "you don't need to state roles,
         # it's obvious from the content."
         self.role_bar = rolebar.RoleCards()
+        # AND EACH SIDE'S PANEL TELLS ITS OWN ROLES CARD WHERE ITS FIVE
+        # TILES ACTUALLY SIT, so the pills line up with the portraits
+        # rather than with the card holding both. Per side, because the
+        # two are only the same width by construction and a panel a pixel
+        # out is a pixel out on its own side.
+        for side, panel in self.team_panels.items():
+            panel.tiles_placed.connect(
+                lambda left, right, side=side:
+                self.role_bar.bars[side].set_inset(left, right))
+            self.role_bar.bars[side].set_inset(*panel.tile_inset())
         self.side_cards = {}
         for side in ("ally", "enemy"):
             side_card, slay = card()
