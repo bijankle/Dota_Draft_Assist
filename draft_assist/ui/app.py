@@ -548,6 +548,33 @@ class MainWindow(QMainWindow):
         # of development apparatus is a menu nobody in a draft wants.
         # The scripts are still in `tools/` and still under test, so the
         # next measurement is a console away rather than gone.
+        #
+        # **TWO OF THEM ARE BACK**, at the user's request — "if its
+        # complex - add the code launching via the help dropdown as you
+        # did before" — because a console IS complex: it is a virtual
+        # environment path, a quoted folder with spaces in it and a flag,
+        # typed correctly, before anything happens at all. The first real
+        # attempt went at the wrong folder and produced a proof sheet of
+        # shopping-site crops that looked exactly like a measurement.
+        # A menu item that asks for the folder cannot get the
+        # interpreter or the flags wrong, and it opens the sheet at the
+        # end rather than leaving it in `debug_out` for somebody to find.
+        recog = help_menu.addMenu("&Recognition")
+        self._act(recog, "&Check the crop boxes…",
+                  lambda: self._run_on_shots("check_crop_boxes"),
+                  tip="What the app is actually grabbing, per resolution")
+        self._act(recog, "&Locate the portraits…",
+                  lambda: self._run_on_shots("locate_portraits"),
+                  tip="Measure where the pick bar really is (slow)")
+        # THE THIRD ONE IS THE ONLY ONE THAT CHANGES ANYTHING. The other
+        # two report; this measures and then SAVES what it measured to
+        # this machine's calibration, which is the difference between a
+        # sheet showing that the boxes are off and the boxes not being
+        # off any more.
+        self._act(recog, "&Fix the crop boxes…",
+                  lambda: self._run_on_shots("fix_crop_boxes"),
+                  tip="Measure the bar and save it as this machine's "
+                      "calibration (slow)")
         help_menu.addSeparator()
         self._act(help_menu, "&About", self._about)
         # AFTER the items above, so `MenuSearch` reads the real list.
@@ -1103,7 +1130,7 @@ class MainWindow(QMainWindow):
         outer.addWidget(picks_card)
 
         items_card, ilay = card(
-            "Suggested items", self._count_box("suggested_items"))
+            "Top Items", self._count_box("suggested_items"))
         self.item_row = ItemRow()
         self.item_row.asked_why.connect(self._why_this_item)
         ilay.addWidget(self.item_row)
@@ -1590,6 +1617,71 @@ class MainWindow(QMainWindow):
         open_folder(folder if folder is not None else RECORDINGS_DIR)
 
     # ---- maintenance tasks --------------------------------------------
+    # WHERE A DOTA SCREENSHOT SET IS MOST LIKELY TO BE. Tried in order,
+    # first that exists. OneDrive REDIRECTS `Pictures` when Backup is on,
+    # which is why the plain path is not enough on its own — the picker
+    # opened on an empty folder for exactly that reason once already.
+    SHOT_FOLDERS = (
+        "OneDrive/Pictures/Screenshots/All Resolutions - Dota 2",
+        "OneDrive/Pictures/Screenshots",
+        "Pictures/Screenshots/All Resolutions - Dota 2",
+        "Pictures/Screenshots",
+    )
+
+    def _shots_folder(self) -> str:
+        from pathlib import Path
+
+        home = Path.home()
+        for tail in self.SHOT_FOLDERS:
+            where = home / tail
+            if where.is_dir():
+                return str(where)
+        return str(home)
+
+    def _run_on_shots(self, key: str) -> None:
+        """Pick a folder of screenshots, then run a recognition tool on it.
+
+        THE FOLDER IS THE WHOLE INPUT and it is the thing that goes
+        wrong: the crop boxes are FRACTIONS, so they cut ten tidy
+        rectangles out of anything at all and the sheet then reports
+        them as though they meant something. A general Screenshots
+        folder produced exactly that — "way off" — and the pictures in
+        it were a shopping site and File Explorer.
+        So the picker opens on the Dota set if there is one, the tool
+        refuses anything that is not a display resolution, and the sheet
+        is opened at the end rather than written somewhere and not
+        mentioned.
+        """
+        folder = QFileDialog.getExistingDirectory(
+            self, "Screenshots of the draft, one per resolution",
+            self._shots_folder())
+        if not folder:
+            return
+        self.run_task(key, folder)
+        self._open_proof_sheet()
+
+    def _open_proof_sheet(self) -> None:
+        """Show the sheet the run just wrote, if it wrote one.
+
+        A thing produced where nobody is looking has not been produced —
+        the lesson the never-shown dialog cost a round to learn. Never
+        fatal: a run that failed has no sheet, and saying so is the
+        dialog's job rather than this one's.
+        """
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+
+        # The tool's own default `--out`, spelled once here rather than a
+        # second literal path that could drift from it.
+        sheet = DEBUG_OUT / "found" / "proof-sheet.png"
+        if not sheet.is_file():
+            return
+        self._say(f"Proof sheet: {sheet}", 12000)
+        try:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(sheet)))
+        except Exception:                               # noqa: BLE001
+            pass
+
     def run_task(self, key: str, argument: str = "") -> None:
         task = TASKS[key]
         if argument:
@@ -2383,8 +2475,8 @@ class MainWindow(QMainWindow):
     # belongs beside the result, not two menus away.
     SECTIONS = (
         ("show_roles", "Team roles", "roles_block"),
-        ("show_suggestions", "Top picks", "picks_card"),
-        ("show_items", "Suggested items", "items_card"),
+        ("show_suggestions", "Top Heroes", "picks_card"),
+        ("show_items", "Top Items", "items_card"),
         ("show_matrices", "Synergies and counters", "grids_block"),
     )
 
@@ -3858,6 +3950,22 @@ class MainWindow(QMainWindow):
             # cclear / detect / etc button backgfground".
             button.setProperty("plain", True)
             acts.addWidget(button)
+        # THE MIDDLE BUTTON IS CENTRED ON THE GAP BETWEEN THE TWO CARDS,
+        # at the user's request: "the detect all box doesnt seem centered
+        # - i want the center of that box to align with the gap between
+        # the radiant and the dire padding background edge".
+        # The row is centred already and the cards split it in half, so
+        # the gap's middle IS the row's middle — what was off is that the
+        # GROUP is symmetric and the button in it is not: "Clear all" is
+        # wider than "Demo", so centring the three put Detect all a few
+        # pixels right of centre. Giving the two OUTER buttons one width
+        # makes the group symmetric about the middle one, after which
+        # centring the group centres Detect all by construction rather
+        # than by a nudge somebody has to keep right.
+        outer = max(self.clear_all_button.sizeHint().width(),
+                    self.demo_button.sizeHint().width())
+        self.clear_all_button.setFixedWidth(outer)
+        self.demo_button.setFixedWidth(outer)
 
         self.board_head = QWidget()
         self.board_head.setProperty("bare", True)
@@ -4541,7 +4649,7 @@ class MainWindow(QMainWindow):
         # own box lands in column 3 with the other two. It keeps the
         # heading font — this IS the card's heading now, not a second
         # line under one.
-        title = QLabel("Top picks", counts)
+        title = QLabel("Top Heroes", counts)
         title.setProperty("heading", True)
         stack.addWidget(title, 0, 0)
         stack.addWidget(self.suggested_box, 0, 1)
@@ -4634,8 +4742,8 @@ class MainWindow(QMainWindow):
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(2)
         for line_no, (shield, word, key) in enumerate(
-                ((False, "comfort", "heart_count"),
-                 (True, "counter", "shield_count"))):
+                ((False, "Comfort", "heart_count"),
+                 (True, "Counter", "shield_count"))):
             grid.addWidget(MarkLabel(shield, legend), line_no, 0)
             grid.addWidget(QLabel("=", legend), line_no, 1)
             grid.addWidget(QLabel(word, legend), line_no, 2)
@@ -4803,7 +4911,18 @@ class MainWindow(QMainWindow):
         # `SUGGESTIONS_PER_ROW`: eleven across the card it is in, rather
         # than a pick's width with the remainder left over on the right.
         picks.set_tile_size(*self._suggestion_box(picks, width, height))
-        items.set_tile_size(width, height)
+        # AND THE ITEMS TAKE THE SAME BOX, at the user's request: "i dont
+        # liek that the gap between the items is different betweeen the
+        # suggested items and the top picks", and "currnetly 11 items dont
+        # fit on 1 row... please change this to fit just like top hpicks
+        # fits".
+        # Both strips were spaced 8px apart all along — the GAP was never
+        # the difference. The TILE was: the items took a pick's whole
+        # width while the suggestions took a card-eleventh, so the item
+        # row had a different rhythm and wrapped at ten. One box for both
+        # and the two rows line up column for column.
+        items.set_tile_size(*self._suggestion_box(items, width, height,
+                                                  told="_told_item_w"))
         # And the grids' portraits follow the same box. They had a size of
         # their own (`HEADER_ICON_MAX`), so the same hero was one size at
         # the top of the window and another in the grid under it.
@@ -4816,8 +4935,8 @@ class MainWindow(QMainWindow):
                 or not self.settings.get("suggested_items")):
             self._refresh_views()
 
-    def _suggestion_box(self, strip, width: int,
-                        height: int) -> tuple[int, int]:
+    def _suggestion_box(self, strip, width: int, height: int,
+                        told: str = "_told_suggestion_w") -> tuple[int, int]:
         """Eleven across the strip's own width, or the pick's box.
 
         The pick's box is the FALLBACK, not a floor: before the card has
@@ -4841,10 +4960,13 @@ class MainWindow(QMainWindow):
         gaps = SUGGESTIONS_PER_ROW - 1
         each = (room - gaps * STRIP_GAP) // SUGGESTIONS_PER_ROW
         each = max(teams.TILE_MIN, min(width, each))
-        told = getattr(self, "_told_suggestion_w", None)
-        if told is not None and abs(told - each) < 2:
-            each = told
-        self._told_suggestion_w = each
+        # THE DAMPER IS PER STRIP. Both rows are sized this way now, and
+        # one remembered width shared between them would have each strip
+        # pinning the other to its own last answer.
+        last = getattr(self, told, None)
+        if last is not None and abs(last - each) < 2:
+            each = last
+        setattr(self, told, each)
         return each, max(1, round(each * height / max(1, width)))
 
     def _row_capacity(self, key: str) -> int:

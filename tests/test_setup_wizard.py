@@ -152,7 +152,7 @@ def test_each_step_writes_its_own_answer_as_you_leave_it(qapp, sandbox,
     wizard._next()
     assert config.stratz_api_key() == "pasted-key", "the key waited"
 
-    wizard._apply_preset(("LEGEND", "ANCIENT"))
+    wizard.ranks.boxes["Legend – Ancient"].click()
     wizard._next()
     assert config.target_brackets() == ("LEGEND", "ANCIENT")
     wizard.deleteLater()
@@ -223,12 +223,16 @@ def test_editing_the_key_forgets_the_last_answer(qapp, sandbox):
     wizard.deleteLater()
 
 
-def test_no_ranks_ticked_cannot_be_moved_past(qapp, sandbox):
+def test_the_ranks_page_can_no_longer_be_empty_at_all(qapp, sandbox):
+    """This REPLACES "no ranks ticked cannot be moved past". With eight
+    independent boxes, none ticked was reachable and Next had to refuse
+    it; an exclusive picker cannot get there, so the refusal has nothing
+    left to refuse and the page always has an answer to save."""
     wizard = _at(SetupWizard(), "ranks")
-    wizard._apply_preset(())
+    assert wizard.selected, "the page opened with no ranks at all"
     wizard._next()
-    assert wizard.at == 1, "it advanced with no ranks ticked"
-    assert "at least one" in wizard.summary.text()
+    assert wizard.at == 2, "a page with a valid answer refused to advance"
+    assert config.target_brackets() == wizard.ranks.chosen
     wizard.deleteLater()
 
 
@@ -309,11 +313,12 @@ def test_a_paragraph_reserves_room_for_every_line_it_wraps_to(qapp):
 def test_the_ranks_are_readable_rather_than_elided(qapp, sandbox):
     """Eight brackets and five presets across one line each came out as
     "Guardi", "Crusad", "ald - Crusa" — a rank picker you cannot read the
-    ranks off."""
+    ranks off. The range labels are longer than a bracket name, so this
+    matters more now rather than less."""
     wizard = SetupWizard()
     wizard.resize(640, 820)
     qapp.processEvents()
-    for name, box in wizard.boxes.items():
+    for name, box in wizard.ranks.boxes.items():
         assert box.width() >= box.sizeHint().width(), name
     wizard.deleteLater()
 
@@ -352,52 +357,74 @@ def test_never_measured_is_not_the_same_as_pairs_only(tmp_path):
     assert store.pair_only_brackets(tmp_path / "bare.json") is None
 
 
-def test_the_wizard_offers_pairs_alone_when_that_is_all_stratz_can_do(
-        qapp, sandbox, monkeypatch, tmp_path):
-    """"if stratz is pari only, then i want pair only options." An offer
-    the data source cannot honour is worse than a shorter list."""
-    from draft_assist.data import store
+def test_the_ranks_are_five_ranges_and_exactly_one_is_ticked(
+        qapp, sandbox, monkeypatch):
+    """"get ride of the tick boxes above (iondividual ranks) and and just
+    make the rank pairings have tick boxes ... (only allow selection of 1
+    pair / range)".
+
+    It was eight individual boxes AND the same five ranges as push
+    buttons underneath, where pressing a button silently re-ticked the
+    boxes above it: two controls for one setting, and two rows of card
+    saying one thing twice.
+    """
+    from draft_assist.ui import rankpick
     from draft_assist.ui.setup_wizard import SetupWizard
 
-    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: True)
-    monkeypatch.setattr(store, "bracket_coverage",
-                        lambda *a, **k: ["LEGEND", "ANCIENT"])
+    config.save_target_brackets(("ANCIENT", "DIVINE"))
     wizard = _at(SetupWizard(), "ranks")
-    assert wizard.pair_only
-    assert wizard.boxes == {}, "individual ranks are still on offer"
-    # The pair buttons are the only input, and they still work.
-    wizard._apply_preset(("LEGEND", "ANCIENT"))
-    assert wizard.selected == ("LEGEND", "ANCIENT")
-    wizard._next()
-    assert config.target_brackets() == ("LEGEND", "ANCIENT")
+    assert not hasattr(wizard, "boxes"), "the individual ranks are back"
+    assert len(wizard.ranks.boxes) == len(rankpick.RANGES) == 5
+    ticked = [name for name, box in wizard.ranks.boxes.items()
+              if box.isChecked()]
+    assert ticked == ["Ancient – Divine"], ticked
     wizard.deleteLater()
 
 
-def test_arriving_on_the_pair_page_and_pressing_next_changes_nothing(
-        qapp, sandbox, monkeypatch):
-    """With no tick boxes there is nothing to read the current answer
-    back off, so it is seeded from the preferences — otherwise walking
-    through setup would silently clear the ranks."""
-    from draft_assist.data import store
+def test_the_choice_moves_and_never_empties(qapp, sandbox):
+    """A tick box normally toggles OFF, which here would leave no rank
+    chosen at all — a state that means nothing. Radio behaviour without
+    the radio look: clicking the ticked one keeps it."""
     from draft_assist.ui.setup_wizard import SetupWizard
 
-    config.save_target_brackets(("ARCHON", "LEGEND"))
-    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: True)
-    monkeypatch.setattr(store, "bracket_coverage", lambda *a, **k: [])
+    config.save_target_brackets(("ANCIENT", "DIVINE"))
     wizard = _at(SetupWizard(), "ranks")
-    assert wizard.selected == ("ARCHON", "LEGEND")
+    picker = wizard.ranks
+
+    picker.boxes["Archon – Legend"].click()
+    assert picker.chosen == ("ARCHON", "LEGEND")
+    assert sum(b.isChecked() for b in picker.boxes.values()) == 1
+
+    picker.boxes["Archon – Legend"].click()          # the ticked one
+    assert picker.chosen == ("ARCHON", "LEGEND"), "the choice emptied"
+    assert sum(b.isChecked() for b in picker.boxes.values()) == 1
+
     wizard._next()
     assert config.target_brackets() == ("ARCHON", "LEGEND")
     wizard.deleteLater()
 
 
-def test_the_individual_ranks_stay_when_stratz_can_filter_exactly(
-        qapp, sandbox, monkeypatch):
-    from draft_assist.data import store
-    from draft_assist.ui.setup_wizard import SetupWizard
+def test_a_saved_set_that_is_not_a_range_still_opens_on_something(qapp):
+    """A `preferences.json` written before this existed can hold one
+    bracket, or three that are not a range. Exact match first, then the
+    range sharing the most with it, then the default — never nothing,
+    because a picker opening with no box ticked is asking a question the
+    file has already answered."""
+    from draft_assist.ui import rankpick
 
-    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: False)
-    wizard = _at(SetupWizard(), "ranks")
-    assert not wizard.pair_only
-    assert len(wizard.boxes) == 8
-    wizard.deleteLater()
+    assert rankpick.best_match(("ANCIENT", "DIVINE")) == ("ANCIENT", "DIVINE")
+    assert rankpick.best_match(("LEGEND",)) in [
+        tuple(b) for _l, b in rankpick.RANGES]
+    assert rankpick.best_match(()) == config.DEFAULT_TARGET_BRACKETS
+    assert rankpick.best_match(("NOT_A_RANK",)) == config.DEFAULT_TARGET_BRACKETS
+
+
+def test_one_list_of_ranges_serves_both_pickers(qapp):
+    """There were TWO and they disagreed: the settings dialog labelled
+    the ranges by who plays them ("I play Legend, climbing to Ancient")
+    and handed back the bracket ABOVE what the label said."""
+    from draft_assist.ui import bracket_dialog, rankpick, setup_wizard
+
+    assert not hasattr(setup_wizard, "PRESETS")
+    assert not hasattr(bracket_dialog, "SUGGESTIONS")
+    assert rankpick.RANGES, "the one list went missing"

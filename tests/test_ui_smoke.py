@@ -454,18 +454,22 @@ def test_bracket_dialog_presets_and_validation(qapp):
     dialog = BracketDialog(("ANCIENT", "DIVINE"))
     try:
         assert dialog._chosen() == ("ANCIENT", "DIVINE")
-        dialog._apply_preset(("LEGEND", "ANCIENT"))
+        dialog.ranks.boxes["Legend – Ancient"].click()
         assert dialog._chosen() == ("LEGEND", "ANCIENT")
         assert "Legend + Ancient" in dialog.summary.text()
         # Changing the bracket invalidates the cache; the dialog must say so.
         assert "rebuild" in dialog.summary.text().lower()
 
-        for box in dialog.boxes.values():
-            box.setChecked(False)
-        assert not dialog.ok.isEnabled()      # empty selection refused
-        dialog.boxes["IMMORTAL"].setChecked(True)
+        # THE EMPTY SELECTION IS UNREACHABLE NOW, so the refusal it
+        # needed is gone with it: the picker is exclusive, and clicking
+        # the ticked range keeps it rather than clearing the lot.
+        dialog.ranks.boxes["Legend – Ancient"].click()
+        assert dialog._chosen() == ("LEGEND", "ANCIENT")
         assert dialog.ok.isEnabled()
-        assert "noisier" in dialog.summary.text()   # single-bracket warning
+        # And the single-bracket warning went with the single bracket:
+        # every range on offer is two or more, so a sample too thin to
+        # read is no longer something this dialog can produce.
+        assert len(dialog._chosen()) >= 2
     finally:
         dialog.close()
 
@@ -2855,16 +2859,18 @@ def test_every_strip_tile_is_the_same_share_of_a_pick(window, qapp):
             or each == want_w)
     for tile in _tiles_of(window.suggest_row):
         assert tile.width() == each
-    # AND SO DO THE ITEMS, whole. They used to share only the HEIGHT and
-    # keep the icon's own 88x64 shape, on the argument that a 16:9 box
-    # round an item icon is dead space either side of every one. That
-    # REVERSED at the user's request — "why are item portraits smaller
-    # than sugegsted heroes.. shoudl eb the same" — because it made an
-    # item tile 78% of a pick's width and the smaller object in a column
-    # of strips that are otherwise one size. The dead space is the cost,
-    # knowingly taken.
+    # AND THE ITEMS ARE THE SAME BOX AS THE SUGGESTIONS, which is the
+    # second half of the same request and REVERSES "the items take a
+    # pick's box whole": "i dont liek that the gap between the items is
+    # different betweeen the suggested items and the top picks", and
+    # "currnetly 11 items dont fit on 1 row... please change this to fit
+    # just like top hpicks fits".
+    # Both strips were spaced `STRIP_GAP` apart all along, so the gap was
+    # never the difference — the TILE was, and a row of wider tiles at
+    # the same gap reads as a different rhythm and wraps at ten.
     for tile in _tiles_of(window.item_row):
-        assert (tile.width(), tile.height()) == (want_w, want_h)
+        assert tile.width() == each, "an item is not a suggestion's width"
+    assert window.item_row.tile_width() == window.suggest_row.tile_width()
 
 
 def test_the_blank_plates_are_the_size_of_the_real_tiles(window, qapp):
@@ -3428,7 +3434,12 @@ def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
         assert not pick.filled
         want = (round(pick.width() * STRIP_OF_PICK),
                 round(pick.height() * STRIP_OF_PICK))
-        assert (win.item_row.tile_width(), win.item_row.tile_height()) == want
+        # THE ITEMS ARE ELEVEN TO A ROW TOO NOW, so like the suggestions
+        # they are never wider than a pick and usually narrower. What
+        # this test is about is that a HOLE is the size of the tile that
+        # replaces it, which is checked per strip below.
+        assert 0 < win.item_row.tile_width() <= want[0]
+        assert win.item_row.tile_width() == win.suggest_row.tile_width()
         for strip in (win.suggest_row, win.item_row):
             blanks = strip._blanks
             assert blanks, "an empty strip should show its shape"
@@ -3775,11 +3786,13 @@ def test_every_portrait_in_the_app_is_the_pick_tiles_box(window, qapp):
     # to a row, never wider than a pick. See
     # `test_every_strip_tile_is_the_same_share_of_a_pick`.
     assert 0 < window.suggest_row.tile_width() <= pick.width()
-    # AND THE ITEMS TAKE IT WHOLE. They used to keep their own 88x64
-    # aspect off the same HEIGHT, and that reversed at the user's
-    # request — "why are item portraits smaller than sugegsted heroes..
-    # shoudl eb the same".
-    assert window.item_row.tile_width() == pick.width()
+    # AND THE ITEMS SHARE THE SUGGESTIONS' BOX, which is the exception
+    # widened rather than a second rule: both strips hold as many as fit
+    # rather than a fixed five, both are eleven across, and neither is
+    # ever wider than a pick. "currnetly 11 items dont fit on 1 row...
+    # please change this to fit just like top hpicks fits".
+    assert 0 < window.item_row.tile_width() <= pick.width()
+    assert window.item_row.tile_width() == window.suggest_row.tile_width()
     # And the grids are told the same box, which each takes as a CEILING.
     # (What they DRAW needs portraits on disk; that is `test_matrix_grid`,
     # which has them.)
@@ -4188,7 +4201,13 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
     labels = [label.text().strip().lower()
               for label in window.picks_card.findChildren(QLabel)
               if label.text().strip()]
-    assert "top picks" in labels, "the heading was renamed away"
+    # PROPER CAPITALISATION, and HEROES rather than picks: "Call it Top
+    # Heroes, not Top Picks", with "Proepr Capitalization for all
+    # headers". The card holds heroes and the one below it holds items,
+    # so the two headings now say which is which rather than both
+    # saying what they are FOR.
+    assert "top heroes" in labels, "the heading was renamed away"
+    assert "top picks" not in labels
     assert "suggested picks" not in labels
     assert "pick suggestions" not in labels, (
         "the card is paraphrasing its own heading again")

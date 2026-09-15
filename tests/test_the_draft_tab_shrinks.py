@@ -376,7 +376,7 @@ def test_the_top_picks_heading_leads_its_own_grid(window):
 
     settle(window, 1610)
     card = window.picks_card
-    heads = [w for w in card.findChildren(QLabel) if w.text() == "Top picks"]
+    heads = [w for w in card.findChildren(QLabel) if w.text() == "Top Heroes"]
     assert heads, "the heading is gone"
     head = heads[0]
 

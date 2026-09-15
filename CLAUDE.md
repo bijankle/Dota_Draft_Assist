@@ -5524,6 +5524,57 @@ credentials, and put the account at risk. Do not go there.
   table. On that run the horizontal came out CONSISTENT on all three
   measures for the first time: x 0.0099, slot width 0.0057, pitch
   0.0019.
+  **AND A CROP CUT EXACTLY TO THE BOX CANNOT SAY WHAT THE BOX MISSED**
+  (`find_portraits.BOX_CONTEXT`, `crop_row(context=...)`). The first
+  `--boxes-only` sheet run over the RIGHT folder — the 22 deliberate
+  screenshots, after one run at the general Screenshots folder that the
+  resolution guard now refuses — came back with all 220 crops holding
+  the player's NAME strip: "still shit". And it could not be acted on,
+  because a crop of the name is equally consistent with a box half a
+  portrait too LOW, a box twice too TALL, and a screenshot of a screen
+  with no pick bar on it at all. Three faults, three different fixes,
+  one picture. That is the same shape as the refusal that said "no hero
+  portrait recognised" for five distinct reasons, and it is the shape
+  this tool keeps finding: an answer assembled out of our own rules
+  wearing the clothes of a measurement.
+  So every app-box tile now carries **0.6 of a box of the frame around
+  it, with the box drawn on it** in its bank's own colour. The portrait
+  the box missed is in the same tile as the miss, and by how much is
+  readable off the picture. The LOCATED rows keep the bare crop
+  deliberately: there the rectangle came out of the picture, so there is
+  nothing for context to check it against.
+  The rectangle is drawn at where the crop ACTUALLY started, never at
+  the padding — a box within its own width of the frame's left edge
+  cannot take the margin it asked for, and drawing at the padding puts
+  the line wherever the clamp left it, on the one tile anybody checks
+  first.
+  **AND `--apply` WRITES WHAT IT MEASURED, which is the difference
+  between a sheet and a fix** (`_write_calibration`, `AGREE_WITHIN`,
+  Help ▸ Recognition ▸ Fix the crop boxes…). `_fitted_layout` has
+  printed the six measured fractions and a line to paste for several
+  rounds, under "NOT APPLIED" — and a fix that needs somebody to paste
+  six numbers into a source file is not one.
+  **WHAT IT MAY WRITE IS `calibration_local.json` AND NEVER THE SHIPPED
+  SIX.** The standing rule that this tool reports and does not write is
+  about `DraftLayout`'s defaults, which every install inherits and which
+  a median over one person's screenshots is not evidence enough to move
+  — the HUD-box episode above is what that rule costs when it is
+  ignored. The local file is the opposite kind of thing: gitignored, one
+  machine's own, exactly what `load_layout` exists to read, and already
+  replaced by the app's own measurement at the next strategy time.
+  **NOTHING IS WRITTEN UNLESS THE PICTURES AGREE.** `_consensus` already
+  calls 0.01 consistent and 0.03 loose, and this takes the tighter: a
+  median is a measurement only while the frames behind it agree, and one
+  bad fit — a bank's origin read off the first portrait found in it —
+  moves it for every resolution at once. A refusal names the fractions
+  that disagree and by how much, rather than writing a number no single
+  screenshot supports.
+  The two fractions nothing can measure (the role icon's offset and its
+  height — there is no role strip in a located pick bar) are KEPT from
+  `DraftLayout()` rather than left empty.
+  `--apply` with `--boxes-only` is REFUSED: that flag makes no
+  measurement by design, so the two together would write back the
+  numbers they had just read.
   **THE BAR'S TOP AND THE PORTRAIT'S HEIGHT ARE REPORTED APART, because
   only one of them can decide anything** (`TOP_IS_COARSE`). Folded
   together with a `max()`, the verdict printed "the bar is measured

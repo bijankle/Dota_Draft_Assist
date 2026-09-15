@@ -65,7 +65,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from draft_assist import console                     # noqa: E402
+from draft_assist.config import CALIBRATION_FILE     # noqa: E402
 from draft_assist.vision import autocal              # noqa: E402
+from draft_assist.vision import layout as layout_mod  # noqa: E402
 from draft_assist.vision import library              # noqa: E402
 from draft_assist.vision import recognize            # noqa: E402
 from draft_assist.vision.layout import (DraftLayout,  # noqa: E402
@@ -260,8 +262,54 @@ def spread_over_spans(shots, sizes, how_many: int):
 CLIENT_MIN = (640, 480)
 CLIENT_ASPECT = (1.20, 3.70)
 
+# EVERY DISPLAY RESOLUTION A DOTA CLIENT IS PLAUSIBLY FULL-SCREEN AT.
+#
+# **THIS IS THE CHECK THAT WAS MISSING, and a whole run went past
+# without it.** Pointed at a general Screenshots folder, `--boxes-only`
+# cut ten tidy rectangles out of a shopping site, File Explorer, a chat
+# window and this app's own title bar, and stacked them into a proof
+# sheet that looks exactly like a measurement: "way off". Every one of
+# those passed the size and aspect test above — 1272x549, 1489x804,
+# 934x598 are all bigger than 640x480 and inside 5:4 to 32:9.
+#
+# What separates them is that a FULL-SCREEN capture is at a resolution a
+# monitor actually offers, and a window snip is at whatever size the
+# window happened to be. None of those thirteen is a display resolution;
+# not one is even close to one.
+# `--any-size` keeps them, because windowed Dota at an odd size is a
+# real thing and the layout is fractions of the window either way — but
+# it has to be asked for, since the commoner case by far is the wrong
+# folder.
+STANDARD = {
+    (640, 480), (800, 600), (1024, 768), (1152, 864), (1280, 960),
+    (1400, 1050), (1600, 1200), (1920, 1440), (2048, 1536),          # 4:3
+    (1280, 1024), (1600, 1280),                                      # 5:4
+    (1280, 800), (1440, 900), (1680, 1050), (1920, 1200),
+    (2560, 1600), (2880, 1800), (3840, 2400),                        # 16:10
+    (1280, 720), (1360, 768), (1366, 768), (1600, 900), (1760, 990),
+    (1920, 1080), (2048, 1152), (2560, 1440), (3200, 1800),
+    (3840, 2160),                                                    # 16:9
+    (2560, 1080), (3440, 1440), (3840, 1600), (5120, 2160),          # 21:9
+    (3840, 1080), (5120, 1440),                                      # 32:9
+}
 
-def not_a_client(width: int, height: int) -> str:
+
+def not_a_resolution(width: int, height: int) -> str:
+    """Why this size cannot be a full-screen shot, or "".
+
+    Separate from `not_a_client` because it is the SOFTER test of the
+    two and `--any-size` turns it off: a windowed client really can be
+    1489x804, and the crop boxes are fractions so they would still be in
+    the right place. What it catches is the folder being wrong, which is
+    what actually happened.
+    """
+    if (width, height) in STANDARD:
+        return ""
+    return (f"{width}x{height} is not a display resolution - a window "
+            f"snip rather than a full-screen shot (--any-size keeps it)")
+
+
+def not_a_client(width: int, height: int, *, any_size: bool = False) -> str:
     """Why this picture cannot be a screenshot of the game, or "".
 
     **THE CROP BOXES ARE FRACTIONS, SO THEY "WORK" ON ANYTHING.** Six
@@ -291,7 +339,7 @@ def not_a_client(width: int, height: int) -> str:
     if aspect > high:
         return (f"{aspect:.2f}:1 is wider than 32:9 - a strip or a crop "
                 f"rather than a whole screen")
-    return ""
+    return "" if any_size else not_a_resolution(width, height)
 
 
 def can_vote(width: int, height: int) -> bool:
@@ -906,7 +954,8 @@ def measure(path: Path, into: Path, art: dict, loud=False,
     # BEFORE ANYTHING CAN FAIL. Every early return below is a search that
     # did not find the bar, and those are the frames where "what does the
     # app grab here" is the question actually being asked.
-    row["app_crops"] = crop_row(frame, app_boxes(width, height))
+    row["app_crops"] = crop_row(frame, app_boxes(width, height),
+                                context=BOX_CONTEXT)
     if boxes_only:
         # NOTHING BELOW IS NEEDED TO ANSWER "WHAT DOES THE APP GRAB
         # HERE". The search is what costs a minute a picture, and it
@@ -1016,13 +1065,42 @@ def slices(frame, rects, path: Path, into: Path) -> None:
     return sheet
 
 
-def crop_row(frame, rects, tall: int = 120):
-    """The ten crops of ONE picture, side by side, numbered."""
+# HOW MUCH OF THE PICTURE AROUND A BOX THE SHEET SHOWS. A crop cut
+# exactly to the box answers "what did the app grab" and NOTHING about
+# what it should have grabbed, so a row that came back holding the
+# player's name is equally consistent with a box half a portrait too
+# low, a box twice too tall, and a screenshot of the wrong screen
+# altogether - three faults with three different fixes, and the first
+# real sheet could not tell them apart. With half a box of context
+# either side and the box itself drawn on it, the portrait it missed is
+# in the same tile as the miss.
+BOX_CONTEXT = 0.6
+
+
+def crop_row(frame, rects, tall: int = 120, context: float = 0.0):
+    """The ten crops of ONE picture, side by side, numbered.
+
+    `context` widens each crop by that fraction of the box's own size on
+    every side and DRAWS the box inside it, so the tile shows the box
+    against what is around it. Nought is the bare crop, which is what
+    the located-portrait rows want: there the rectangle came FROM the
+    picture, so there is nothing to check it against.
+    """
     tiles = []
-    for x, y, w, h in rects:
-        crop = frame[max(0, y):y + h, max(0, x):x + w]
+    for index, (x, y, w, h) in enumerate(rects):
+        pad_x, pad_y = int(round(w * context)), int(round(h * context))
+        left, top = max(0, x - pad_x), max(0, y - pad_y)
+        crop = frame[top:y + h + pad_y, left:x + w + pad_x]
         if crop.size == 0:
             crop = np.zeros((max(1, h), max(1, w), 3), np.uint8)
+        elif context:
+            # The box's place INSIDE this tile, which is not the padding
+            # whenever the crop was clamped at an edge of the frame -
+            # the first box of a bank is often hard against the left.
+            crop = crop.copy()
+            colour = (90, 220, 90) if index < 5 else (80, 80, 240)
+            cv2.rectangle(crop, (x - left, y - top),
+                          (x - left + w - 1, y - top + h - 1), colour, 1)
         factor = tall / max(1, crop.shape[0])
         tiles.append(cv2.resize(
             crop, (max(1, int(crop.shape[1] * factor)), tall),
@@ -1339,7 +1417,7 @@ def _scaling(good: list, middle: dict) -> None:
           "needs a new number for each.")
 
 
-def _consensus(good: list) -> None:
+def _consensus(good: list, apply: bool = False) -> None:
     """Do the 23 screenshots AGREE? That is the check that needs no eyes.
 
     Dota lays its HUD out in fractions of a 16:9 box, so the same three
@@ -1403,7 +1481,7 @@ def _consensus(good: list) -> None:
             print(f"    {off:.4f}  {name}")
     _vertical(good)
     _boxes_against_the_bar(good)
-    _fitted_layout(good)
+    _fitted_layout(good, apply=apply)
 
 
 # 16:9 to four decimal places. A shot at this aspect cannot vote on the
@@ -1640,7 +1718,7 @@ def _boxes_against_the_bar(good: list) -> None:
                                  ("width", 8))))
 
 
-def _fitted_layout(good: list) -> None:
+def _fitted_layout(good: list, apply: bool = False) -> None:
     """THE SIX FRACTIONS THESE SCREENSHOTS MEASURE, beside the six shipped.
 
     This is the number the whole exercise has been circling. `_consensus`
@@ -1681,9 +1759,60 @@ def _fitted_layout(good: list) -> None:
         print(f"  {name:<11}{mid:>10.4f}{now:>10.4f}{miss:>12.4f}"
               f"    {round((mid - now) * scale):>+5} px")
     print("  " + ", ".join(f"{name}={mid:.4f}" for name, mid, *_ in rows))
-    print("  NOT APPLIED. These are what the pictures say; changing the "
-          "shipped six invalidates every saved calibration_local.json, "
-          "so it is a decision rather than a readout.")
+    if not apply:
+        print("  NOT APPLIED. These are what the pictures say; changing "
+              "the shipped six invalidates every saved "
+              "calibration_local.json, so it is a decision rather than a "
+              "readout. Re-run with --apply to write them to this "
+              "machine's own calibration.")
+        return
+    _write_calibration(rows)
+
+
+# HOW FAR THE FRAMES MAY DISAGREE AND STILL BE WRITTEN. `_consensus`
+# already calls 0.01 "consistent" and 0.03 "loose", and this takes the
+# tighter of the two: a median is a measurement only while the pictures
+# behind it agree, and writing a loose one would put a number on this
+# machine that no single screenshot supports.
+AGREE_WITHIN = 0.01
+
+
+def _write_calibration(rows: list) -> None:
+    """Put the measured six on THIS MACHINE, and never the shipped six.
+
+    The tool's standing rule is that it reports and does not write, and
+    that rule is about `DraftLayout`'s defaults in the source - six
+    numbers every install inherits, which a median over a handful of one
+    person's screenshots is not evidence enough to move.
+    `calibration_local.json` is the opposite kind of file: gitignored,
+    one machine's own, already overwritten by the app's own measurement
+    at the next strategy time, and the exact thing `load_layout` exists
+    to read. Writing it is what turns "here are the numbers, paste them
+    somewhere" into a fix.
+
+    **THE TWO FRACTIONS THIS CANNOT MEASURE ARE KEPT, NOT ZEROED.** The
+    role icon's offset and height are not in `FRACTIONS` because nothing
+    in a located pick bar says where a role strip sits, so they come
+    from `DraftLayout()` - a file naming four of six would leave the
+    other two at whatever `float()` made of nothing.
+    """
+    loose = [(name, miss) for name, _mid, miss, *_ in rows
+             if miss > AGREE_WITHIN]
+    if loose:
+        print("  NOT WRITTEN: these pictures do not agree closely enough "
+              "to be one measurement - "
+              + ", ".join(f"{name} misses by {miss:.4f}"
+                          for name, miss in loose)
+              + f" against a ceiling of {AGREE_WITHIN:.2f}.")
+        print("  Open the frames named above: a bank's origin is read off "
+              "the first portrait found in it, so one bad fit moves the "
+              "median for every resolution.")
+        return
+    measured = DraftLayout(**{name: round(mid, 4) for name, mid, *_ in rows})
+    layout_mod.save_calibration(measured)
+    print(f"  WRITTEN to {CALIBRATION_FILE}. The app reads it at the next "
+          "start, and its own measurement at the next strategy time "
+          "replaces it.")
 
 
 def _failures(bad: list) -> None:
@@ -1767,13 +1896,40 @@ def main() -> None:
                              "the ones that can settle the vertical. This is "
                              "the one that answers 'what is the app actually "
                              "grabbing at 1440x900'.")
+    parser.add_argument("--any-size", action="store_true", dest="any_size",
+                        help="keep pictures whose size is not a display "
+                             "resolution. Windowed Dota really can be "
+                             "1489x804 — but so can a snip of a web page, "
+                             "and the crop boxes are fractions, so they cut "
+                             "ten tidy rectangles out of either. Off by "
+                             "default because the commoner cause is the "
+                             "wrong folder.")
     parser.add_argument("--grid", action="store_true",
                         help="instead of locating, map the best match at "
                              "every size in the app's own 2-D search grid. "
                              "Answers whether the portraits are at a size "
                              "the ordinary sweep can reach. Four times the "
                              "work, so use it with --only on one picture.")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the six fractions these pictures "
+                             "measure to this machine's own "
+                             "calibration_local.json, when they agree "
+                             "closely enough to be one measurement. The "
+                             "shipped defaults in the source are never "
+                             "touched. Needs the search, so it is "
+                             "refused with --boxes-only.")
     args = parser.parse_args()
+
+    # A WRITE NEEDS A MEASUREMENT, and `--boxes-only` deliberately makes
+    # none - it cuts the shipped fractions out and stops, which is the
+    # question "what does the app grab" rather than "where is the bar".
+    # Asked for both, say so rather than writing the numbers that are
+    # already in the file.
+    if args.apply and args.boxes_only:
+        raise SystemExit("--apply needs the search, so it cannot be used "
+                         "with --boxes-only. Drop --boxes-only (about a "
+                         "minute a picture) and it will measure, then "
+                         "write.")
 
     folder = Path(args.folder).expanduser()
     if not folder.is_dir():
@@ -1815,7 +1971,8 @@ def main() -> None:
     keep = []
     for shot in shots:
         size = sizes.get(shot)
-        why = not_a_client(*size) if size else "not an image this build can read"
+        why = (not_a_client(*size, any_size=args.any_size) if size
+               else "not an image this build can read")
         (refused if why else keep).append((shot, why) if why else shot)
     if refused:
         print(f"{len(refused)} of {len(shots)} cannot be a Dota client:")
@@ -1981,7 +2138,7 @@ def main() -> None:
     # would be a verdict about nothing, which is the fault this tool
     # already carries two notes about.
     if not args.boxes_only:
-        _consensus(good)
+        _consensus(good, apply=args.apply)
         print(f"\n{len(good)} of {len(rows)} located.")
         for key in ("x_of_width", "x_of_hudbox", "slot_w_of_hudbox",
                     "pitch_of_hudbox", "y_of_window", "y_of_hudbox",

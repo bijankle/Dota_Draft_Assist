@@ -307,18 +307,26 @@ class ItemRow(QWidget):
         # the sentence, if there is one, sits beside them.
         self.message.setText(empty if not advice else "")
         self.message.setVisible(bool(empty) and not advice)
-        if not advice:
-            wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
-            for _ in range(wanted):
-                blank = PlaceholderTile(self, self._blank_size)
-                self.row.insertWidget(len(self._blanks), blank)
-                self._blanks.append(blank)
-            return
         for entry in advice:
             tile = ItemTile(entry, self, self._tile_size)
             tile.asked_why.connect(self.asked_why)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)
+        # AND THE REMAINDER IS PLACEHOLDERS, at the user's request: "for
+        # the top items i want them to show the place holder for the
+        # items even if i select 11 items to suggest and the app only
+        # gives me 9, i want those 2 placeholder slots to show".
+        # The suggestion strip above already does this, for the reason
+        # that applies here too: the count box sits directly under the
+        # row it sizes, so a row that shrinks moves the control out from
+        # under the cursor between one click and the next. The item strip
+        # shrinks MORE often than the picks do — advice is cut by a
+        # severity floor first, so a quiet draft fills two of eleven.
+        wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
+        for _ in range(max(0, wanted - len(self._tiles))):
+            blank = PlaceholderTile(self, self._blank_size)
+            self.row.insertWidget(len(self._tiles) + len(self._blanks), blank)
+            self._blanks.append(blank)
 
     @property
     def items(self) -> list[str]:

@@ -59,24 +59,14 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
                              QPushButton, QScrollArea, QStackedWidget,
                              QVBoxLayout, QWidget)
 
-from ..config import (ALL_BRACKETS, DEFAULT_TARGET_BRACKETS, has_stratz_key,
+from ..config import (DEFAULT_TARGET_BRACKETS, has_stratz_key,
                       save_stratz_key, save_target_brackets, target_brackets)
 from ..gsi import install as gsi_install
 from ..history import account as account_mod
-from . import chrome, section_bar
+from . import accountrow, chrome, rankpick, section_bar
 
 KEY_URL = "https://stratz.com/api"
 
-# Two adjacent brackets, because that roughly doubles the sample for a
-# metagame difference smaller than the noise it removes — the same
-# reasoning `BracketDialog` states at greater length.
-PRESETS = [
-    ("Herald – Crusader", ("HERALD", "GUARDIAN", "CRUSADER")),
-    ("Archon – Legend", ("ARCHON", "LEGEND")),
-    ("Legend – Ancient", ("LEGEND", "ANCIENT")),
-    ("Ancient – Divine", ("ANCIENT", "DIVINE")),
-    ("Divine – Immortal", ("DIVINE", "IMMORTAL")),
-]
 
 
 @dataclass(frozen=True)
@@ -152,6 +142,34 @@ class KeyWorker(QThread):
     def run(self) -> None:                          # noqa: D102 - QThread
         from ..data.stratz import check_key
         self.answered.emit(check_key(self.key))
+
+
+class ProfileWorker(QThread):
+    """Who this account is, off the UI thread.
+
+    Same reason as `KeyWorker`: it is a network call, and a dialog that
+    stops repainting while it waits looks like a crash. It fetches the
+    PICTURE too, because the answer this step is checking is "is this
+    me", and a name on its own is a weaker yes than a face.
+    """
+
+    answered = pyqtSignal(int, object)
+
+    def __init__(self, account_id: int, parent=None):
+        super().__init__(parent)
+        self.account_id = int(account_id)
+
+    def run(self) -> None:                          # noqa: D102 - QThread
+        from ..history import avatars, opendota
+        who = opendota.profile(self.account_id)
+        if who.avatar:
+            # NEVER FATAL: a missing picture leaves the name, which is
+            # most of the answer. `ensure` skips a file already on disk.
+            try:
+                avatars.ensure(self.account_id, who.avatar)
+            except Exception:                       # noqa: BLE001
+                pass
+        self.answered.emit(self.account_id, who)
 
 
 # How much width a paragraph inside a step page actually gets: the page
@@ -360,78 +378,119 @@ class SetupWizard(QDialog):
         lay.addWidget(self.key_note)
 
     def _fill_ranks(self, lay: QVBoxLayout) -> None:
-        """Eight ticks and five pairs — or five pairs alone.
+        """Five ranges, exactly one ticked. See `ui/rankpick.py`.
 
-        PAIRS ONLY WHEN STRATZ CAN ONLY DO PAIRS, at the user's request:
-        "if stratz is pari only, then i want pair only options". Whether
-        it can is not something this file gets to assume — Stratz's
-        schema decides it, `choose_bracket_filter` discovers it on every
-        build, and `stratz_bracket_filter["exact"]` in the dataset meta
-        is the record. So the picker READS that rather than hard-coding
-        either shape, and an offer that Stratz cannot honour is never
-        made.
-
-        `pair_only_brackets` is THREE-VALUED and None means "no build has
-        ever said" — a fresh install, an OpenDota-sourced dataset, a
-        cache written before this was recorded. There the individual
-        ticks stay: they exactly control the OpenDota BASELINES whatever
-        Stratz can do with the pairwise half, so hiding them on a guess
-        would take away real control to prevent a problem nobody has
-        measured yet.
+        It was EIGHT individual rank boxes with the same five ranges as
+        push buttons underneath, which is two controls for one setting —
+        and the buttons worked by silently re-ticking the boxes above
+        them, so the card spent two rows saying one thing twice: "i dont
+        like that the rank pairings linking up with the tick boxes
+        above. Its very wasteful."
         """
-        from ..data.store import bracket_coverage, pair_only_brackets
-
         current = target_brackets() or DEFAULT_TARGET_BRACKETS
-        self.boxes: dict = {}
-        self.pair_only = pair_only_brackets() is True
-        if not self.pair_only:
-            # A GRID, NOT A ROW. Eight brackets across one line came out
-            # with every label elided — "Guardi", "Crusad" — which is a
-            # rank picker you cannot read the ranks off.
-            ticks = QGridLayout()
-            ticks.setHorizontalSpacing(18)
-            for index, bracket in enumerate(ALL_BRACKETS):
-                box = chrome.TickBox(bracket.title())
-                box.setChecked(bracket in current)
-                box.toggled.connect(self._update_summary)
-                ticks.addWidget(box, index // 4, index % 4)
-                self.boxes[bracket] = box
-            lay.addLayout(ticks)
-
-        if self.pair_only:
-            spans = " + ".join(b.title() for b in bracket_coverage())
-            note = paragraph(
-                "Stratz can only filter its pairwise data in pairs"
-                + (f", so it spans {spans}." if spans else "."))
-            note.setProperty("dim", True)
-            lay.addWidget(note)
-        quick = QLabel("Pick a pair:" if self.pair_only else "Or pick a pair:")
-        quick.setProperty("dim", True)
-        lay.addWidget(quick)
-        presets = QGridLayout()
-        for index, (label, brackets) in enumerate(PRESETS):
-            button = QPushButton(label)
-            button.clicked.connect(
-                lambda _c, b=brackets: self._apply_preset(b))
-            presets.addWidget(button, index // 3, index % 3)
-        lay.addLayout(presets)
+        self.ranks = rankpick.RangePicker(current)
+        self.ranks.picked.connect(self._update_summary)
+        lay.addWidget(self.ranks)
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
         lay.addWidget(self.summary)
 
     def _fill_account(self, lay: QVBoxLayout) -> None:
+        """The id, a Check beside it, and who it turned out to be.
+
+        **THE CHECK IS THE POINT OF THE STEP**, at the user's request:
+        "i want there to be a check button - and if it matches i want the
+        (steamname) and the profile picture to enter in a logical
+        location on the screen / menu". A friend ID is nine digits
+        nobody can proofread, and until this the only way to find out
+        whether the right nine had been typed was to finish setup, wait
+        for a run, and read the name in the title bar. The face and the
+        name are the answer that a number cannot be.
+        It is the KEY step's shape one page down — box, Check, a note
+        under it — so the two checks in this wizard look like one idea.
+        """
         row = QHBoxLayout()
         self.account_box = QLineEdit()
         self.account_box.setPlaceholderText(
             "Friend ID, Steam ID, or a profile link")
         self.account_box.textChanged.connect(self._account_changed)
         row.addWidget(self.account_box, 1)
+        self.account_check = QPushButton("Check")
+        self.account_check.clicked.connect(self._check_account)
+        row.addWidget(self.account_check)
         lay.addLayout(row)
+
+        # WHO IT IS, right under the box that was typed into. The same
+        # face and the same name the title bar carries once a run has
+        # happened — `accountrow.Avatar` rather than a second way of
+        # drawing a Steam picture.
+        found = QHBoxLayout()
+        found.setContentsMargins(0, 0, 0, 0)
+        self.account_face = accountrow.Face(self)
+        self.account_face.setVisible(False)
+        found.addWidget(self.account_face)
+        self.account_name = QLabel("")
+        self.account_name.setProperty("heading", True)
+        found.addWidget(self.account_name)
+        found.addStretch(1)
+        lay.addLayout(found)
+
         self.account_note = QLabel("")
         self.account_note.setWordWrap(True)
         self.account_note.setProperty("dim", True)
         self.account_note.setVisible(False)
         lay.addWidget(self.account_note)
+
+    def _check_account(self) -> None:
+        """Ask OpenDota who this is, and show the answer."""
+        if self.worker is not None:
+            return
+        parsed = account_mod.parse(self.account_box.text().strip())
+        if not parsed.account_id:
+            self._note(self.account_note,
+                       parsed.error or "Type an ID first.", warn=True)
+            return
+        self._show_account(None, "")
+        self._note(self.account_note, "Looking it up…")
+        self.account_check.setEnabled(False)
+        self.worker = ProfileWorker(parsed.account_id, self)
+        self.worker.answered.connect(self._account_checked)
+        self.worker.finished.connect(self._worker_done)
+        self.worker.start()
+
+    def _account_checked(self, account_id: int, who) -> None:
+        """THREE ANSWERS, because silence is not a no.
+
+        `Profile.known` is True, False or None for the same reason the
+        capture session's `required` is: a rate limit or a dead
+        connection is asked-and-not-answered, and telling somebody their
+        ID is wrong because their wifi dropped is the worse way to be
+        wrong. Only a definite False is a warning.
+        """
+        self.account_check.setEnabled(True)
+        if who.known is False:
+            self._show_account(None, "")
+            self._note(self.account_note,
+                       "OpenDota has never seen this ID. Check the digits.",
+                       warn=True)
+            return
+        if who.known is None:
+            self._show_account(None, "")
+            self._note(self.account_note,
+                       "Could not reach OpenDota just now — the ID may "
+                       "still be right.")
+            return
+        self._show_account(account_id, who.name)
+        self._note(self.account_note,
+                   "" if who.name else
+                   "Found, but this profile hides its name. That is a Dota "
+                   "privacy setting and nothing here needs it.")
+
+    def _show_account(self, account_id, name: str) -> None:
+        self.account_name.setText(name or "")
+        shown = bool(account_id) and self.account_face.show_file(
+            accountrow.avatar_path(account_id))
+        self.account_face.setVisible(bool(shown))
 
     def _fill_gsi(self, lay: QVBoxLayout) -> None:
         """The list, split around the button, because the button IS step 1.
@@ -609,38 +668,19 @@ class SetupWizard(QDialog):
     # ---- state ------------------------------------------------------------
     @property
     def selected(self) -> tuple:
-        """What is ticked — or, with no ticks to read, what was chosen.
+        """The ranked brackets the advice will be built for.
 
-        In pair-only mode there are no individual boxes, so the pair
-        buttons are the ONLY input and what they set is remembered here.
-        `_chosen` starts at whatever the preferences already say, so
-        arriving on this page and pressing Next keeps the current ranks
-        rather than clearing them.
+        NEVER EMPTY, which is what the exclusive picker buys: the old
+        eight boxes could all be unticked, so this page had a state that
+        meant nothing and a summary line whose job was to complain about
+        it.
         """
-        if not self.boxes:
-            return tuple(b for b in ALL_BRACKETS if b in self._chosen)
-        return tuple(b for b in ALL_BRACKETS if self.boxes[b].isChecked())
-
-    def _apply_preset(self, brackets) -> None:
-        self._chosen = set(brackets)
-        for name, box in self.boxes.items():
-            box.setChecked(name in brackets)
-        if not self.boxes:
-            self._update_summary()
+        return self.ranks.chosen
 
     def _update_summary(self) -> None:
-        chosen = self.selected
-        if not chosen:
-            self.summary.setText("Tick at least one rank.")
-            self.summary.setProperty("warn", True)
-        else:
-            self.summary.setText(
-                "Statistics will be pulled for "
-                + " + ".join(b.title() for b in chosen)
-                + (", combined." if len(chosen) > 1 else "."))
-            self.summary.setProperty("warn", False)
-        self.summary.style().unpolish(self.summary)
-        self.summary.style().polish(self.summary)
+        self.summary.setText(
+            "Statistics will be pulled for "
+            + self.ranks.describe() + ", combined.")
         self._update_next()
 
     def _key_changed(self) -> None:

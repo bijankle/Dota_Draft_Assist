@@ -53,6 +53,44 @@ class Task:
 PY = "{py}"
 
 TASKS = {
+    # RECOGNITION IS BACK ON THE MENU, for one job and at the user's
+    # request: "if its complex - add the code launching via the help
+    # dropdown as you did before". It REVERSES "all of those were used to
+    # refine the software - once its done i dont nteed them", which took
+    # the whole Recognition checks submenu out — and the reversal is
+    # narrower than what it removes: two items that answer the two
+    # questions this exercise is actually about, rather than four
+    # instruments and a window of their own.
+    #
+    # NEITHER TOUCHES THE APP. Both read pictures off disk and write a
+    # sheet into `debug_out/`; nothing they do can change a calibration,
+    # which is why they are safe to put in front of somebody mid-patch.
+    "check_crop_boxes": Task(
+        key="check_crop_boxes",
+        title="Check the crop boxes",
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--boxes-only"]],
+        blurb=("Cuts the app's own ten crop boxes out of every screenshot "
+               "in a folder, draws each box on what is around it, and "
+               "stacks them into one sheet. Seconds per picture."),
+    ),
+    "locate_portraits": Task(
+        key="locate_portraits",
+        title="Locate the portraits",
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--tall"]],
+        blurb=("Searches each screenshot for the pick bar and measures "
+               "where it really is. About a minute per picture, so it "
+               "runs only the shots that can answer the question."),
+    ),
+    "fix_crop_boxes": Task(
+        key="fix_crop_boxes",
+        title="Fix the crop boxes from screenshots",
+        steps=[[PY, "tools/find_portraits.py", "{arg}", "--sample", "8",
+                "--apply"]],
+        blurb=("Measures where the pick bar really is across a spread of "
+               "screenshots and saves it as this machine's calibration. "
+               "Nothing is written unless they agree."),
+        reload_after=True,
+    ),
     "update_data": Task(
         key="update_data",
         title="Update statistics and portraits",
