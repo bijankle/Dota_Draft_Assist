@@ -104,7 +104,7 @@ SECTIONS: tuple = (
              "Radiant on the left, Dire on the right, the way they sit "
              "on Dota's own pick bar. Each tile carries what that hero "
              "is worth overall. A \"+\" is a slot nothing has filled."),
-            ("Suggested picks",
+            ("Top picks",
              "The ranked list cut to its head: best draft fit on the "
              "left. It stays blank until a hero is on the board, "
              "because with an empty draft every fit is zero. Clicking "

@@ -1046,7 +1046,11 @@ def test_the_menu_bar_stays_small(window):
     that is read at a glance during a draft."""
     titles = [a.text().replace("&", "") for a in window.menu_bar.actions()
               if a.menu() is not None]
-    assert titles == ["File", "View", "Help"]
+    # RUN joined them, at the user's request: the record dot and the
+    # Auto tick moved off the tab row into a menu of their own,
+    # inserted before View so the bar reads what the app is DOING,
+    # then how it looks, then help.
+    assert titles == ["File", "Run", "View", "Help"]
     for action in window.menu_bar.actions():
         menu = action.menu()
         if menu is not None:
@@ -1999,24 +2003,43 @@ def test_scaled_portraits_are_cached_not_rescaled_every_paint(qapp,
     assert portraits.scaled(4, 60, 40) is not first  # and forgetting clears
 
 
-def test_the_toolbar_keeps_only_what_belongs_there(window):
+def test_the_tab_row_keeps_only_what_belongs_there(window):
     """Recordings and the report have a whole tab of their own, force
     recognition is a debugging switch, and the capture pill said the same
-    sentence as the status bar one line higher up."""
-    from PyQt6.QtWidgets import QToolBar
-    toolbar = window.findChild(QToolBar)
-    # It rides on the tab strip rather than in a band of its own: three
-    # controls do not need a whole row of window height. NOT as a corner
-    # widget any more — the strip is laid out by hand, because leaving it
-    # to QTabWidget produced four versions of the same misalignment.
-    assert toolbar.parentWidget() is window.tabs.strip
-    from PyQt6.QtWidgets import QPushButton
-    labels = {w.text() for w in toolbar.findChildren(QPushButton)}
+    sentence as the status bar one line higher up.
+
+    THE QToolBar ITSELF IS GONE. It held five controls and ended up
+    holding none: the record dot and Auto went to the Run menu, and
+    Clear all / Detect all / Demo are added to the strip directly. An
+    empty toolbar still added a rule, so the row drew two dividers side
+    by side with nothing between them — and dead UI here goes stale and
+    then gets read as documentation.
+    """
+    from PyQt6.QtWidgets import QPushButton, QToolBar
+    assert window.findChild(QToolBar) is None, "the empty toolbar is back"
+
+    labels = {w.text() for w in window.tabs.strip.findChildren(QPushButton)}
+    assert {"Clear all", "Detect all", "Demo"} <= labels, (
+        "the board actions left the row they are pressed from")
     # Update went to Help: it is pressed once a patch and it was taking
     # width from the row that has to survive the narrowest window.
     assert "Update" not in labels
     assert "Recordings" not in labels and "Report" not in labels
     assert not hasattr(window, "capture_pill")
+
+
+def test_the_recording_controls_are_in_the_run_menu(window):
+    """"move the auto + tickbox + record button into a new menu header
+    called run". They are the SAME two widgets — a checkable menu item
+    would have cost the round red dot, which is the one thing on screen
+    that says at a glance whether a session is running."""
+    assert window.record_button.window() is not window, (
+        "the record dot is still on the window rather than in a menu")
+    assert window.run_menu is not None
+    inside = window.run_menu.findChildren(type(window.record_button))
+    assert window.record_button in inside
+    ticks = window.run_menu.findChildren(type(window.auto_record_check))
+    assert window.auto_record_check in ticks
 
 
 def test_a_long_strip_does_not_set_the_windows_width_floor(window, qapp):
@@ -2574,6 +2597,12 @@ def test_every_control_sits_the_same_distance_from_its_rule(styled, window,
     because a rectangle being in the right place is exactly what this
     looked like from the code.
 
+    The row holds different things now — the dot and the tick went to
+    the Run menu, and the three that are left wear a gold border, so
+    their ink reaches their own rectangle edge. The RULE is unchanged
+    and is the only reason this test exists: whatever is on this row is
+    the same distance from the line beside it.
+
     `styled` comes FIRST: pytest builds fixtures in the order they are
     listed, and this row's spacing comes out of the stylesheet — a window
     constructed before it is applied measures itself against Qt's default
@@ -2607,7 +2636,11 @@ def test_every_control_sits_the_same_distance_from_its_rule(styled, window,
                    for y in range(height - bottom))
 
     rules = [x for x in range(width) if is_rule(x)]
-    assert len(rules) >= 5, rules
+    # FOUR NOW, not five: one inside the tab bar between Draft and
+    # History, and one before each of Clear all, Detect all and Demo.
+    # The record dot and the Auto tick took their two with them to the
+    # Run menu.
+    assert len(rules) >= 4, rules
     runs, start = [], None
     for x in range(width):
         if has_ink(x) and not is_rule(x):
@@ -2633,7 +2666,10 @@ def test_every_control_sits_the_same_distance_from_its_rule(styled, window,
             gaps.append(line - left)
         if right is not None and right - line < 100:
             gaps.append(right - line)
-    assert len(gaps) >= 8, gaps
+    # Five: each of the three rules has ink on its left, and the first
+    # two have a button on their right as well. Demo is last on the row,
+    # so its rule has nothing to the right within reach.
+    assert len(gaps) >= 5, gaps
     # Antialiased text cannot land on one exact number, so the bar is
     # that nothing stands out: three pixels between the tightest and the
     # widest, where it used to be fourteen.
@@ -2688,7 +2724,10 @@ def test_the_controls_sit_on_the_tab_labels_line(window, qapp):
     _settle(qapp)
     strip = window.tabs.strip
     bar = window.tabs.bar
-    probe = window.record_button
+    # The record dot moved to the Run menu, so the probe is one of the
+    # controls still ON the row — the rule being checked is that whatever
+    # sits here sits on the tab labels' line.
+    probe = window.clear_all_button
 
     def middle(widget):
         return (widget.mapTo(strip, widget.rect().topLeft()).y()
@@ -2696,7 +2735,7 @@ def test_the_controls_sit_on_the_tab_labels_line(window, qapp):
 
     assert bar.height() > 0 and probe.height() > 0
     assert abs(middle(probe) - middle(bar)) <= 1.0, (
-        f"the record control's middle is {middle(probe)}, the tab bar's "
+        f"the control's middle is {middle(probe)}, the tab bar's "
         f"is {middle(bar)}")
     # And Qt's own tab bar is never shown: two of them is two rows.
     assert window.tabs.tabBar().isHidden()
@@ -2875,11 +2914,16 @@ def test_every_strip_tile_is_the_same_share_of_a_pick(window, qapp):
     assert window.suggest_row.tile_width() == want_w
     for tile in _tiles_of(window.suggest_row):
         assert (tile.width(), tile.height()) == (want_w, want_h)
-    # Items share the HEIGHT and keep the icon's own 88x64 shape: a 16:9
-    # box round an item icon is dead space either side of every one.
+    # AND SO DO THE ITEMS, whole. They used to share only the HEIGHT and
+    # keep the icon's own 88x64 shape, on the argument that a 16:9 box
+    # round an item icon is dead space either side of every one. That
+    # REVERSED at the user's request — "why are item portraits smaller
+    # than sugegsted heroes.. shoudl eb the same" — because it made an
+    # item tile 78% of a pick's width and the smaller object in a column
+    # of strips that are otherwise one size. The dead space is the cost,
+    # knowingly taken.
     for tile in _tiles_of(window.item_row):
-        assert tile.height() == want_h
-        assert tile.width() == item_mod.width_for(want_h)
+        assert (tile.width(), tile.height()) == (want_w, want_h)
 
 
 def test_the_blank_plates_are_the_size_of_the_real_tiles(window, qapp):
@@ -3423,46 +3467,63 @@ def test_a_message_the_user_asked_for_is_not_stamped_on_by_the_next_tick(
     assert "Dota window" in window.status.currentMessage()
 
 
-def test_the_row_controls_are_tab_labels_not_buttons(window, qapp, styled):
-    """Clear all and Detect all sit on the tab bar's own line, so they read
-    as one series with Draft / Analysis / Debug. A raised plate with a
-    radius round it was a second kind of object on a row that has one."""
+def test_the_row_controls_are_buttons_with_the_frames_gold(window, qapp,
+                                                          styled):
+    """THIS REVERSES "the controls on this row are tab labels, not
+    buttons", at the user's request twice over.
+
+    They were styled as tab labels so the row read as one series of
+    things — right while Record and Auto were the first two controls on
+    it and everything there was a switch. Then "make the button red so
+    they look like buttons", and then "id like to make all buttons have
+    a gold border (the same as the app border)... not for headers like
+    file / view // etc and not for draft / hisstory, jsut the other
+    ones". Clear all, Detect all and Demo ARE buttons — they do
+    something once, where a tab chooses a page — and now they look it.
+    """
     from draft_assist.ui import theme
     window.show()
     window.resize(1500, 950)
     window.refresh()
     _settle(qapp)
-    tab_font = window.tabs.bar.font()
-    for button in (window.clear_all_button, window.detect_all_button):
-        font = button.font()
-        assert (font.family(), font.pixelSize(), font.bold()) == \
-            (tab_font.family(), tab_font.pixelSize(), tab_font.bold())
+    for button in (window.clear_all_button, window.detect_all_button,
+                   window.demo_button):
         colours = _colours_in(button)
-        assert theme.BG_INPUT not in colours, "still wearing a button plate"
-        assert theme.BG_HOVER not in colours
-        assert theme.TEXT_DIM in colours, "same ink as an unselected tab"
-        # And on the same line: within a pixel of the tab bar's height.
-        assert abs(button.height() - window.tabs.bar.height()) <= 2
+        assert theme.FRAME_GOLD in colours, (
+            f"{button.text()!r} has no gold border")
+    # AND THE TWO EXCLUSIONS HOLD. A menu title and a tab are not
+    # QPushButtons, so neither picks the border up — which is what makes
+    # "not for headers, not for the tabs" true by construction rather
+    # than by a list.
+    tabs = _colours_in(window.tabs.bar)
+    assert theme.FRAME_GOLD not in tabs, "the tabs took the gold border"
+    bar = _colours_in(window.menu_bar)
+    assert theme.FRAME_GOLD not in bar, "the menu titles took the border"
 
+def test_the_auto_tick_still_paints_its_own_label_readably(window, qapp,
+                                                          styled):
+    """It painted its own label in `theme.TEXT` outright, so the `color:`
+    rule that dims its neighbours never reached it.
 
-def test_the_auto_box_reads_like_the_rest_of_the_row(window, qapp, styled):
-    """It painted its own label in `theme.TEXT`, so the `color:` rule that
-    dims every other label on the row never reached it and "Auto" sat
-    brighter than the tabs and buttons beside it."""
-    from draft_assist.ui import theme
+    IT IS IN THE RUN MENU NOW rather than on the tab row, so "the rest of
+    the row" is no longer what it has to match — but the fault it was
+    written for is a property of the WIDGET, not of where the widget
+    sits: a control that paints its own text has to ASK for its colour
+    rather than hard-coding one, or no stylesheet can ever reach it.
+    """
+    from PyQt6.QtGui import QPalette
     window.show()
-    window.resize(1500, 950)
-    window.refresh()
     _settle(qapp)
     auto = window.auto_record_check
-    tab_font = window.tabs.bar.font()
-    assert (auto.font().family(), auto.font().pixelSize(),
-            auto.font().bold()) == (tab_font.family(), tab_font.pixelSize(),
-                                    tab_font.bold())
-    colours = _colours_in(auto)
-    assert theme.TEXT_DIM in colours, "the label takes the row's own ink"
-    assert theme.TEXT not in colours, "it was brighter than its neighbours"
-
+    asked = auto.palette().color(auto.foregroundRole())
+    assert asked.isValid()
+    # The label is drawn from the palette, which is where a stylesheet's
+    # `color` lands — not from a constant read at import.
+    import inspect
+    from draft_assist.ui import chrome
+    source = inspect.getsource(chrome.TickBox)
+    assert "foregroundRole()" in source, (
+        "the tick box is hard-coding its text colour again")
 
 def test_the_count_box_number_starts_at_the_left(qapp):
     """Right-aligned it was pushed against the arrows, which reads as the
@@ -3704,7 +3765,8 @@ def test_every_portrait_in_the_app_is_the_pick_tiles_box(window, qapp):
     assert window.suggest_row.tile_width() == pick.width()
     # The items keep their own 88x64 aspect off the same HEIGHT — a 16:9
     # box round an icon is dead space either side of it.
-    assert window.item_row.tile_width() == item_mod.width_for(pick.height())
+    # AND THE ITEMS TAKE IT WHOLE, see the note above.
+    assert window.item_row.tile_width() == pick.width()
     # And the grids are told the same box, which each takes as a CEILING.
     # (What they DRAW needs portraits on disk; that is `test_matrix_grid`,
     # which has them.)
@@ -4077,16 +4139,21 @@ def test_an_absent_calibration_file_is_no_longer_a_banner(qapp, monkeypatch,
         win.close()
 
 
-def test_the_picks_card_does_not_say_its_own_heading_back_at_itself(
+def test_the_picks_card_heading_and_its_boxes_share_one_column(
         window, qapp):
-    """"you dont need suggested picks and pick suggestions - please
-    rearrange."
+    """Two requests, one shape.
 
-    The card was headed "Suggested picks" and its first body row read
-    "Pick suggestions = 20" — the same two words twice with a number
-    after one of them. The number joins the heading it was paraphrasing
-    and that row goes. The legend below keeps its labels, because
-    "comfort" and "counter" name the MARKS rather than the card.
+    "you dont need suggested picks and pick suggestions - please
+    rearrange" killed a body row that said the heading's own words back
+    at it. Then "instead of suggested picks, use the header 'top picks'
+    and make the required adjustments in the rows below so that the
+    input boxes align edges".
+
+    A card CORNER is sized to itself and sits a fixed gap after the
+    title, so a count box there lands wherever the title's words happen
+    to end. Putting the heading in the same grid as the legend puts all
+    three boxes in one column, which aligns them by construction rather
+    than by a measurement somebody has to keep right.
     """
     from PyQt6.QtWidgets import QLabel
     window.show()
@@ -4094,20 +4161,15 @@ def test_the_picks_card_does_not_say_its_own_heading_back_at_itself(
     labels = [label.text().strip().lower()
               for label in window.picks_card.findChildren(QLabel)
               if label.text().strip()]
-    assert "suggested picks" in labels, "the heading went with it"
+    assert "top picks" in labels, "the heading was renamed away"
+    assert "suggested picks" not in labels
     assert "pick suggestions" not in labels, (
         "the card is paraphrasing its own heading again")
 
-    # The count is still on this card, under the name everything else
-    # uses, and it rides on the HEADING line. That is the whole
-    # rearrangement: a corner is sized to itself, so a count box can sit
-    # there while the reflowing role filter still cannot.
-    assert window.picks_card.isAncestorOf(window.suggested_box)
-    heading = next(label for label in window.picks_card.findChildren(QLabel)
-                   if label.text().strip() == "Suggested picks")
-    box_y = window.suggested_box.mapTo(
-        window.picks_card, window.suggested_box.rect().center()).y()
-    head_y = heading.mapTo(
-        window.picks_card, heading.rect().center()).y()
-    assert abs(box_y - head_y) <= 8, (
-        f"the count box is not on the heading's line ({box_y} vs {head_y})")
+    lefts = {name: box.mapTo(window.picks_card,
+                             box.rect().topLeft()).x()
+             for name, box in (("picks", window.suggested_box),
+                               ("heart", window.heart_box),
+                               ("shield", window.shield_box))}
+    assert len(set(lefts.values())) == 1, (
+        f"the three count boxes do not line up: {lefts}")

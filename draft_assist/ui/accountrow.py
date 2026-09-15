@@ -40,6 +40,9 @@ MONTH = "%b %Y"
 FACE = 34                 # the avatar's edge, in pixels
 PADDING = 6
 NOTHING_YET = "No account measured yet"
+# The same fact in the width a TITLE BAR has for it. The long form is a
+# sentence in a callout; this sits between the menus and the pin.
+NO_PROFILE = "No account"
 PROMPT = "Open the History tab to analyse one"
 
 
@@ -147,6 +150,26 @@ class AccountRow(QWidget):
 
         self.face.show_initial("")
 
+    def on_band(self) -> None:
+        """Make this row read as part of the tab strip it now sits on.
+
+        A QLabel is transparent by the app's own stylesheet rule, but
+        THIS widget is a plain QWidget holding a layout — which takes the
+        base `QWidget` rule, the CONTENT colour, lighter than the band.
+        It drew as a pale block across the right-hand end of the tab row,
+        which is the same fault the strip's own note in `chrome` warns
+        about: "every child of the strip is given the band's colour
+        explicitly".
+
+        `bare` is the app's word for "this holds a layout rather than
+        being a surface", and it is what the stylesheet keys on.
+        """
+        self.setProperty("bare", True)
+        for child in self.findChildren(QWidget):
+            child.setProperty("bare", True)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
     def mouseReleaseEvent(self, event):
         if self._clickable and event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
@@ -234,15 +257,77 @@ class AccountRow(QWidget):
             return getattr(options, "window_label", "") or ""
         end = ran.strftime(MONTH)
         if not days:
-            return f"All history  \u2192  {end}"
-        start = (ran - timedelta(days=int(days))).strftime(MONTH)
-        # AND HOW LONG THAT IS, in brackets, at the user's request - two
-        # dates make the reader do the subtraction, and the whole point of
-        # the row is to be read at a glance. It is the window's OWN label
-        # ("Last 3 months" less the "Last"), so it can never disagree with
-        # the dates beside it the way a recomputed figure could.
-        span = (getattr(options, "window_label", "") or "").strip()
-        if span.lower().startswith("last "):
-            span = span[5:]
-        tail = f"  ({span})" if span else ""
-        return f"{start}  \u2192  {end}{tail}"
+            return f"All history \u2192 {end}"
+        began = ran - timedelta(days=int(days))
+        # THE YEAR IS PRINTED ONCE WHEN IT IS THE SAME YEAR, at the
+        # user's request: "if its 2 months on the same year make it jan
+        # --> apr 2026". "Mar 2026 - Sep 2026" spends eight characters
+        # saying 2026 twice, on a row that now sits on the tab strip
+        # where every character is competing with the tabs.
+        start = (began.strftime("%b") if began.year == ran.year
+                 else began.strftime(MONTH))
+        # AND THE LENGTH IN BRACKETS IS GONE with it. It was there
+        # because two dates make the reader do the subtraction — true,
+        # and it was the longest part of the line. Mar and Sep of one
+        # year IS six months, stated by the two dates; the tooltip still
+        # carries the window's own label for the cases that are not
+        # obvious.
+        return f"{start} \u2192 {end}"
+
+
+class ProfileButton(QWidget):
+    """Picture and name in the title bar, left of the pin.
+
+    THE SHAPE IS STEAM'S, and only the shape — at the user's request:
+    "purrely the ideao of having profile just left of the pin icon ...
+    and when its clicked the callout drops down ... do nto copy a bunch
+    of crap fro msteam i was just usign that as an example".
+
+    So this is a face, a name and a caret, and everything else about the
+    account — the friend ID, the window the numbers came from, what to
+    do when nothing has been measured — is in the callout it drops. That
+    detail is `AccountRow`, unchanged and re-used, because two spellings
+    of "who is this and when was it measured" is one of them going
+    stale.
+
+    A WIDGET RATHER THAN A QPushButton with an icon: the face is drawn
+    (see `Face`), and a stylesheet cannot put a drawn picture and two
+    pieces of text on a button without a pixmap per state.
+    """
+
+    clicked = pyqtSignal()
+
+    FACE = 20                       # fits the title bar without raising it
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("profileButton")
+        self.setProperty("bare", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(6, 0, 6, 0)
+        row.setSpacing(6)
+        self.face = Face(self)
+        self.face.setFixedSize(self.FACE, self.FACE)
+        row.addWidget(self.face, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.who = QLabel(NO_PROFILE, self)
+        self.who.setProperty("strong", True)
+        row.addWidget(self.who, 0, Qt.AlignmentFlag.AlignVCenter)
+        # The caret says it opens something. A typed glyph rather than a
+        # painted one: it is punctuation beside text at the same size,
+        # which is the one case this app's "draw it" rule is not about.
+        self.caret = QLabel("\u25be", self)
+        self.caret.setProperty("dim", True)
+        row.addWidget(self.caret, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.face.show_initial("")
+        self.setToolTip("Your account — click for the details")
+
+    def show_name(self, name: str) -> None:
+        """Just the name. Everything else is in the callout."""
+        self.who.setText(name or NO_PROFILE)
+
+    def mouseReleaseEvent(self, event):          # noqa: N802 - Qt naming
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)

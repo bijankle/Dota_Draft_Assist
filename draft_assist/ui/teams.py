@@ -26,7 +26,7 @@ from PyQt6.QtCore import (QMimeData, QPoint, QPointF, QRect, QSize, Qt,
                           pyqtSignal)
 from PyQt6.QtGui import QColor, QDrag, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
-                             QLayout, QSizePolicy, QVBoxLayout)
+                             QLayout, QSizePolicy, QVBoxLayout, QWidget)
 
 from . import theme, tilekit
 from .portraits import scaled
@@ -523,7 +523,20 @@ class TeamPanel(QFrame):
         lay.setContentsMargins(PANEL_MARGIN, 8, PANEL_MARGIN, 10)
         lay.setSpacing(6)
 
-        head = QHBoxLayout()
+        # THE HEADING IS A WIDGET rather than a layout dropped into this
+        # one. It was briefly lifted OUT, to share a row above both
+        # cards with Clear all / Detect all / Demo — "forget what i said
+        # about the radiant and dire header moving ... keep exactly
+        # where they are", so it is back inside the card where the
+        # padding that says which five are whose encloses it.
+        # It stays a widget: a layout cannot be re-parented and a widget
+        # can, so the next arrangement costs a line rather than a
+        # rebuild, and nothing that reads `panel.caption`, `panel.total`
+        # or `panel.note` has to know where it is.
+        self.header = QWidget(self)
+        self.header.setProperty("bare", True)
+        head = QHBoxLayout(self.header)
+        head.setContentsMargins(0, 0, 0, 0)
         self.caption = QLabel(caption)
         self.caption.setProperty("heading", True)
         head.addWidget(self.caption)
@@ -552,7 +565,9 @@ class TeamPanel(QFrame):
         # sitting on the darker card at the end of every team's heading.
         self.note.setVisible(False)
         head.addWidget(self.note)
-        lay.addLayout(head)
+        # Added here so a panel built on its own still has its heading —
+        # the window takes it away again when it builds the board bar.
+        lay.addWidget(self.header)
 
         self.spacing = TILE_GAP
         row = QHBoxLayout()

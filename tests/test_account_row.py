@@ -130,30 +130,35 @@ def test_the_row_prompts_before_anything_has_been_measured(qapp):
     row.deleteLater()
 
 
-@pytest.mark.parametrize("window,expected_start,expected_span", [
-    ("1m", "Aug 2026", "(1 month)"),
-    ("3m", "Jun 2026", "(3 months)"),
-    ("12m", "Sep 2025", "(12 months)")])
-def test_the_range_is_the_runs_own_window(qapp, window, expected_start,
-                                          expected_span):
+@pytest.mark.parametrize("window,expected", [
+    # SAME YEAR PRINTS THE YEAR ONCE, at the user's request: "if its 2
+    # months on the same year make it jan --> apr 2026". The row sits on
+    # the tab strip now, where every character competes with the tabs,
+    # and "Aug 2026 - Sep 2026" spends eight of them saying 2026 twice.
+    ("1m", "Aug \u2192 Sep 2026"),
+    ("3m", "Jun \u2192 Sep 2026"),
+    # Across a year boundary both years are needed and both are printed.
+    ("12m", "Sep 2025 \u2192 Sep 2026")])
+def test_the_range_is_the_runs_own_window(qapp, window, expected):
     """The History window is a DROPDOWN, so a fixed three months would
     have the row describing data that was never measured.
 
-    AND HOW LONG IT IS, in brackets: two bare dates make the reader do
-    the subtraction, on a row whose whole job is to be read at a glance.
+    THE LENGTH IN BRACKETS IS GONE with the move to the strip. It was
+    there because two bare dates make the reader do the subtraction —
+    true, and it was also the longest part of the line. Jun and Sep of
+    one year IS three months, stated by the dates themselves; the
+    tooltip still carries the window's own label.
     """
     from draft_assist.ui.accountrow import AccountRow
     row = AccountRow()
     row.show_report(a_report(window=window))
     assert row.who.text() == "ExampleDrafter"
     text = row.when.text()
-    assert text.startswith(expected_start)
-    assert "Sep 2026" in text, "the run's own date is the end"
+    assert text == expected
     # THE DAY IS NOT PRINTED, at the user's request. The window is a
     # dropdown of whole months, so a day was precision the measurement
     # never claimed.
     assert "11 Sep" not in text and "12 Aug" not in text
-    assert text.endswith(expected_span)
     row.deleteLater()
 
 

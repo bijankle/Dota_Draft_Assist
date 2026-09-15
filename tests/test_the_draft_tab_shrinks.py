@@ -354,23 +354,33 @@ def test_there_is_no_rule_drawn_between_them(window):
 
 # ---- the hand -----------------------------------------------------------
 
-def test_the_suggested_picks_heading_is_on_its_own_row(window):
+def test_the_top_picks_heading_leads_its_own_grid(window):
     """"i think it would look better if 'suggested picks' header was
     above all the text - shift the rest down so it's all level 1 row
-    lower than the header"."""
+    lower than the header", and then, when the count box beside it still
+    did not line up with the two below: "instead of suggested picks, use
+    the header 'top picks' and make the required adjustments in the rows
+    below so that the input boxes align edges".
+
+    So the heading is row 0 of the SAME grid as the legend, spanning the
+    label columns, with its count box in the column the other two are
+    in. The legend is still a row lower than the heading — which is what
+    the first request asked for — and the boxes now align by
+    construction rather than by a gap somebody has to keep right.
+    """
     from PyQt6.QtWidgets import QLabel
 
     settle(window, 1610)
     card = window._picks_row.parent()
-    heads = [w for w in card.findChildren(QLabel)
-             if w.text() == "Suggested picks"]
+    heads = [w for w in card.findChildren(QLabel) if w.text() == "Top picks"]
     assert heads, "the heading is gone"
     head = heads[0]
-    below = window._picks_row
-    assert (head.mapTo(window, head.rect().bottomLeft()).y()
-            <= below.mapTo(window, below.rect().topLeft()).y() + 2), (
-        "the controls are still level with the heading")
-    # And the heading starts at the card's left edge, with the controls
-    # under it rather than beside it.
-    assert (abs(head.mapTo(window, head.rect().topLeft()).x()
-                - below.mapTo(window, below.rect().topLeft()).x()) <= 2)
+
+    for box in (window.heart_box, window.shield_box):
+        assert (head.mapTo(window, head.rect().bottomLeft()).y()
+                <= box.mapTo(window, box.rect().topLeft()).y() + 2), (
+            "the legend is still level with the heading")
+    lefts = {b.mapTo(window, b.rect().topLeft()).x()
+             for b in (window.suggested_box, window.heart_box,
+                       window.shield_box)}
+    assert len(lefts) == 1, f"the count boxes do not line up: {lefts}"

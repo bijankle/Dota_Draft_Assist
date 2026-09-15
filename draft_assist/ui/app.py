@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QPushButton,
                              QScrollArea, QSizePolicy, QSlider,
                              QStatusBar, QTabWidget,
-                             QToolBar, QVBoxLayout, QWidget)
+                             QVBoxLayout, QWidget)
 
 from ..gsi.state import DRAFTING_STATES
 from ..config import (CALIBRATION_FILE, DEBUG_OUT, RECORDINGS_DIR,
@@ -716,13 +716,13 @@ class MainWindow(QMainWindow):
     def _build(self) -> None:
         # Built here, added to the shell below the title bar rather than
         # through addToolBar — same reason as the menu bar.
-        # It rides on the TAB STRIP rather than in a row of its own: three
-        # controls do not need a whole band of window height, and the tab
-        # row was already half empty.
-        toolbar = QToolBar()
-        toolbar.setObjectName("tabStripTools")
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
+        # THE TOOLBAR IS GONE. It held five controls: the record dot and
+        # Auto went to the Run menu, and Clear all / Detect all / Demo
+        # went to the board bar between the two headings — both at the
+        # user's request. What was left was an empty QToolBar adding a
+        # rule to the strip with nothing after it, which drew as two
+        # dividers side by side. Dead UI is not inert here: it goes
+        # stale and then gets read as documentation.
         # Recording is one button because it is one action. It used to be a
         # menu tick for payloads, a separate probe for frames and Ctrl+S for
         # snapshots, in three folders — so the evidence for any one game was
@@ -730,13 +730,13 @@ class MainWindow(QMainWindow):
         # The round red dot everyone already knows, rather than 110px of
         # "● Record" / "■ Stop": the symbol needs no words, and this row
         # has to stay readable at the narrowest the window goes.
+        # RECORDING MOVED TO ITS OWN MENU, at the user's request: "move
+        # the auto + tickbox + record button into a new menu header
+        # called run". Both are built here, where the toolbar is, and
+        # handed to `_add_run_menu` — they are the same two widgets, in
+        # a menu instead of on the row.
         self.record_button = chrome.RecordButton()
         self.record_button.clicked.connect(self._toggle_recording)
-        toolbar.addWidget(self.record_button)
-        # Recording and Auto are two separate decisions — press this now,
-        # versus do it by itself every time — so they get a rule between
-        # them like everything else on the row.
-        toolbar.addWidget(chrome.Divider())
 
         # A TICK, not a filled square: a coloured box says something is
         # different about this control, not that it is switched on.
@@ -747,36 +747,41 @@ class MainWindow(QMainWindow):
         self.auto_record_check.setChecked(
             bool(self.settings.get("auto_record", True)))
         self.auto_record_check.toggled.connect(self._set_auto_record)
-        toolbar.addWidget(self.auto_record_check)
 
         # Wipe the board, then fill it again in one press. Correcting a
         # bad reading pick by pick is five right-clicks and a picker each;
         # when the whole board is wrong, starting over is one gesture and
         # re-reading is another.
-        toolbar.addWidget(chrome.Divider())
+        # OUTLINED RED, at the user's request — "make the button red so
+        # they look like buttons". Outlined rather than filled keeps the
+        # SOLID accent meaning "the one action this screen wants", which
+        # is a rule the whole app is coloured by; three solid red blocks
+        # on the row above a draft would also compete with the board.
+        # They briefly moved off this row to sit between the Radiant and
+        # Dire headings and came straight back when the profile went to
+        # the title bar and freed this end of it.
         self.clear_all_button = QPushButton("Clear all")
         self.clear_all_button.setToolTip(
             "Empty every hand-entered slot on both teams, and forget any "
             "side or order corrections made this match")
+        self.clear_all_button.setProperty("outline", True)
         self.clear_all_button.clicked.connect(self._clear_all)
-        toolbar.addWidget(self.clear_all_button)
 
-        toolbar.addWidget(chrome.Divider())
         self.detect_all_button = QPushButton("Detect all")
         self.detect_all_button.setToolTip(
             "Read the ten portraits off the Dota window now, whatever the "
             "gate thinks — and forget what was read before, so a stale "
             "answer cannot win the vote against the new frame")
+        self.detect_all_button.setProperty("outline", True)
         self.detect_all_button.clicked.connect(self._detect_all)
-        toolbar.addWidget(self.detect_all_button)
 
-        toolbar.addWidget(chrome.Divider())
         self.demo_button = QPushButton("Demo")
         self.demo_button.setToolTip(
             "Fill the board with a random 5v5, to see what the app does "
             "with one. Hand entry, so Clear all empties it again.")
+        self.demo_button.setProperty("outline", True)
         self.demo_button.clicked.connect(self._demo_draft)
-        toolbar.addWidget(self.demo_button)
+
 
         self.recording_label = QLabel("")
         self.recording_label.setProperty("dim", True)
@@ -804,6 +809,7 @@ class MainWindow(QMainWindow):
         # TRANSPARENCY IS IN THE VIEW MENU, not on this row. It is set
         # once and then left alone for the evening, and a row read at a
         # glance mid-draft should hold the things pressed mid-draft.
+        self._add_run_menu()
         self._add_transparency_menu()
         self._add_sizes_menu()
         # LAST, so the four tick boxes sit under the two sliders.
@@ -842,10 +848,45 @@ class MainWindow(QMainWindow):
         self.title_bar.close_clicked.connect(self.close)
         self.title_bar.pinned.connect(self._set_pinned)
         shell_lay.addWidget(self.title_bar)
-        # A rule between the tab labels and the controls too, so the
-        # whole row is one series of things with one kind of gap.
-        tabs.add_rule()
-        tabs.add_tools(toolbar)
+        # THE PROFILE LIVES IN THE TITLE BAR, left of the pin, and
+        # CLICKING IT DROPS THE DETAIL. The shape is Steam's and only
+        # the shape, at the user's request: "purrely the ideao of having
+        # profile just left of the pin icon ... and when its clicked the
+        # callout drops down ... do nto copy a bunch of crap fro msteam
+        # i was just usign that as an example".
+        #
+        # This is the THIRD place it has been in as many messages — a row
+        # of its own at the top of the Draft tab, then beside the tabs,
+        # then the far right of the strip — and the title bar is the one
+        # that costs no layout at all. It is about YOU rather than about
+        # the draft or the tabs, and it is now beside the other things
+        # that are about the window itself.
+        #
+        # ONE implementation of the detail: the callout holds the same
+        # `AccountRow` the Draft tab used to, so "who is this and when
+        # was it measured" is spelled once. The button carries the name
+        # alone, because that is what fits between the menus and the pin.
+        self.account_row = accountrow.AccountRow()
+        self.account_row.clicked.connect(self._show_history_tab)
+        self.profile_button = accountrow.ProfileButton()
+        self.profile_button.clicked.connect(self._show_profile)
+        self.title_bar.add_widget(self.profile_button)
+        self._build_profile_menu()
+
+        # BACK ON THE TAB ROW, at the user's request one message after
+        # they left it: "on second thought it makes more senxse to have
+        # the clear / detect / demo o nthe same row as the draft /
+        # history now that i have moved profiel to the top bar next to
+        # the pin". Moving the profile into the title bar is what freed
+        # this end of the row, and these three are the controls pressed
+        # mid-draft, so the row that is always on screen is where they
+        # belong. They keep the OUTLINED red from their trip to the
+        # board bar — "make the button red so they look like buttons".
+        for button in (self.clear_all_button, self.detect_all_button,
+                       self.demo_button):
+            tabs.add_rule()
+            tabs.add_tools(button)
+
         shell_lay.addWidget(tabs.strip)
         shell_lay.addWidget(tabs, 1)
         # A frameless window has no resize border, so the corner is put
@@ -906,9 +947,6 @@ class MainWindow(QMainWindow):
         # content. It follows `report_changed` like the stars do, so
         # looking somebody else up re-draws it, and it makes no request of
         # its own: the picture was fetched during the run.
-        self.account_row = accountrow.AccountRow(draft_widget)
-        self.account_row.clicked.connect(self._show_history_tab)
-        outer.addWidget(self.account_row)
 
         self.teams_row = teams_row = QHBoxLayout()
         teams_row.setSpacing(10)
@@ -1001,8 +1039,21 @@ class MainWindow(QMainWindow):
         #
         # It also puts this card back in step with Suggested items,
         # which has had its count on the heading throughout.
+        # "TOP PICKS", and the heading is INSIDE the grid rather than on
+        # the card's own heading line. At the user's request: "instead of
+        # suggested picks, use the header 'top picks' and make the
+        # required adjustments in the rows below so that the input boxes
+        # align edges... shift the heart and shield stuff to the right as
+        # required and then evenly space everything to its right".
+        #
+        # A card corner is sized to ITSELF and sits a fixed gap after the
+        # title, so the count box landed wherever the words "Suggested
+        # picks" happened to end — nowhere near the two below it. Putting
+        # the heading in the same QGridLayout as the legend puts all
+        # three boxes in one COLUMN, which aligns them by construction
+        # rather than by a measurement somebody has to keep right.
         self.suggested_box = self._count_box("suggested_picks")
-        picks_card, playy = card("Suggested picks", self.suggested_box)
+        picks_card, playy = card()
         playy.addWidget(self._picks_controls())
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
@@ -2270,7 +2321,7 @@ class MainWindow(QMainWindow):
     # belongs beside the result, not two menus away.
     SECTIONS = (
         ("show_roles", "Team roles", "roles_block"),
-        ("show_suggestions", "Suggested picks", "picks_card"),
+        ("show_suggestions", "Top picks", "picks_card"),
         ("show_items", "Suggested items", "items_card"),
         ("show_matrices", "Synergies and counters", "grids_block"),
     )
@@ -2395,6 +2446,100 @@ class MainWindow(QMainWindow):
                 act.blockSignals(True)
                 act.setChecked(shown)
                 act.blockSignals(False)
+
+    def _show_profile(self) -> None:
+        """Drop the account detail under the button that was clicked.
+
+        A QMenu because that is what a drop-down IS on every platform —
+        it closes on a click outside, it is positioned against the
+        widget rather than the screen, and it takes the app's own
+        stylesheet. The row inside it is the same `AccountRow` the Draft
+        tab used to carry, so there is one implementation of the detail
+        and it cannot drift from the button's name.
+
+        BUILT ONCE AND KEPT, which is not an optimisation. A
+        QWidgetAction owns its widget, so a menu built per click would
+        destroy the row on the way out — and `show_report` would then be
+        writing into a destroyed C++ object behind a live Python
+        wrapper, which is the fault `history_tab.fill()` carries its own
+        note about. Handing the row back with `setParent(None)` instead
+        is worse again: a parentless QWidget is a WINDOW the moment
+        anything shows it, and this app has opened a stray second
+        "Dota Draft Assist" that way three times.
+        """
+        # Under the button, so the callout hangs off the thing that
+        # opened it rather than appearing at the cursor.
+        self._profile_menu.exec(self.profile_button.mapToGlobal(
+            self.profile_button.rect().bottomLeft()))
+
+    def _build_profile_menu(self) -> None:
+        """Built at construction, not on the first click.
+
+        Lazily was the obvious way and it is wrong here: until the menu
+        exists the row has NO PARENT, and a parentless QWidget is a
+        WINDOW the moment anything shows it — which is how this app has
+        opened a stray second "Dota Draft Assist" three times, and why
+        `test_no_widget_is_left_without_a_parent` walks these attributes.
+        """
+        from PyQt6.QtWidgets import QMenu, QWidgetAction
+
+        menu = QMenu(self)
+        action = QWidgetAction(menu)
+        self.account_row.setParent(menu)
+        action.setDefaultWidget(self.account_row)
+        menu.addAction(action)
+        menu.addSeparator()
+        menu.addAction("Open the History tab").triggered.connect(
+            self._show_history_tab)
+        self._profile_menu = menu
+
+    def _add_run_menu(self) -> None:
+        """Run: the two recording controls, in a menu of their own.
+
+        At the user's request — "move the auto + tickbox + record button
+        into a new menu header called run". They were the first two
+        things on the tab row, and the row is read mid-draft: Clear all
+        and Detect all are pressed while a draft is going wrong, where
+        recording is set once an evening and left.
+
+        THEY ARE THE SAME TWO WIDGETS, in a `QWidgetAction` — the route
+        Transparency and Sizes already take. A checkable menu item would
+        have been more menu-like and would have cost the round red dot,
+        which is the one thing on screen that says at a glance whether a
+        session is running; and `RecordButton` would have become dead
+        code, which this app deletes rather than leaves to be read as
+        documentation later.
+
+        INSERTED BEFORE View rather than appended, so the bar reads
+        File | Run | View | Help — what the app IS doing, then how it
+        looks, then help.
+        """
+        from PyQt6.QtWidgets import QMenu, QWidgetAction
+
+        menu = QMenu("&Run", self)
+        self.menu_bar.insertMenu(self.view_menu.menuAction(), menu)
+        self.run_menu = menu
+        for widget, label, tip in (
+                (self.record_button, "Record this draft",
+                 "Start or stop a recording now"),
+                (self.auto_record_check, "Record every draft",
+                 "Start by itself when Dota reaches the draft")):
+            row = QWidget(menu)
+            row.setProperty("bare", True)
+            lay = QHBoxLayout(row)
+            lay.setContentsMargins(14, 6, 14, 6)
+            lay.setSpacing(10)
+            # THE WIDGET KEEPS ITS PARENT WHEN IT MOVES. A parentless
+            # QWidget is a WINDOW the moment anything shows it, and these
+            # two have just been taken off a layout.
+            widget.setParent(row)
+            lay.addWidget(widget)
+            name = QLabel(label, row)
+            lay.addWidget(name, 1)
+            row.setToolTip(tip)
+            action = QWidgetAction(menu)
+            action.setDefaultWidget(row)
+            menu.addAction(action)
 
     def _add_transparency_menu(self) -> None:
         """View ▸ Transparency: the same slider, in a menu.
@@ -4166,6 +4311,15 @@ class MainWindow(QMainWindow):
         stack.setHorizontalSpacing(6)
         stack.setVerticalSpacing(2)
 
+        # ROW 0 IS THE HEADING, spanning the three label columns so its
+        # own box lands in column 3 with the other two. It keeps the
+        # heading font — this IS the card's heading now, not a second
+        # line under one.
+        title = QLabel("Top picks", counts)
+        title.setProperty("heading", True)
+        stack.addWidget(title, 0, 0, 1, 3)
+        stack.addWidget(self.suggested_box, 0, 3)
+
         # TWO COUNTS AGAIN, WHICH REVERSES THE ONE THAT REPLACED THEM.
         # They were merged on the argument that the marks answer the
         # same question - how far down the strip is worth marking - and
@@ -4175,7 +4329,7 @@ class MainWindow(QMainWindow):
         # places to read one setting is two places for it to go stale.
         for line_no, (shield, word, key) in enumerate(
                 ((False, "comfort", "heart_count"),
-                 (True, "counter", "shield_count"))):
+                 (True, "counter", "shield_count")), start=1):
             stack.addWidget(MarkLabel(shield, counts), line_no, 0)
             stack.addWidget(QLabel("=", counts), line_no, 1)
             stack.addWidget(QLabel(word, counts), line_no, 2)
@@ -4539,6 +4693,13 @@ class MainWindow(QMainWindow):
         # moment: the star bars and the face must never describe two
         # different accounts.
         self.account_row.show_report(report)
+        # THE NAME, not the row's display text. With nothing measured the
+        # row says "No account measured yet" — a sentence, right for a
+        # callout and four times too long for a title bar, where the
+        # button says "No account" instead. Passing "" is how the button
+        # is told there is no name, and it chooses its own short form.
+        self.profile_button.show_name(
+            self.account_row.who.text() if matches else "")
 
     def _show_history_tab(self) -> None:
         """Clicking the account row opens the tab that fills it.

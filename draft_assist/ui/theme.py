@@ -158,21 +158,11 @@ QToolBar#tabStripTools QSlider {{ background: {BG_DEEP}; }}
    {TEXT} under the cursor. `font-weight` has to be said again because the
    base QPushButton rule sets 500 and would otherwise win over the app's
    bold. */
-QToolBar#tabStripTools QPushButton {{
-    background: transparent; border: none;
-    padding: 8px 0; color: {TEXT_DIM}; font-weight: bold;
-}}
-QToolBar#tabStripTools QPushButton:hover {{
-    background: transparent; border: none; color: {TEXT};
-}}
-QToolBar#tabStripTools QPushButton:pressed {{
-    background: transparent; border: none; color: {TEXT_STRONG};
-}}
-QToolBar#tabStripTools QPushButton:disabled {{
-    background: transparent; color: {BORDER};
-}}
-QToolBar#tabStripTools QLabel,
-QToolBar#tabStripTools QCheckBox {{ color: {TEXT_DIM}; }}
+/* The tab row's QToolBar is gone: the record dot and Auto moved to
+   the Run menu and the three board actions are added to the strip
+   directly, which left an empty toolbar drawing a second divider.
+   Its rules went with it rather than being left to be read as
+   documentation for a widget that no longer exists. */
 
 /* One BAND, laid out as one row (see chrome.BandedTabs): the strip is a
    plain widget holding the tab bar and the toolbar, so there is no gap
@@ -193,22 +183,35 @@ QTabBar::tab {{
 QTabBar::tab:selected {{ color: {TEXT}; border-bottom: 2px solid {ACCENT}; }}
 QTabBar::tab:hover {{ color: {TEXT}; }}
 
+/* A GOLD BORDER ON EVERY BUTTON, at the user's request: "id like to
+   make all buttons have a gold border (the same as the app border)..
+   not for headers like file / view // etc and not for draft / hisstory,
+   jsut the other ones... even for the quantity boxes id liek the gold
+   border".
+   It is `FRAME_GOLD`, the window frame's own colour — so a control and
+   the border round the whole app read as one piece, which is the
+   argument the title text already followed. The two EXCLUSIONS fall out
+   for free: a menu title is a QMenuBar item and a tab is a QTabBar tab,
+   and neither is a QPushButton. */
 QPushButton {{
     background: {BG_INPUT};
-    border: 1px solid transparent;
+    border: 1px solid {FRAME_GOLD};
     border-radius: 4px;
     padding: 7px 14px;
     color: {TEXT};
     font-weight: 500;
 }}
-QPushButton:hover {{ background: {BG_HOVER}; border-color: {BG_HOVER}; }}
+QPushButton:hover {{ background: {BG_HOVER}; border-color: {FRAME_GOLD}; }}
 QPushButton:pressed {{ background: {BG_DEEP}; }}
-QPushButton:disabled {{ color: {TEXT_DIM}; background: {BG_ELEVATED}; }}
-QPushButton[accent="true"] {{
-    background: {ACCENT}; border-color: {ACCENT}; color: #ffffff;
-    font-weight: 600;
+/* A disabled button keeps a border so it still reads as a control, but
+   a dim one — gold at full strength says "press me". */
+QPushButton:disabled {{
+    color: {TEXT_DIM}; background: {BG_ELEVATED}; border-color: {BORDER};
 }}
-QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
+QPushButton[accent="true"] {{
+    background: {ACCENT}; color: #ffffff; font-weight: 600;
+}}
+QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; }}
 /* AFTER the accent rule, or it never applies. The plain
    `QPushButton:disabled` above is declared earlier, so on a button
    carrying [accent="true"] the accent wins on specificity and a disabled
@@ -273,11 +276,11 @@ QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
    box lost its arrows altogether. `chrome.CountBox` draws them, the same
    answer as the tick box and the three window buttons. */
 QSpinBox {{
-    background: transparent; border: 1px solid {BORDER};
+    background: transparent; border: 1px solid {FRAME_GOLD};
     border-radius: 4px; padding: 1px 3px; color: {TEXT};
     selection-background-color: {ACCENT}; selection-color: #ffffff;
 }}
-QSpinBox:hover {{ border-color: {ACCENT}; }}
+QSpinBox:hover {{ border-color: {TEXT_STRONG}; }}
 
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{

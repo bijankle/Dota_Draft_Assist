@@ -240,15 +240,30 @@ class ItemRow(QWidget):
         self._blank_size = (ICON_W, ICON_H)
 
     def set_tile_size(self, width: int, height: int) -> None:
-        """The picks' box. A FILLED tile keeps the icon's own 88x64 shape —
-        a 16:9 box round an item icon is dead space either side of every
-        one — but an EMPTY plate has no icon whose shape to respect, so it
-        takes the whole box. On a freshly opened app every blank plate in
-        the window is then the same rectangle, which is what a row of
-        identical holes should look like."""
+        """The picks' box, WHOLE — the same rectangle a suggestion gets.
+
+        THIS REVERSES "a filled tile keeps the icon's own 88x64 shape",
+        at the user's request: "why are item portraits smaller than
+        sugegsted heroes.. shoudl eb the same". The heights always
+        matched; what did not was the WIDTH, because an item tile was
+        cut to `width_for(height)` — 1.375 against the picks' 1.778, so
+        78% of the width and visibly the smaller object in a column of
+        strips that are otherwise one size.
+
+        The old rule's reasoning was real and is the cost now paid: an
+        88x64 icon fitted inside a 16:9 box leaves dead space either
+        side of every item. The trade is the user's — one size for every
+        tile in the window reads as one system, and an item strip that
+        stops short of the card's edge while the picks above it do not
+        reads as an accident.
+
+        `width_for` survives for the fallback size before the panel has
+        been laid out, which is the only place an item tile still sets
+        its own shape.
+        """
         height = max(1, int(height))
-        size = (width_for(height), height)
-        blank = (max(1, int(width)), height)
+        size = (max(1, int(width)), height)
+        blank = size
         if (size, blank) == (self._tile_size, self._blank_size):
             return
         self._tile_size, self._blank_size = size, blank

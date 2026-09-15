@@ -2257,6 +2257,89 @@ credentials, and put the account at risk. Do not go there.
   for. It also puts this card back in step with Suggested items, which
   has had its count on the heading throughout.
 
+- **THE CHROME MOVED, AND THE ORDER IT MOVED IN IS THE RECORD.** Five
+  requests in one sitting, several reversing the one before, so what
+  matters here is where it ENDED and which arguments survived.
+  **THE TITLE BAR** is File | Run | View | Help, then the PROFILE, then
+  the pin and the three window buttons.
+  **THE TAB ROW** is Draft | History, then Clear all | Detect all |
+  Demo.
+  **RUN IS A NEW MENU** (`_add_run_menu`) holding the record dot and the
+  Auto tick — "move the auto + tickbox + record button into a new menu
+  header called run". They are THE SAME TWO WIDGETS in a `QWidgetAction`,
+  the route Transparency and Sizes already take: a checkable menu item
+  would have been more menu-like and would have cost the round red dot,
+  which is the one thing on screen that says at a glance whether a
+  session is running, and `RecordButton` would have become dead code.
+  Inserted before View, so the bar reads what the app is DOING, then how
+  it looks, then help.
+  **THE PROFILE IS IN THE TITLE BAR, LEFT OF THE PIN, AND CLICKING IT
+  DROPS THE DETAIL** (`accountrow.ProfileButton`, `_show_profile`). The
+  shape is Steam's and ONLY the shape, at the user's request: "purrely
+  the ideao of having profile just left of the pin icon ... do nto copy
+  a bunch of crap fro msteam i was just usign that as an example". It
+  was in THREE other places first — a row of its own at the top of the
+  Draft tab, then beside the tabs, then the far right of the strip — and
+  the title bar is the one that costs no layout at all. The button
+  carries the NAME alone (`NO_PROFILE`, "No account"); everything else
+  is `AccountRow`, unchanged and re-used inside the callout, so "who is
+  this and when was it measured" is spelled once.
+  **THE CALLOUT'S MENU IS BUILT AT CONSTRUCTION, NOT ON FIRST CLICK.**
+  Lazily is the obvious way and it is wrong: until the menu exists the
+  row has NO PARENT, and a parentless QWidget is a WINDOW the moment
+  anything shows it. Rebuilding the menu per click is worse again — a
+  `QWidgetAction` OWNS its widget, so the row would be destroyed on the
+  way out and `show_report` would then write into a destroyed C++ object
+  behind a live Python wrapper. Caught by
+  `test_no_widget_is_left_without_a_parent`, which exists for exactly
+  this and has now earned its place twice.
+  **THE QToolBar IS GONE.** It held five controls and ended up holding
+  none, and an empty one still added a rule — so the row drew two
+  dividers with nothing between them. Its stylesheet rules went with it.
+  **THE DATE RANGE PRINTS THE YEAR ONCE** (`AccountRow.span`) — "if its
+  2 months on the same year make it jan --> apr 2026". "Mar 2026 → Sep
+  2026" spent eight characters saying 2026 twice. The LENGTH IN BRACKETS
+  went with it: it was there because two dates make the reader do the
+  subtraction, which is true and was also the longest part of the line.
+  Mar to Sep of one year IS six months.
+  **EVERY BUTTON WEARS THE FRAME'S GOLD** — "id like to make all buttons
+  have a gold border (the same as the app border)... not for headers
+  like file / view // etc and not for draft / hisstory, jsut the other
+  ones... even for the quantity boxes". `FRAME_GOLD` is the window
+  frame's own colour, so a control and the border round the whole app
+  read as one piece — the argument the title text already followed. THE
+  TWO EXCLUSIONS FALL OUT FOR FREE: a menu title is a QMenuBar item and
+  a tab is a QTabBar tab, and neither is a QPushButton, so "not for
+  headers, not for the tabs" is true by construction rather than by a
+  list. A disabled button keeps a border but a dim one.
+  **THIS REVERSES "THE CONTROLS ON THIS ROW ARE TAB LABELS, NOT
+  BUTTONS"**, which was right while the row held Record and Auto and
+  everything on it was a switch. Clear all, Detect all and Demo DO
+  something once, where a tab chooses a page, and now they look it.
+  **THE ITEM TILES ARE THE PICKS' WHOLE BOX** (`ItemRow.set_tile_size`),
+  which reverses "a filled tile keeps the icon's own 88x64 shape": "why
+  are item portraits smaller than sugegsted heroes.. shoudl eb the
+  same". The heights always matched; the WIDTH did not, so an item tile
+  was 78% of a pick and the smaller object in a column of strips that
+  are otherwise one size. The old rule's reasoning is the cost now paid —
+  an 88x64 icon in a 16:9 box is dead space either side — and the trade
+  is the user's.
+  **AND THE PICKS CARD IS "TOP PICKS" WITH ITS HEADING INSIDE THE GRID**
+  (`_picks_controls`). A card CORNER is sized to itself and sits a fixed
+  gap after the title, so a count box there lands wherever the title's
+  words happen to end — "make the required adjustments in the rows below
+  so that the input boxes align edges". Row 0 of the legend's own
+  QGridLayout is the heading, spanning the three label columns, with its
+  box in column 3 beside the other two. They align by CONSTRUCTION
+  rather than by a measurement somebody has to keep right.
+  **THE RADIANT AND DIRE HEADINGS DID NOT MOVE, IN THE END.** They were
+  lifted out into a row above both cards with the three buttons between
+  them, and put straight back: "forget what i said about the radiant and
+  dire header moving ... keep exactly where they are". What survives is
+  that `TeamPanel.header` is a WIDGET rather than a layout — a layout
+  cannot be re-parented and a widget can, so the next arrangement costs
+  a line rather than a rebuild.
+
 - **VIEW ▸ GREYSCALE IS A PALETTE SWAP, NOT AN EFFECT**
   (`theme.set_greyscale`, `theme.greyed`, `MainWindow._apply_greyscale`,
   `ui_settings.greyscale`), at the user's request: "a tickbox in the
