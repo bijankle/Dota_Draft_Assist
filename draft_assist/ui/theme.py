@@ -29,6 +29,15 @@ TEXT_STRONG = "#f2f3f5"
 TEXT_DIM = "#949ba4"
 ACCENT = "#b5342c"        # deep vermilion; see the note above
 ACCENT_HOVER = "#95271f"
+# THE ACCENT WITH THE PRESS TAKEN OUT OF IT, for a control that is there
+# and cannot be used — the down arrow on a count box already at nought.
+# At the user's request: "if i cant go any lower e.e.g im at 0, i sitll
+# want the down arrow to become dim, just a dim version of the red". A
+# GREY one would say the arrow is a different kind of thing from its
+# twin; a dim red says it is the same control with nothing left to do.
+# Mixed against `BG_INPUT` rather than darkened, so it sits on the
+# surface it is drawn on.
+ACCENT_DIM = "#7d3735"
 GOOD = "#23a55a"
 BAD = "#f23f43"
 WARN = "#f0b232"
@@ -75,6 +84,23 @@ BODY_PX = 18
 # `chrome.CountBox`, which paints its own border and so cannot get its
 # height from the stylesheet's.
 CONTROL_H = 33
+
+# THE ONE LINE WEIGHT THE APP'S DELIBERATE OUTLINES ARE DRAWN AT: the
+# window's own frame, the ring round a clicked portrait, the box round a
+# relation's figure, the hero callout, and the three board buttons. It
+# lives HERE rather than in `ornate` — which is where it used to, and
+# which imports this module, so the dependency only goes one way — and
+# `ornate.WIDTH` and `tilekit.FOCUS_WIDTH` both read it. One number, or
+# "the same line width as the border round the selected portrait" is a
+# thing somebody has to keep true by hand in five places.
+FRAME_WIDTH = 3
+# What the plain buttons pad with, so a 3px border still lands on
+# `CONTROL_H`: a border sits OUTSIDE the padding box, so the two have to
+# add up. Stated rather than inlined, because the pair is the invariant.
+PLAIN_PAD_Y = 1
+# The strip a combo box keeps clear on its right for the caret this app
+# paints itself (see `chrome.Dropdown`).
+ARROW_STRIP = 18
 
 # THE APP'S NAME IN THE TITLE BAR, at the user's request: "reduce the
 # font size of the app logo by 10% and reduce the thickess of the font
@@ -145,6 +171,13 @@ QWidget {{
    label that wants a background says so, and the pills below win on
    specificity. */
 QLabel {{ background: transparent; }}
+/* THE CARET THAT DROPS THE PROFILE CALLOUT. One of this app's clickable
+   arrows, and they are all red now — "all of the up/down arrows
+   (clickable) that ever feature in this app, i want them to be red....
+   that includes the one on the steam profile section top right of app
+   window". A PROPERTY rather than a widget stylesheet, so
+   `set_greyscale` rebuilds it with everything else. */
+QLabel[caret="true"] {{ background: transparent; color: {ACCENT}; }}
 QMainWindow::separator {{ background: {BORDER}; width: 1px; height: 1px; }}
 
 QMenuBar {{ background: {BG_DEEP}; border-bottom: 1px solid {BG_DEEP}; }}
@@ -286,15 +319,26 @@ QPushButton[accent="true"]:disabled {{
    DECLARED AFTER every `QPushButton:` state above: a property selector
    and a pseudo-class score the same, so the tie goes to whichever is
    written last. */
+/* A RED OUTLINE AT THE FOCUS RING'S OWN WEIGHT, at the user's request:
+   "i want these buttons to have a red border, same line width as the
+   border that goes aroudn the 5 /5 hero portrait when it is selected".
+   `FRAME_WIDTH` is that number, and it is the same one the ring, the
+   window frame and the hero callout are drawn at.
+   THE PADDING GIVES BACK WHAT THE BORDER TAKES: a border sits outside
+   the padding box, so three pixels instead of one is four more pixels of
+   height, and the vertical padding drops to hold `CONTROL_H` — the one
+   height every control in this app is. */
 QPushButton[plain="true"] {{
-    background: transparent; border-color: {BORDER}; font-weight: bold;
+    background: transparent; font-weight: bold;
+    border: {FRAME_WIDTH}px solid {ACCENT};
+    padding: {PLAIN_PAD_Y}px 12px;
 }}
 QPushButton[plain="true"]:hover {{
-    background: {BG_HOVER}; border-color: {TEXT_DIM};
+    background: {BG_HOVER}; border-color: {ACCENT_HOVER};
 }}
 QPushButton[plain="true"]:pressed {{ background: {BG_INPUT}; }}
 QPushButton[plain="true"]:disabled {{
-    background: transparent; color: {TEXT_DIM}; border-color: {BORDER};
+    background: transparent; color: {TEXT_DIM}; border-color: {ACCENT_DIM};
 }}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
@@ -324,6 +368,16 @@ QComboBox {{
     padding: 5px 10px;
 }}
 QComboBox:hover {{ border-color: {ACCENT}; }}
+/* THE ARROW IS PAINTED BY `chrome.Dropdown`, so the sub-controls are
+   cleared out of its way here. This is the tick box's lesson used
+   deliberately for once: naming a sub-control puts Qt on the stylesheet
+   path for it, and a stylesheet can colour one but cannot put a MARK in
+   one without an image file — so naming it is how the native arrow is
+   got RID of, and the widget draws the red one itself. */
+QComboBox::drop-down {{
+    border: none; background: transparent; width: {ARROW_STRIP}px;
+}}
+QComboBox::down-arrow {{ image: none; width: 0px; height: 0px; }}
 QComboBox QAbstractItemView {{
     background: {BG_ELEVATED};
     border: 1px solid {BORDER};

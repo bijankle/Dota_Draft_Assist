@@ -38,9 +38,13 @@ def _from_git() -> tuple[str, str] | None:
     if not (ROOT / ".git").exists():
         return None
     try:
+        # NO CONSOLE: this runs on a windowless app, so a child that
+        # wants one is handed a fresh black box. See `console.no_window`.
+        from . import console
         out = subprocess.run(
             ["git", "-C", str(ROOT), "log", "-1", "--format=%h %cI"],
-            capture_output=True, text=True, timeout=5, check=False)
+            capture_output=True, text=True, timeout=5, check=False,
+            **console.no_window())
     except (OSError, subprocess.SubprocessError):
         return None
     parts = out.stdout.strip().split()

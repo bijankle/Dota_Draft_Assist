@@ -3003,10 +3003,16 @@ def test_every_signed_number_in_the_app_is_one_size(qapp):
     # The same digits at every size the figure FITS: a smaller tile does
     # not get a smaller number, it just has less room around it.
     assert ink(132, 74) == ink(110, 62) == ink(96, 54)
-    # At the window's very narrowest the figure is wider than the tile,
-    # and a number clipped to "+21." is not a smaller number but a wrong
-    # one — so there, and only there, it steps down far enough to fit.
-    assert ink(64, 36) < ink(132, 74)
+    # AND A RELATION'S TILE IS NOW ONE OF THEM. The gold box used to be
+    # fitted OUTSIDE the digits, so its reach came out of the room the
+    # figure was allowed and a 64px tile stepped down a size to make room
+    # for a frame. The mark is the figure's own COLOUR now, which cannot
+    # crowd anything, and the whole width is the number's again.
+    assert ink(64, 36) == ink(132, 74)
+    # At the window's very narrowest the figure is still wider than the
+    # tile, and a number clipped to "+21." is not a smaller number but a
+    # wrong one — so there, and only there, it steps down far enough.
+    assert ink(48, 27) < ink(132, 74)
 
 
 def test_the_body_size_is_the_one_the_user_asked_for():
@@ -3020,7 +3026,11 @@ def test_the_body_size_is_the_one_the_user_asked_for():
 def test_the_count_box_draws_its_own_arrows(qapp):
     """A stylesheet can colour a spin box's buttons but cannot put a MARK
     in one without an image file, so styling them left the box with no
-    arrows at all — same trap as the tick box and the window buttons."""
+    arrows at all — same trap as the tick box and the window buttons.
+
+    RED, at the user's request: "all of the up/down arrows (clickable)
+    that ever feature in this app, i want them to be red".
+    """
     from PyQt6.QtGui import QImage
     from draft_assist.ui import chrome, theme
     box = chrome.CountBox(8, 1, 20)
@@ -3033,8 +3043,39 @@ def test_the_count_box_draws_its_own_arrows(qapp):
         ink = sum(1
                   for y in range(arrows.y(), arrows.bottom() + 1)
                   for x in range(arrows.x(), arrows.right() + 1)
-                  if picture.pixelColor(x, y).name() == theme.TEXT)
+                  if picture.pixelColor(x, y).name() == theme.ACCENT)
         assert ink > 4, "an arrowhead with no ink in it"
+    box.close()
+
+
+def test_an_arrow_with_nowhere_to_go_is_a_DIM_RED_not_a_grey(qapp):
+    """"if i cant go any lower e.e.g im at 0, i sitll want the down arrow
+    to become dim, just a dim version of the red".
+
+    A grey one would say the arrow is a different KIND of thing from its
+    twin; a dim red says it is the same control with nothing left to do.
+    """
+    from PyQt6.QtGui import QImage
+    from draft_assist.ui import chrome, theme
+
+    box = chrome.CountBox(0, 0, 20)          # already at the bottom
+    box.show()
+    _settle(qapp)
+    picture = QImage(box.width(), box.height(), QImage.Format.Format_ARGB32)
+    picture.fill(0)
+    box.render(picture)
+
+    def ink(arrows, colour):
+        return sum(1
+                   for y in range(arrows.y(), arrows.bottom() + 1)
+                   for x in range(arrows.x(), arrows.right() + 1)
+                   if picture.pixelColor(x, y).name() == colour)
+
+    up, down = box._arrow_boxes()
+    assert ink(up, theme.ACCENT) > 4, "the live arrow lost its red"
+    assert ink(down, theme.ACCENT_DIM) > 4, "the spent arrow is not dim red"
+    assert ink(down, theme.ACCENT) == 0, "the spent arrow is still live"
+    assert theme.ACCENT_DIM != theme.ACCENT
     box.close()
 
 
@@ -3456,8 +3497,14 @@ def test_the_board_actions_are_outlined_and_not_plated(window, qapp,
             f"{button.text()!r} still wears the frame's gold")
         assert theme.BG_INPUT not in colours, (
             f"{button.text()!r} still paints a raised plate")
-        assert theme.BORDER in colours, (
+        # A RED OUTLINE, at the FOCUS RING'S OWN WEIGHT — "i want these
+        # buttons to have a red border, same line width as the border
+        # that goes aroudn the 5 /5 hero portrait when it is selected".
+        assert theme.ACCENT in colours, (
             f"{button.text()!r} has no outline at all")
+        rule = theme.STYLESHEET[
+            theme.STYLESHEET.index('QPushButton[plain="true"] {'):]
+        assert f"border: {theme.FRAME_WIDTH}px solid" in rule[:rule.index("}")]
     # AND NOWHERE ELSE EITHER: the gold went off every control, so an
     # ordinary button and a count box must not have it back.
     assert theme.FRAME_GOLD not in _colours_in(window.suggested_box)

@@ -31,6 +31,7 @@ from draft_assist.config import RULES_FILE                    # noqa: E402
 from draft_assist.model import items as items_mod             # noqa: E402
 from draft_assist.model import roles as roles_mod             # noqa: E402
 from draft_assist.ui import settings as ui_settings           # noqa: E402
+from draft_assist.ui import rolebar                          # noqa: E402
 from draft_assist.ui.app import MainWindow                    # noqa: E402
 from draft_assist.ui.demo import demo_dataset                 # noqa: E402
 from draft_assist.ui.providers import DemoProvider            # noqa: E402
@@ -95,7 +96,12 @@ def test_they_are_laid_out_two_rows_by_four_columns(win):
     # four columns it asked for 644px, which made the Suggested picks
     # card 1030px wide at its narrowest, over the window's own 940 floor,
     # so the Draft page stopped shrinking and the portraits with it.
-    assert max(c for _r, c in cells) == 10
+    # Plus ONE, because the cells start in column 1: column 0 is the
+    # slack that pushes the block flush RIGHT, so the last box lines up
+    # with the right edge of the portraits above it.
+    assert rolebar.RoleFilter.FIRST == 1
+    assert min(c for _r, c in cells) == rolebar.RoleFilter.FIRST
+    assert max(c for _r, c in cells) == 10 + rolebar.RoleFilter.FIRST
     assert len(cells) == 16, "a label and a box for each of eight roles"
 
 

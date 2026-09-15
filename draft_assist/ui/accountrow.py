@@ -347,7 +347,11 @@ class ProfileButton(QWidget):
         # painted one: it is punctuation beside text at the same size,
         # which is the one case this app's "draw it" rule is not about.
         self.caret = QLabel("\u25be", self)
-        self.caret.setProperty("dim", True)
+        # RED like every other clickable arrow in the app — see the
+        # `QLabel[caret="true"]` rule. It was `dim`, which is the colour
+        # of something you are not meant to read; this one is the handle
+        # that drops the callout.
+        self.caret.setProperty("caret", True)
         row.addWidget(self.caret, 0, Qt.AlignmentFlag.AlignVCenter)
         self.face.show_initial("")
         self.setToolTip("Your account — click for the details")
@@ -367,8 +371,8 @@ class ProfileButton(QWidget):
 
         THE WINDOW GOES IN BRACKETS AFTER THE NAME, at the user's
         request: "Instead of showign the date where it is atm next to
-        bijson, i want it to be in brackets after bijson in the main menu
-        look, so Bijson (6 months)". The dates it replaces — "Mar → Sep
+        ExampleDrafter, i want it to be in brackets after ExampleDrafter in the main menu
+        look, so ExampleDrafter (6 months)". The dates it replaces — "Mar → Sep
         2026" — are two figures a reader has to subtract to get the one
         thing that line was for, which is how far back the numbers reach.
         """
@@ -395,7 +399,7 @@ class ProfileCard(QWidget):
         ---- the load bar, only while a run is going ----
 
     **THE FACE AND THE NAME ARE NOT ON IT**, which REVERSES the first
-    sketch ("when you click you see profiele pic  Bijson and below that
+    sketch ("when you click you see profiele pic  ExampleDrafter and below that
     you see a 6 motnhs box"). They went the moment both were real and
     visible together: "you dont need to shwo profile pic and name in the
     dropdown - its in the button already". The button the callout hangs

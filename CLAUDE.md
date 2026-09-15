@@ -3280,45 +3280,213 @@ credentials, and put the account at risk. Do not go there.
   the app wears says nothing about any of them, and it was competing with
   the five marks that are supposed to catch the eye.
 
-- **A RELATION'S FIGURE WEARS A GOLD BOX, AND THE WORDS ARE GONE**
-  (`tilekit.delta_text`, `paint_badge(boxed=...)`, `_ring_the_badge`,
+- **A RELATION'S FIGURE IS GOLD, AND THE WORDS AND THE BOX ARE BOTH
+  GONE** (`tilekit.delta_text`, `paint_badge(boxed=...)`,
   `HeroTile.relation_kind`). Clicking a pick put "with +5.2" under each
-  ally and "vs -1.8" under each enemy; at the user's request that is a
-  rectangle instead — "i dont think this is needed ... just use the
-  capital delta symbol", then "actually no scrap that... just use a gold
-  rectangle aroudn the score (bottom right)" and "no delta required at
-  all". (The delta was drawn and then withdrawn in the same breath; the
-  glyph is not in the code.) A mark that is not a character cannot be
-  mistaken for part of the number, cannot resize away from it, and costs
-  the badge no width — which on a small tile is the whole budget. The
-  words were also saying what the PANEL already says: an ally tile is in
-  the ally panel.
-  Two details. The ring is MEASURED OFF THE TEXT the painter actually
-  drew, never off the tile, because the badge steps its own size down
-  when a wide figure will not fit — the grid outlines' lesson. And the
-  ring's own padding comes out of the room the figure is allowed, or a
-  relation badge on the narrowest tile would fit its digits exactly and
-  then hang its box over the edge.
-  **THE PEN IS `FOCUS_WIDTH` AND THE BOX HUGS THE INK**, at the user's
-  request: "i want the golden box to be the same line weight as the
-  border on the selected hero and to be smaller as per the green box i
-  drew". It was a 1px pen round the font's ASCENT, which is two faults
-  at once — a hairline sitting beside the three-pixel ring on the tile
-  next to it, and a box with a band of empty portrait along its top,
-  since the ascent is the tallest thing the FACE can draw and these are
-  digits. `tightBoundingRect` is what the glyphs actually cover.
-  `badge_ring_reach` is the three terms that decide how far outside them
-  the frame lands — the figure's own HALO (drawn outside the
-  letterforms, so a frame ignoring it is touched by black on every
-  glyph), the gap, and HALF THE PEN, because an odd pen is centred on
-  its coordinate — and `paint_badge` moves the text IN by exactly that,
-  so the GOLD takes the corner the digits take on every other tile
-  rather than hanging over it.
-  `kind` survives the change and still says WHETHER this is a relation;
-  it just no longer changes the text, and `relation_kind()` is where it
-  is asked for — an ally-to-ally pairing being scored as synergy and not
-  as a matchup is a fact about the app worth being able to check, and it
-  was only ever incidentally a fact about the label.
+  ally and "vs -1.8" under each enemy. Four requests, each getting closer
+  to the same thing: "i dont think this is needed ... just use the
+  capital delta symbol", "actually no scrap that... just use a gold
+  rectangle aroudn the score (bottom right)", "no delta required at
+  all", and finally — REVERSING the rectangle — "instead of showing that
+  mini border around all heroes when you click on a 5 /5 portrait hero,
+  i want it to be that the number changes from green / red to gold".
+  (The delta glyph was withdrawn in the breath it was asked for and is
+  not in the code; the rectangle lasted two rounds and is not either.)
+  **WHAT THE COLOUR BUYS OVER THE FRAME.** Both say the same thing — this
+  figure is about the hero you clicked — and the frame had to be FITTED,
+  outside digits that are already haloed, which cost three terms of
+  arithmetic (`badge_ring_reach`), a measurement off the drawn text
+  rather than the tile, and a size step down on the narrowest tile to
+  make room for itself. A colour cannot crowd anything, cannot be
+  mistaken for part of the number, and cannot resize away from it.
+  **AND GOLD IS THE ONE CHANNEL THAT WAS FREE.** Green and red are
+  spoken for by every signed number in the app, where they mean good and
+  bad FOR YOU; a relation's figure is not a judgement, so painting it in
+  either was the one place those two colours said something the figure
+  did not mean. Gold is this app's "this one" — the window's frame, the
+  focus ring, the pin, the star, the role pills — and none of them means
+  good or bad.
+  The words were also saying what the PANEL already says: an ally tile
+  is in the ally panel.
+  `kind` survives all of it and still says WHETHER this is a relation; it
+  just no longer changes the text, and `relation_kind()` is where it is
+  asked for — an ally-to-ally pairing being scored as synergy and not as
+  a matchup is a fact about the app worth being able to check, and it was
+  only ever incidentally a fact about the label.
+
+- **EVERY MARK ON A TILE KISSES ONE MARGIN, AND IT IS MEASURED TO THE
+  COLOUR** (`tilekit.MARGIN`, `paint_badge`, `star_box`). At the user's
+  request, who drew it: "the number needs to be tucked right into the
+  corner and the heart ans shield a little closer to the corner aswell so
+  that they dont clash.... see page margin i drew in green, i wanna kiss
+  that for all 3, heart, shield, number".
+  It was TWO constants — `BADGE_INSET` 1 for the number, `STAR_INSET` 3
+  for the marks — and neither was measured to the same thing, so what
+  landed on screen was a heart hard against the top edge and a figure
+  four pixels in from the bottom one. Two numbers for one margin is the
+  fault this file has a standing rule about, one axis over.
+  **THE BLACK HALO IS DELIBERATELY ALLOWED TO RUN OFF THE EDGE.** Every
+  mark here is stroked first and filled over (`_stamp`, `stroked`), so
+  the black is drawn OUTSIDE the shape it describes — counting it would
+  push the coloured mark two or three pixels further in, which is the
+  opposite of what was asked for, and it buys nothing: the halo exists to
+  separate a mark from the ART behind it, and at the tile's own edge the
+  tile's border is already doing that job.
+  **AND `QRect.right()` IS THE LAST PIXEL, NOT THE EDGE.** Both painters
+  were a pixel out on the far side for want of the +1, so a heart in the
+  top-right sat one pixel further in than the shield in the top-left —
+  invisible while the two corners were measured to different constants
+  anyway, and the whole point once they are not. The same family as the
+  even-width pen in the grid borders and the half-pen inset on the focus
+  ring: a number that looks like the right one is a pixel out.
+
+- **RED IS THE COLOUR OF ANYTHING YOU CLICK, AND A SPENT CONTROL IS A DIM
+  RED RATHER THAN A GREY** (`theme.ACCENT_DIM`, `theme.FRAME_WIDTH`,
+  `theme.ARROW_STRIP`, `QPushButton[plain="true"]`, `CountBox._arrows`,
+  `Dropdown.paintEvent`, `QLabel[caret="true"]`, `ornate.WIDTH`), at the
+  user's request: "i want these buttons to have a red border, same line
+  width as the border that goes aroudn the 5 /5 hero portrait when it is
+  selected. also the hero select callout border - i want it to be the
+  same lien with as the portrait border when clicked (thicker)... also
+  all of the up/down arrows (clickable) that ever feature in this app, i
+  want them to be red... note that for the up / down arrow that if i cant
+  go any lower e.e.g im at 0, i sitll want the down arrow to become dim,
+  just a dim version of the red".
+  **ONE WIDTH FOR EVERY LINE THE APP DRAWS AROUND SOMETHING**:
+  `FRAME_WIDTH` is what `ornate` paints the window's border at, what the
+  focus ring takes, what the three board buttons are outlined in and what
+  the role callout is drawn with. It was three separate 3s and a 1.
+  **THE BUTTON PAYS FOR ITS BORDER OUT OF ITS PADDING** (`PLAIN_PAD_Y`),
+  so `CONTROL_H` is still 33 and the three board buttons are still
+  exactly as tall as the count boxes below them — which is the whole
+  point of that constant, and a border added without compensating would
+  have quietly undone it.
+  **A DIM RED SAYS "SAME CONTROL, NOTHING LEFT TO DO"**, where a grey
+  would say the arrow is a different KIND of thing from its twin.
+  `ACCENT_DIM` is in the palette rather than computed at the call, so
+  `theme._COLOURS` finds it and View ▸ Greyscale desaturates it with
+  everything else.
+  **AND A NATIVE ARROW HAS TO BE CLEARED BEFORE OURS CAN BE DRAWN.**
+  `QComboBox::down-arrow { image: none; width: 0; height: 0 }` and a
+  `paintEvent` that paints the caret itself — the tick box's lesson for
+  the fifth time: a stylesheet can COLOUR a sub-control and cannot put a
+  MARK in one without an image file, and what it does not name is handed
+  to the native style.
+
+- **NO COMMAND WINDOW EVER FLASHES, AND IT IS ONE HELPER**
+  (`console.no_window`), at the user's request: "did you fix the issue of
+  all the command promtp windows poppign up when i update??? i want a way
+  to keep them hidden". Three places ran a subprocess with no creation
+  flags — both `git` calls in `tools/update_app.py` and the `git log` in
+  `version.py` that runs at every startup — so a console window opened
+  and closed for each of them, on the one screen this app is meant to sit
+  quietly over.
+  `CREATE_NO_WINDOW` **DOES NOT EXIST OFF WINDOWS**, so it is fetched
+  with `getattr` and the helper answers `{}` elsewhere; a caller spreads
+  it with `**` and needs no branch of its own. One spelling, because a
+  fourth subprocess added tomorrow is the one somebody forgets.
+
+- **ONLY ONE COPY OF THE APP RUNS** (`ui/single.py`, `claim`, `release`,
+  `raise_the_one_already_running`), at the user's request: "i dont want
+  to allow the user to open 2 instances of the app... (no popup warning
+  required just dont allwo it)". A second copy is two windows fighting
+  over one GSI port, one settings file and one lock on the statistics
+  cache.
+  **EVERY FAILURE RESOLVES TO "GO AHEAD AND RUN".** A stale lock file, a
+  PID that cannot be read, a folder that cannot be written to, a
+  Windows-only call on Linux — none of them is a reason to refuse to
+  start the app, and a single-instance guard that can lock somebody out
+  of their own app is worse than the thing it prevents.
+  **AND IT RAISES THE ONE ALREADY RUNNING** instead of doing nothing: no
+  popup was asked for, but a launcher that appears to do nothing at all
+  is indistinguishable from a broken one, so the existing window is
+  brought to the front through `FindWindowW`/`ShowWindow`/
+  `SetForegroundWindow` — never fatal, like every other ctypes call here.
+  `running.lock` is gitignored beside `ui_settings.json`.
+
+- **THE UPDATE'S BAR COUNTS UP, RATHER THAN GOING ROUND**
+  (`tools/update_app.step`, `DOWNLOAD_FROM` / `DOWNLOAD_TO`,
+  `task_dialog.PERCENT`), at the user's request: "i dont like the loading
+  bar look for the uopdate... it just goes in circles / cycles ... i
+  prefer it to go from left to right and go up in % as it loads... so the
+  laod bar is actually saying something". The `PROGRESS n%` protocol was
+  already there and the updater was the one long task not using it, so
+  the dialog sat indeterminate for the whole of a download.
+  **THE DOWNLOAD REPORTS ITS OWN BYTES** against `Content-Length` and is
+  given the 15-to-80 stretch of the bar, because it is most of the wait:
+  a bar that jumps 15 to 80 in one step is the same silence wearing two
+  numbers. A response with no `Content-Length` falls back to the two ends
+  and says nothing in between, which is honest rather than invented.
+
+- **A FILTERED STRIP KEEPS ITS SHAPE** (`SuggestRow.show_heroes`,
+  `PlaceholderTile`), at the user's request: "when i filter carrry to 3
+  for example, the amount of heroes reduced and forces everythign to
+  shift up, i want the placeholder cells to show for the remainder that
+  makes u p the total 33 - also nice because it means that the filters
+  doesnt shift around, it stays still so i can click them easily, not
+  click chasing".
+  This is `_hold_still` in the History tab, one card over and for the
+  same reason: the control that CHANGES the count sits directly under the
+  thing it changes, so cutting the strip moves the box out from under the
+  cursor between one click and the next. It is also the empty-plate rule
+  the strips already followed in one direction — an outline is the shape
+  of the answer standing where the answer will appear — applied to a
+  strip that is partly full rather than only to one that is empty.
+
+- **THE SHIELD'S CORNERS ARE MITRED** (`tilekit._stamp(sharp=...)`,
+  `MITER_LIMIT`, `SHIELD`), at the user's request: "the shield symbol is a
+  bit too soft on the curves at the top - improve plz for all shields".
+  The path was redrawn, and that was the smaller half. The stroke is a
+  FIFTH of the mark's own width, and a ROUND join on a stroke that thick
+  does not trace a corner — it replaces it with a disc — so the apex and
+  the two shoulders came out as three soft bumps whatever the path said.
+  The heart keeps the round join (it is all curves and has no corner to
+  lose); a shield is corners, so it asks for the mitre, with a limit of 6
+  because Qt's own default of 2 bevels an apex that sharp into a visible
+  flat.
+
+- **THE WINDOW CONTROLS TOUCH, WITH A RULE AT EVERY JOIN**
+  (`TitleBar.controls` / `_joint`, `chrome.Divider(width=, height=)`), at
+  the user's request: "between these buttons there is actually dead space,
+  i want them to hug up on each other and i want a visible '|' line
+  between them so i know where to click".
+  **A GAP IN A TITLE BAR IS NOT NEUTRAL SPACE — IT IS THE DRAG HANDLE.**
+  The profile button, the pin and the three window buttons sat 6 and 8
+  pixels apart, and a click landing in one of those gaps moves the window
+  instead of pressing the button it was aimed at, with nothing on screen
+  saying where one control stops and the next starts. Hugged, every pixel
+  between the profile and the close button belongs to a control; the rule
+  is what says which.
+  ONE layout for the whole cluster, because the spacing has to be set
+  once: the buttons were added straight to the bar's own layout, so they
+  took its 8px whatever `extras` did with its 6.
+  The rule is `Divider` at **1px wide and 20 tall**, both passed in and
+  SHADOWED on the instance rather than made into a second class. The
+  toolbar's 13px is a gutter, which is exactly the dead space being
+  removed here; 15px tall between two 48px buttons read as a tick mark
+  rather than as a division.
+
+- **THE ROLE FILTER IS FLUSH RIGHT, AND THE SLACK MOVED TO THE LEFT**
+  (`rolebar.RoleFilter.FIRST`, `_relayout`), at the user's request:
+  "align this push / initiator box to be aligned to the right edge of
+  these portraits". The block sits directly under the suggestion strip,
+  which is sized to fill its card exactly (eleven across, "aligned edge
+  with dire right portrait"), so the last box's own right edge is the one
+  thing on that row that can line up with anything — and with the slack
+  on the right it stopped an inch short of it.
+  **STILL SNUG, which is why the slack MOVES rather than SPREADS.**
+  Spreading the eight cells across the width put a hand's width of
+  nothing between "Carry 0" and "Nuker 0", which reads as four unrelated
+  controls rather than one block — the argument that put the slack at one
+  end in the first place. It is still at one end; the end is now the
+  left, which is a column of its own ahead of the cells, because a
+  QGridLayout cannot be told to push its contents right.
+  Two details, each a way to miss by a stated number. The inter-cell gap
+  is set on `columns - 1` separators, not `columns`, or the block would
+  be held 18px off the very edge it is being aligned to. And a column
+  minimum is CLEARED as well as set on every relayout: this block reflows
+  between four columns and one, and a minimum left on a column the new
+  count does not use goes on taking its width for ever.
 
 - **THE SUGGESTION STRIP IS ELEVEN ACROSS, AND IT IS THE ONE PLACE THE
   ONE-BOX RULE GIVES WAY** (`app.SUGGESTIONS_PER_ROW`,
@@ -3371,13 +3539,13 @@ credentials, and put the account at risk. Do not go there.
 - **THE PROFILE BUTTON NAMES THE WINDOW, AND THE CALLOUT SAYS HOW IT IS
   GOING** (`accountrow.ProfileButton.show_run`, `accountrow.ProfileCard`,
   `report.Before`, `runner.measure_before`, `MainWindow.
-  _apply_history_window`). The button reads "Bijson (6 months)" and the
+  _apply_history_window`). The button reads "ExampleDrafter (6 months)" and the
   callout is a face, the name, two figures with a delta each, and a
   duration dropdown with an Apply beside it — the user's own shape,
   stated across four messages.
   **THE CALLOUT CARRIES NO FACE AND NO NAME**, which REVERSES the
   shape it was first asked for ("when you click you see profiele pic
-  Bijson and below that..."). They went the moment both were real and
+  ExampleDrafter and below that..."). They went the moment both were real and
   visible together: "you dont need to shwo profile pic and name in the
   dropdown - its in the button already". The button it hangs off carries
   exactly that picture and exactly that name an inch above, so the
@@ -3547,13 +3715,17 @@ credentials, and put the account at risk. Do not go there.
   that page and inside it the box would be clipped by the viewport
   exactly where it is wanted; the cost is that it does not scroll with
   the page, so it is repositioned from the scrollbars.
-  **CLAMPED TO THE TAB'S CONTENT, NOT THE WINDOW.** Pushed against the
-  shell's own top it would sit over the title bar and the tabs, and
-  covering the window buttons with a callout about a portrait is worse
-  than moving it. Below the tile is the FALLBACK and a poor one —
-  directly under a pick is that side's own Roles card, in the very same
-  pills, so a callout landing there reads as part of it — which is why
-  the height is fought for rather than spent.
+  **IT GOES UP, AND IT IS CLAMPED TO THE SHELL RATHER THAN TO THE TAB.**
+  This REVERSES a clamp on the tab's own viewport, which was written to
+  keep the box off the title bar and the tabs — covering the window
+  buttons with a callout about a portrait being worse than moving it —
+  and which in practice flipped it BELOW the tile on every click, where
+  directly under a pick is that side's own Roles card in the very same
+  pills, so the callout read as part of it. "the callout when clicked on
+  the 5 / 5 portraits goes down - i want it to go up , i dont care if it
+  blocks the other stuff above". The room it is offered is `shell.rect()`
+  now, so it goes up whenever there is anything above at all and below is
+  the fallback it was always meant to be.
   **ONE SELECTION, so it follows `focus`** rather than hanging off a
   click: a hero clicked on a suggestion gets the same box, and clicking
   it again clears the ring and this together. A GRID AXIS is deliberately

@@ -61,3 +61,7 @@ installed_version.json
 # match history.
 history_cache/
 assets/tick-generated.png
+
+# The single-instance lock (see `ui/single.py`) — a PID, written at
+# startup and removed on the way out.
+running.lock

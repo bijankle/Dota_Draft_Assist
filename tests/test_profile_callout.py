@@ -3,9 +3,9 @@
 Four requests, in the order they arrived:
 
   "why is the thumbnail not working??"
-  "Instead of showign the date where it is atm next to bijson, i want it
-   to be in brackets after bijson in the main menu look, so Bijson (6
-   months) <arrow down> and when you click you see profiele pic  Bijson
+  "Instead of showign the date where it is atm next to ExampleDrafter, i want it
+   to be in brackets after ExampleDrafter in the main menu look, so ExampleDrafter (6
+   months) <arrow down> and when you click you see profiele pic  ExampleDrafter
    and below that you see a 6 motnhs box that you can click to see a
    dropdown and select different durations and an apply button next to
    that to change the history look back range... updates from today
@@ -102,7 +102,7 @@ def test_a_rate_over_no_games_is_not_nought():
 
 
 def test_the_window_label_loses_its_prefix_for_the_button():
-    """"Bijson (6 months)", not "Bijson (Last 6 months)"."""
+    """"ExampleDrafter (6 months)", not "ExampleDrafter (Last 6 months)"."""
     assert Options(window="6m").window_short == "6 months"
     assert Options(window="12m").window_short == "12 months"
     # Nothing to drop, so nothing is dropped.

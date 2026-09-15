@@ -104,8 +104,27 @@ BADGE_PAD_Y = 2
 # size.
 STROKE = QColor(0, 0, 0)
 STROKE_OF_SIZE = 0.22
-# How far the number sits off the tile's bottom-right corner.
-BADGE_INSET = 1
+# THE TILE'S PAGE MARGIN, and every mark on a tile kisses it: the
+# number in the bottom-right, the shield in the top-left, the heart in
+# the top-right. At the user's request, who drew it: "the number needs to
+# be tucked right into the corner and the heart ans shield a little
+# closer to the corner aswell so that they dont clash.... see page margin
+# i drew in green, i wanna kiss that for all 3, heart, shield, number".
+#
+# It was TWO numbers — 1 for the badge and 3 for the marks — and each was
+# measured to something different, so what landed on screen was a heart
+# hard against the top edge and a figure four pixels in from the bottom
+# one. One number now, and it is MEASURED TO THE COLOUR: the pink of a
+# heart, the gold of a shield, the green or red or gold of a figure.
+#
+# THE BLACK HALO IS DELIBERATELY ALLOWED TO RUN OFF THE EDGE. Every mark
+# here is stroked first and filled over (`_stamp`, `stroked`), so the
+# black is drawn OUTSIDE the shape it describes — counting it would push
+# the coloured mark two or three pixels further in, which is the opposite
+# of what was asked for, and it buys nothing: the halo exists to separate
+# a mark from the ART behind it, and at the tile's own edge the tile's
+# border is already doing that job.
+MARGIN = 2
 
 # A tile in one of the two STRIPS (items, suggested picks). These are the
 # FALLBACK size only — before the draft panel has been laid out there is
@@ -162,6 +181,19 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
                 base: QFont, boxed: bool = False) -> None:
     """The signed number, snug into the bottom-right, OUTLINED not plated.
 
+    **`boxed` NO LONGER DRAWS A BOX: IT TURNS THE FIGURE GOLD.** At the
+    user's request, and it REVERSES the gold rectangle that stood here:
+    "instead of showing that mini border around all heroes when you click
+    on a 5 /5 portrait hero, i want it to be that the number changes from
+    green / red to gold". Gold is this app's "this one" colour — the
+    window's border, the focus ring, the pin and the suggestion star all
+    wear it and none of them means good or bad — so a relation's figure
+    now says WHAT IT IS in the one channel that was still free, instead
+    of green and red going on claiming a judgement they no longer carry.
+    The colour costs the badge nothing: a frame had to be fitted outside
+    the digits, which on the narrowest tile stepped the figure down a
+    size to make room for it, and a colour cannot crowd anything.
+
     It used to sit on a solid black rounded plate. The plate is the part
     that hides the hero: even cut to the digits it is a rectangle of the
     portrait gone, and on a small tile that rectangle is most of the face
@@ -184,13 +216,7 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # but at the window's narrowest a "+21.7" is wider than the tile, and
     # a number clipped to "+21." is not a smaller number, it is a WRONG
     # one. So it steps down only far enough to fit, and only there.
-    room = box.width() - 2 * (BADGE_INSET + stroke_width() / 2)
-    # The gold frame is drawn OUTSIDE the digits, so it is part of what
-    # has to fit — without this a relation badge on the narrowest tile
-    # would step its figure down to exactly the room available and then
-    # hang its box over the edge.
-    reach = badge_ring_reach() if boxed else 0.0
-    room -= 2 * reach
+    room = box.width() - 2 * MARGIN
     size = number_px()
     while width > room and size > NUMBER_MIN_PX:
         size -= 1
@@ -213,81 +239,16 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # on the font at all, so a badge that stepped down to fit still stands
     # exactly where its neighbours do. Only the stroke reaches below it,
     # and `edge` is what leaves it room.
-    # AND THE RING TAKES THE CORNER WHEN THERE IS ONE. The figure moves
-    # in by exactly what the frame reaches, so the GOLD sits where the
-    # digits sit on every other tile — a boxed badge and a bare one line
-    # up along the same two edges instead of the box hanging over them.
-    edge = BADGE_INSET + stroke_width() / 2 + reach
-    left = box.right() - edge - width
-    baseline = box.bottom() - edge
-    if boxed:
-        _ring_the_badge(painter, metrics, left, baseline, text)
-    stroked(painter, QPointF(left, baseline), text, colour, font)
-
-
-# How far the gold clears the INK it encloses, over and above the black
-# halo the figure already wears, and how round its corners are. One pixel:
-# the box has to read as a frame round THIS number rather than as a plate,
-# which is the argument that took the badge's black plate away.
-BADGE_RING_PAD = 1.0
-BADGE_RING_RADIUS = 2.0
-
-
-def badge_ring_reach() -> float:
-    """How far outside the digits' ink the frame's outer edge lands.
-
-    Three terms, and leaving any of them out has a visible cost: the
-    figure's own HALO (drawn outside the letterforms, so a frame that
-    ignored it would be touched by black on every glyph), the gap
-    (`BADGE_RING_PAD`), and HALF THE PEN, because an odd pen is centred
-    on its coordinate. `paint_badge` moves the text in by this much so
-    the frame — not the digits — takes the tile's corner, and takes it
-    out of the room the figure is allowed so a narrow tile cannot end up
-    with its box hanging over the edge.
-    """
-    return stroke_width() / 2.0 + BADGE_RING_PAD + FOCUS_WIDTH / 2.0
-
-
-def _ring_the_badge(painter: QPainter, metrics: QFontMetricsF,
-                    left: float, baseline: float, text: str) -> None:
-    """A gold rectangle round a RELATION's figure.
-
-    At the user's request, replacing the words "with" and "vs": "just use
-    a gold rectangle aroudn the score (bottom right)". Gold because that
-    is this app's "this one" colour — the window's border, the focus ring
-    and the suggestion star all wear it, and none of them means good or
-    bad. Green and red are spoken for by the figure INSIDE the box, so a
-    frame in either would argue with it.
-
-    **THE SAME PEN AS THE FOCUS RING, AND TIGHT TO THE INK**, at the
-    user's request: "i want the golden box to be the same line weight as
-    the border on the selected hero and to be smaller as per the green
-    box i drew". It was a 1px pen round the font's ASCENT, which is two
-    faults at once — a hairline beside the three-pixel ring on the tile
-    next to it, and a box with a band of empty portrait along its top,
-    because the ascent is the tallest thing the FACE can draw and these
-    are digits. `FOCUS_WIDTH` is the one number the app's gold lines are
-    drawn at; `tightBoundingRect` is what the glyphs actually cover.
-
-    MEASURED OFF THE TEXT, never off the tile: the badge steps its own
-    size down when a wide figure will not fit, so a box derived from the
-    tile's corner would come away from the digits exactly when they
-    moved. Same rule as the grid's team outlines, which trace the
-    rectangle the painter actually drew rather than an inset computed
-    from a constant.
-    """
-    ink = metrics.tightBoundingRect(text)
-    pad = stroke_width() / 2.0 + BADGE_RING_PAD
-    ring = QRectF(left + ink.left() - pad,
-                  baseline + ink.top() - pad,
-                  ink.width() + 2 * pad,
-                  ink.height() + 2 * pad)
-    painter.save()
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setPen(QPen(QColor(focus_colour()), FOCUS_WIDTH))
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawRoundedRect(ring, BADGE_RING_RADIUS, BADGE_RING_RADIUS)
-    painter.restore()
+    # THE MARGIN, measured to the DIGITS — the halo runs past it and off
+    # the tile, as it does for the heart and the shield in the two top
+    # corners, so that all three marks stand the same distance in.
+    # +1 on both, because `right()` and `bottom()` are the last PIXEL
+    # rather than the edge — the same off-by-one `star_box` carries.
+    edge = MARGIN
+    left = box.right() + 1 - edge - width
+    baseline = box.bottom() + 1 - edge
+    stroked(painter, QPointF(left, baseline), text,
+            focus_colour() if boxed else colour, font)
 
 
 def paint_number(painter: QPainter, box: QRect, text: str, colour: str,
@@ -433,7 +394,6 @@ STAR_OF_TILE = 0.44
 # looks like dirt on the portrait.
 STAR_MIN_PX = 20
 STAR_MAX_PX = 32
-STAR_INSET = 3
 # THE RANK, drawn in the middle. BLACK AND BOLD: it was asked for not
 # bold first and then bold once it was on screen at size, which is the
 # right way round - a thin glyph inside a solid pink heart reads as a
@@ -475,33 +435,59 @@ SHIELD_CENTRE = 0.485
 
 
 def star_box(box: QRect, left: bool = False) -> QRect:
-    """Where a mark goes: a TOP corner, inset off both edges.
+    """Where a mark goes: a TOP corner, on the tile's own `MARGIN`.
 
     The bottom-right is the number's (`paint_badge`) and the whole border
     is the focus ring's, so the two top corners are the only ones with
     nothing already in them. The HEART takes the right, which is where
     the star it replaces always sat, so nothing moves for a reader who
     already knows where to look; the SHIELD takes the left.
+
+    The margin is the BADGE'S margin, which is the point of it being one
+    number: "i wanna kiss that for all 3, heart, shield, number".
     """
     side = min(box.width(), box.height())
     size = max(STAR_MIN_PX, min(STAR_MAX_PX, round(side * STAR_OF_TILE)))
-    x = (box.left() + STAR_INSET if left
-         else box.right() - STAR_INSET - size)
-    return QRect(x, box.top() + STAR_INSET, size, size)
+    # `QRect.right()` is the LAST PIXEL, not the edge, so the far side
+    # needs the +1 — without it a mark on the right sits one pixel
+    # further in than its twin on the left, which is exactly the sort of
+    # mismatch one shared margin exists to prevent.
+    x = (box.left() + MARGIN if left
+         else box.right() + 1 - MARGIN - size)
+    return QRect(x, box.top() + MARGIN, size, size)
+
+
+# How sharply a stamped corner is allowed to come to a point before the
+# join is cut off. Qt's own default is 2, which bevels the shield's apex
+# into a visible flat; 6 lets a corner this sharp stay a corner without
+# letting a near-parallel one spike off across the tile.
+MITER_LIMIT = 6.0
 
 
 def _stamp(painter: QPainter, path: QPainterPath, colour: str,
-           weight: float) -> None:
+           weight: float, sharp: bool = False) -> None:
     """Stroke in black, then fill - the app's one way of drawing a mark.
 
     The stroke is what stops it disappearing into the portrait behind it,
     and drawing it FIRST leaves the shape its full area with the black
     only outside, exactly as `stroked` does for a number.
+
+    **`sharp` IS WHY THE SHIELD LOOKED BLUNT.** The stroke is a fifth of
+    the mark's own width, and a ROUND join on a stroke that thick does
+    not trace a corner, it replaces it with a disc — so the shield's apex
+    and its two shoulders came out as three soft bumps whatever the path
+    said: "the shield symbol is a bit too soft on the curves at the top".
+    The heart wants the round join (it is all curves and has no corner to
+    lose); a shield is corners, so it asks for the mitre.
     """
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setPen(QPen(STROKE, max(1.0, weight), Qt.PenStyle.SolidLine,
-                        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    join = (Qt.PenJoinStyle.MiterJoin if sharp
+            else Qt.PenJoinStyle.RoundJoin)
+    pen = QPen(STROKE, max(1.0, weight), Qt.PenStyle.SolidLine,
+               Qt.PenCapStyle.RoundCap, join)
+    pen.setMiterLimit(MITER_LIMIT)
+    painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawPath(path)
     painter.setPen(Qt.PenStyle.NoPen)
@@ -556,12 +542,21 @@ HAND = (("m", 0.30, 0.06),
         ("c", 0.02, 0.44, 0.12, 0.38, 0.18, 0.46),
         ("l", 0.30, 0.62))
 
-SHIELD = (("m", 0.50, 0.00),
-          ("l", 0.96, 0.16),
+# THE TOP EDGES BULGE UP TO A POINT, rather than running straight down
+# to the shoulders, at the user's request — "the shield symbol is a bit
+# too soft on the curves at the top - improve plz for all shields", with
+# a reference drawn. Two things were making it blunt and the path was
+# only one of them: see `_stamp(sharp=...)` for the other, which is the
+# bigger of the two.
+# Read anticlockwise from the apex: out to the right shoulder, straight
+# down the flank, round to the point, back up the left flank and home.
+SHIELD = (("m", 0.50, 0.02),
+          ("c", 0.67, 0.06, 0.83, 0.13, 0.96, 0.15),
           ("l", 0.96, 0.52),
           ("c", 0.96, 0.80, 0.74, 0.95, 0.50, 1.00),
           ("c", 0.26, 0.95, 0.04, 0.80, 0.04, 0.52),
-          ("l", 0.04, 0.16))
+          ("l", 0.04, 0.15),
+          ("c", 0.17, 0.13, 0.33, 0.06, 0.50, 0.02))
 
 
 def _lining_figures(font: QFont) -> None:
@@ -689,7 +684,7 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     """
     where = star_box(box, left=True)
     _stamp(painter, _shape(where, SHIELD), focus_colour(),
-           where.width() * 0.20)
+           where.width() * 0.20, sharp=True)
     _paint_rank(painter, where, rank, SHIELD_CENTRE)
 
 

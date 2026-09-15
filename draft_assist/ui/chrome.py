@@ -294,11 +294,32 @@ class TitleBar(QWidget):
         lay.addLayout(self.menus)
         lay.addStretch(1)
 
+        # THE RIGHT-HAND CLUSTER TOUCHES, WITH A RULE AT EVERY JOIN, at
+        # the user's request: "between these buttons there is actually
+        # dead space, i want them to hug up on each other and i want a
+        # visible '|' line between them so i know where to click".
+        #
+        # The controls were 6 and 8 pixels apart, and a gap in a title bar
+        # is not neutral space — it is the DRAG handle, so a click that
+        # lands in it moves the window instead of pressing the button
+        # beside it, with nothing on screen saying where one stops and the
+        # next starts. Hugged, every pixel between the profile and the
+        # close button belongs to a control, and a hairline says which.
+        #
+        # ONE layout for the lot, so the spacing is set once: putting the
+        # buttons straight on `lay` left them at its own 8px whatever the
+        # extras did.
+        self.controls = QHBoxLayout()
+        self.controls.setContentsMargins(0, 0, 0, 0)
+        self.controls.setSpacing(0)
+        self.controls.setAlignment(middle)
+        lay.addLayout(self.controls)
+
         self.extras = QHBoxLayout()
         self.extras.setContentsMargins(0, 0, 0, 0)
-        self.extras.setSpacing(6)
+        self.extras.setSpacing(0)
         self.extras.setAlignment(middle)
-        lay.addLayout(self.extras)
+        self.controls.addLayout(self.extras)
 
         # LEFT OF MINIMISE, as asked. It is a window control rather than a
         # setting, so it belongs with the other three rather than two
@@ -306,14 +327,28 @@ class TitleBar(QWidget):
         # heading they size.
         self.pin = PinButton(self)
         self.pin.toggled.connect(self.pinned.emit)
-        lay.addWidget(self.pin)
+        self._joint()
+        self.controls.addWidget(self.pin)
 
         for name, signal in (("min", self.minimise),
                              ("max", self.maximise),
                              ("close", self.close_clicked)):
             button = WindowButton(name, self)
             button.clicked.connect(signal.emit)
-            lay.addWidget(button)
+            self._joint()
+            self.controls.addWidget(button)
+
+    # A rule is one pixel wide and TALLER than the toolbar's, because it
+    # is separating 48px buttons rather than text on a tab row: at 15 it
+    # read as a tick between them rather than as a division.
+    JOINT_W = 1
+    JOINT_H = 20
+
+    def _joint(self) -> None:
+        """The visible "|" between two touching controls."""
+        self.controls.addWidget(
+            Divider(self, width=self.JOINT_W, height=self.JOINT_H),
+            0, Qt.AlignmentFlag.AlignVCenter)
 
     def set_pinned(self, on: bool) -> None:
         """Show the state without announcing it as a fresh choice.
@@ -886,7 +921,8 @@ class RecordButton(QAbstractButton):
 
 
 class Dropdown(QComboBox):
-    """A dropdown that does NOT change when the wheel rolls over it.
+    """A dropdown that does NOT change when the wheel rolls over it, and
+    that draws its own arrow.
 
     Qt's default is to step the value on every wheel notch, which makes
     every dropdown in a scrolling page a trap: the page moves, a control
@@ -899,6 +935,40 @@ class Dropdown(QComboBox):
     widget, opened deliberately — still scrolls with the wheel like any
     other list.
     """
+
+    # The caret's own shape, in the strip `theme.ARROW_STRIP` reserves.
+    ARROW_W = 9
+    ARROW_H = 5
+
+    def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        """Qt's arrow is gone; this is the one that replaces it.
+
+        **THE STYLESHEET CANNOT DRAW IT**, which is the same wall the
+        tick box, the window buttons and the count box's arrows all hit:
+        naming `QComboBox::down-arrow` puts Qt on the stylesheet path for
+        that sub-control, and a stylesheet can COLOUR one but cannot put
+        a mark in it without an image file. So the rule in `theme` is
+        what gets the native arrow out of the way, and this draws the red
+        one — "all of the up/down arrows (clickable) that ever feature in
+        this app, i want them to be red".
+
+        ALWAYS FULL STRENGTH, unlike a count box's pair: a dropdown has
+        no end of its range to reach, so there is no state where the
+        control is there and cannot be used.
+        """
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(theme.ACCENT if self.isEnabled()
+                                else theme.ACCENT_DIM))
+        mid = self.width() - theme.ARROW_STRIP / 2 - 2
+        top = (self.height() - self.ARROW_H) / 2
+        painter.drawPolygon(QPolygonF([
+            QPointF(mid - self.ARROW_W / 2, top),
+            QPointF(mid + self.ARROW_W / 2, top),
+            QPointF(mid, top + self.ARROW_H)]))
+        painter.end()
 
     def stepBy(self, steps: int) -> None:            # noqa: N802 - Qt naming
         """Step, and DO NOT leave the number selected afterwards.
@@ -1090,7 +1160,16 @@ class CountBox(QSpinBox):
         for box, rising in ((up, True), (down, False)):
             live = (self.value() < self.maximum() if rising
                     else self.value() > self.minimum())
-            painter.setBrush(QColor(theme.TEXT if live else theme.BORDER))
+            # RED, and a DIM RED at the end of the range — "all of the
+            # up/down arrows (clickable) that ever feature in this app, i
+            # want them to be red... note that for the up / down arrow
+            # that if i cant go any lower e.e.g im at 0, i sitll want the
+            # down arrow to become dim, just a dim version of the red".
+            # A grey one would read as a different kind of thing from the
+            # arrow above it; a dim red is the same control with nothing
+            # left to do.
+            painter.setBrush(QColor(theme.ACCENT if live
+                                    else theme.ACCENT_DIM))
             mid = box.center().x() + 1
             top = box.center().y() - self.ARROW_H // 2
             tip = top + (0 if rising else self.ARROW_H)
@@ -1311,8 +1390,18 @@ class Divider(QWidget):
     WIDTH = 13
     HEIGHT = 15
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, width: int | None = None,
+                 height: int | None = None):
         super().__init__(parent)
+        # SHADOWED ON THE INSTANCE rather than a second class: the rule
+        # between two window buttons has to be HAIRLINE-thin, because
+        # those buttons are meant to touch — 13px of clear space there is
+        # the dead gap this is fixing, not a gutter. Everything else on
+        # the tab row keeps the class's own numbers.
+        if width is not None:
+            self.WIDTH = width
+        if height is not None:
+            self.HEIGHT = height
         self.setFixedWidth(self.WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Preferred)

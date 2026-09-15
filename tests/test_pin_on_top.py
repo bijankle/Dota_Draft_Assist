@@ -63,13 +63,49 @@ def test_the_pin_sits_to_the_LEFT_of_minimise(win):
     """As asked. It is a window control, so it belongs with the other
     three rather than two menus away in Settings."""
     bar = win.title_bar
-    order = []
-    row = bar.layout()
-    for index in range(row.count()):
-        widget = row.itemAt(index).widget()
-        if isinstance(widget, chrome.WindowButton):
-            order.append(widget.kind)
+    # THE CLUSTER, not the bar's own row: the four controls were moved
+    # into one layout of their own so that the spacing between them could
+    # be set to nought once — "i want them to hug up on each other".
+    order = [bar.controls.itemAt(i).widget().kind
+             for i in range(bar.controls.count())
+             if isinstance(bar.controls.itemAt(i).widget(),
+                           chrome.WindowButton)]
     assert order == ["pin", "min", "max", "close"], order
+
+
+def test_the_controls_touch_with_a_rule_at_every_join(win):
+    """"between these buttons there is actually dead space, i want them to
+    hug up on each other and i want a visible '|' line between them so i
+    know where to click".
+
+    A gap in a title bar is not neutral space — it is the DRAG handle, so
+    a click landing in one moves the window instead of pressing the button
+    it was aimed at, with nothing on screen saying where one control stops
+    and the next starts.
+    """
+    bar = win.title_bar
+    assert bar.controls.spacing() == 0
+    seen = [bar.controls.itemAt(i).widget()
+            for i in range(bar.controls.count())
+            if bar.controls.itemAt(i).widget() is not None]
+    kinds = [type(w).__name__ for w in seen]
+    assert kinds == ["Divider", "PinButton", "Divider", "WindowButton",
+                     "Divider", "WindowButton", "Divider",
+                     "WindowButton"], kinds
+    # HAIRLINE. The toolbar's 13px rule is a gutter, which is exactly the
+    # dead space being removed here.
+    for widget in seen:
+        if isinstance(widget, chrome.Divider):
+            assert widget.width() == 1, widget.width()
+    # And nothing between them: every pixel from one control to the next
+    # belongs to a control. LAID OUT FIRST — Qt defers layout, so an
+    # unshown bar answers x() == 0 for every child, which is the same
+    # trap `_hold_still` and the panel's height floor both carry.
+    bar.resize(900, bar.height())
+    bar.layout().activate()
+    for before, after in zip(seen, seen[1:]):
+        assert after.x() == before.x() + before.width(), (
+            f"{type(before).__name__} -> {type(after).__name__}")
 
 
 def test_it_starts_filled_because_that_is_what_the_app_always_did(win):

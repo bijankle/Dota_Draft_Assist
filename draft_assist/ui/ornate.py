@@ -36,7 +36,12 @@ from . import theme
 # How thick the frame is: a quarter of what it started as. Enough for a
 # gradient and a bevel line either side of it, and no more — a border, not
 # a matte.
-WIDTH = 3
+# THE NUMBER MOVED TO `theme`, and this reads it. Five things are drawn
+# at it now — this frame, the ring round a clicked portrait, the box
+# round a relation's figure, the hero callout and the three board
+# buttons — and the last two are STYLESHEET rules, which cannot import
+# from here. One number in the module everything already imports.
+WIDTH = theme.FRAME_WIDTH
 # Bronze, lit from the top-left the way every bevel in every game UI is.
 # READ AT CALL TIME. These were `QColor` objects built at import, so
 # View ▸ Greyscale left the window's own border — the most prominent

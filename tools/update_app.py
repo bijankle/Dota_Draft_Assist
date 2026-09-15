@@ -54,6 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from draft_assist import console  # noqa: E402
 from draft_assist.config import REPO_ROOT  # noqa: E402
 
 OWNER = "bijankle"
@@ -68,6 +69,12 @@ RELEASE_BRANCH = "main"
 THIS_REPO = REPO.lower()
 
 INSTALL_NAME = "installed_version.json"
+
+# Where the DOWNLOAD's own share of the bar starts and ends. Everything
+# else in an update is a handful of steps that either have happened or
+# have not; this is the one part with a size to measure against.
+DOWNLOAD_FROM = 15
+DOWNLOAD_TO = 80
 
 
 def install_file() -> Path:
@@ -102,10 +109,38 @@ NO_NETWORK = (
     "then try again. Nothing has been changed.")
 
 
+def step(percent: int, what: str = "") -> None:
+    """Mark how far along this is, for the progress bar in the app.
+
+    At the user's request: "i dont like the loading bar look for the
+    uopdate... it just goes in circles / cycles ... i prefer it to go
+    from left to right and go up in % as it loads... so the laod bar is
+    actually saying something".
+
+    `task_dialog.PERCENT` reads lines MARKED like this rather than
+    guessing at numbers in ordinary output — a run prints paths, shas and
+    file counts, and a bar driven by whatever looked like a number would
+    jump about through all of it. Until the first one arrives the bar is
+    indeterminate, which is what it was for the whole of an update
+    before: an indeterminate bar says "something is happening" and
+    nothing else, which is the question the text beside it already
+    answers.
+
+    THE NUMBERS ARE STAGES, not a measurement of work, and the one stage
+    that can honestly be measured — the download — reports its own bytes
+    (see `download`). Naming that openly is better than a bar that
+    pretends four subprocess calls are a smooth ninety per cent.
+    """
+    print(f"PROGRESS {max(0, min(100, int(percent)))}%")
+    if what:
+        print(what)
+
+
 def git(*args, check=True) -> str:
     try:
         result = subprocess.run(["git", "-C", str(REPO_ROOT), *args],
-                                capture_output=True, text=True)
+                                capture_output=True, text=True,
+                                **console.no_window())
     except FileNotFoundError:
         # On the git path this cannot happen (the path is only taken when
         # a .git directory exists, which means git put it there) — but a
@@ -202,6 +237,7 @@ def git_update() -> None:
             "there is nothing to update. Run: git checkout <branch>")
     print(f"branch:     {branch}")
 
+    step(10)
     print("\nFetching…")
     print(git("fetch", "--prune", "origin", check=False) or "  (up to date)")
 
@@ -219,13 +255,18 @@ def git_update() -> None:
     target, reason = choose_target(branch, upstream, remote_branches, head)
     if target is None:
         raise Refused(f"Nothing to pull: {reason}.")
+    step(40)
     print(f"Pulling from {target} — {reason}.\n")
 
     remote_branch = target.removeprefix("origin/")
+    # NO CONSOLE. This is the one that was seen: a full `git pull` in its
+    # own black box on top of the app, every single update. See
+    # `console.no_window` — the app spawns this tool without a window and
+    # the tool then has to say the same about its own children.
     result = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "pull", "--rebase", "--autostash",
          "origin", remote_branch],
-        text=True)
+        text=True, **console.no_window())
     if result.returncode != 0:
         raise Refused(
             "The pull did not finish. Your own edits are safe — nothing was "
@@ -239,6 +280,7 @@ def git_update() -> None:
         git("branch", f"--set-upstream-to=origin/{remote_branch}", branch,
             check=False)
         print(f"\nTracking set: {branch} follows origin/{remote_branch}.")
+    step(100)
     print("\nUpdated.")
 
 
@@ -358,9 +400,28 @@ def download(branch: str, into: Path) -> Path:
                     f"GitHub answered HTTP {response.status_code} for the "
                     "download. That is their end, not yours — try again "
                     "shortly.")
+            # THE ONE STAGE THAT CAN HONESTLY BE MEASURED, so it is the
+            # one that moves the bar smoothly. `Content-Length` is a
+            # header a server need not send; without it the bar simply
+            # stays where the stage before it left it, which is the
+            # truthful answer rather than a number worked out from
+            # nothing.
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            last = -1
             with open(target, "wb") as handle:
                 for chunk in response.iter_content(chunk_size=65536):
                     handle.write(chunk)
+                    done += len(chunk)
+                    if not total:
+                        continue
+                    share = DOWNLOAD_FROM + int(
+                        (DOWNLOAD_TO - DOWNLOAD_FROM) * done / total)
+                    # Only when it CHANGES: a line per 64KB chunk is
+                    # hundreds of lines in the box beside the bar.
+                    if share != last:
+                        step(share)
+                        last = share
     except Refused:
         raise
     except Exception:
@@ -431,6 +492,7 @@ def apply_tree(source: Path, previous: list) -> tuple:
 
 def zip_update(branch: str = RELEASE_BRANCH) -> None:
     """A downloaded copy: fetch the release branch and write it out."""
+    step(5)
     print(f"Channel:    {branch} (downloaded copy, no git needed)")
     installed = load_installed()
     latest = head_sha(branch)
@@ -442,13 +504,16 @@ def zip_update(branch: str = RELEASE_BRANCH) -> None:
     if latest and have and latest == have:
         # NOT an error, and it must not look like one: "you already have
         # this" is a successful outcome of pressing Update.
+        step(100)
         print(f"\nAlready up to date ({branch} @ {latest[:7]}).")
         return
 
     with tempfile.TemporaryDirectory(prefix="dda-update-") as temporary:
         workspace = Path(temporary)
         archive = download(branch, workspace)
+        step(DOWNLOAD_TO)
         source = unpack(archive, workspace / "unpacked")
+        step(90)
         print("\nApplying…")
         written, removed = apply_tree(source, installed.get("files") or [])
 
@@ -467,6 +532,7 @@ def zip_update(branch: str = RELEASE_BRANCH) -> None:
           + (f" @ {latest[:7]}." if latest else "."))
     print("Your settings, your Stratz key and everything you have "
           "downloaded were left alone.")
+    step(100)
 
 
 def main() -> None:

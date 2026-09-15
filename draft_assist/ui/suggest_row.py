@@ -349,6 +349,21 @@ class SuggestRow(QWidget):
 
         None falls back to `PLACEHOLDERS` for a caller that has no
         opinion, which is what the tests and the first paint use.
+
+        **AND THE PLATES MAKE UP THE NUMBER WHEN THE STRIP IS SHORT**, at
+        the user's request: "when i filter carrry to 3 for example, the
+        amount of heroes reduced and forces everythign to shift up, i
+        want the placeholder cells to show for the remainder that makes
+        u p the total 33 - also nice because it means that the filters
+        doesnt shift around, it stays still so i can click them easily,
+        not click chasing".
+        The role filter is directly UNDER this strip, so every row the
+        strip loses pulls those eight boxes up under the cursor — you
+        raise Carry to 3, the strip drops from three rows to one, and the
+        box you were about to press again has moved. The plates are the
+        same shape the tiles are, so the card keeps its height and the
+        controls hold still; it is the empty-panel rule ("an empty panel
+        shows the SHAPE of its answer") applied to a PARTLY empty one.
         """
         for tile in self._tiles + self._blanks:
             self.row.removeWidget(tile)
@@ -356,19 +371,17 @@ class SuggestRow(QWidget):
         self._tiles, self._blanks = [], []
         self.message.setText(empty if not rows else "")
         self.message.setVisible(bool(empty) and not rows)
-        if not rows:
-            wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
-            for _ in range(wanted):
-                blank = PlaceholderTile(self, self._tile_size)
-                self.row.insertWidget(len(self._blanks), blank)
-                self._blanks.append(blank)
-            return
+        wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
         for hero_id, name, fit_value, tip in rows:
             tile = SuggestTile(hero_id, name, fit_value, tip, self,
                                self._tile_size)
             tile.clicked_hero.connect(self.clicked_hero)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)
+        for _ in range(max(0, wanted - len(self._tiles))):
+            blank = PlaceholderTile(self, self._tile_size)
+            self.row.insertWidget(len(self._tiles) + len(self._blanks), blank)
+            self._blanks.append(blank)
 
     @property
     def heroes(self) -> list[str]:

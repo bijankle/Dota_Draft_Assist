@@ -30,6 +30,7 @@ the fallback for a tool run by hand in a console, where the codepage is
 whatever the machine says it is.
 """
 
+import subprocess
 import sys
 
 
@@ -58,3 +59,24 @@ def say(text: str) -> None:
         print(text)
     except UnicodeEncodeError:
         print(text.encode("ascii", "replace").decode("ascii"))
+
+
+def no_window() -> dict:
+    """Keyword arguments that stop a child process opening a console.
+
+    **EVERY `subprocess` CALL THIS APP MAKES ON WINDOWS NEEDS THIS.** The
+    app is launched windowless (pythonw), so it has no console of its
+    own — and a child that wants one is GIVEN a fresh black box, on top
+    of whatever the user was doing. `ui/tasks.py` has always passed
+    `CREATE_NO_WINDOW` for the tools it spawns; the tools then spawn
+    children OF THEIR OWN (`git`, `pip`) and those were passing nothing,
+    which is the run of console windows that flashes up on every Update:
+    "did you fix the issue of all the command promtp windows poppign up
+    when i update??? i want a way to keep them hidden".
+
+    A DICT rather than a constant, because `CREATE_NO_WINDOW` does not
+    exist off Windows — referring to it there is an AttributeError, and
+    a helper that raises on Linux is one nobody can test on Linux.
+    """
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return {"creationflags": flag} if flag else {}

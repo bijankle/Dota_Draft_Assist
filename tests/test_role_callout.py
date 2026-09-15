@@ -255,20 +255,26 @@ def test_it_follows_the_one_selection_onto_a_suggestion(window):
     assert window.focus == ("ally", tile.property("hero_id"))
 
 
-def test_it_never_covers_the_title_bar_or_the_tabs(window):
-    """The chrome is not somewhere a callout about a portrait may go, and
-    covering the window buttons with one would be worse than moving it —
-    so the room it is clamped into is the TAB'S CONTENT, not the whole
-    window."""
+def test_it_goes_up_over_whatever_is_there(window):
+    """"the callout when clicked on the 5 / 5 portraits goes down - i
+    want it to go up , i dont care if it blocks the other stuff above".
+
+    THIS REVERSES clamping it to the tab's own content. That kept it off
+    the title bar and the tabs, and cost the case that actually happens:
+    the pick tiles are near the top of the page, so there was rarely room
+    above them and the box kept flipping UNDER — which is where that
+    side's Roles card is, drawn in the very same pills.
+    """
     tile = a_rated_tile(window)
     tile.clicked.emit()
     _settle()
     assert window.role_callout.isVisible()
-    shell = window.centralWidget()
-    page = window.draft_scroll.viewport()
-    top = page.mapTo(shell, page.rect().topLeft()).y()
-    assert window.role_callout.geometry().top() >= top, (
-        "the callout is up over the chrome")
+    assert window.role_callout._below is False, "it went under the tile"
+    at = tile.mapTo(window.centralWidget(), tile.rect().topLeft()).y()
+    assert window.role_callout.geometry().bottom() <= at + 1
+    # Inside the WINDOW, though: it may cover the banner and the tabs,
+    # and it may not hang off the edge of the app.
+    assert window.role_callout.geometry().top() >= 0
 
 
 def test_clearing_the_board_takes_it_with_it(window):

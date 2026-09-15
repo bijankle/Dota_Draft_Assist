@@ -499,6 +499,11 @@ class RoleFilter(ReflowGrid):
 
     picked = pyqtSignal()
 
+    # The cells start in column 1, because column 0 is the slack: a grid
+    # cannot be told to push its contents right, so the spare width has
+    # to be a column of its own ahead of them.
+    FIRST = 1
+
     def __init__(self, wanted: dict, parent=None):
         super().__init__(parent)
         from . import chrome
@@ -563,24 +568,42 @@ class RoleFilter(ReflowGrid):
             grid.takeAt(0)
         for column in range(grid.columnCount()):
             grid.setColumnStretch(column, 0)
+            # CLEARED, not merely re-set: a minimum left on a column the
+            # new count does not use goes on taking its width for ever,
+            # and this block reflows between four columns and one.
+            grid.setColumnMinimumWidth(column, 0)
         for index, role in enumerate(roles_mod.ROLES):
-            line, column = index % per, (index // per) * 3
+            line = index % per
+            column = self.FIRST + (index // per) * 3
             grid.addWidget(self._labels[role], line, column,
                            Qt.AlignmentFlag.AlignRight
                            | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(self.boxes[role], line, column + 1)
             self._labels[role].show()
             self.boxes[role].show()
-        # SNUG, WITH THE SLACK ON THE RIGHT. Spreading the cells across
+        # SNUG, WITH THE SLACK ON THE LEFT. Spreading the cells across
         # whatever width this is given put a hand's width of nothing
         # between "Carry 0" and "Nuker 0", which reads as four unrelated
-        # controls rather than one block of eight — and the whole point
-        # of this round was "try and compact everything closer together".
-        # It is the grids' rule (`_fit_width`, AlignLeft) one card up.
-        for column in range(columns):
-            grid.setColumnMinimumWidth(column * 3 + 2, self.GAP)
-            grid.setColumnStretch(column * 3 + 2, 0)
-        grid.setColumnStretch(columns * 3, 1)
+        # controls rather than one block of eight — so the slack is all
+        # in one place, and that place is now the LEFT, at the user's
+        # request: "align this push / initiator box to be aligned to the
+        # right edge of these portraits".
+        #
+        # The block sits directly under the suggestion strip, which is
+        # sized to fill its card exactly (`_suggestion_box`, eleven
+        # across, "aligned edge with dire right portrait"), so the last
+        # box's own right edge is the one thing on this row that can line
+        # up with it. With the slack on the right it stopped an inch
+        # short of it and nothing on the card agreed with anything else.
+        #
+        # THE GAP GOES BETWEEN CELLS ONLY (`columns - 1`), or the block
+        # would be held that 18px off the very edge it is being aligned
+        # to — which is the same fault wearing a smaller number.
+        for column in range(columns - 1):
+            spacer = self.FIRST + column * 3 + 2
+            grid.setColumnMinimumWidth(spacer, self.GAP)
+            grid.setColumnStretch(spacer, 0)
+        grid.setColumnStretch(0, 1)
 
     def values(self) -> dict:
         """Only the roles actually asked for — nought is not STORED.
@@ -755,8 +778,12 @@ class RoleCallout(QWidget):
         self._below = False
         self._point_at = 0.5          # where the pointer sits, 0..1 across
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(CALLOUT_PAD, CALLOUT_PAD + POINTER_H,
-                               CALLOUT_PAD, CALLOUT_PAD + POINTER_H)
+        # The border is drawn INSIDE this widget, so the padding has to
+        # clear it as well as the pointer, or the first role name sits on
+        # the gold.
+        edge = CALLOUT_PAD + theme.FRAME_WIDTH
+        lay.setContentsMargins(edge, edge + POINTER_H,
+                               edge, edge + POINTER_H)
         lay.setSpacing(0)
         # NO NAME ON IT. The tile it points at is an inch below with the
         # hero's own portrait on it — and where there is no artwork yet,
@@ -810,8 +837,13 @@ class RoleCallout(QWidget):
     def paintEvent(self, event) -> None:            # noqa: N802 - Qt naming
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        body = QRectF(self.rect()).adjusted(0.5, POINTER_H + 0.5,
-                                            -0.5, -POINTER_H - 0.5)
+        # HALF A PEN IN, in float — an odd pen is centred on its
+        # coordinate, so a 3px line drawn on the widget's own edge loses
+        # its outer half to the boundary and reads thinner than the ring
+        # it is matching. The focus ring's rule exactly.
+        half = theme.FRAME_WIDTH / 2.0
+        body = QRectF(self.rect()).adjusted(half, POINTER_H + half,
+                                            -half, -POINTER_H - half)
         path = QPainterPath()
         path.addRoundedRect(body, CALLOUT_RADIUS, CALLOUT_RADIUS)
         # The pointer, on whichever edge faces the tile.
@@ -825,7 +857,10 @@ class RoleCallout(QWidget):
                            QPointF(mid + POINTER_W / 2, edge),
                            QPointF(mid, tip_y)])
         path.addPolygon(arrow)
-        painter.setPen(QPen(QColor(theme.FRAME_GOLD), 1))
+        # THE PORTRAIT RING'S OWN WEIGHT, at the user's request: "also
+        # the hero select callout border - i want it to be the same lien
+        # with as the portrait border when clicked (thicker)".
+        painter.setPen(QPen(QColor(theme.FRAME_GOLD), theme.FRAME_WIDTH))
         painter.setBrush(QColor(theme.BG_ELEVATED))
         painter.drawPath(path.simplified())
         painter.end()

@@ -50,6 +50,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QStatusBar, QTabWidget,
                              QVBoxLayout, QWidget)
 
+from .. import console
 from ..gsi.state import DRAFTING_STATES
 from ..config import (ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
                       RECORDINGS_DIR,
@@ -67,7 +68,7 @@ from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
-from . import accountrow, menusearch, ontop, rolebar
+from . import accountrow, menusearch, ontop, rolebar, single
 from . import chrome
 from . import ornate
 from . import reasons
@@ -131,8 +132,8 @@ class MarkLabel(QWidget):
     def _mark(self, painter, box, shield) -> None:
         # The painters inset their mark inside the box they are handed,
         # so it is grown by the inset to come out at label size.
-        grown = box.adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
-                             tilekit.STAR_INSET, tilekit.STAR_INSET)
+        grown = box.adjusted(-tilekit.MARGIN, -tilekit.MARGIN,
+                             tilekit.MARGIN, tilekit.MARGIN)
         if shield:
             tilekit.paint_shield(painter, grown)
         else:
@@ -886,7 +887,7 @@ class MainWindow(QMainWindow):
         # account was last measured, this card says how it is GOING and
         # offers to re-measure it over a different window — and the card
         # is the shape the user asked for: "when you click you see
-        # profiele pic  Bijson and below that you see a 6 motnhs box ...
+        # profiele pic  ExampleDrafter and below that you see a 6 motnhs box ...
         # and an apply button next to that".
         self.account_card = accountrow.ProfileCard()
         self.account_card.applied.connect(self._apply_history_window)
@@ -3483,10 +3484,14 @@ class MainWindow(QMainWindow):
             # `__main__.py` rather than `-m`, so the new process does not
             # depend on inheriting our working directory — the same target
             # the taskbar pin launches.
+            # NO CONSOLE, and `pythonw` where there is one: relaunching
+            # through `python.exe` hands the new app a black box that sits
+            # behind it for the rest of the session. See
+            # `console.no_window` and `_windowless`.
             subprocess.Popen(
-                [sys.executable, str(REPO_ROOT / "draft_assist"
-                                     / "__main__.py")],
-                cwd=str(REPO_ROOT), close_fds=True)
+                [_windowless(sys.executable),
+                 str(REPO_ROOT / "draft_assist" / "__main__.py")],
+                cwd=str(REPO_ROOT), close_fds=True, **console.no_window())
         except OSError as exc:
             self._say(f"Could not restart: {exc}", 10000)
             return
@@ -4261,13 +4266,16 @@ class MainWindow(QMainWindow):
             callout.setVisible(False)
             return
         at = tile.mapTo(shell, tile.rect().topLeft())
-        # THE ROOM IS THE TAB'S CONTENT, not the window. Pushed up
-        # against the shell's own top the box would sit over the title
-        # bar and the tabs, and covering the window buttons with a
-        # callout about a portrait is worse than moving it.
-        page = self.draft_scroll.viewport()
-        room = QRect(page.mapTo(shell, page.rect().topLeft()), page.size())
-        callout.point_at(QRect(at, tile.size()), room)
+        # THE ROOM IS THE WHOLE WINDOW, which REVERSES clamping it to the
+        # tab's own content. That was done so the box could never sit
+        # over the title bar and the tabs — and the cost was the case
+        # that actually happens: the pick tiles are near the top of the
+        # page, so there was rarely room above them and the callout kept
+        # flipping UNDER, which is where that side's Roles card is, drawn
+        # in the very same pills. The user chose: "the callout when
+        # clicked on the 5 / 5 portraits goes down - i want it to go up ,
+        # i dont care if it blocks the other stuff above".
+        callout.point_at(QRect(at, tile.size()), shell.rect())
 
     def _update_grid_focus(self) -> None:
         """Read both cards against the focused hero, or against none.
@@ -5007,9 +5015,9 @@ class MainWindow(QMainWindow):
         # different accounts.
         self.account_card.show_report(report)
         # THE NAME AND THE WINDOW, which is what the button reads:
-        # "Bijson (6 months)", at the user's request — "Instead of
-        # showign the date where it is atm next to bijson, i want it to
-        # be in brackets after bijson". With nothing measured there is
+        # "ExampleDrafter (6 months)", at the user's request — "Instead of
+        # showign the date where it is atm next to ExampleDrafter, i want it to
+        # be in brackets after ExampleDrafter". With nothing measured there is
         # neither, and the button falls back to its own short form.
         # ASKED OF THE REPORT, not of the callout: the callout's name
         # label is gone ("you dont need to shwo profile pic and name in
@@ -5502,6 +5510,27 @@ def _capture_session():
 CRASH_LOG = DEBUG_OUT / "crash.log"
 
 
+def _windowless(executable: str) -> str:
+    """`pythonw.exe` beside a `python.exe`, where there is one.
+
+    A relaunch through `python.exe` hands the new app a console window
+    that sits behind it for the rest of the session — `CREATE_NO_WINDOW`
+    stops one being CREATED, and an interpreter that expects to own a
+    console is the other half of the same fault. Off Windows, and where
+    the windowless build is not beside it, the name is returned
+    unchanged: this may never be the reason an update fails to reopen.
+    """
+    try:
+        path = Path(executable)
+        beside = path.with_name(path.name.replace("python", "pythonw", 1))
+        if path.name.startswith("python") and "pythonw" not in path.name \
+                and beside.exists():
+            return str(beside)
+    except (OSError, ValueError):
+        pass
+    return executable
+
+
 def _report_crash(exc: BaseException) -> None:
     """Windowless launch (pythonw) has no console, so an unhandled error
     must announce itself: write a log and show it, rather than the app
@@ -5575,6 +5604,17 @@ def _main() -> None:
     except Exception:
         rules, meta = [], {}
 
+    # ONE COPY AT A TIME, and no dialog about it — "i dont want to allow
+    # the user to open 2 instances of the app... (no popup warning
+    # required just dont allwo it )". Two copies both bind the GSI
+    # listener and both write the settings file, so the second is not a
+    # harmless duplicate window. BEFORE the QApplication, so a second
+    # launch costs nothing at all: no window is built, no stylesheet is
+    # parsed, nothing flashes up. See `ui/single.py`.
+    if not single.claim():
+        single.raise_the_one_already_running()
+        return
+
     app = QApplication(sys.argv)
     app.setApplicationName("Dota Draft Assist")
     # BEFORE the stylesheet: a family registered afterwards is not picked
@@ -5612,6 +5652,7 @@ def _main() -> None:
         win.snapshot_label.setText(provider.error.splitlines()[0])
     code = app.exec()
     provider.stop()
+    single.release()
     sys.exit(code)
 
 

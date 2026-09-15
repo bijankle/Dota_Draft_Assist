@@ -48,7 +48,7 @@ class Options:
     def window_short(self) -> str:
         """"6 months", not "Last 6 months".
 
-        The title bar's profile button reads "Bijson (6 months)", at the
+        The title bar's profile button reads "ExampleDrafter (6 months)", at the
         user's request, and the word "Last" is four characters of a label
         that only has to work inside brackets after a name. "All history"
         has no prefix to drop and keeps its own words.
