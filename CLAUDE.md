@@ -2223,6 +2223,63 @@ credentials, and put the account at risk. Do not go there.
   for. It also puts this card back in step with Suggested items, which
   has had its count on the heading throughout.
 
+- **VIEW ▸ GREYSCALE IS A PALETTE SWAP, NOT AN EFFECT**
+  (`theme.set_greyscale`, `theme.greyed`, `MainWindow._apply_greyscale`,
+  `ui_settings.greyscale`), at the user's request: "a tickbox in the
+  view dropdown menu called greyscale that makes the entire app
+  appearance to be greyscale".
+  **BOTH HALVES OR NEITHER.** The stylesheet covers every widget Qt
+  draws; the hero portraits and item icons are pixmaps this app paints
+  itself. Greying only the first leaves full-colour faces on a grey
+  screen, which is most of the window still in colour.
+  **AT THE SOURCE, rather than a `QGraphicsEffect` over the shell.** An
+  effect would catch anything added later and costs an offscreen
+  re-render of the WHOLE window on every repaint — four times a second,
+  over a frameless translucent always-on-top window, which is the exact
+  family of Qt trap this file keeps a list of. A palette swap costs
+  nothing per frame and is checkable.
+  It works because every colour here is read as `theme.X` AT CALL TIME:
+  `set_greyscale` reassigns the module's own names and rebuilds
+  `STYLESHEET`, and the two places that had captured a colour at import
+  (`tilekit.FOCUS_COLOUR`, `ornate`'s four frame shades) are now read
+  through a function. The frame is worth naming: it is the most
+  prominent thing on screen after the draft, and three of its four
+  shades live in `ornate` rather than in the palette, so greyscale left
+  a full gold border round a grey app until they followed.
+  **THE STYLESHEET IS SWEPT, NOT LISTED.** A handful of rules carry
+  their own hex — the tinted grounds behind the warning and "good"
+  pills — so the BUILT string has every remaining literal desaturated.
+  That catches anything added later without a list to maintain, the
+  same argument `DEFAULTS` being the write filter makes.
+  **GOOD AND BAD ARE THE ONE PLACE LUMINANCE IS REFUSED, and refusing
+  it is the point.** #23a55a and #f23f43 — the green and red EVERY
+  signed number in this app is printed in — both desaturate to a mid
+  grey about four points apart, so +6.4 and -6.4 would read identically.
+  At the user's request ("keep good/bad readable in grey") good becomes
+  the brightest thing on screen and bad a muted one: on a dark ground,
+  bright means good and quiet means bad, which survives having no hue.
+  They are TRUE greys rather than the app's slightly blue near-white and
+  dim text — in a palette with every other colour taken out, the two
+  figures the eye goes to first must not be the only things left with a
+  tint. A test holds both the separation and the legibility against the
+  background, and asserts the PREMISE (that luminance cannot tell the
+  two apart) so it fails loudly if that ever stops being true.
+  **THE ART IS GREYED AS IT IS LOADED and the caches are dropped**, so
+  the conversion happens once per hero rather than once per size, and
+  the way to change the answer is to make it be loaded again.
+  `Format_Grayscale8` HAS NO ALPHA CHANNEL, so converting straight to it
+  and back puts every item icon on an opaque black square: the alpha is
+  lifted off the original and put back.
+  **AND IT MUST NOT REBUILD THE VIEWS FROM `__init__`**
+  (`_apply_greyscale(rebuild=False)`). `_refresh_views` runs the whole
+  draw and reaches `tables.set_focus` on grids that are built but not
+  laid out, which SEGFAULTS — Qt aborts rather than raising, so there is
+  no traceback into our own code, and it appeared in about one run in
+  fifteen because it depends on what the layout has got round to.
+  **CAUGHT BY RUNNING THE SUITE THIRTY TIMES, NOT BY A TEST**, which is
+  the only way this family ever gets caught. Nothing is lost by skipping
+  it there: the first paint draws everything anyway.
+
 - **THE SUGGESTION COUNTS ARE A LEGEND, AND THE MARKS NAME THEMSELVES**
   (`_picks_controls`), at the user's request: "i want a legend added to
   the title (suggested picks)... so i want 1 row below the header to

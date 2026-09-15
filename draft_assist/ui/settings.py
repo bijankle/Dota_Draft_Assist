@@ -57,6 +57,10 @@ DEFAULTS = {
     # otherwise every caller would share one object with the defaults
     # and appending to it would edit them.
     "setup_pending": [],
+    # View ▸ Greyscale. The whole app with the colour taken out — the
+    # palette AND the artwork, since grey chrome round full-colour hero
+    # portraits is most of the screen still in colour.
+    "greyscale": False,
     # How see-through the window is. It HAS to be listed here: `save`
     # writes only the keys DEFAULTS names, so a preference the app set
     # but this dict did not know about was written by the slider, kept in

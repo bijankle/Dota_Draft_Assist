@@ -376,6 +376,13 @@ class MainWindow(QMainWindow):
         # silently hid nothing — the matrices drew on a fresh install
         # with their own tick box unticked beside them.
         self._apply_sections()
+        # AND THE PALETTE, for the same reason and one step further on:
+        # a settings file saying greyscale must arrive at a grey window
+        # on the FIRST paint, not after somebody opens the View menu.
+        # Idempotent, so running it here and on every settings change
+        # costs nothing when it is already right. NOT rebuilding the
+        # views: see `_apply_greyscale`.
+        self._apply_greyscale(rebuild=False)
         # Before the window is shown, because the taskbar reads a window's
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
@@ -2282,6 +2289,76 @@ class MainWindow(QMainWindow):
             self.section_actions[key] = act
         self._apply_sections()
 
+        # GREYSCALE, on its own below the blocks, because it is not one
+        # of them: those four say what is ON the Draft tab, this says how
+        # the whole app looks. Its own separator keeps the two questions
+        # apart in a menu that is read at a glance.
+        self.view_menu.addSeparator()
+        self.greyscale_action = QAction("Greyscale", self)
+        self.greyscale_action.setCheckable(True)
+        self.greyscale_action.setChecked(bool(self.settings.get("greyscale")))
+        self.greyscale_action.toggled.connect(self._set_greyscale)
+        self.view_menu.addAction(self.greyscale_action)
+
+    def _set_greyscale(self, on: bool) -> None:
+        if bool(self.settings.get("greyscale")) == bool(on):
+            return
+        self.settings["greyscale"] = bool(on)
+        ui_settings.save(self.settings)
+        self._apply_greyscale()
+
+    def _apply_greyscale(self, rebuild: bool = True) -> None:
+        """Swap the palette and the artwork together, then redraw.
+
+        `rebuild=False` FROM `__init__`, and it is not an optimisation.
+        `_refresh_views` runs the whole draw — the strips, the relations
+        and both grids — and from inside the constructor it reaches
+        `tables.set_focus` on grids that are built but not yet laid out.
+        That SEGFAULTS: Qt aborts rather than raising, so there is no
+        traceback into our own code, and it only shows up in about one
+        run in fifteen because it depends on what the layout has got
+        round to. Caught by running the suite thirty times, not by a
+        test. Nothing is lost by skipping it there — the first paint is
+        about to draw everything anyway.
+
+        BOTH HALVES OR NEITHER. The stylesheet covers every widget Qt
+        draws, and the hero portraits and item icons are pixmaps painted
+        by us — greying only the first leaves full-colour faces on a grey
+        screen, which is most of the window still in colour.
+
+        IDEMPOTENT, and called from `_apply_settings` as well as from the
+        menu, so a hand-edited settings file and a click arrive at the
+        same place.
+
+        The caches are dropped rather than converted in place: a portrait
+        is greyed once as it is loaded, so the way to change the answer
+        is to make it be loaded again. That also picks up the scaled
+        copies, which are keyed by size and know nothing about colour.
+        """
+        from . import item_icons, item_row as item_row_mod
+
+        want = bool(self.settings.get("greyscale"))
+        theme.set_greyscale(want)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(theme.STYLESHEET)
+        portraits.forget()
+        item_row_mod.forget_scaled()
+        for forget in (getattr(item_icons, "forget", None),
+                       getattr(item_icons, "forget_scaled", None)):
+            if callable(forget):
+                forget()
+        if getattr(self, "greyscale_action", None) is not None:
+            # Setting a control to what the file already says is not the
+            # user pressing it, and unblocked it would write the settings
+            # file on every start.
+            self.greyscale_action.blockSignals(True)
+            self.greyscale_action.setChecked(want)
+            self.greyscale_action.blockSignals(False)
+        if rebuild and getattr(self, "suggest_row", None) is not None:
+            self._refresh_views()
+        self.update()
+
     def _set_section(self, key: str, shown: bool) -> None:
         """Remember a tick and redraw. Written through `ui_settings.save`
         like every other preference — `DEFAULTS` is the write filter, so
@@ -3356,6 +3433,7 @@ class MainWindow(QMainWindow):
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
         self._apply_sections()
+        self._apply_greyscale()
         marks = ("heart_count", "shield_count")
         if any(self.settings.get(k) != before.get(k) for k in marks):
             # RE-APPLIED, NOT RE-MEASURED, and that is the change: these

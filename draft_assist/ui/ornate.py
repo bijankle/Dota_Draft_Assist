@@ -38,11 +38,37 @@ from . import theme
 # a matte.
 WIDTH = 3
 # Bronze, lit from the top-left the way every bevel in every game UI is.
+# READ AT CALL TIME. These were `QColor` objects built at import, so
+# View ▸ Greyscale left the window's own border — the most prominent
+# thing on screen after the draft itself — in full gold round a grey
+# app. `DARK` is the frame's shadow and has no constant of its own, so
+# it is greyed here from its own brightness.
+def _light() -> QColor:
+    return QColor(theme.FRAME_GOLD)
+
+
+def _own(colour: str) -> QColor:
+    """One of this module's own shades, greyed when the app is.
+
+    The frame is drawn from a gradient of four, and only the lightest of
+    them has a constant in `theme`. The other three live here, so they
+    have to follow the palette from here.
+    """
+    return QColor(theme.greyed_hex(colour) if theme.GREYSCALE else colour)
+
+
+DARK_GOLD = "#4a3616"
+MID_GOLD = "#8a6a30"
+INNER_GOLD = "#1b1207"
+
+
+def _dark() -> QColor:
+    return _own(DARK_GOLD)
 LIGHT = QColor(theme.FRAME_GOLD)   # the title text uses this too
-MID = QColor("#8a6a30")
-DARK = QColor("#4a3616")
+MID = QColor(MID_GOLD)
+DARK = QColor(DARK_GOLD)
 # The lip between the frame and the app, so the content reads as inset.
-INNER = QColor("#1b1207")
+INNER = QColor(INNER_GOLD)
 
 
 def paint_frame(painter: QPainter, rect: QRectF, width: int = WIDTH) -> None:
@@ -51,10 +77,12 @@ def paint_frame(painter: QPainter, rect: QRectF, width: int = WIDTH) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     metal = QLinearGradient(rect.topLeft(), rect.bottomRight())
-    metal.setColorAt(0.0, LIGHT)
-    metal.setColorAt(0.35, MID)
-    metal.setColorAt(0.65, MID)
-    metal.setColorAt(1.0, DARK)
+    light, dark = _light(), _dark()
+    metal.setColorAt(0.0, light)
+    mid = _own(MID_GOLD)
+    metal.setColorAt(0.35, mid)
+    metal.setColorAt(0.65, mid)
+    metal.setColorAt(1.0, dark)
 
     outer = rect.adjusted(0.5, 0.5, -0.5, -0.5)
     inner = rect.adjusted(width, width, -width, -width)
@@ -74,9 +102,9 @@ def paint_frame(painter: QPainter, rect: QRectF, width: int = WIDTH) -> None:
     # the outside edge, dark on the inside one. At three pixels there is
     # no room for a third.
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(LIGHT.lighter(115), 1))
+    painter.setPen(QPen(_light().lighter(115), 1))
     painter.drawRect(outer)
-    painter.setPen(QPen(INNER, 1))
+    painter.setPen(QPen(_own(INNER_GOLD), 1))
     painter.drawRect(inner.adjusted(-0.5, -0.5, 0.5, 0.5))
 
     painter.restore()

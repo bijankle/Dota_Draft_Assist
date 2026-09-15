@@ -290,7 +290,12 @@ def paint_art(painter: QPainter, box: QRect, art) -> bool:
 # portrait in either grid can each be the focused hero, and three
 # implementations of "draw the gold box" is three chances for the ring to
 # differ depending on where you clicked.
-FOCUS_COLOUR = theme.FRAME_GOLD
+# READ AT CALL TIME, not captured here. View ▸ Greyscale rewrites the
+# palette in place, and a colour copied into a module global at import
+# keeps whatever it was then — this one would have stayed gold while
+# every other mark on the same tile went grey.
+def _focus_colour() -> str:
+    return theme.FRAME_GOLD
 FOCUS_WIDTH = ornate.WIDTH
 
 
@@ -314,7 +319,7 @@ def paint_focus_ring(painter: QPainter, box: QRect,
     half = FOCUS_WIDTH / 2.0
     ring = QRectF(box.x() + half, box.y() + half,
                   box.width() - FOCUS_WIDTH, box.height() - FOCUS_WIDTH)
-    painter.setPen(QPen(QColor(FOCUS_COLOUR), FOCUS_WIDTH))
+    painter.setPen(QPen(QColor(_focus_colour()), FOCUS_WIDTH))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     corner = PLATE_RADIUS if radius is None else radius
     painter.drawRoundedRect(ring, corner, corner)
@@ -598,7 +603,7 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     difficulty to counter; 1 is the hardest of them to counter.
     """
     where = star_box(box, left=True)
-    _stamp(painter, _shape(where, SHIELD), FOCUS_COLOUR,
+    _stamp(painter, _shape(where, SHIELD), _focus_colour(),
            where.width() * 0.20)
     _paint_rank(painter, where, rank, SHIELD_CENTRE)
 

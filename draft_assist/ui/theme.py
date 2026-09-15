@@ -89,7 +89,14 @@ FONT_STACK = (f'"{BODY_FAMILY}", "Palatino Linotype", "Book Antiqua", '
 TOOL_GAP = 14
 
 
-STYLESHEET = f"""
+def _build_stylesheet() -> str:
+    """The stylesheet, built from whatever the colour globals say NOW.
+
+    It was a module-level f-string evaluated once at import, which is
+    right until the palette can change under it — View ▸ Greyscale
+    rewrites every colour above and then asks for this again.
+    """
+    return f"""
 QWidget {{
     background: {BG};
     color: {TEXT};
@@ -483,3 +490,123 @@ QLabel[pill="good"] {{
     border-radius: 9px; padding: 2px 9px; color: {GOOD};
 }}
 """
+
+
+# ---- greyscale (View ▸ Greyscale) ---------------------------------------
+#
+# EVERY COLOUR IS SWAPPED AT THE SOURCE rather than an effect being laid
+# over the window. A `QGraphicsEffect` on the shell would catch anything
+# added later and costs an offscreen re-render of the WHOLE window on
+# every repaint — four times a second, over a frameless translucent
+# always-on-top window, which is the exact family of Qt trap this file's
+# neighbours keep a list of. Swapping the palette costs nothing per
+# frame and is testable.
+#
+# The true palette is captured ONCE at import so the switch goes both
+# ways without a reload.
+_COLOURS = tuple(name for name, value in list(globals().items())
+                 if isinstance(value, str) and value.startswith("#")
+                 and len(value) == 7)
+_TRUE = {name: globals()[name] for name in _COLOURS}
+
+GREYSCALE = False
+
+# TWO COLOURS ARE NOT DESATURATED BY LUMINANCE, because that is exactly
+# what makes them useless: #23a55a and #f23f43 — the green and red every
+# signed number in this app is printed in — both land on a mid grey
+# about four points apart, so +6.4 and -6.4 would read identically.
+# "Keep good/bad readable in grey" was the user's call, so good becomes
+# the BRIGHTEST text and bad a muted one: on a dark ground, bright means
+# good and quiet means bad, which survives having no hue at all.
+# They must stay well apart from each other AND readable on the content
+# grey — a dark grey would be the honest desaturation of a red and
+# unreadable on this background.
+# TRUE greys, not the app's near-white and dim text, which both carry a
+# slight blue tint — in a palette that has had every other colour taken
+# out, the two figures the eye goes to first must not be the only things
+# left with a hue.
+GREY_OVERRIDES = {"GOOD": "#f2f2f2", "BAD": "#8e8e8e"}
+
+
+def _luma(colour: str) -> str:
+    """One hex colour as its own brightness, by Rec. 601 luma.
+
+    Not a plain mean of the channels: the eye is far more sensitive to
+    green than to blue, so averaging turns a mid green and a mid blue
+    into visibly different greys from the ones they read as.
+    """
+    red, green, blue = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    grey = round(0.299 * red + 0.587 * green + 0.114 * blue)
+    grey = max(0, min(255, grey))
+    return f"#{grey:02x}{grey:02x}{grey:02x}"
+
+
+def greyed_hex(colour: str) -> str:
+    """One hex colour as its own brightness. For callers outside this
+    module that hold a colour of their own — `ornate`'s frame shadow."""
+    return _luma(colour)
+
+
+def _grey_every_literal(sheet: str) -> str:
+    """Desaturate the hex literals written INTO the stylesheet.
+
+    Most of it reads the constants above, but a handful of rules carry
+    their own colour — the tinted grounds behind the warning and "good"
+    pills, for instance. Sweeping the built string catches those and
+    anything added later without a list anybody has to maintain, which
+    is the same argument `DEFAULTS` being the write filter makes.
+    """
+    import re
+    return re.sub(r"#[0-9a-fA-F]{6}\b",
+                  lambda found: _luma(found.group(0).lower()), sheet)
+
+
+def set_greyscale(on: bool) -> None:
+    """Swap the whole palette to grey, or back.
+
+    Reassigns the module's own colour names, so every widget that reads
+    `theme.X` AT CALL TIME follows — which is nearly all of them, and is
+    why this file's colours are read that way rather than captured into
+    locals. The caller re-applies `STYLESHEET` and clears the picture
+    caches; this only decides what the colours are.
+    """
+    global GREYSCALE, STYLESHEET
+    on = bool(on)
+    for name, true in _TRUE.items():
+        globals()[name] = (GREY_OVERRIDES.get(name) or _luma(true)) if on \
+            else true
+    GREYSCALE = on
+    sheet = _build_stylesheet()
+    STYLESHEET = _grey_every_literal(sheet) if on else sheet
+
+
+STYLESHEET = _build_stylesheet()
+
+
+def greyed(pixmap):
+    """One picture with its colour taken out, alpha kept.
+
+    THE ARTWORK HAS TO FOLLOW THE PALETTE or "greyscale" means "grey
+    chrome round full-colour hero portraits", which is most of the
+    screen still in colour.
+
+    Alpha is the whole difficulty: `Format_Grayscale8` has no alpha
+    channel, so converting straight to it and back leaves every item
+    icon on an opaque black square. The alpha is lifted off the original
+    and put back afterwards.
+
+    Qt is imported INSIDE the function deliberately. This module is
+    otherwise pure strings and numbers, and it is imported by things
+    that have no business needing a GUI — and touching QPixmap before a
+    QApplication exists does not raise, it ABORTS the process.
+    """
+    from PyQt6.QtGui import QImage, QPixmap
+
+    if pixmap is None or pixmap.isNull():
+        return pixmap
+    source = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    grey = (source.convertToFormat(QImage.Format.Format_Grayscale8)
+            .convertToFormat(QImage.Format.Format_ARGB32))
+    grey.setAlphaChannel(
+        source.convertToFormat(QImage.Format.Format_Alpha8))
+    return QPixmap.fromImage(grey)

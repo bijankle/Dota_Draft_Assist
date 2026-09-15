@@ -60,8 +60,16 @@ def portrait(hero_id: int | None) -> QPixmap | None:
     if hero_id not in _cache:
         path = _index().get(hero_id)
         pixmap = QPixmap(str(path)) if path is not None else None
-        _cache[hero_id] = (pixmap if pixmap is not None and not pixmap.isNull()
-                           else None)
+        if pixmap is not None and pixmap.isNull():
+            pixmap = None
+        # GREYED AT THE BASE, so every scaled copy inherits it and the
+        # conversion happens once per hero rather than once per size.
+        # `forget()` is what makes the switch take effect: turning
+        # greyscale on or off drops these caches.
+        from . import theme
+        if pixmap is not None and theme.GREYSCALE:
+            pixmap = theme.greyed(pixmap)
+        _cache[hero_id] = pixmap
     return _cache[hero_id]
 
 

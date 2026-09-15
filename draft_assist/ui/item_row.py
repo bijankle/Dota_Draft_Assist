@@ -67,6 +67,12 @@ _fitted_cache: dict[tuple[str, int, int], object] = {}
 
 def _fitted(item: str, width: int, height: int):
     art = icon(item)
+    # THE ICONS FOLLOW THE PALETTE TOO. Greyed here rather than in
+    # `item_icons.icon`, because that module is the disk cache and is
+    # shared with the tools; the scaled cache is per-session and is
+    # already dropped when greyscale is toggled.
+    if art is not None and theme.GREYSCALE:
+        art = theme.greyed(art)
     if art is None or width < 1 or height < 1:
         return None
     key = (item, width, height)
