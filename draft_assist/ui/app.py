@@ -112,20 +112,18 @@ class MarkLabel(QWidget):
     """
 
     SIDE = 22
-    GAP = 9              # room for the rule between the two marks
 
-    def __init__(self, shield=None, parent=None):
+    def __init__(self, shield: bool, parent=None):
+        # ONE MARK PER LABEL. It used to take None for "both", drawn as
+        # a heart and a shield with a painted rule between them, which
+        # was the single merged count box's label. The heading carries a
+        # LEGEND now - one row per mark, each naming what it means - so
+        # there is nothing left for a both-marks label to sit beside,
+        # and "hand" went with the hand.
         super().__init__(parent)
-        # None means BOTH, which is what the single count box is
-        # labelled with now; True is the shield alone and False the
-        # heart. "hand" is the odd one out and says so - see below.
         self._shield = shield
-        self.setFixedSize(self.SIDE if shield is not None
-                          else self.SIDE * 2 + self.GAP, self.SIDE)
+        self.setFixedSize(self.SIDE, self.SIDE)
         self.setToolTip(
-            "Pink heart: your best of the suggestions.  Gold shield: "
-            "hardest to counter." if shield is None else
-            "How many heroes to suggest" if shield == "hand" else
             "Gold shield: hardest to counter of the suggestions"
             if shield else "Pink heart: your best of the suggestions")
 
@@ -134,31 +132,13 @@ class MarkLabel(QWidget):
         # so it is grown by the inset to come out at label size.
         grown = box.adjusted(-tilekit.STAR_INSET, -tilekit.STAR_INSET,
                              tilekit.STAR_INSET, tilekit.STAR_INSET)
-        if shield == "hand":
-            tilekit.paint_hand(painter, grown)
-        elif shield:
+        if shield:
             tilekit.paint_shield(painter, grown)
         else:
             tilekit.paint_heart(painter, grown)
 
     def paintEvent(self, event) -> None:   # noqa: N802 - Qt naming
-        painter = QPainter(self)
-        if self._shield is not None:
-            self._mark(painter, self.rect(), self._shield)
-            return
-        # BOTH MARKS, WITH A RULE BETWEEN THEM - drawn rather than
-        # written, at the user's request: "actually show it
-        # artistically instead of writing words". The "/" is the same
-        # painted rule the toolbar uses between controls, because a
-        # typed slash is a glyph that resizes with the font and cannot
-        # be coloured apart from the label holding it.
-        left = QRect(0, 0, self.SIDE, self.SIDE)
-        self._mark(painter, left, False)
-        painter.setPen(QPen(QColor(theme.RULE), 1))
-        middle = self.SIDE + self.GAP // 2
-        painter.drawLine(middle, 4, middle, self.SIDE - 4)
-        self._mark(painter, QRect(self.SIDE + self.GAP, 0,
-                                  self.SIDE, self.SIDE), True)
+        self._mark(QPainter(self), self.rect(), self._shield)
 
 
 def open_folder(path: Path) -> None:
@@ -2977,7 +2957,8 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
-        if self.settings.get("mark_count") != before.get("mark_count"):
+        marks = ("heart_count", "shield_count")
+        if any(self.settings.get(k) != before.get(k) for k in marks):
             # RE-APPLIED, NOT RE-MEASURED, and that is the change: these
             # used to be percentile floors INSIDE the ranking, so moving
             # one meant reading the whole History run again and
@@ -3669,28 +3650,60 @@ class MainWindow(QMainWindow):
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(10)
 
-        # TWO ROWS, HAND ON TOP, at the user's request: "i want the qty of
-        # suggested picks to have a hand symbol to symbolize picking and i
-        # want it to be the top row of the two, with the bottom row being
-        # the shield / heart field". Stacked rather than strung out, which
-        # is also most of the WIDTH this heading was costing - and width
-        # is what the ten picks were being squeezed by.
+        # THREE ROWS, AND THE LAST TWO ARE A LEGEND, at the user's
+        # request: "i want a legend added to the title (suggested
+        # picks)... so i want 1 row below the header to show the symbols
+        # and what they mean", laid out as
+        #
+        #     Pick suggestions        = N
+        #     <heart>  = comfort      = N
+        #     <shield> = counter      = N
+        #
+        # The marks have carried their meaning in a TOOLTIP since they
+        # were drawn, which is a poor place for the one thing a reader
+        # needs before the mark means anything at all - a pink heart on
+        # a portrait is not self-explaining, and nobody hovers a symbol
+        # they have not got a question about yet. Naming them on the
+        # card costs two rows that were already half empty.
+        #
+        # THE HAND IS GONE - "Remove the hand symbol its pointless". It
+        # was a picture standing in for the words "pick suggestions",
+        # and now that the rows carry words anyway it was the one mark
+        # on this card explaining nothing that the text beside it did
+        # not. `tilekit.paint_hand` went with it rather than being left
+        # for somebody to read as documentation later.
         counts = QWidget(row)
         counts.setProperty("bare", True)
         stack = QGridLayout(counts)
         stack.setContentsMargins(0, 0, 0, 0)
         stack.setHorizontalSpacing(6)
         stack.setVerticalSpacing(2)
-        stack.addWidget(MarkLabel("hand", counts), 0, 0)
+
+        # NOT THE HEADING FONT, at the user's request - "the XXX can be
+        # formated same as others, no need ot be header font". The card
+        # already carries "Suggested picks" above this in heading
+        # weight; a second line in the same weight would read as two
+        # headings rather than as a heading and its controls.
+        stack.addWidget(QLabel("Pick suggestions", counts), 0, 0, 1, 3)
         self.suggested_box = self._count_box("suggested_picks")
-        stack.addWidget(self.suggested_box, 0, 1)
-        # ONE BOX FOR BOTH MARKS. They answer the same question - how far
-        # down the strip is worth marking - and two boxes made that look
-        # like two decisions. Set it to 2 and the strip carries two
-        # hearts AND two shields.
-        stack.addWidget(MarkLabel(None, counts), 1, 0)
-        self.mark_box = self._badge_box("mark_count")
-        stack.addWidget(self.mark_box, 1, 1)
+        stack.addWidget(self.suggested_box, 0, 3)
+
+        # TWO COUNTS AGAIN, WHICH REVERSES THE ONE THAT REPLACED THEM.
+        # They were merged on the argument that the marks answer the
+        # same question - how far down the strip is worth marking - and
+        # that holds right up until the rows are LABELLED separately,
+        # which is what a legend is. One value behind two lines each
+        # showing a number is the fault this app has a rule about: two
+        # places to read one setting is two places for it to go stale.
+        for line_no, (shield, word, key) in enumerate(
+                ((False, "comfort", "heart_count"),
+                 (True, "counter", "shield_count")), start=1):
+            stack.addWidget(MarkLabel(shield, counts), line_no, 0)
+            stack.addWidget(QLabel("=", counts), line_no, 1)
+            stack.addWidget(QLabel(word, counts), line_no, 2)
+            box = self._badge_box(key)
+            stack.addWidget(box, line_no, 3)
+            setattr(self, f"{'shield' if shield else 'heart'}_box", box)
         line.addWidget(counts)
         # THE FILTER TAKES THE SPARE WIDTH rather than a trailing
         # stretch taking it. It reflows from the width it is GIVEN, so a
@@ -4011,11 +4024,12 @@ class MainWindow(QMainWindow):
 
     def _heart_count(self) -> int:
         """How many suggestions may carry a heart."""
-        return ui_settings.clamp_marks(self.settings.get("mark_count", 3), 3)
+        return ui_settings.clamp_marks(self.settings.get("heart_count", 3), 3)
 
     def _shield_count(self) -> int:
         """How many suggestions may carry a shield."""
-        return ui_settings.clamp_marks(self.settings.get("mark_count", 3), 3)
+        return ui_settings.clamp_marks(
+            self.settings.get("shield_count", 3), 3)
 
     def _history_run_changed(self, report) -> None:
         """The History tab loaded, ran or cleared a run.

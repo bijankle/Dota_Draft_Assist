@@ -212,33 +212,35 @@ def test_the_damper_only_refuses_to_grow(window):
 
 # ---- the heading, as asked ----------------------------------------------
 
-def test_the_hand_is_the_TOP_row_and_the_marks_the_bottom(window):
-    """"i want the qty of suggested picks to have a hand symbol to
-    symbolize picking and i want it to be the top row of the two, with
-    the bottom row being the shield / heart field".
+def test_the_legend_names_each_mark_on_its_own_row(window):
+    """"i want a legend added to the title (suggested picks)... so i
+    want 1 row below the header to show the symbols and what they mean"
+    - and "Remove the hand symbol its pointless".
 
-    Stacked rather than strung out along the heading, which is also most
-    of the WIDTH this row was costing — and width is what the ten picks
-    were being squeezed by.
+    Three rows, each with its own count box on its own line, and the
+    two marks each standing beside the word for what it means.
     """
+    from PyQt6.QtWidgets import QLabel
+
     from draft_assist.ui.app import MarkLabel
 
-    picks = window.suggested_box
-    marks = window.mark_box
-    hands = [w for w in window.findChildren(MarkLabel)
-             if w._shield == "hand"]
-    assert len(hands) == 1, "no hand on the suggestion count"
-    hand = hands[0]
-    both = [w for w in window.findChildren(MarkLabel) if w._shield is None]
-    assert both, "the heart/shield label is gone"
+    hearts = [w for w in window.findChildren(MarkLabel) if not w._shield]
+    shields = [w for w in window.findChildren(MarkLabel) if w._shield]
+    assert len(hearts) == 1 and len(shields) == 1
 
-    top = hand.mapTo(window, hand.rect().center()).y()
-    bottom = both[0].mapTo(window, both[0].rect().center()).y()
-    assert top < bottom, "the hand is not the top row"
-    # And each count box sits on its own mark's line.
-    assert abs(picks.mapTo(window, picks.rect().center()).y() - top) <= 4
-    assert abs(marks.mapTo(window, marks.rect().center()).y() - bottom) <= 4
+    def middle(widget):
+        return widget.mapTo(window, widget.rect().center()).y()
 
+    rows = [middle(window.suggested_box), middle(window.heart_box),
+            middle(window.shield_box)]
+    assert rows == sorted(rows), "the three counts are not in three rows"
+    assert len(set(rows)) == 3, "two counts share a line"
+    assert abs(middle(hearts[0]) - rows[1]) <= 4
+    assert abs(middle(shields[0]) - rows[2]) <= 4
+
+    # And the words are there to read, which is the whole of a legend.
+    words = {w.text().lower() for w in window._picks_row.findChildren(QLabel)}
+    assert {"comfort", "counter"} <= words, words
 
 def test_the_heading_paints_NO_lighter_padding(window, styled):
     """"the suggested picks area has a weird padding background color
@@ -332,33 +334,6 @@ def test_there_is_no_rule_drawn_between_them(window):
 
 
 # ---- the hand -----------------------------------------------------------
-
-def test_the_hand_is_skin_beige(styled):
-    """"can you make the hand symbol a skin color baige". Every other
-    mark here is a token taking a symbolic colour; a hand is a picture of
-    a hand."""
-    from PyQt6.QtCore import QRect
-    from PyQt6.QtGui import QColor, QImage, QPainter
-
-    from draft_assist.ui import tilekit
-
-    picture = QImage(28, 28, QImage.Format.Format_ARGB32)
-    picture.fill(QColor(theme.BG_ELEVATED))
-    painter = QPainter(picture)
-    tilekit.paint_hand(painter, QRect(-3, -3, 28, 28))
-    painter.end()
-    beige = QColor(theme.SKIN_BEIGE).rgb()
-    assert any(picture.pixel(x, y) == beige
-               for x in range(picture.width())
-               for y in range(picture.height())), "no beige on the hand"
-    # And it is NOT the frame's gold, which means "this one" everywhere
-    # else in this app and would read as one more of those.
-    assert theme.SKIN_BEIGE != theme.FRAME_GOLD
-    gold = QColor(theme.FRAME_GOLD).rgb()
-    assert not any(picture.pixel(x, y) == gold
-                   for x in range(picture.width())
-                   for y in range(picture.height()))
-
 
 def test_the_suggested_picks_heading_is_on_its_own_row(window):
     """"i think it would look better if 'suggested picks' header was

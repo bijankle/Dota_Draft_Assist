@@ -2415,7 +2415,7 @@ def test_the_history_run_stars_the_suggestions(window, qapp):
         {good: (40, 26), bad: (30, 9), thin: (2, 2)})
     # ONE MARK, which goes to the hero ranked best on pick rate and win
     # rate together.
-    window._apply_settings({"mark_count": 1})
+    window._apply_settings({"heart_count": 1, "shield_count": 1})
     _settle(qapp)
     starred = [t.hero_id for t in window.suggest_row.tiles if t.starred]
     assert starred == [good], starred
@@ -2461,15 +2461,15 @@ def test_moving_the_count_redraws_the_marks(window, qapp):
     shown = [t.hero_id for t in window.suggest_row.tiles]
     window.history_tab.report = _fake_run(
         {shown[0]: (40, 26), shown[1]: (30, 9), shown[2]: (20, 14)})
-    window._apply_settings({"mark_count": 1})
+    window._apply_settings({"heart_count": 1, "shield_count": 1})
     _settle(qapp)
     before = {t.hero_id for t in window.suggest_row.tiles if t.starred}
 
-    window._apply_settings({"mark_count": 3})
+    window._apply_settings({"heart_count": 3, "shield_count": 3})
     _settle(qapp)
     after = {t.hero_id for t in window.suggest_row.tiles if t.starred}
     assert after > before, (before, after)
-    assert window.settings["mark_count"] == 3
+    assert window.settings["heart_count"] == 3
 
     # THE RANKS ARE PLACES, so they start at one and never skip: two
     # heroes share a place only when the criterion genuinely cannot

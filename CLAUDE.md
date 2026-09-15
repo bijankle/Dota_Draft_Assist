@@ -2117,28 +2117,48 @@ credentials, and put the account at risk. Do not go there.
   **AND THE CARD'S HEIGHT IS PAID FOR BY EVERYTHING BELOW IT**, which is
   what turned up the oldest bug in this family — see the strips note.
 
-- **THE SUGGESTION COUNTS ARE TWO ROWS, HAND OVER MARKS**
-  (`_picks_controls`, `tilekit.paint_hand`), at the user's request: "i
-  want the qty of suggested picks to have a hand symbol to symbolize
-  picking and i want it to be the top row of the two, with the bottom
-  row being the shield / heart field". A pointing hand is what everybody
-  reads as choosing this one.
-  **AND IT IS SKIN BEIGE** (`theme.SKIN_BEIGE`), also at their request.
-  Every other mark in `tilekit` is a TOKEN taking a symbolic colour —
-  the heart is pink because it means "yours", the shield gold because
-  gold means "this one" throughout this app. A hand is not a token, it
-  is a picture of a hand, so it is the colour a hand is; beige also
-  keeps it off `FRAME_GOLD`, which would have read as one more "this
-  one".
-  **THE WHOLE BLOCK SITS BELOW THE HEADING RATHER THAN BESIDE IT**:
-  "i think it would look better if 'suggested picks' header was above
-  all the text - shift the rest down so it's all level 1 row lower than
-  the header". So the controls stopped being the card's CORNER and
-  became the first thing in its BODY — which also hands them the card's
-  full width instead of whatever the heading row had spare, so the role
-  filter no longer needs telling it may grow. `card(corner_grows=...)`
-  went with it: a corner is sized to itself, and anything that needs the
-  card's width belongs under the heading.
+- **THE SUGGESTION COUNTS ARE THREE ROWS, AND THE LAST TWO ARE A LEGEND**
+  (`_picks_controls`), at the user's request: "i want a legend added to
+  the title (suggested picks)... so i want 1 row below the header to
+  show the symbols and what they mean", laid out as
+
+      Pick suggestions        = N
+      <heart>  = comfort      = N
+      <shield> = counter      = N
+
+  The marks had carried their meaning in a TOOLTIP since they were
+  drawn, which is a poor place for the one thing a reader needs before
+  a mark means anything at all — a pink heart on a portrait is not
+  self-explaining, and nobody hovers a symbol they have not got a
+  question about yet. It costs two rows that were already half empty.
+  **NOT IN THE HEADING FONT** — "the XXX can be formated same as
+  others, no need ot be header font" — since the card already carries
+  "Suggested picks" above it in heading weight and a second line in the
+  same weight reads as two headings.
+  **THE HAND IS GONE**: "Remove the hand symbol its pointless". It was
+  a picture standing in for the words "pick suggestions", and with the
+  rows carrying words anyway it was the one mark on the card explaining
+  nothing the text beside it did not. `tilekit.paint_hand` and
+  `theme.SKIN_BEIGE` — a colour that existed for the hand alone — went
+  with it rather than being left for somebody to read as documentation
+  later, which is the rule five dead methods were deleted under.
+  **AND THE TWO COUNTS ARE TWO SETTINGS AGAIN** (`ui_settings.
+  heart_count` / `shield_count`), which REVERSES the single `mark_count`
+  that replaced them. They were merged on the argument that the marks
+  answer the same question — how far down the strip is worth marking —
+  and that held right up until the rows were LABELLED separately, which
+  is what a legend is. One value behind two lines each printing a number
+  is two controls for one setting, which is the fault this app has a
+  standing rule about. A file written in the merged era takes
+  `mark_count` for BOTH, so nobody's number is lost and neither mark
+  appears or disappears on the update; `tests/test_two_mark_counts.py`
+  holds that and `test_one_mark_count.py` is deleted.
+  **THE ROLE FILTER DID NOT MOVE**, at the user's request — it still
+  takes the spare width to the right of these rows, and it still takes
+  it with a STRETCH FACTOR rather than being handed its own sizeHint:
+  it reflows from the width it is GIVEN, so a layout that hands it only
+  what it asks for laid it out one column deep, which made it narrow,
+  which kept it one column deep — eight rows tall, for ever.
 
 - **AND EIGHT NUMBERS CUT THE SUGGESTIONS TO THE ROLES YOU ARE SHORT
   OF** (`rolebar.RoleFilter`, `MainWindow._has_roles`,

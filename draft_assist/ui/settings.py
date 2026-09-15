@@ -94,7 +94,13 @@ DEFAULTS = {
     # the same question - how far down the suggestion strip is worth
     # marking - and two boxes made that look like two decisions. Set it
     # to 2 and the strip carries two hearts AND two shields.
-    "mark_count": 3,
+    # TWO COUNTS, ONE PER MARK, at the user's request - the heading
+    # now reads "heart = comfort = N" and "shield = counter = N" on
+    # separate lines, so one box driving both lines would be a value
+    # with two controls. This REVERSES the single `mark_count` that
+    # replaced them; see `_picks_controls`.
+    "heart_count": 3,
+    "shield_count": 3,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather
@@ -305,15 +311,15 @@ def load(path: Path | None = None) -> dict:
         if isinstance(stored, dict):
             # Only known keys, so a stale file can never inject surprises.
             settings.update({k: v for k, v in stored.items() if k in DEFAULTS})
-            # A FILE WRITTEN BEFORE THE TWO BECAME ONE. Take the LARGER
-            # of what was there: the reader set both deliberately, and
-            # of the two possible surprises, "a mark I had is gone" is
-            # worse than "a mark I had is still here".
-            if "mark_count" not in stored:
-                old = [stored[k] for k in ("heart_count", "shield_count")
-                       if isinstance(stored.get(k), int)]
-                if old:
-                    settings["mark_count"] = clamp_marks(max(old), 3)
+            # A FILE WRITTEN WHILE THE TWO WERE ONE. `mark_count` drove
+            # both marks, so both take it - the reader's setting is
+            # carried across the split rather than reset to the default,
+            # and neither mark appears or disappears on the update.
+            merged = stored.get("mark_count")
+            if isinstance(merged, int):
+                for key in ("heart_count", "shield_count"):
+                    if not isinstance(stored.get(key), int):
+                        settings[key] = clamp_marks(merged, 3)
     for key in COUNTS:
         settings[key] = clamp_count(settings.get(key), DEFAULTS[key])
     settings["data_reminder_days"] = clamp_days(

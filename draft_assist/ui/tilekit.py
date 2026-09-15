@@ -596,23 +596,6 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     _paint_rank(painter, where, rank, SHIELD_CENTRE)
 
 
-def paint_hand(painter: QPainter, box: QRect) -> None:
-    """The mark on the "how many suggestions" box.
-
-    SKIN BEIGE, at the user's request, and not pink or gold. Every other
-    mark in this module is a TOKEN that takes a symbolic colour - the
-    heart is pink because it means "yours", the shield gold because gold
-    means "this one" throughout this app. A hand is not a token, it is a
-    picture of a hand, so it is the colour a hand is. Beige also keeps it
-    off `FRAME_GOLD`, which would have read as one more "this one".
-    It is still stroked and still painted for the reasons they are - one
-    implementation, so a mark cannot drift into two conventions.
-    """
-    where = star_box(box)
-    _stamp(painter, _shape(where, HAND), theme.SKIN_BEIGE,
-           where.width() * 0.18)
-
-
 def delta_text(delta: float, kind: str | None = None) -> str:
     """"with +5.2" — the badge on any tile showing a RELATION.
 
