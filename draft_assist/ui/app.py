@@ -752,19 +752,20 @@ class MainWindow(QMainWindow):
         # bad reading pick by pick is five right-clicks and a picker each;
         # when the whole board is wrong, starting over is one gesture and
         # re-reading is another.
-        # OUTLINED RED, at the user's request — "make the button red so
-        # they look like buttons". Outlined rather than filled keeps the
-        # SOLID accent meaning "the one action this screen wants", which
-        # is a rule the whole app is coloured by; three solid red blocks
-        # on the row above a draft would also compete with the board.
-        # They briefly moved off this row to sit between the Radiant and
-        # Dire headings and came straight back when the profile went to
-        # the title bar and freed this end of it.
+        # THEY LOOK LIKE BUTTONS NOW, at the user's request — first
+        # "make the button red so they look like buttons", then "id like
+        # to make all buttons have a gold border (the same as the app
+        # border)". They need no property of their own for that: the
+        # base `QPushButton` rule carries the gold, so being a button IS
+        # the styling. An `outline` property briefly sat here and went
+        # when the gold made it redundant.
+        # They also briefly moved off this row to sit between the Radiant
+        # and Dire headings, and came straight back when the profile went
+        # to the title bar and freed this end of it.
         self.clear_all_button = QPushButton("Clear all")
         self.clear_all_button.setToolTip(
             "Empty every hand-entered slot on both teams, and forget any "
             "side or order corrections made this match")
-        self.clear_all_button.setProperty("outline", True)
         self.clear_all_button.clicked.connect(self._clear_all)
 
         self.detect_all_button = QPushButton("Detect all")
@@ -772,14 +773,12 @@ class MainWindow(QMainWindow):
             "Read the ten portraits off the Dota window now, whatever the "
             "gate thinks — and forget what was read before, so a stale "
             "answer cannot win the vote against the new frame")
-        self.detect_all_button.setProperty("outline", True)
         self.detect_all_button.clicked.connect(self._detect_all)
 
         self.demo_button = QPushButton("Demo")
         self.demo_button.setToolTip(
             "Fill the board with a random 5v5, to see what the app does "
             "with one. Hand entry, so Clear all empties it again.")
-        self.demo_button.setProperty("outline", True)
         self.demo_button.clicked.connect(self._demo_draft)
 
 

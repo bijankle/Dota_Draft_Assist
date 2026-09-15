@@ -41,15 +41,12 @@ from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 # because Valve publishes item art at 88x64 and a 16:9 box round it is
 # dead space either side of every icon, which reads as the items being
 # spaced further apart than the heroes above them.
-ICON_H = tilekit.STRIP_ART_H
-ICON_W = round(ICON_H * 88 / 64)
 # The shape the width is derived from, in one place.
 ICON_ASPECT = 88 / 64
+ICON_H = tilekit.STRIP_ART_H
+ICON_W = round(ICON_H * ICON_ASPECT)
 
 
-def width_for(height: int) -> int:
-    """An item tile's width at a given height — the icon's own shape."""
-    return max(1, round(int(height) * ICON_ASPECT))
 NAME_H = tilekit.STRIP_BAND_H
 # HOW MANY IS THE CALLER'S DECISION — it is a setting, edited on the strip
 # itself. A cap in here would silently overrule it, and a number you set
@@ -246,7 +243,7 @@ class ItemRow(QWidget):
         at the user's request: "why are item portraits smaller than
         sugegsted heroes.. shoudl eb the same". The heights always
         matched; what did not was the WIDTH, because an item tile was
-        cut to `width_for(height)` — 1.375 against the picks' 1.778, so
+        cut to the icon's own 1.375 against the picks' 1.778, so
         78% of the width and visibly the smaller object in a column of
         strips that are otherwise one size.
 
@@ -257,9 +254,9 @@ class ItemRow(QWidget):
         stops short of the card's edge while the picks above it do not
         reads as an accident.
 
-        `width_for` survives for the fallback size before the panel has
-        been laid out, which is the only place an item tile still sets
-        its own shape.
+        The FALLBACK size before the panel has been laid out keeps the
+        icon's shape (`ICON_W`), because there is no pick tile to match
+        yet — it is replaced by the first `set_tile_size`.
         """
         height = max(1, int(height))
         size = (max(1, int(width)), height)

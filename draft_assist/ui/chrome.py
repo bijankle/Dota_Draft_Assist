@@ -1193,28 +1193,6 @@ class BandedTabs(QTabWidget):
         """A rule between the tab labels and the controls beside them."""
         self._row.addWidget(Divider(), 0, Qt.AlignmentFlag.AlignVCenter)
 
-    def add_beside_tabs(self, widget: QWidget) -> None:
-        """Put a widget immediately RIGHT of the tab labels.
-
-        `add_tools` appends, and everything appended lands after the
-        stretch — which is the far right-hand end of the row. This one
-        goes before it, so it reads as part of the tab row rather than
-        as one of the controls at the other end. Inserted by FINDING the
-        stretch rather than at a remembered index: the row is built once
-        and added to several times, and an index that was right when it
-        was written is the kind of thing that silently stops being.
-        """
-        for index in range(self._row.count()):
-            if self._row.itemAt(index).widget() is None:     # the stretch
-                self._row.insertWidget(index, widget, 0,
-                                       Qt.AlignmentFlag.AlignVCenter)
-                return
-        self.add_tools(widget)
-
-    def add_rule_beside_tabs(self) -> None:
-        """The "|" the user asked for between the tabs and what follows."""
-        self.add_beside_tabs(Divider())
-
     def addTab(self, page, label):                  # noqa: N802 - Qt naming
         index = super().addTab(page, label)
         while self.bar.count() <= index:
