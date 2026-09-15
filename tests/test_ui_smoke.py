@@ -2077,19 +2077,53 @@ def test_a_dead_game_feed_gets_a_banner_not_a_status_segment(window, qapp):
     # isVisible answers "is the window up" rather than "did we hide this".
     assert not window.banner.isHidden()
     assert "not sending game data" in window.banner_label.text()
-    assert "Set up game data" in window.banner_label.text(), \
+    # THE SPECIFIC BROKEN LINK, still — that rule has not changed. What
+    # changed is that naming it no longer means naming a MENU: the strip
+    # used to end "Run Settings > Game data > Set up game data (GSI)" for
+    # a step with nothing in it to decide, and the button does that step
+    # now. "check game data should not jsut give an error and instruct
+    # you to download game data... instead it should just facilitate the
+    # installation directly."
+    assert "config file has not been written" in window.banner_label.text(), \
         "the banner must carry the specific broken link, not just a nudge"
-    assert window.banner_button.text() == "Check game data"
+    assert "Settings" not in window.banner_label.text(), \
+        "the strip is sending people to a menu again"
+    assert window.banner_button.text() == "Install it"
 
 
-def test_the_banner_button_opens_the_diagnosis(window, qapp, monkeypatch):
-    """The button has to do what the banner is about — it was hard-wired to
-    the data download whatever the message said."""
-    opened = []
-    monkeypatch.setattr(window, "_diagnose_gsi", lambda: opened.append(1))
+def test_the_banner_button_does_the_half_that_is_ours(window, qapp,
+                                                      monkeypatch):
+    """The button has to do what the banner is about — it was hard-wired
+    to the data download whatever the message said, and then for a while
+    it opened a DIAGNOSIS of a fault the app could simply fix.
+
+    Writing Dota's config is a mkdir and a write with nothing in it for
+    anybody to choose, so the button writes it. Monkeypatched because the
+    real one reaches the filesystem and, with no Dota installed, would
+    put a modal box up in front of a test.
+    """
+    did = []
+    monkeypatch.setattr(window, "_install_gsi_from_banner",
+                        lambda: did.append(1))
     window._update_first_run_banner(_silent_gsi_snapshot(True))
     window.banner_button.click()
-    assert opened == [1]
+    assert did == [1]
+
+
+def test_the_banner_asks_for_the_launch_option_once_the_config_is_there(
+        window, qapp, monkeypatch):
+    """The two halves are not alike, so the strip must not offer the same
+    thing for both. With the file written, the only step left is the one
+    in Steam that no program can take."""
+    monkeypatch.setattr(window, "_gsi_config_installed", lambda: True)
+    shown = []
+    monkeypatch.setattr(window, "_launch_option_help", lambda: shown.append(1))
+    window._update_first_run_banner(_silent_gsi_snapshot(True))
+    qapp.processEvents()
+    assert "-gamestateintegration" in window.banner_label.text()
+    assert window.banner_button.text() == "Show me how"
+    window.banner_button.click()
+    assert shown == [1]
 
 
 def test_dota_being_closed_is_not_a_fault_worth_a_banner(window, qapp):

@@ -365,9 +365,14 @@ class SetupWizard(QDialog):
 
         lay.addWidget(steps(gsi_install.LAUNCH_STEPS))
 
+        # ONE BUTTON DOING BOTH, because they are one action: the
+        # clipboard is loaded by the time the box you paste into is in
+        # front of you. It covers steps 1 and 2, which is as far as
+        # anything can carry somebody -- the box it lands on is the one
+        # they have to type in.
         row = QHBoxLayout()
-        self.copy_option = QPushButton(
-            f"Copy  {gsi_install.LAUNCH_OPTION}")
+        self.copy_option = QPushButton("Copy it and open Steam")
+        self.copy_option.setProperty("accent", True)
         self.copy_option.clicked.connect(self._copy_launch_option)
         row.addWidget(self.copy_option)
         row.addStretch(1)
@@ -381,11 +386,21 @@ class SetupWizard(QDialog):
         return frame
 
     def _copy_launch_option(self) -> None:
-        """A press with no visible result is a press nobody trusts."""
+        """Copy it and open the dialog it goes in.
+
+        A press with no visible result is a press nobody trusts, and both
+        halves of this one land somewhere the dialog cannot see -- the
+        clipboard, and another program's window. So it says what it did.
+        And it says the same thing whether or not the handler reported
+        success: Steam is silent either way, so a True there is not
+        evidence the Properties window opened.
+        """
         QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
+        gsi_install.open_properties()
         self._note(self.gsi_note,
-                   f"Copied. Paste {gsi_install.LAUNCH_OPTION} into Steam, "
-                   "then restart Dota.")
+                   "Copied, and Steam should be opening Dota's properties. "
+                   "Paste into Launch Options, then restart Dota. If Steam "
+                   "did not open, step 1 above does it by hand.")
 
     # ---- state ----------------------------------------------------------
     @property

@@ -30,6 +30,14 @@ CONFIG_NAME = "gamestate_integration_draft_assist.cfg"
 LAUNCH_OPTION = "-gamestateintegration"
 DEFAULT_PORT = 53000
 
+# Steam's own protocol handler for a game's Properties dialog, which is
+# where the launch option is typed. Confirmed working on the user's
+# machine before anything was built on it: Steam SILENTLY IGNORES a verb
+# it does not recognise, so an unverified one is a button that looks like
+# it worked and did nothing -- which is worse than no button, because the
+# step would then be assumed done. APP_ID rather than a second "570".
+PROPERTIES_URL = f"steam://gameproperties/{APP_ID}"
+
 # THE ONE STEP THAT CANNOT BE AUTOMATED, written out rather than named.
 # The config file below the app writes for itself; this lives in Steam's
 # own localconfig.vdf, which Steam holds in memory and rewrites on exit,
@@ -226,3 +234,23 @@ def ensure(port: int = DEFAULT_PORT,
     """
     return install(port=port, token=read_installed_token(dota_dir),
                    dota_dir=dota_dir)
+
+
+def open_properties(url: str = PROPERTIES_URL) -> bool:
+    """Ask Windows to open Dota's Properties dialog in Steam.
+
+    It does steps 1 and 2 of `LAUNCH_STEPS`, which is as far into that
+    procedure as anything can carry somebody -- the box it lands on is
+    the one they have to type in, and no program can type in it.
+
+    NEVER RAISES and never a fault: the seven steps are on screen beside
+    this, so the worst case is that they follow them by hand. The answer
+    is whether the handler was invoked, NOT whether Steam did anything
+    with it -- Steam is silent either way, so nothing may report success
+    on the strength of a True here.
+    """
+    import webbrowser
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:                   # noqa: BLE001 - a convenience
+        return False

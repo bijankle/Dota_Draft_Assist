@@ -169,20 +169,47 @@ def test_the_wizard_has_a_card_for_game_data(qapp, tmp_path, monkeypatch):
     wizard.deleteLater()
 
 
-def test_copying_the_option_says_that_it_did(qapp, tmp_path, monkeypatch):
-    """A press with no visible result is a press nobody trusts — and this
-    one's whole output goes somewhere invisible."""
+def test_the_button_copies_and_opens_steam_in_one_press(qapp, tmp_path,
+                                                        monkeypatch):
+    """ONE ACTION, not two: the clipboard is loaded by the time the box
+    you paste into is in front of you.
+
+    Both halves land somewhere the dialog cannot see — the clipboard, and
+    another program's window — so it has to say what it did, or it is a
+    press with no visible result.
+    """
     from draft_assist import config
     from draft_assist.ui.setup_wizard import SetupWizard
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setattr(config, "PREFS_FILE", tmp_path / "prefs.json")
+    opened = []
+    monkeypatch.setattr(gsi_install, "open_properties",
+                        lambda *a, **k: opened.append(a) or True)
 
     wizard = SetupWizard()
     wizard._copy_launch_option()
     assert QApplication.clipboard().text() == gsi_install.LAUNCH_OPTION
+    assert opened, "it copied but did not open Steam"
     assert not wizard.gsi_note.isHidden()
-    assert gsi_install.LAUNCH_OPTION in wizard.gsi_note.text()
+    assert "Steam" in wizard.gsi_note.text()
     wizard.deleteLater()
+
+
+def test_the_properties_url_is_built_from_the_app_id():
+    """A second literal "570" is a second thing to get wrong, and this
+    one fails SILENTLY — Steam ignores a verb it cannot parse without
+    saying anything, so the button would look like it worked."""
+    assert gsi_install.PROPERTIES_URL.endswith("/" + gsi_install.APP_ID)
+    assert gsi_install.PROPERTIES_URL.startswith("steam://gameproperties/")
+
+
+def test_opening_steam_never_raises(monkeypatch):
+    """It is a convenience beside seven steps that still work by hand, so
+    a missing protocol handler must cost the shortcut and nothing else."""
+    def explode(*args, **kwargs):
+        raise OSError("no handler for steam://")
+    monkeypatch.setattr("webbrowser.open", explode)
+    assert gsi_install.open_properties() is False
 
 
 # ------------------------------------------------------------ the window ----

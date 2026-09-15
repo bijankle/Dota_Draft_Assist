@@ -1689,18 +1689,37 @@ class MainWindow(QMainWindow):
             box.setText("Dota needs one launch option before it will send "
                         "anything.")
             box.setInformativeText(
-                steps + ("\n\nCopied. Paste it into the Launch Options box."
+                steps + ("\n\nCopied, and Steam should be opening Dota's "
+                         "properties. Paste it into the Launch Options box."
                          if copied else ""))
-            copy = box.addButton("Copy the launch option",
+            copy = box.addButton("Copy it and open Steam",
                                  QMessageBox.ButtonRole.ActionRole)
             box.addButton(QMessageBox.StandardButton.Close)
             box.exec()
             if box.clickedButton() is not copy:
                 return
-            QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
-            self._say(f"Copied {gsi_install.LAUNCH_OPTION} — paste it into "
-                      "Steam ▸ Dota 2 ▸ Properties ▸ Launch Options.", 8000)
+            self._copy_and_open_steam()
             copied = True
+
+    def _copy_and_open_steam(self) -> None:
+        """Put the launch option on the clipboard and open the dialog it
+        goes in. ONE ACTION, not two: the clipboard is loaded by the time
+        the box you paste into is in front of you.
+
+        `steam://gameproperties/570` was confirmed on the user's own
+        machine, with Steam running and with Steam closed, BEFORE this
+        was built on it — Steam ignores a verb it does not know without
+        saying so, so an unverified one is a button that looks like it
+        worked and did nothing. The message is the same either way for
+        the same reason: the handler reporting success is not evidence
+        the window opened, and the seven steps are still on screen.
+        """
+        from ..gsi import install as gsi_install
+
+        QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
+        gsi_install.open_properties()
+        self._say(f"Copied {gsi_install.LAUNCH_OPTION} — paste it into "
+                  "Steam's Launch Options box, then restart Dota.", 8000)
 
     def _gsi_config_installed(self) -> bool:
         """Is Dota's config file there? Cached — see `GSI_CONFIG_TTL`."""
@@ -2058,7 +2077,13 @@ class MainWindow(QMainWindow):
             "GSI is Valve's own feature: Dota sends this data because the "
             "config asks it to. Nothing is injected into the game and no "
             "memory is read.")
+        # This box appears at the exact moment somebody would go and do
+        # the Steam step, so it offers to take them there.
+        steam = box.addButton("Copy it and open Steam",
+                              QMessageBox.ButtonRole.ActionRole)
         box.exec()
+        if box.clickedButton() is steam:
+            self._copy_and_open_steam()
 
     def _diagnose_gsi(self) -> None:
         """Test each GSI requirement separately.
