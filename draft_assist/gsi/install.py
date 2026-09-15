@@ -46,12 +46,32 @@ PROPERTIES_URL = f"steam://gameproperties/{APP_ID}"
 # data" meant for several rounds, so the procedure is spelled out here,
 # ONCE, and read by the wizard, the banner's dialog and the manual --
 # three places that would otherwise be three chances to go stale.
-LAUNCH_STEPS = (
+# THE BUTTON'S OWN LABEL, spelled once. Step 1 NAMES it rather than
+# saying "the button", because the same procedure is shown in three
+# places and the button is not in the same position in all of them --
+# a QMessageBox puts its buttons along the bottom whatever the text says.
+COPY_AND_OPEN = "Copy it and open Steam"
+
+# WHAT THE BUTTON DOES FOR YOU, kept for the people it does not work for.
+# It is a CALLOUT rather than three more lines in the main list, at the
+# user's request: the fallback is not the path, and printing it inline
+# made the first thing to do the fourth thing on the page.
+BY_HAND = (
     "Open Steam and go to your Library.",
     "Right-click Dota 2, then choose Properties.",
     "The General page opens. Find the Launch Options box on it.",
-    f"Click that box and paste  {LAUNCH_OPTION}",
-    "If the box already has something in it, keep that and add this "
+)
+
+# THE SEQUENCE, AND THE ACTION IS FIRST. It used to open with three
+# lines of navigating Steam by hand and put the button that does all
+# three at the BOTTOM -- "having the link / copy button down the cutton
+# is not a good sequence / order". So step 1 is the press, step 2 is the
+# paste it just set up, and the manual route is one line off to the side.
+LAUNCH_STEPS = (
+    f'Press "{COPY_AND_OPEN}". It copies {LAUNCH_OPTION} for you and '
+    "opens Dota's properties in Steam.",
+    "Press Ctrl+V in the Launch Options box.",
+    "If the box already had something in it, keep that and add this "
     "after a space.",
     "Close the Properties window. Steam saves as you type; there is no "
     "OK button.",

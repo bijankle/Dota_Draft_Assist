@@ -121,7 +121,7 @@ STEPS: tuple = (
     Step(
         "gsi", "Dota's feed", "Letting Dota tell the app about the draft",
         how="The app writes Dota's config file for you when you "
-            "finish. The steps above are the part no program can do.",
+            "finish. Typing the launch option is the part it cannot do.",
         why="It is how the app knows a draft has started and which side "
             "is yours. Valve's own channel: nothing is injected into "
             "the game and no memory is read."),
@@ -181,7 +181,7 @@ def paragraph(text: str, width: int = TEXT_WIDTH) -> QLabel:
     return label
 
 
-def steps_list(lines) -> QLabel:
+def steps_list(lines, start: int = 1) -> QLabel:
     """A numbered procedure, which is NOT a paragraph.
 
     A procedure is scanned a line at a time rather than read, and each
@@ -190,7 +190,7 @@ def steps_list(lines) -> QLabel:
     told about and did not do.
     """
     label = QLabel("\n".join(f"{n}.  {line}"
-                             for n, line in enumerate(lines, 1)))
+                             for n, line in enumerate(lines, start)))
     label.setWordWrap(True)
     label.setTextInteractionFlags(
         Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -400,19 +400,51 @@ class SetupWizard(QDialog):
         lay.addWidget(self.account_note)
 
     def _fill_gsi(self, lay: QVBoxLayout) -> None:
-        lay.addWidget(steps_list(gsi_install.LAUNCH_STEPS))
+        """The list, split around the button, because the button IS step 1.
+
+        It used to run seven lines of navigating Steam by hand with the
+        control that does the first three sitting underneath the lot —
+        "having the link / copy button down the cutton is not a good
+        sequence / order". Reading order and doing order are the same
+        order now: press, then paste what the press put on your
+        clipboard.
+        """
+        lay.addWidget(steps_list(gsi_install.LAUNCH_STEPS[:1], start=1))
         row = QHBoxLayout()
-        self.copy_option = QPushButton("Copy it and open Steam")
+        row.addSpacing(22)              # under the "1." rather than the margin
+        self.copy_option = QPushButton(gsi_install.COPY_AND_OPEN)
         self.copy_option.setProperty("accent", True)
         self.copy_option.clicked.connect(self._copy_launch_option)
         row.addWidget(self.copy_option)
+        # THE FALLBACK IS OFF TO THE SIDE, not three more numbered lines.
+        # It is what the button does for you, so it is only of interest
+        # when the button did not — and inline it made the first thing to
+        # do the fourth thing on the page.
+        self.by_hand = QPushButton("or do it by hand")
+        self.by_hand.clicked.connect(self._show_by_hand)
+        row.addWidget(self.by_hand)
         row.addStretch(1)
         lay.addLayout(row)
+        lay.addWidget(steps_list(gsi_install.LAUNCH_STEPS[1:], start=2))
         self.gsi_note = QLabel("")
         self.gsi_note.setWordWrap(True)
         self.gsi_note.setProperty("dim", True)
         self.gsi_note.setVisible(False)
         lay.addWidget(self.gsi_note)
+
+    def _show_by_hand(self) -> None:
+        """What the button does, for when it did not."""
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Opening it by hand")
+        box.setText("What the button does for you:")
+        box.setInformativeText(
+            "\n".join(f"{n}.  {line}" for n, line
+                       in enumerate(gsi_install.BY_HAND, 1))
+            + f"\n\nThen carry on from step 2. "
+              f"{gsi_install.LAUNCH_OPTION} is on your clipboard.")
+        box.exec()
 
     # ---- moving between steps --------------------------------------------
     @staticmethod

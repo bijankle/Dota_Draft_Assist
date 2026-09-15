@@ -4154,6 +4154,28 @@ credentials, and put the account at risk. Do not go there.
   "Install it", which does it; config present → "Show me how", which is
   the procedure, because the only half left is the user's. Neither names
   a menu.
+  **AND THE ACTION IS STEP 1, WHICH IS NOT WHERE IT STARTED**
+  (`LAUNCH_STEPS`, `BY_HAND`, `COPY_AND_OPEN`). The list opened with
+  three lines of navigating Steam by hand and put the button that does
+  all three of them at the BOTTOM of the page — "having the link / copy
+  button down the cutton is not a good sequence / order". So the
+  sequence is now the press, then the paste the press set up:
+  **1.** Press "Copy it and open Steam" — it copies the option and opens
+  Dota's properties. **2.** Ctrl+V into the Launch Options box. Then the
+  three that were always the user's: keep what is already in the box,
+  close the window, restart Dota. Five lines instead of seven, and
+  reading order and doing order are the same order.
+  **THE MANUAL ROUTE IS A CALLOUT, NOT THREE MORE NUMBERED LINES**
+  (`BY_HAND`, "or do it by hand"). It is what the BUTTON does for you,
+  so it is only of interest when the button did not — and inline it made
+  the first thing to do the fourth thing on the page. Kept, because
+  Steam ignores a protocol verb it dislikes without saying so, and a
+  fallback nobody can find is not a fallback.
+  **STEP 1 NAMES THE BUTTON RATHER THAN SAYING "the button"**
+  (`COPY_AND_OPEN`, spelled once and read by all three surfaces). The
+  same procedure is shown in three places and the button is not in the
+  same position in all of them: a QMessageBox puts its buttons along the
+  bottom whatever its text says.
   **AND THE PROCEDURE IS SPELLED OUT, WHICH REVERSES "A SCREEN SAYS WHAT
   A CONTROL WILL DO"** for this one case, at the user's request: "there
   should be instruction at setup for the user to add the
@@ -4162,10 +4184,10 @@ credentials, and put the account at risk. Do not go there.
   about a procedure carried out by hand in another program — naming the
   option and leaving somebody to it is exactly how "add the launch
   option" became a thing people were told and did not do. `LAUNCH_STEPS`
-  is seven numbered lines, ONE action each, and it lives in
-  `gsi/install.py` because the wizard's third card, the banner's dialog
+  is five numbered lines, ONE action each, and it lives in
+  `gsi/install.py` because the wizard's last step, the banner's dialog
   and the manual all read it; three copies would be two going stale.
-  `test_gsi_setup` holds each step under 100 characters and `test_manual`
+  `test_gsi_setup` holds each step under 120 characters and `test_manual`
   still holds every `paragraph()` under 120 — the cap changed shape
   rather than going away.
   **THE WIZARD SCROLLS NOW, AND THE THIRD CARD IS WHY.** A dialog is

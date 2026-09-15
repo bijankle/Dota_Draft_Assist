@@ -1719,10 +1719,15 @@ class MainWindow(QMainWindow):
                 steps + ("\n\nCopied, and Steam should be opening Dota's "
                          "properties. Paste it into the Launch Options box."
                          if copied else ""))
-            copy = box.addButton("Copy it and open Steam",
+            copy = box.addButton(gsi_install.COPY_AND_OPEN,
                                  QMessageBox.ButtonRole.ActionRole)
+            by_hand = box.addButton("or do it by hand",
+                                    QMessageBox.ButtonRole.ActionRole)
             box.addButton(QMessageBox.StandardButton.Close)
             box.exec()
+            if box.clickedButton() is by_hand:
+                self._gsi_by_hand()
+                continue
             if box.clickedButton() is not copy:
                 return
             self._copy_and_open_steam()
@@ -1747,6 +1752,26 @@ class MainWindow(QMainWindow):
         gsi_install.open_properties()
         self._say(f"Copied {gsi_install.LAUNCH_OPTION} — paste it into "
                   "Steam's Launch Options box, then restart Dota.", 8000)
+
+    def _gsi_by_hand(self) -> None:
+        """What the button does, for when it did not do it.
+
+        A CALLOUT rather than three more numbered lines: the fallback is
+        not the path, and printing it inline is what made the first thing
+        to do the fourth thing on the page.
+        """
+        from ..gsi import install as gsi_install
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Opening it by hand")
+        box.setText("What the button does for you:")
+        box.setInformativeText(
+            "\n".join(f"{n}.  {line}" for n, line
+                       in enumerate(gsi_install.BY_HAND, 1))
+            + "\n\nThen carry on from step 2. "
+            + f"{gsi_install.LAUNCH_OPTION} is on your clipboard.")
+        box.exec()
 
     def _gsi_config_installed(self) -> bool:
         """Is Dota's config file there? Cached — see `GSI_CONFIG_TTL`."""
@@ -2133,7 +2158,7 @@ class MainWindow(QMainWindow):
             "memory is read.")
         # This box appears at the exact moment somebody would go and do
         # the Steam step, so it offers to take them there.
-        steam = box.addButton("Copy it and open Steam",
+        steam = box.addButton(gsi_install.COPY_AND_OPEN,
                               QMessageBox.ButtonRole.ActionRole)
         box.exec()
         if box.clickedButton() is steam:

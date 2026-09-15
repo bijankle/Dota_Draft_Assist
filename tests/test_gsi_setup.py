@@ -90,22 +90,36 @@ def test_a_missing_dota_is_reported_rather_than_guessed(tmp_path, monkeypatch):
 
 # ------------------------------------------------------- the launch option ----
 
-def test_the_steps_name_the_option_and_the_restart():
+def test_the_two_routes_between_them_say_everything(monkeypatch):
     """Somebody following these must end up with the option in the right
-    box and Dota restarted; both have been the thing people missed."""
-    joined = " ".join(gsi_install.LAUNCH_STEPS).lower()
+    box and Dota restarted; both have been the thing people missed.
+
+    The procedure is in TWO pieces now. `LAUNCH_STEPS` is the path — the
+    button, then the paste it set up — and `BY_HAND` is the three things
+    the button does, kept for whoever it does not work for. Neither is
+    complete alone, so this checks the pair.
+    """
+    both = " ".join(gsi_install.LAUNCH_STEPS + gsi_install.BY_HAND).lower()
     assert gsi_install.LAUNCH_OPTION in " ".join(gsi_install.LAUNCH_STEPS)
     for fact in ("steam", "right-click dota 2", "properties",
-                 "launch options", "restart dota"):
-        assert fact in joined, f"the procedure lost {fact!r}"
+                 "launch options", "restart dota", "ctrl+v"):
+        assert fact in both, f"the procedure lost {fact!r}"
 
 
-def test_no_step_is_a_paragraph():
-    """A procedure is scanned a line at a time. The moment a step needs
-    two sentences of preamble it has become the prose this screen was cut
-    back from, and nobody reads it."""
-    for step in gsi_install.LAUNCH_STEPS:
-        assert len(step) <= 100, f"step is an essay: {step!r}"
+def test_the_action_comes_first_and_the_fallback_does_not(monkeypatch):
+    """"having the link / copy button down the cutton is not a good
+    sequence / order." Reading order and doing order are the same order:
+    step 1 is the press, step 2 is the paste it just set up. The three
+    lines of navigating Steam by hand are the FALLBACK and must not be
+    back at the top of the list."""
+    first = gsi_install.LAUNCH_STEPS[0]
+    assert gsi_install.COPY_AND_OPEN in first, (
+        "step 1 must name the button, not describe navigating Steam")
+    assert "ctrl+v" in gsi_install.LAUNCH_STEPS[1].lower(), (
+        "step 2 should be the paste the press set up")
+    for line in gsi_install.BY_HAND:
+        assert line not in gsi_install.LAUNCH_STEPS, (
+            f"the manual route is back in the main list: {line!r}")
 
 
 def test_every_surface_renders_the_shared_steps(qapp, tmp_path,
