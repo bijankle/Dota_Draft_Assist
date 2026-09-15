@@ -80,3 +80,24 @@ def no_window() -> dict:
     """
     flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return {"creationflags": flag} if flag else {}
+
+# THE MARKED LINE A PROGRESS BAR READS. `task_dialog.PERCENT` matches
+# `^PROGRESS n%` and nothing else, deliberately: a long run prints
+# tables, hero names and paths, and a bar driven by whatever looked like
+# a number would jump about through all of it.
+PROGRESS = "PROGRESS"
+
+
+def progress(share: float, what: str = "") -> None:
+    """Say how far along a long run is, as a share from 0 to 1.
+
+    ONE spelling. There were two — `find_portraits.step` and
+    `score_recording.step` — and they had already drifted: one clamped
+    the share and the other did not, so a caller that overshot printed
+    `PROGRESS 120%` and the dialog's own regex then refused the line
+    entirely, which is a bar that stops moving near the end of exactly
+    the runs worth watching.
+    """
+    share = min(1.0, max(0.0, share))
+    tail = f"  {what}" if what else ""
+    print(f"{PROGRESS} {round(share * 100)}%{tail}", flush=True)

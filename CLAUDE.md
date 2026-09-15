@@ -3101,6 +3101,42 @@ credentials, and put the account at risk. Do not go there.
   learned crops go to. So `variants/` itself looks empty when it is full,
   which is what "I can't see them in the variants folder" was; the
   downloader prints the path on every run and the task blurb says it.
+  **AND THE ARTWORK COMES DOWN IN PARALLEL** (`build_library.fetch_many`
+  / `fetch_one` / `session`, `WORKERS` = 8), at the user's request:
+  "loading in all of the hero portraits, item portraits, etc is very
+  slow". It was 127 portraits and ~484 item icons fetched ONE AT A TIME,
+  each a bare `requests.get` and so a fresh TCP and TLS handshake, with
+  a courtesy `sleep` between them — **37 seconds of the run was the
+  sleeps alone**, and the rest was round trips rather than bytes, since
+  an item icon is a few kilobytes. Eight in the air with a kept-open
+  connection is the fix; eight rather than thirty-two because this is
+  Valve's own CDN and the difference between 1 and 8 is the one that
+  matters.
+  **A SESSION IS NOT THREAD-SAFE**, so each worker gets its own through
+  a `threading.local` — which is also what keeps its connection open for
+  the fifty or so files that worker fetches, so it is both halves of the
+  point rather than a precaution.
+  **AND A PICTURE IS WRITTEN ASIDE AND RENAMED.** Every caller SKIPS a
+  file that already exists, so a picture cut off half way — a run closed
+  mid-download, a disk that filled — is skipped for ever after and draws
+  as a blank tile. That is one of the four causes `item_icons.
+  why_missing` exists to tell apart, and the only one the download
+  itself can prevent.
+  One failure still costs ONE picture: a raise inside a pool is
+  swallowed unless somebody reads the result, so `fetch_many` collects
+  them and the run prints which.
+  **AND THE BAR MOVES WHILE THEY ARRIVE.** These run behind a progress
+  dialog and printed nothing between "484 items listed" and the final
+  count — minutes of a bar that reads as a frozen application. The
+  portraits take the first fifth and the icons the rest, weighted to
+  where the wait actually is rather than split evenly.
+  **`console.progress` IS THE ONE SPELLING OF THE MARKED LINE.** There
+  were two — `find_portraits.step` and `score_recording.step` — and they
+  had already drifted: one clamped the share and the other did not, so a
+  caller that overshot printed `PROGRESS 120%`, which `task_dialog.
+  PERCENT` refuses outright. A bar that stops moving near the end of
+  exactly the runs worth watching. Both tools keep the name `step` and
+  delegate.
 - **Ranked-role-queue role icons are ground truth** for roles, read from the
   draft screen; a manual override exists in the UI for when reading fails.
 - **How many tiles each strip shows is set ON the strip, and it is a CAP

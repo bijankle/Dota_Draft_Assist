@@ -91,7 +91,9 @@ STEP = "PROGRESS"
 
 
 def step(share: float, what: str) -> None:
-    print(f"{STEP} {share:.0%}  {what}", flush=True)
+    """Kept as a name because this file's callers all use it; the
+    spelling lives in `console` so two tools cannot drift apart."""
+    console.progress(share, what)
 
 
 def hero_names(dataset) -> dict[str, int]:

@@ -161,8 +161,9 @@ STEP = "PROGRESS"
 
 
 def step(share: float, what: str) -> None:
-    print(f"{STEP} {min(100, max(0, round(share * 100)))}%  {what}",
-          flush=True)
+    """Kept as a name because this file's callers all use it; the
+    spelling lives in `console` so two tools cannot drift apart."""
+    console.progress(share, what)
 
 
 # THE SNIPPING TOOL WRITES A MULTIPLICATION SIGN, and nobody types one.
