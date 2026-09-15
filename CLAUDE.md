@@ -3368,23 +3368,46 @@ credentials, and put the account at risk. Do not go there.
   classes up has always drawn it from the same file. One widget asked and
   the other did not, so `avatar_path` is now the one resolver all three
   go through.
-  **THE DELTA IS AN EXTRA REQUEST, AND IT HAS TO BE.** The run's own
-  fetch asks OpenDota for the last `days` days, so the matches before
-  that were never sent — there is no filtering them in. The endpoint
-  takes only "the last N days", so `measure_before` asks for TWICE the
-  window and keeps the older half, through the SAME `shape` filters, or
-  the delta would compare a ranked turbo-free sample against everything
-  the account has played and report a change that is entirely the
-  filters.
+  **THE RUN ASKS FOR TWICE THE WINDOW, IN ONE REQUEST**
+  (`runner.fetch_span`, `split_window`). The matches before the window
+  are not merely filtered out of the run's own fetch — the endpoint is
+  asked for "the last N days", so they were never sent — and it takes no
+  "before" parameter, so the choice was two requests or one twice as
+  long. It was two for one round and is now one, at the user's request:
+  "when you run it just make the range of data requested double what was
+  selected, so that you haev that data to work with". One trip to a free
+  API instead of two, and — the part that matters more — both halves come
+  out of the SAME fetch, so they cannot disagree about what the account
+  has played. **THE LIMIT DOUBLES WITH THE SPAN**, because a limit keeps
+  the most RECENT rows: leaving it at `cap` while doubling the days would
+  clip away exactly the older half being reached for. The cap is then
+  applied to the WINDOW's own half, which is what the user asked for.
+  The older half goes through the SAME `shape` filters, or the delta
+  would compare a ranked turbo-free sample against everything the account
+  has played and report a change that is entirely the filters.
   **NONE IN EVERY DOUBTFUL CASE**, which is the whole point of `Before`
-  being absent rather than zeroed: "All history" has nothing before it,
-  the request can fail, and it can come back CLIPPED — which matters more
-  here than anywhere else, because a limit keeps the most RECENT rows, so
-  the half that gets lost is exactly the half being measured. A delta
-  drawn from a clipped fetch would say the account played far less last
-  year, which is a claim about the cap rather than about them. An EMPTY
-  stretch is a different answer and is kept: a new account is up from
-  nothing and the games delta says so.
+  being absent rather than zeroed. Three of them:
+  "All history" has nothing before it; the fetch came back CLIPPED
+  (`runner.clipped`); or the WINDOW ITSELF was trimmed to the cap — the
+  subtle one, and the one that prompted the rule: a window cut to its
+  newest `cap` matches covers LESS TIME than the stretch behind it, so
+  the delta would be comparing four months against six while saying it
+  compared six against six.
+  `clipped` runs TWO tests because one of them is about a limit we do not
+  control: as many rows back as we asked for means there were probably
+  more, AND a fetch that came back substantial and still did not reach
+  behind the window was cut off by something — OpenDota does not document
+  a ceiling on `limit` and could apply one silently, which the count test
+  would sail straight past. An account whose whole history is shorter
+  than the window is deliberately NOT caught by that: its `earlier` is
+  empty because it was not playing, which is a real answer, and the games
+  delta says so.
+  **AND THE TOOLTIP NAMES THE TWO STRETCHES IN DATES**
+  (`ProfileCard._compared`). It said only how many matches the earlier
+  one held, and a reader who thinks a figure looks wrong cannot check
+  that against anything — "6 motnhs to now my win rate is 5.8% worse than
+  it was 12 months to 6 months ago???" is exactly the question the line
+  exists to let somebody answer.
   **IT IS THE ONE MEASUREMENT THE CACHE CANNOT RECOMPUTE**, so it is
   stored. Every block is rebuilt from `matches` on the way back in; this
   is not in that list and never will be, and a run re-opened from the
@@ -3395,7 +3418,16 @@ credentials, and put the account at risk. Do not go there.
   app's one stroked label, so the callout's figures and a team's total
   cannot drift into two conventions. A flat delta is DIM: green means
   better and red means worse, so "no different" has to be a third thing.
-  **AND APPLY DRIVES THE HISTORY TAB rather than running anything.** That
+  **THE BUTTON SAYS UPDATE, NOT APPLY**, at the user's request: "i
+  actually think you should call it 'update' so that it can be hit even
+  if the user has not changed the dropdown, as sometimes you may want to
+  keep amoutn of time the same and just update it". Apply names a change
+  to the box beside it, which makes a press with nothing changed look
+  like a no-op; Update names what the press does. It is also the word the
+  History tab's own Run button takes once there is a run behind it, so
+  the two say the same thing. Changing the dropdown alone changes
+  NOTHING — the figures beside it are the run already on disk.
+  **AND IT DRIVES THE HISTORY TAB rather than running anything.** That
   tab owns the account, the cap, the filters, the thread and the cache; a
   second path to a run would be a second set of answers to all of those,
   and the first time they disagreed the callout would be describing a

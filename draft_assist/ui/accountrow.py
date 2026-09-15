@@ -451,12 +451,24 @@ class ProfileCard(QWidget):
         pick.setSpacing(8)
         self.window_box = chrome.Dropdown(self)
         self.window_box.setToolTip(
-            "How far back to measure. Apply re-runs the analysis from "
-            "today backwards.")
+            "How far back to measure. Nothing changes until Update is "
+            "pressed — the figures beside it are the run already on disk.")
         for key, label, _days in WINDOWS:
             self.window_box.addItem(label, key)
         pick.addWidget(self.window_box)
-        self.apply_button = QPushButton("Apply", self)
+        # "UPDATE", NOT "APPLY", at the user's request: "i actually
+        # think you should call it 'update' so that it can be hit even if
+        # the user has not changed the dropdown, as sometimes you may
+        # want to keep amoutn of time the same and just update it".
+        # Apply names a change to the box beside it, which makes a press
+        # with nothing changed look like a no-op; Update names what the
+        # press actually does, which is re-measure from today backwards.
+        # It is the same word the History tab's own button takes once
+        # there is a run behind it.
+        self.apply_button = QPushButton("Update", self)
+        self.apply_button.setToolTip(
+            "Measure this account again over the window chosen, from "
+            "today backwards.")
         self.apply_button.setProperty("accent", True)
         self.apply_button.clicked.connect(self._apply)
         pick.addWidget(self.apply_button)
@@ -512,13 +524,35 @@ class ProfileCard(QWidget):
                     lambda value: f"{value:+.1f}%")
         self._delta("games", getattr(report, "games_delta", None),
                     lambda value: f"{value:+d}")
+        self.setToolTip(self._compared(report))
+
+    @staticmethod
+    def _compared(report) -> str:
+        """WHICH TWO STRETCHES the deltas are the difference between.
+
+        It said only how many matches the earlier one held, and a reader
+        who thinks a figure looks wrong cannot check that against
+        anything. Naming the two spans in dates is what makes the
+        comparison auditable — "6 motnhs to now my win rate is 5.8% worse
+        than it was 12 months to 6 months ago???" is exactly the question
+        this line exists to let somebody answer.
+        """
         before = getattr(report, "before", None)
-        self.setToolTip(
-            "Against the same length of time before it: "
-            f"{before.matches} matches, {before.wins} won."
-            if before is not None else
-            "No stretch before this one was measured, so there is nothing "
-            "to compare it against.")
+        if before is None:
+            return ("Nothing to compare this against: either the window "
+                    "is All history, or the stretch before it could not "
+                    "be measured in full.")
+        ran = getattr(report, "ran_at", None)
+        days = getattr(getattr(report, "options", None), "days", None)
+        span = ""
+        if ran is not None and days:
+            step = timedelta(days=int(days))
+            span = (f" {(ran - 2 * step).strftime(MONTH)} to "
+                    f"{(ran - step).strftime(MONTH)}, against "
+                    f"{(ran - step).strftime(MONTH)} to "
+                    f"{ran.strftime(MONTH)}.")
+        return (f"The same length of time before this one held "
+                f"{before.matches} matches, {before.wins} won.{span}")
 
     def _delta(self, key, value, spell) -> None:
         """Green up, red down, black halo round both.

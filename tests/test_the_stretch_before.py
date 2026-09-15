@@ -7,7 +7,6 @@ where the honest answer is NO ANSWER.
 """
 
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -23,104 +22,131 @@ HEROES = {1: "Anti-Mage", 2: "Axe"}
 RANKED = 7                      # `shape.RANKED_LOBBY`
 
 
+NOW = 1_800_000_000.0           # a fixed clock, so the split is testable
+
+
 def a_row(days_ago: float, win: bool = True, hero: int = 1) -> dict:
-    return {"match_id": 8000000001, "start_time": time.time() - days_ago * 86400,
+    return {"match_id": 8000000001, "start_time": NOW - days_ago * 86400,
             "duration": 2000, "player_slot": 0, "radiant_win": win,
             "hero_id": hero, "lobby_type": RANKED, "game_mode": 22}
 
 
-def _answer(rows, monkeypatch):
-    seen = {}
+# ---- what to ask for ---------------------------------------------------
 
-    def fake(account_id, cap, days):
-        seen["cap"], seen["days"] = cap, days
-        return rows
-    monkeypatch.setattr(opendota, "matches", fake)
-    return seen
+def test_one_request_covers_both_halves():
+    """"when you run it just make the range of data requested double what
+    was selected, so that you haev that data to work with".
 
-
-def test_it_asks_for_twice_the_window_and_keeps_the_older_half(monkeypatch):
-    """The run's own fetch asks for the last `days` days, so the matches
-    before that were never sent — there is no filtering them in. And the
-    endpoint takes only "the last N days", so the way to reach them is to
-    ask for twice as long and split locally."""
-    rows = ([a_row(10) for _ in range(6)]            # inside the window
-            + [a_row(200, win=True) for _ in range(3)]
-            + [a_row(250, win=False) for _ in range(1)])
-    seen = _answer(rows, monkeypatch)
-    got = runner.measure_before(Options(account_id=1, window="6m", cap=100),
-                                HEROES)
-    assert seen["days"] == 2 * 182
-    assert seen["cap"] == 200, "the doubled window needs a doubled limit"
-    assert got == Before(matches=4, wins=3)
+    It was two requests — the run's own, and a second one twice as long
+    for the comparison — which is two trips to a free API for two figures
+    in a callout, and two chances for the halves to disagree about what
+    the account has played.
+    """
+    assert runner.fetch_span(Options(window="6m", cap=1000)) == (2000, 364)
+    assert runner.fetch_span(Options(window="1m", cap=250)) == (500, 60)
 
 
-def test_all_history_has_nothing_before_it(monkeypatch):
-    monkeypatch.setattr(opendota, "matches",
-                        lambda *a, **k: pytest.fail("no request expected"))
-    assert runner.measure_before(Options(account_id=1, window="all"),
-                                 HEROES) is None
+def test_the_limit_doubles_with_the_span():
+    """A limit keeps the most RECENT rows, so doubling the days and
+    leaving the limit alone would clip away exactly the older half being
+    reached for."""
+    limit, span = runner.fetch_span(Options(window="12m", cap=500))
+    assert (limit, span) == (1000, 730)
 
 
-def test_a_clipped_fetch_is_refused(monkeypatch):
-    """**THE CASE THIS GUARD EXISTS FOR.** A limit keeps the most RECENT
-    rows, so the half that gets lost is exactly the half being measured —
-    a delta drawn from a clipped fetch would say the account played far
-    less last year, which is a claim about the cap rather than about
-    them."""
-    rows = [a_row(1) for _ in range(20)] + [a_row(200) for _ in range(20)]
-    _answer(rows, monkeypatch)
-    assert runner.measure_before(Options(account_id=1, window="6m", cap=20),
-                                 HEROES) is None
-    # One row short of the limit and it is trusted again.
-    _answer(rows[:-1], monkeypatch)
-    assert runner.measure_before(
-        Options(account_id=1, window="6m", cap=20), HEROES) is not None
+def test_all_history_asks_for_everything_and_has_nothing_behind_it():
+    assert runner.fetch_span(Options(window="all", cap=800)) == (800, None)
+    assert runner.measure_before([], Options(window="all"), HEROES) is None
 
 
-def test_a_failed_request_is_never_fatal(monkeypatch):
-    """Cosmetic: the two figures beside it are the answer and the delta
-    is the sentence after it."""
-    def boom(*a, **k):
-        raise opendota.ApiError("rate", "rate limited")
-    monkeypatch.setattr(opendota, "matches", boom)
-    assert runner.measure_before(Options(account_id=1, window="3m"),
-                                 HEROES) is None
+# ---- splitting it ------------------------------------------------------
+
+def test_the_split_is_by_date_and_the_cap_is_the_windows():
+    """The two halves are defined by the DATE the user chose; the row
+    order is only incidentally the same thing. And the cap is what was
+    asked for IN the window, not in the doubled fetch."""
+    rows = ([a_row(10) for _ in range(6)]
+            + [a_row(200) for _ in range(3)]
+            + [a_row(250) for _ in range(1)])
+    recent, earlier = runner.split_window(rows, 182, cap=1000, now=NOW)
+    assert (len(recent), len(earlier)) == (6, 4)
+    recent, earlier = runner.split_window(rows, 182, cap=4, now=NOW)
+    assert len(recent) == 4, "the cap did not reach the window"
+    assert len(earlier) == 4, "the cap should not touch the older half"
 
 
-def test_a_window_with_nothing_before_it_answers_zero_rather_than_none(
-        monkeypatch):
-    """A real answer, not a missing one: a new account has a window's
-    worth of history and nothing behind it, and the games delta should
-    say so rather than going blank."""
-    _answer([a_row(3), a_row(5)], monkeypatch)
-    got = runner.measure_before(Options(account_id=1, window="3m"), HEROES)
-    assert got == Before(matches=0, wins=0)
+def test_all_history_keeps_everything_in_one_half():
+    rows = [a_row(n) for n in (1, 100, 900)]
+    recent, earlier = runner.split_window(rows, None, cap=1000, now=NOW)
+    assert len(recent) == 3 and earlier == []
 
 
-def test_the_older_half_takes_the_same_filters(monkeypatch):
+# ---- measuring it ------------------------------------------------------
+
+def test_it_counts_the_older_half_through_the_same_filters():
     """Or the delta would compare a ranked, turbo-free sample against
     everything the account has played and report a change that is
     entirely the filters."""
-    rows = [a_row(200) for _ in range(3)]
+    rows = [a_row(200, win=True) for _ in range(3)]
+    rows.append(a_row(250, win=False))
     rows.append({**a_row(210), "game_mode": 23})          # turbo
     rows.append({**a_row(220), "lobby_type": 0})          # unranked
-    _answer(rows, monkeypatch)
     strict = runner.measure_before(
-        Options(account_id=1, window="3m", no_turbo=True, ranked_only=True),
-        HEROES)
+        rows, Options(window="6m", no_turbo=True, ranked_only=True), HEROES)
     loose = runner.measure_before(
-        Options(account_id=1, window="3m", no_turbo=False, ranked_only=False),
-        HEROES)
-    assert strict.matches == 3
-    assert loose.matches == 5
+        rows, Options(window="6m", no_turbo=False, ranked_only=False), HEROES)
+    assert strict == Before(matches=4, wins=3)
+    assert loose.matches == 6
 
 
-def test_a_cancelled_run_does_not_make_the_extra_request(monkeypatch):
-    monkeypatch.setattr(opendota, "matches",
-                        lambda *a, **k: pytest.fail("no request expected"))
-    assert runner.measure_before(Options(account_id=1, window="3m"),
-                                 HEROES, cancelled=lambda: True) is None
+def test_a_clipped_fetch_is_refused():
+    """**THE CASE THE GUARD EXISTS FOR.** A limit keeps the most RECENT
+    rows, so the half that gets lost is exactly the half being measured.
+    """
+    options = Options(window="6m", cap=20)
+    # Spanning the whole doubled window, so the SECOND guard (a server
+    # cap we cannot see) has nothing to say and this is only about the
+    # count.
+    rows = [a_row(n * 9) for n in range(40)]
+    assert runner.clipped(rows, options, limit=40, now=NOW) is True
+    assert runner.measure_before(rows, options, HEROES, clipped=True) is None
+    # One row short of the limit and it is trusted again.
+    assert runner.clipped(rows[:-1], options, limit=40, now=NOW) is False
+
+
+def test_a_server_side_cap_we_cannot_see_is_caught_too():
+    """OpenDota does not document a ceiling on `limit` and could apply
+    one silently, which the count test would sail straight past. A fetch
+    that came back substantial and STILL did not reach behind the window
+    was cut off by something."""
+    options = Options(window="6m", cap=100)
+    rows = [a_row(n / 10) for n in range(150)]        # all inside 15 days
+    assert runner.clipped(rows, options, limit=200, now=NOW) is True
+
+
+def test_an_account_younger_than_the_window_is_not_a_clipped_fetch():
+    """Its `earlier` is empty because it was not playing, which is a real
+    answer — and the games delta should say so rather than going blank."""
+    options = Options(window="6m", cap=1000)
+    rows = [a_row(n) for n in (1, 20, 60)]
+    assert runner.clipped(rows, options, limit=2000, now=NOW) is False
+    assert runner.measure_before([], options, HEROES) == Before()
+
+
+def test_a_window_trimmed_to_the_cap_is_refused(monkeypatch):
+    """**THE SUBTLER UNFAIRNESS, and the one that prompted this.** A
+    window cut to its newest `cap` matches covers LESS TIME than the
+    stretch behind it, so the delta would be comparing four months
+    against six while saying it compared six against six.
+    """
+    rows = ([a_row(n / 10) for n in range(30)]        # 30 inside the window
+            + [a_row(200) for _ in range(5)])
+    recent, earlier = runner.split_window(rows, 182, cap=10, now=NOW)
+    assert len(recent) == 10
+    trimmed = len(recent) < len(rows) - len(earlier)
+    assert trimmed is True
+    assert runner.measure_before(earlier, Options(window="6m", cap=10),
+                                 HEROES, clipped=trimmed) is None
 
 
 # ---- and it survives the cache -----------------------------------------

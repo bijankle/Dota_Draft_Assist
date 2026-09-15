@@ -68,8 +68,16 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     if cancelled():
         raise Refused("Stopped.")
 
+    # TWICE THE WINDOW IN ONE REQUEST, at the user's request: "when you
+    # run it just make the range of data requested double what was
+    # selected, so that you haev that data to work with". The endpoint
+    # takes one span and returns it newest-first, so asking for double
+    # and splitting it here costs the same ONE request the run always
+    # made — where asking twice cost two against a free API, for two
+    # figures in a callout.
     say("Asking OpenDota for the match list…")
-    rows = opendota.matches(options.account_id, options.cap, options.days)
+    limit, span = fetch_span(options)
+    rows = opendota.matches(options.account_id, limit, span)
     if not rows:
         # Nothing came back, and WHY decides what to say. An account
         # OpenDota holds a profile for is a real account whose matches are
@@ -77,8 +85,18 @@ def run(options: Options, say=None, cancelled=None) -> Report:
         raise Refused({True: PRIVATE, False: UNKNOWN_ACCOUNT}.get(
             who.known, NO_MATCHES))
 
+    # THE CAP IS THE WINDOW'S, not the doubled fetch's. The limit was
+    # doubled to reach behind the window; what the user asked for is at
+    # most `cap` matches IN it, and OpenDota returns newest first, so the
+    # cut keeps the newest of them.
+    recent, earlier = split_window(rows, options.days, options.cap)
+    # WAS THE WINDOW ITSELF CUT? See `measure_before`: a window trimmed
+    # to the cap is a SHORTER stretch of time than the one behind it, and
+    # the delta claims the two are the same length.
+    trimmed = len(recent) < len(rows) - len(earlier)
+
     say("Shaping the matches…")
-    shaped = shape.shape(rows, heroes, days=options.days,
+    shaped = shape.shape(recent, heroes, days=options.days,
                          no_turbo=options.no_turbo,
                          ranked_only=options.ranked_only)
     if len(shaped.matches) < analyse.MIN_SAMPLE:
@@ -102,9 +120,9 @@ def run(options: Options, say=None, cancelled=None) -> Report:
         item_names.update(fetched)
 
     # HOW THE STRETCH BEFORE THIS ONE WENT, for the two deltas in the
-    # profile callout. Cosmetic and never fatal — see `measure_before`.
-    say("Looking at the stretch before…")
-    before = measure_before(options, heroes, cancelled)
+    # profile callout — out of the same rows, at no extra cost.
+    before = measure_before(earlier, options, heroes,
+                            clipped=trimmed or clipped(rows, options, limit))
 
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
@@ -116,15 +134,82 @@ def run(options: Options, say=None, cancelled=None) -> Report:
                   ran_at=datetime.now(), before=before)
 
 
-def measure_before(options: Options, heroes: dict,
-                   cancelled=None) -> Before | None:
-    """The equal-length stretch immediately before the window measured.
+def fetch_span(options: Options) -> tuple[int, int | None]:
+    """What to ask OpenDota for: twice the window, and twice the cap.
 
-    ONE EXTRA REQUEST, and it has to be a request: the run's own fetch
-    asks OpenDota for the last `days` days, so the matches before that
-    are not merely filtered out, they were never sent. There is no
-    "before" parameter either — the endpoint only takes "the last N
-    days" — so this asks for TWICE the window and keeps the older half.
+    ONE REQUEST FOR BOTH HALVES, at the user's request — "just make the
+    range of data requested double what was selected, so that you haev
+    that data to work with". The run needs the window itself and the
+    equal-length stretch behind it (see `measure_before`), and the
+    endpoint only takes "the last N days" — so the choice was two
+    requests or one twice as long, and one is free where two are not.
+
+    The LIMIT doubles with the span for a reason: a limit keeps the most
+    RECENT rows, so leaving it at `cap` while doubling the days would
+    clip away exactly the older half being reached for.
+
+    "All history" asks for everything and has nothing behind it.
+    """
+    days = options.days
+    if not days:
+        return options.cap, None
+    return options.cap * 2, days * 2
+
+
+def split_window(rows, days: int | None, cap: int,
+                 now: float | None = None) -> tuple[list, list]:
+    """The window's own matches, and the ones behind it.
+
+    Cut by `start_time` rather than by position, because the two halves
+    are defined by the DATE the user chose and the row order is only
+    incidentally the same thing.
+    """
+    if not days:
+        return list(rows)[:cap], []
+    cutoff = (time.time() if now is None else now) - days * 86400
+    recent, earlier = [], []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        (recent if (row.get("start_time") or 0) >= cutoff
+         else earlier).append(row)
+    return recent[:cap], earlier
+
+
+def clipped(rows, options: Options, limit: int,
+            now: float | None = None) -> bool:
+    """Did the fetch stop before it had given us everything we asked for?
+
+    IT MATTERS MORE HERE THAN ANYWHERE ELSE, because a limit keeps the
+    most RECENT rows: the half that gets dropped is exactly the older
+    half the delta is measured against. A clipped fetch would report that
+    the account played far less last year, which is a claim about the cap
+    rather than about them.
+
+    TWO TESTS, because one of them is about a limit we do not control.
+    The first is ours: as many rows back as we asked for means there were
+    probably more. The second is for a SERVER-SIDE cap — OpenDota does
+    not document a ceiling on `limit` and could apply one silently, which
+    the first test would sail straight past — so a fetch that came back
+    substantial and STILL did not reach behind the window is treated as
+    cut off. An account whose whole history is shorter than the window is
+    not caught by that, and must not be: its `earlier` is empty because
+    it was not playing, which is a real answer.
+    """
+    if len(rows) >= limit:
+        return True
+    days = options.days
+    if not days or len(rows) < max(1, int(options.cap)):
+        return False
+    stamps = [row.get("start_time") or 0 for row in rows
+              if isinstance(row, dict)]
+    oldest = min(stamps) if stamps else 0
+    return oldest > (time.time() if now is None else now) - days * 86400
+
+
+def measure_before(rows, options: Options, heroes: dict,
+                   clipped: bool = False) -> Before | None:
+    """How the equal-length stretch before the window went.
 
     FILTERED THE SAME WAY the window itself is, through `shape`, or the
     delta would compare a ranked, turbo-free sample against everything
@@ -132,36 +217,23 @@ def measure_before(options: Options, heroes: dict,
     filters.
 
     **NONE IN EVERY DOUBTFUL CASE, and that is the point of it being
-    three-valued.** "All history" has nothing before it; the request can
-    fail; and it can come back CLIPPED by the limit, which matters more
-    here than anywhere else because a limit keeps the most RECENT rows —
-    so the half that gets lost is exactly the half being measured. A
-    delta drawn from a clipped fetch would say the account played far
-    less last year, which is a claim about the cap rather than about
-    them. Never fatal: the two figures beside it are the answer, and the
-    delta is the sentence after it.
+    three-valued.** "All history" has nothing before it; the fetch can
+    come back CLIPPED (see `clipped`); and the window itself can be cut
+    to the cap, which is the subtler one — a window trimmed to its
+    newest `cap` matches covers LESS TIME than the stretch behind it,
+    so the delta would be comparing four months against six while
+    saying it compared six against six. Both come in as `clipped`,
+    because the honest answer to all of them is the same: no delta.
+
+    An EMPTY stretch is a different answer and is kept: a new account has
+    a window's worth of history and nothing behind it, so both figures
+    are up from nothing and the deltas say so.
     """
-    days = options.days
-    if not days:
+    if not options.days or clipped:
         return None
-    if cancelled and cancelled():
-        return None
-    limit = max(1, int(options.cap)) * 2
-    try:
-        rows = opendota.matches(options.account_id, limit, days * 2)
-    except opendota.ApiError:
-        return None
-    if not rows or len(rows) >= limit:
-        return None
-    cutoff = time.time() - days * 86400
-    older = [row for row in rows if isinstance(row, dict)
-             and (row.get("start_time") or 0) < cutoff]
-    if not older:
-        # A real answer, not a missing one: the account has a window's
-        # worth of history and nothing before it, so both figures are
-        # up from nothing and the deltas say so.
+    if not rows:
         return Before()
-    shaped = shape.shape(older, heroes, days=None,
+    shaped = shape.shape(rows, heroes, days=None,
                          no_turbo=options.no_turbo,
                          ranked_only=options.ranked_only)
     return Before(matches=len(shaped.matches),

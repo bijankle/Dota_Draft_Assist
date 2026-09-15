@@ -178,6 +178,57 @@ def test_nothing_measured_draws_the_prompt(qapp):
     card.deleteLater()
 
 
+def test_the_button_says_update_and_not_apply(qapp):
+    """"i actually think you should call it 'update' so that it can be
+    hit even if the user has not changed the dropdown, as sometimes you
+    may want to keep amoutn of time the same and just update it".
+
+    Apply names a change to the box beside it, which makes a press with
+    nothing changed look like a no-op. Update names what the press
+    actually does — re-measure from today backwards — and it is the same
+    word the History tab's own button takes once there is a run behind
+    it.
+    """
+    card = ProfileCard()
+    assert card.apply_button.text() == "Update"
+    assert card.apply_button.isEnabled(), (
+        "it has to be pressable with the dropdown untouched")
+    card.deleteLater()
+
+
+def test_pressing_it_unchanged_still_asks_for_a_run(qapp):
+    card = ProfileCard()
+    card.show_report(a_report(window="6m"))
+    seen = []
+    card.applied.connect(seen.append)
+    card._apply()
+    assert seen == ["6m"], "a press with nothing changed did nothing"
+    card.deleteLater()
+
+
+def test_the_tooltip_names_the_two_stretches_it_compared(qapp):
+    """A reader who thinks a figure looks wrong has to be able to check
+    it against something — "6 motnhs to now my win rate is 5.8% worse
+    than it was 12 months to 6 months ago???" is the question this line
+    exists to let somebody answer."""
+    card = ProfileCard()
+    card.show_report(a_report(played=100, won=49, window="6m",
+                              before=Before(matches=63, wins=35)))
+    tip = card.toolTip()
+    assert "63 matches, 35 won" in tip
+    # The run was made on 15 Sep 2026 over six months, so the two spans
+    # are Sep 2025 -> Mar 2026 and Mar 2026 -> Sep 2026.
+    assert "Sep 2025" in tip and "Mar 2026" in tip and "Sep 2026" in tip
+    card.deleteLater()
+
+
+def test_with_no_comparison_the_tooltip_says_why_rather_than_nothing(qapp):
+    card = ProfileCard()
+    card.show_report(a_report(before=None))
+    assert "could not be measured in full" in card.toolTip()
+    card.deleteLater()
+
+
 def test_the_window_box_follows_the_run_and_apply_hands_the_key_back(qapp):
     """The card CHOOSES; the window runs. A second path to a run would be
     a second set of answers to the account, the cap and the filters."""
