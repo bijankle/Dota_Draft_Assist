@@ -96,15 +96,31 @@ def test_a_write_that_fails_costs_the_picture_and_nothing_else(
     the LAST thing written, after every measurement is already on
     screen: the rule `Recorder` has always followed is that a full disk
     costs the recording and never the draft."""
-    def boom(self, data):
-        raise OSError(22, "Invalid argument")
-    monkeypatch.setattr(Path, "write_bytes", boom)
+    # THE REAL WRITE, which is `open(path, "wb")` and a chunked write —
+    # this test used to patch `Path.write_bytes` and went on passing
+    # against a writer that no longer exists. Errno 22 is the one the
+    # user's own run came back with.
+    import builtins
+    real_open = builtins.open
+
+    def boom(file, mode="r", *args, **kwargs):
+        if "w" in mode and str(file).endswith(fp.SHEET_NAME):
+            raise OSError(22, "Invalid argument")
+        return real_open(file, mode, *args, **kwargs)
+    monkeypatch.setattr(builtins, "open", boom)
     assert fp.proof_sheet([("1920x1200", a_row(600))], tmp_path) is None
+    monkeypatch.undo()
     printed = capsys.readouterr().out
     assert "could not be written" in printed
     # AND IT NAMES THE PATH. "Invalid argument" on a path nobody can
     # see is unanswerable.
     assert "proof-sheet.png" in printed
+    # …and what it was asked to write, and whether the FOLDER takes a
+    # byte at all, which is the difference between this picture and
+    # this directory. Both were missing from the message that reached
+    # the user, and between them they are the whole diagnosis.
+    assert "bytes" in printed
+    assert "folder" in printed
 
 
 def test_a_runaway_row_cannot_blow_the_sheet_up(tmp_path):

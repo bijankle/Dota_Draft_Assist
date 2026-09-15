@@ -5575,6 +5575,50 @@ credentials, and put the account at risk. Do not go there.
   `--apply` with `--boxes-only` is REFUSED: that flag makes no
   measurement by design, so the two together would write back the
   numbers they had just read.
+  **AND A FRACTION IS JUDGED ON ITS OWN, BY A MAJORITY RATHER THAN BY
+  ITS WORST FRAME** (`settled`, `MIN_VOTERS`). The first version took a
+  MEDIAN and then gated it on the WORST MISS across every frame — a
+  robust estimator guarded by a non-robust one, so one bad fit vetoed
+  all six. The first real `--apply` run is what showed it: `y` measured
+  0.0052, 0.0059, 0.0052, 0.0050 and 0.0056 on five frames and **0.0800
+  on 1440x900**, which that same run had already named an outlier twice,
+  and nothing was written. Surviving a minority of bad fits is the whole
+  reason the median is the estimator.
+  **AND THE SPLIT IT PRODUCES IS ITSELF THE EVIDENCE.** On that run the
+  four that settled were `slot_w`, `pitch`, `y` and `slot_h`; the two
+  that did not were `radiant_x` and `dire_x` — the two BANK ORIGINS.
+  `banks_from` reads a bank's origin off the FIRST portrait found in
+  that bank, so a missed leading portrait moves that origin by a whole
+  pitch and moves nothing else: not the row's top edge, not the
+  portrait's height, not the median step between portraits. The two
+  fractions that disagree are exactly the two that failure mode can
+  reach, which is a reason to believe the other four rather than a
+  coincidence.
+  An unsettled fraction KEEPS THE SHIPPED VALUE and the file still names
+  all six, since `load_layout` reads whatever keys are in it.
+  **WHAT THAT RUN MEASURED, and it is not yet in the shipped six**: the
+  app's box lands **+24px too low and +36px too tall at 1080p** (median
+  over six frames), against `y` 0.0054 where 0.0330 ships and `slot_h`
+  0.0524 where 0.0930 ships. Two independent readings agree — the
+  per-frame pixel table and the sheet showing the crop holding the
+  player's NAME strip. The horizontal is NOT settled and must not move:
+  the bank origins split by ASPECT (dire_x reads 0.570 on 16:9 frames
+  and 0.592 on 4:3 and 5:4), which one constant cannot explain and
+  nobody has explained yet.
+  **AND A PICTURE NOBODY CAN OPEN IS A MEASUREMENT NOBODY TOOK**
+  (`save_png`, `folder_note`, `_save_beside`, `CHUNK`). That same run
+  put every number on screen and `OSError: [Errno 22] Invalid argument`
+  where the proof sheet should have been — on a plain ASCII path, in a
+  folder the run had just written eighteen other pictures into. So the
+  message now carries the picture's size, the encoded byte count and
+  whether the FOLDER takes a single byte at all, which is the difference
+  between this picture and this directory; and the write is CHUNKED,
+  since Windows raises exactly that errno on one very large write and
+  `Path.write_bytes` is one write of the whole file.
+  ONE writer for all six pictures this tool saves. Four of them were
+  `if ok:` and nothing else, so an encode that failed or a write that
+  was refused left no file and said NOTHING — while the closing advice
+  went on telling the reader to open them.
   **THE BAR'S TOP AND THE PORTRAIT'S HEIGHT ARE REPORTED APART, because
   only one of them can decide anything** (`TOP_IS_COARSE`). Folded
   together with a `max()`, the verdict printed "the bar is measured

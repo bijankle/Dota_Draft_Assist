@@ -1059,9 +1059,7 @@ def slices(frame, rects, path: Path, into: Path) -> None:
     """
     sheet = crop_row(frame, rects)
     into.mkdir(parents=True, exist_ok=True)
-    ok, buffer = cv2.imencode(".png", sheet)
-    if ok:
-        (into / f"{path.stem}-slices.png").write_bytes(buffer.tobytes())
+    _save_beside(into, path, "slices", sheet)
     return sheet
 
 
@@ -1075,6 +1073,78 @@ def slices(frame, rects, path: Path, into: Path) -> None:
 # either side and the box itself drawn on it, the portrait it missed is
 # in the same tile as the miss.
 BOX_CONTEXT = 0.6
+
+
+# HOW MUCH IS HANDED TO ONE `write` CALL. Windows raises OSError 22,
+# "Invalid argument", on a single very large write to some filesystems
+# and network paths, and `Path.write_bytes` is exactly one write of the
+# whole picture. A chunked write costs nothing and cannot hit it.
+CHUNK = 1 << 20
+
+
+def save_png(path: Path, image) -> str:
+    """Write a picture; answer "" or WHY IT COULD NOT BE WRITTEN.
+
+    **A PICTURE NOBODY CAN OPEN IS A MEASUREMENT NOBODY TOOK.** The
+    proof sheet is the one output of this tool that is read rather than
+    parsed, and a whole run came back with every number on screen and
+    `OSError: [Errno 22] Invalid argument` where the sheet should have
+    been - on a path that is plain ASCII, in a folder the same run had
+    just written eighteen other pictures into. "Invalid argument" names
+    nothing, so this reports what it was asked to write and whether the
+    FOLDER can be written at all, which is the difference between a
+    picture too big for the encoder and a directory this process cannot
+    touch.
+
+    ONE implementation for all six writers here. They were six copies of
+    encode-and-write, of which only the sheet had a message when it
+    failed - the other five returned quietly, which is why a run could
+    say "Pictures -> debug_out\found" about files that were never
+    there.
+    """
+    ok, buffer = cv2.imencode(".png", image)
+    if not ok:
+        return (f"the PNG encoder refused a "
+                f"{image.shape[1]}x{image.shape[0]} picture")
+    data = buffer.tobytes()
+    try:
+        with open(path, "wb") as handle:
+            for at in range(0, len(data), CHUNK):
+                handle.write(data[at:at + CHUNK])
+    except (OSError, ValueError) as bad:
+        return (f"{type(bad).__name__}: {bad}"
+                f"  [{image.shape[1]}x{image.shape[0]}, "
+                f"{len(data)} bytes, {folder_note(path.parent)}]")
+    return ""
+
+
+def _save_beside(into: Path, path: Path, what: str, image) -> None:
+    """One per-picture file, named after the picture, never silent.
+
+    These four were `if ok:` and nothing else, so an encode that failed
+    or a write that was refused left no file and said NOTHING - and the
+    closing advice goes on telling the reader to open them.
+    """
+    why = save_png(into / f"{path.stem}-{what}.png", image)
+    if why:
+        print(f"  ({path.stem}-{what}.png could not be written: {why})")
+
+
+def folder_note(folder: Path) -> str:
+    """Can this process write into that folder AT ALL?
+
+    The one question the failure message could not answer. A picture
+    that will not write and a folder that will not take a single byte
+    are different faults with different fixes - antivirus or a
+    permission on the folder, against something about this picture.
+    """
+    probe = folder / ".write-probe"
+    try:
+        probe.write_bytes(b"x")
+        probe.unlink()
+        return "the folder itself IS writable"
+    except OSError as bad:
+        return f"the folder itself is NOT writable: {type(bad).__name__}: {bad}"
 
 
 def crop_row(frame, rects, tall: int = 120, context: float = 0.0):
@@ -1173,16 +1243,9 @@ def proof_sheet(rows: list, into: Path):
     # full disk costs the recording and never the draft. It says what
     # went wrong and names the exact path, because "Invalid argument"
     # on a path nobody can see is unanswerable.
-    try:
-        ok, buffer = cv2.imencode(".png", sheet)
-        if not ok:
-            print(f"  (the proof sheet would not encode: "
-                  f"{sheet.shape[1]}x{sheet.shape[0]})")
-            return None
-        where.write_bytes(buffer.tobytes())
-    except (OSError, ValueError, cv2.error) as bad:
-        print(f"  (the proof sheet could not be written to {where!r}: "
-              f"{type(bad).__name__}: {bad})")
+    why = save_png(where, sheet)
+    if why:
+        print(f"  (the proof sheet could not be written to {where}: {why})")
         return None
     return where
 
@@ -1303,9 +1366,7 @@ def proof(frame, rects, reads, path: Path, into: Path, caption: str) -> None:
         at += wide + pad
 
     into.mkdir(parents=True, exist_ok=True)
-    ok, buffer = cv2.imencode(".png", sheet)
-    if ok:
-        (into / f"{path.stem}-proof.png").write_bytes(buffer.tobytes())
+    _save_beside(into, path, "proof", sheet)
 
 
 def strip_of(frame, path: Path, into: Path) -> None:
@@ -1326,9 +1387,7 @@ def strip_of(frame, path: Path, into: Path) -> None:
         band = cv2.resize(band, (1600, max(1, int(band.shape[0] * factor))),
                           interpolation=cv2.INTER_AREA)
     into.mkdir(parents=True, exist_ok=True)
-    ok, buffer = cv2.imencode(".png", band)
-    if ok:
-        (into / f"{path.stem}-strip.png").write_bytes(buffer.tobytes())
+    _save_beside(into, path, "strip", band)
 
 
 def draw(frame, rects, path: Path, into: Path) -> None:
@@ -1349,9 +1408,7 @@ def draw(frame, rects, path: Path, into: Path) -> None:
         shot = cv2.resize(shot, (1400, max(1, int(shot.shape[0] * factor))),
                           interpolation=cv2.INTER_AREA)
     into.mkdir(parents=True, exist_ok=True)
-    ok, buffer = cv2.imencode(".png", shot)
-    if ok:
-        (into / f"{path.stem}-found.png").write_bytes(buffer.tobytes())
+    _save_beside(into, path, "found", shot)
 
 
 def _scaling(good: list, middle: dict) -> None:
@@ -1727,58 +1784,92 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
     agreed value is, so a run could say "consistent to 0.0057" about a
     figure nobody could compare with the one in the code.
 
-    It REPORTS AND DOES NOT WRITE, which is the rule the whole tool
-    follows: changing these silently invalidates every saved
-    `calibration_local.json`, and a median over a handful of frames is a
-    measurement rather than a decision. The line at the bottom is there
-    to be read and pasted by somebody who has decided, not applied by
-    this.
-
-    Each fraction carries its own WORST MISS, because a median is only
-    worth pasting if the frames behind it agree - and the two that do
-    not (800x600, 1440x900) are excluded here for the same reason
-    `_consensus` excludes them: a bank's origin is read off the first
-    portrait found in it, so a partial fit measures something else.
+    **EACH FRACTION IS JUDGED ON ITS OWN, AND BY A MAJORITY RATHER THAN
+    BY ITS WORST FRAME.** The first version took the median and then
+    gated it on the WORST MISS across every frame, which is a robust
+    statistic guarded by a non-robust one - so a single bad fit vetoed
+    all six. That is not hypothetical: a real run measured `y` at
+    0.0052, 0.0059, 0.0052, 0.0050, 0.0056 on five frames and 0.0800 on
+    1440x900, which the same run had already named an outlier twice, and
+    refused to write any of it.
+    A fraction is SETTLED when a clear majority of the voting frames sit
+    within `AGREE_WITHIN` of the median. The dissenters are named rather
+    than dropped silently.
+    **AND THE SPLIT IT PRODUCES IS ITSELF EVIDENCE.** On that run the
+    four that settled were `slot_w`, `pitch`, `y` and `slot_h`, and the
+    two that did not were `radiant_x` and `dire_x` - the two BANK
+    ORIGINS. `banks_from` reads a bank's origin off the FIRST portrait
+    it found in that bank, so a missed leading portrait moves the origin
+    by a whole pitch and moves nothing else: not the row's top edge, not
+    the portrait's height, not the median step between portraits. The
+    two fractions that disagree are exactly the two that failure mode
+    can reach, which is a reason to believe the other four rather than a
+    coincidence.
     """
     shipped = DraftLayout()
     rows = []
     for name, key, against in FRACTIONS:
-        column = [r[key] for r in good if r.get(key) is not None]
-        if not column:
+        column = [(r[key], r["file"]) for r in good if r.get(key) is not None]
+        if len(column) < MIN_VOTERS:
+            print(f"\nOnly {len(column)} picture(s) measured {name} - "
+                  f"{MIN_VOTERS} is the fewest this will fit against.")
             return
-        column = np.array(column, dtype=float)
-        mid = float(np.median(column))
-        rows.append((name, mid, float(np.max(np.abs(column - mid))),
-                     getattr(shipped, name), against))
+        values = np.array([v for v, _f in column], dtype=float)
+        mid = float(np.median(values))
+        with_it = [f for v, f in column if abs(v - mid) <= AGREE_WITHIN]
+        rows.append({
+            "name": name, "mid": mid, "shipped": getattr(shipped, name),
+            "against": against, "voters": len(column), "agree": len(with_it),
+            "worst": float(np.max(np.abs(values - mid))),
+            "apart": [f for v, f in column if abs(v - mid) > AGREE_WITHIN],
+        })
     print(f"\nWHAT THESE {len(good)} PICTURES MEASURE THE SIX FRACTIONS "
           f"TO BE")
     print(f"  {'fraction':<11}{'measured':>10}{'shipped':>10}"
-          f"{'worst miss':>12}    at {AT[0]}x{AT[1]}")
-    for name, mid, miss, now, against in rows:
-        scale = AT[0] if against == "span" else AT[1]
-        print(f"  {name:<11}{mid:>10.4f}{now:>10.4f}{miss:>12.4f}"
-              f"    {round((mid - now) * scale):>+5} px")
-    print("  " + ", ".join(f"{name}={mid:.4f}" for name, mid, *_ in rows))
+          f"{'worst miss':>12}{'agree':>8}    at {AT[0]}x{AT[1]}")
+    for row in rows:
+        scale = AT[0] if row["against"] == "span" else AT[1]
+        moves = round((row["mid"] - row["shipped"]) * scale)
+        print(f"  {row['name']:<11}{row['mid']:>10.4f}{row['shipped']:>10.4f}"
+              f"{row['worst']:>12.4f}"
+              f"{str(row['agree']) + '/' + str(row['voters']):>8}"
+              f"    {moves:>+5} px")
+    print("  " + ", ".join(f"{r['name']}={r['mid']:.4f}" for r in rows))
     if not apply:
         print("  NOT APPLIED. These are what the pictures say; changing "
               "the shipped six invalidates every saved "
               "calibration_local.json, so it is a decision rather than a "
-              "readout. Re-run with --apply to write them to this "
-              "machine's own calibration.")
+              "readout. Re-run with --apply to write the settled ones to "
+              "this machine's own calibration.")
         return
     _write_calibration(rows)
 
 
-# HOW FAR THE FRAMES MAY DISAGREE AND STILL BE WRITTEN. `_consensus`
-# already calls 0.01 "consistent" and 0.03 "loose", and this takes the
-# tighter of the two: a median is a measurement only while the pictures
-# behind it agree, and writing a loose one would put a number on this
-# machine that no single screenshot supports.
+# HOW FAR THE FRAMES MAY DISAGREE AND STILL COUNT AS AGREEING.
+# `_consensus` already calls 0.01 "consistent" and 0.03 "loose", and
+# this takes the tighter of the two.
 AGREE_WITHIN = 0.01
+# AND HOW MANY OF THEM HAVE TO. Two points define a constant and cannot
+# test it; the THIRD is the first one that can disagree - the argument
+# `spread_over_spans` is built on. So three is the floor, and at three
+# the majority rule below means all three must agree.
+MIN_VOTERS = 3
+
+
+def settled(row: dict) -> bool:
+    """Do enough of the frames agree for this fraction to be written?
+
+    A clear majority, never all of them: requiring every frame makes one
+    bad fit a veto over every resolution, and the whole reason the median
+    is the estimator is that it survives a minority of bad fits.
+    """
+    return (row["voters"] >= MIN_VOTERS
+            and row["agree"] * 3 >= row["voters"] * 2
+            and row["agree"] >= MIN_VOTERS)
 
 
 def _write_calibration(rows: list) -> None:
-    """Put the measured six on THIS MACHINE, and never the shipped six.
+    """Put the settled fractions on THIS MACHINE, never the shipped six.
 
     The tool's standing rule is that it reports and does not write, and
     that rule is about `DraftLayout`'s defaults in the source - six
@@ -1790,29 +1881,44 @@ def _write_calibration(rows: list) -> None:
     to read. Writing it is what turns "here are the numbers, paste them
     somewhere" into a fix.
 
-    **THE TWO FRACTIONS THIS CANNOT MEASURE ARE KEPT, NOT ZEROED.** The
-    role icon's offset and height are not in `FRACTIONS` because nothing
-    in a located pick bar says where a role strip sits, so they come
-    from `DraftLayout()` - a file naming four of six would leave the
-    other two at whatever `float()` made of nothing.
+    **A FRACTION THAT DID NOT SETTLE KEEPS THE SHIPPED VALUE.** The six
+    are independent numbers, so writing the ones the pictures agree on
+    and leaving the rest exactly as they are is strictly better than
+    writing all six or writing none - which were the only two answers
+    the first version had. The file names all six either way, because
+    `load_layout` reads whatever keys are in it and a partial file would
+    leave the rest to whatever a later default happened to be.
+
+    **AND THE TWO NOTHING CAN MEASURE ARE KEPT TOO.** The role icon's
+    offset and height are not in `FRACTIONS` - there is no role strip in
+    a located pick bar - so they come from `DraftLayout()`.
     """
-    loose = [(name, miss) for name, _mid, miss, *_ in rows
-             if miss > AGREE_WITHIN]
-    if loose:
-        print("  NOT WRITTEN: these pictures do not agree closely enough "
-              "to be one measurement - "
-              + ", ".join(f"{name} misses by {miss:.4f}"
-                          for name, miss in loose)
-              + f" against a ceiling of {AGREE_WITHIN:.2f}.")
-        print("  Open the frames named above: a bank's origin is read off "
-              "the first portrait found in it, so one bad fit moves the "
-              "median for every resolution.")
+    taken = [r for r in rows if settled(r)]
+    left = [r for r in rows if not settled(r)]
+    if not taken:
+        print("  NOT WRITTEN: not one fraction has a majority of these "
+              "pictures agreeing on it.")
+        for row in left:
+            print(f"    {row['name']:<11}{row['agree']} of {row['voters']} "
+                  f"within {AGREE_WITHIN:.2f} of the median")
         return
-    measured = DraftLayout(**{name: round(mid, 4) for name, mid, *_ in rows})
+    measured = DraftLayout(**{r["name"]: round(r["mid"], 4) for r in taken})
     layout_mod.save_calibration(measured)
-    print(f"  WRITTEN to {CALIBRATION_FILE}. The app reads it at the next "
-          "start, and its own measurement at the next strategy time "
-          "replaces it.")
+    print(f"  WRITTEN to {CALIBRATION_FILE}:")
+    for row in taken:
+        print(f"    {row['name']:<11}{row['mid']:.4f}   "
+              f"({row['agree']} of {row['voters']} pictures agree)")
+    for row in left:
+        apart = ", ".join(row["apart"][:3])
+        print(f"    {row['name']:<11}LEFT AT {row['shipped']:.4f} - only "
+              f"{row['agree']} of {row['voters']} agree; apart: {apart}")
+    if left:
+        print("  A bank's origin is read off the FIRST portrait found in "
+              "it, so a missed leading portrait moves that origin and "
+              "nothing else - which is why those are the ones that do "
+              "not settle.")
+    print("  The app reads the file at the next start, and its own "
+          "measurement at the next strategy time replaces it.")
 
 
 def _failures(bad: list) -> None:
