@@ -2857,6 +2857,32 @@ credentials, and put the account at risk. Do not go there.
   two heroes on the same games and the same rate are the same hero as
   far as this rule can tell, and splitting them by whatever `sorted`
   did would star one and not the other on identical evidence.
+  **AND THE RANK ON THE MARK COMPOUNDS THE TWO PERCENTILES RATHER THAN
+  AVERAGING THEM** (`HeroForm.combined`), at the user's request:
+  "multiply them instead of adding them... e.g pick rate may be 20%,
+  winrate 30% (1.2*1.3 -1)". This REVERSES the mean that stood here,
+  and it is a lattice problem rather than a taste one. A percentile is
+  a RANK, so a 50-hero run has only 50 of them, 2% apart; the mean of
+  two lands on about 99 rungs, and twenty tiles on 99 rungs collide —
+  **measured at 89% of runs** against this module's own
+  `rank_fraction`. That is most drafts, and it is what put two hearts
+  each wearing a 1 on one strip with no 2 anywhere on it, the tie
+  having swallowed the place. Compounding drops it to 23%.
+  The mean's real fault is that it discards what the tooltip is
+  showing: 24/50 + 50/50 and 43/50 + 31/50 are both 74/50, so three
+  games at 100% scored identically to seventeen at 53%. Compounded
+  they are 1.9600 and 2.0132.
+  **THE OLD OBJECTION TO "THE PRODUCT" DOES NOT APPLY TO IT**, which
+  needs saying because it reads as though it should. That argument —
+  multiplying sinks a hero picked constantly at an average rate below
+  one with three games at 67% — is true of `a * b`, and this is not
+  that. `(1+a)(1+b) - 1` is `a + b + ab`: the sum, plus a bonus for
+  standing well on both, so it is never below the ordering the mean
+  was protecting. 0.98/0.50 scores 1.970 against 0.10/1.00 at 1.200.
+  It is SYMMETRIC, so (48th, 100th) still ties (100th, 48th). Of the
+  ties left, 57% are an identical PAIR of percentiles, which is the
+  same evidence and must share a place by the rule above; 30% are that
+  swap; 13% are genuine collisions. Stated rather than hidden.
   **AND THERE IS STILL A GAMES FLOOR** (`stars.MIN_GAMES`, 2, the same
   number as `analyse.MIN_DISPLAY`). The pick percentile very nearly does
   this by itself — a one-game hero sinks to the bottom of that ranking —

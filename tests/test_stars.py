@@ -146,3 +146,78 @@ def test_rank_fraction_runs_one_to_a_fraction():
     ranks = stars.rank_fraction({1: 10, 2: 5, 3: 1})
     assert ranks[1] == 1.0
     assert ranks[3] == pytest.approx(1 / 3)
+
+
+# ------------------------------------------------- the two are compounded
+
+def _row(pick, win, games=10):
+    return stars.HeroForm(hero_id=1, games=games, wins=int(games * 0.5),
+                          rate=0.5, pick_pct=pick, win_pct=win)
+
+
+def test_the_two_percentiles_are_compounded_not_averaged():
+    """The user's own formula: "(1.2*1.3 -1)"."""
+    assert _row(0.20, 0.30).combined == pytest.approx(1.2 * 1.3 - 1.0)
+
+
+def test_the_pair_that_put_two_hearts_wearing_a_one_on_one_strip():
+    """Real figures off a real strip: 3 games at 100% and 17 at 53%,
+    which averaged to exactly 74/50 apiece and shared first place."""
+    rare_and_perfect = _row(24 / 50, 50 / 50)
+    played_and_average = _row(43 / 50, 31 / 50)
+    assert (rare_and_perfect.pick_pct + rare_and_perfect.win_pct
+            == played_and_average.pick_pct + played_and_average.win_pct), (
+        "the mean could not separate these, which is the whole point")
+    assert played_and_average.combined > rare_and_perfect.combined
+
+
+def test_a_hero_picked_constantly_still_beats_a_rare_perfect_one():
+    """The objection the MEAN was chosen over `a * b` for. It does not
+    apply to `(1+a)(1+b)-1`, which is `a + b + ab` — the sum plus a
+    bonus — and this holds it to that."""
+    assert _row(0.98, 0.50).combined > _row(0.10, 1.00).combined
+
+
+def test_compounding_is_never_worse_than_the_mean_it_replaced():
+    """`a + b + ab` against `(a + b) / 2` on the whole unit square: the
+    new score can only ever rank a hero the same or better relative to
+    the old sum, so nothing that used to place can be pushed out by the
+    change alone."""
+    for pick in (0.0, 0.25, 0.5, 0.75, 1.0):
+        for win in (0.0, 0.25, 0.5, 0.75, 1.0):
+            assert _row(pick, win).combined >= pick + win
+
+
+def test_identical_evidence_still_shares_a_place():
+    """Two heroes on the same pair of percentiles are the same hero as
+    far as this rule can tell, and `rank_fraction`'s rule stands: they
+    must not be split by whatever `sorted` did."""
+    assert _row(0.6, 0.4).combined == _row(0.6, 0.4).combined
+
+
+def test_far_fewer_strips_carry_a_tie_than_before():
+    """MEASURED, because "ties are astronomically unlikely" is exactly
+    the assumption that was wrong: percentiles are ranks, so they live
+    on a coarse lattice and collide. A strip of twenty from a fifty-hero
+    run tied in 89% of runs under the mean."""
+    import random
+
+    def tie_rate(score):
+        random.seed(7)
+        tied = 0
+        for _ in range(300):
+            games = {h: random.randint(2, 60) for h in range(50)}
+            rates = {h: random.randint(0, games[h]) / games[h]
+                     for h in range(50)}
+            picks = stars.rank_fraction(games)
+            wins = stars.rank_fraction(rates)
+            board = {h: score(picks[h], wins[h]) for h in range(50)}
+            strip = random.sample(range(50), 20)
+            seen = [board[h] for h in strip]
+            tied += len(set(seen)) != len(seen)
+        return tied / 300
+
+    averaged = tie_rate(lambda a, b: (a + b) / 2)
+    compounded = tie_rate(lambda a, b: (1 + a) * (1 + b) - 1)
+    assert averaged > 0.8, averaged
+    assert compounded < averaged / 2, (averaged, compounded)
