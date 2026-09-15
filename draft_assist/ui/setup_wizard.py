@@ -252,6 +252,10 @@ class SetupWizard(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Set up Dota Draft Assist")
         self.checked: bool | None = None       # what check_key last said
+        # What the rank step has chosen, for the pair-only shape where
+        # there are no tick boxes to read it back off. Seeded from the
+        # preferences so arriving and pressing Next changes nothing.
+        self._chosen: set = set(target_brackets() or DEFAULT_TARGET_BRACKETS)
         self.worker: KeyWorker | None = None
         self.at = 0
         # Steps left undone. Every step starts outstanding and is struck
@@ -356,22 +360,52 @@ class SetupWizard(QDialog):
         lay.addWidget(self.key_note)
 
     def _fill_ranks(self, lay: QVBoxLayout) -> None:
-        # A GRID, NOT A ROW. Eight brackets across one line came out with
-        # every label elided — "Guardi", "Crusad" — which is a rank
-        # picker you cannot read the ranks off.
-        current = target_brackets() or DEFAULT_TARGET_BRACKETS
-        ticks = QGridLayout()
-        ticks.setHorizontalSpacing(18)
-        self.boxes: dict = {}
-        for index, bracket in enumerate(ALL_BRACKETS):
-            box = chrome.TickBox(bracket.title())
-            box.setChecked(bracket in current)
-            box.toggled.connect(self._update_summary)
-            ticks.addWidget(box, index // 4, index % 4)
-            self.boxes[bracket] = box
-        lay.addLayout(ticks)
+        """Eight ticks and five pairs — or five pairs alone.
 
-        quick = QLabel("Or pick a pair:")
+        PAIRS ONLY WHEN STRATZ CAN ONLY DO PAIRS, at the user's request:
+        "if stratz is pari only, then i want pair only options". Whether
+        it can is not something this file gets to assume — Stratz's
+        schema decides it, `choose_bracket_filter` discovers it on every
+        build, and `stratz_bracket_filter["exact"]` in the dataset meta
+        is the record. So the picker READS that rather than hard-coding
+        either shape, and an offer that Stratz cannot honour is never
+        made.
+
+        `pair_only_brackets` is THREE-VALUED and None means "no build has
+        ever said" — a fresh install, an OpenDota-sourced dataset, a
+        cache written before this was recorded. There the individual
+        ticks stay: they exactly control the OpenDota BASELINES whatever
+        Stratz can do with the pairwise half, so hiding them on a guess
+        would take away real control to prevent a problem nobody has
+        measured yet.
+        """
+        from ..data.store import bracket_coverage, pair_only_brackets
+
+        current = target_brackets() or DEFAULT_TARGET_BRACKETS
+        self.boxes: dict = {}
+        self.pair_only = pair_only_brackets() is True
+        if not self.pair_only:
+            # A GRID, NOT A ROW. Eight brackets across one line came out
+            # with every label elided — "Guardi", "Crusad" — which is a
+            # rank picker you cannot read the ranks off.
+            ticks = QGridLayout()
+            ticks.setHorizontalSpacing(18)
+            for index, bracket in enumerate(ALL_BRACKETS):
+                box = chrome.TickBox(bracket.title())
+                box.setChecked(bracket in current)
+                box.toggled.connect(self._update_summary)
+                ticks.addWidget(box, index // 4, index % 4)
+                self.boxes[bracket] = box
+            lay.addLayout(ticks)
+
+        if self.pair_only:
+            spans = " + ".join(b.title() for b in bracket_coverage())
+            note = paragraph(
+                "Stratz can only filter its pairwise data in pairs"
+                + (f", so it spans {spans}." if spans else "."))
+            note.setProperty("dim", True)
+            lay.addWidget(note)
+        quick = QLabel("Pick a pair:" if self.pair_only else "Or pick a pair:")
         quick.setProperty("dim", True)
         lay.addWidget(quick)
         presets = QGridLayout()
@@ -575,11 +609,24 @@ class SetupWizard(QDialog):
     # ---- state ------------------------------------------------------------
     @property
     def selected(self) -> tuple:
+        """What is ticked — or, with no ticks to read, what was chosen.
+
+        In pair-only mode there are no individual boxes, so the pair
+        buttons are the ONLY input and what they set is remembered here.
+        `_chosen` starts at whatever the preferences already say, so
+        arriving on this page and pressing Next keeps the current ranks
+        rather than clearing them.
+        """
+        if not self.boxes:
+            return tuple(b for b in ALL_BRACKETS if b in self._chosen)
         return tuple(b for b in ALL_BRACKETS if self.boxes[b].isChecked())
 
     def _apply_preset(self, brackets) -> None:
+        self._chosen = set(brackets)
         for name, box in self.boxes.items():
             box.setChecked(name in brackets)
+        if not self.boxes:
+            self._update_summary()
 
     def _update_summary(self) -> None:
         chosen = self.selected

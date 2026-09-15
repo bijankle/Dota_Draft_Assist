@@ -316,3 +316,88 @@ def test_the_ranks_are_readable_rather_than_elided(qapp, sandbox):
     for name, box in wizard.boxes.items():
         assert box.width() >= box.sizeHint().width(), name
     wizard.deleteLater()
+
+
+# ------------------------------------------ pairs, when pairs is all there is ----
+
+def _meta(tmp_path, exact: bool, covers=("LEGEND", "ANCIENT")):
+    import json
+    from draft_assist.data import store
+    path = tmp_path / "meta.json"
+    path.write_text(json.dumps({"stratz_bracket_filter": {
+        "arg": "bracketBasicIds", "values": ["LEGEND_ANCIENT"],
+        "exact": exact, "covers": list(covers)}}), encoding="utf-8")
+    return path
+
+
+def test_pair_only_is_read_from_what_stratz_actually_did(tmp_path):
+    """Not asserted by this app. Stratz's schema decides it,
+    `choose_bracket_filter` discovers it on every build, and the dataset
+    meta is the record."""
+    from draft_assist.data import store
+    assert store.pair_only_brackets(_meta(tmp_path, exact=False)) is True
+    assert store.pair_only_brackets(_meta(tmp_path, exact=True)) is False
+
+
+def test_never_measured_is_not_the_same_as_pairs_only(tmp_path):
+    """THREE-VALUED, like `required`, `Profile.known` and `KeyCheck.ok`.
+    A fresh install, an OpenDota-sourced dataset and a cache written
+    before this was recorded all mean "no build has ever said" — and
+    hiding the individual ranks on that would take away real control
+    (they set the OpenDota BASELINES exactly) to prevent a problem
+    nobody has measured."""
+    from draft_assist.data import store
+    assert store.pair_only_brackets(tmp_path / "absent.json") is None
+    (tmp_path / "bare.json").write_text("{}", encoding="utf-8")
+    assert store.pair_only_brackets(tmp_path / "bare.json") is None
+
+
+def test_the_wizard_offers_pairs_alone_when_that_is_all_stratz_can_do(
+        qapp, sandbox, monkeypatch, tmp_path):
+    """"if stratz is pari only, then i want pair only options." An offer
+    the data source cannot honour is worse than a shorter list."""
+    from draft_assist.data import store
+    from draft_assist.ui.setup_wizard import SetupWizard
+
+    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: True)
+    monkeypatch.setattr(store, "bracket_coverage",
+                        lambda *a, **k: ["LEGEND", "ANCIENT"])
+    wizard = _at(SetupWizard(), "ranks")
+    assert wizard.pair_only
+    assert wizard.boxes == {}, "individual ranks are still on offer"
+    # The pair buttons are the only input, and they still work.
+    wizard._apply_preset(("LEGEND", "ANCIENT"))
+    assert wizard.selected == ("LEGEND", "ANCIENT")
+    wizard._next()
+    assert config.target_brackets() == ("LEGEND", "ANCIENT")
+    wizard.deleteLater()
+
+
+def test_arriving_on_the_pair_page_and_pressing_next_changes_nothing(
+        qapp, sandbox, monkeypatch):
+    """With no tick boxes there is nothing to read the current answer
+    back off, so it is seeded from the preferences — otherwise walking
+    through setup would silently clear the ranks."""
+    from draft_assist.data import store
+    from draft_assist.ui.setup_wizard import SetupWizard
+
+    config.save_target_brackets(("ARCHON", "LEGEND"))
+    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: True)
+    monkeypatch.setattr(store, "bracket_coverage", lambda *a, **k: [])
+    wizard = _at(SetupWizard(), "ranks")
+    assert wizard.selected == ("ARCHON", "LEGEND")
+    wizard._next()
+    assert config.target_brackets() == ("ARCHON", "LEGEND")
+    wizard.deleteLater()
+
+
+def test_the_individual_ranks_stay_when_stratz_can_filter_exactly(
+        qapp, sandbox, monkeypatch):
+    from draft_assist.data import store
+    from draft_assist.ui.setup_wizard import SetupWizard
+
+    monkeypatch.setattr(store, "pair_only_brackets", lambda *a, **k: False)
+    wizard = _at(SetupWizard(), "ranks")
+    assert not wizard.pair_only
+    assert len(wizard.boxes) == 8
+    wizard.deleteLater()

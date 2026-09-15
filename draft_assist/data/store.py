@@ -77,6 +77,43 @@ def load(path: Path = MATRIX_FILE) -> Dataset:
     )
 
 
+def pair_only_brackets(path: Path = META_FILE) -> bool | None:
+    """Did the last build have to use Stratz's PAIRED bracket enum?
+
+    THREE-VALUED, and the third is why this is not a bool. True is
+    "Stratz could not express single ranks, so the pairwise data covers
+    a wider band than was asked for", False is "it filtered exactly",
+    and None is "no build has ever said" — a fresh install with no
+    dataset, an OpenDota-sourced one, or a cache written before this was
+    recorded. Collapsing None into either would have the rank picker
+    assert something nobody measured, which is the mistake this
+    codebase's `required`, `Profile.known` and `KeyCheck.ok` all exist
+    to avoid.
+
+    Read off the META file alone: the matrices are megabytes and this is
+    one key, and the rank picker is drawn long before anything wants the
+    numbers.
+    """
+    try:
+        meta = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    chosen = meta.get("stratz_bracket_filter")
+    if not isinstance(chosen, dict) or "exact" not in chosen:
+        return None
+    return not bool(chosen["exact"])
+
+
+def bracket_coverage(path: Path = META_FILE) -> list:
+    """Which ranks the pairwise data actually spans, or []."""
+    try:
+        meta = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    chosen = meta.get("stratz_bracket_filter") or {}
+    return list(chosen.get("covers") or []) if isinstance(chosen, dict) else []
+
+
 def empty_dataset() -> Dataset:
     """A valid but heroless dataset, so the application can open and explain
     itself before the first download instead of crashing on a missing file."""

@@ -11,7 +11,7 @@ are trying to win rather than the ones you already do.
 """
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel,
                              QPushButton, QVBoxLayout)
 
 from ..config import ALL_BRACKETS
@@ -49,16 +49,39 @@ class BracketDialog(QDialog):
         blurb.setProperty("dim", True)
         layout.addWidget(blurb)
 
-        self.boxes: dict[str, QCheckBox] = {}
-        for bracket in ALL_BRACKETS:
-            box = TickBox(bracket.title())
-            box.setChecked(bracket in current)
-            box.toggled.connect(self._update_summary)
-            layout.addWidget(box)
-            self.boxes[bracket] = box
+        # PAIRS ONLY WHEN STRATZ CAN ONLY DO PAIRS — "if stratz is pari
+        # only, then i want pair only options". Read from what the last
+        # build actually got (`stratz_bracket_filter["exact"]` in the
+        # dataset meta) rather than assumed here, so an offer Stratz
+        # cannot honour is never made. Three-valued: with nothing
+        # measured the individual ranks stay, because they exactly
+        # control the OpenDota BASELINES whatever Stratz can do with the
+        # pairwise half. Same decision as the setup wizard's own page,
+        # and the same reasoning.
+        from ..data.store import bracket_coverage, pair_only_brackets
+
+        self._picked = set(current)
+        self.pair_only = pair_only_brackets() is True
+        self.boxes: dict[str, TickBox] = {}
+        if self.pair_only:
+            spans = " + ".join(b.title() for b in bracket_coverage())
+            said = QLabel(
+                "Stratz can only filter its pairwise data in pairs"
+                + (f", so it spans {spans}." if spans else "."))
+            said.setWordWrap(True)
+            said.setProperty("dim", True)
+            layout.addWidget(said)
+        else:
+            for bracket in ALL_BRACKETS:
+                box = TickBox(bracket.title())
+                box.setChecked(bracket in current)
+                box.toggled.connect(self._update_summary)
+                layout.addWidget(box)
+                self.boxes[bracket] = box
 
         presets = QHBoxLayout()
-        presets.addWidget(QLabel("Quick pick:"))
+        presets.addWidget(QLabel("Pick a pair:" if self.pair_only
+                                 else "Quick pick:"))
         layout.addLayout(presets)
         for label, brackets in SUGGESTIONS:
             button = QPushButton(label)
@@ -85,10 +108,21 @@ class BracketDialog(QDialog):
         self._update_summary()
 
     def _apply_preset(self, brackets: tuple[str, ...]) -> None:
+        self._picked = set(brackets)
         for name, box in self.boxes.items():
             box.setChecked(name in brackets)
+        if not self.boxes:
+            self._update_summary()
 
     def _chosen(self) -> tuple[str, ...]:
+        """What is ticked — or, with no ticks, what the pairs chose.
+
+        In pair-only mode the buttons are the only input, so what they
+        set is remembered; it starts at what was already saved, so
+        opening this and pressing Save changes nothing.
+        """
+        if not self.boxes:
+            return tuple(b for b in ALL_BRACKETS if b in self._picked)
         return tuple(b for b in ALL_BRACKETS if self.boxes[b].isChecked())
 
     def _update_summary(self) -> None:

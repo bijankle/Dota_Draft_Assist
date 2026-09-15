@@ -95,8 +95,17 @@ def build_dataset(skip_bracket_check: bool = False,
             # inferred, so the UI can say so instead of showing an empty
             # grid as though every pair were neutral.
             "has_synergy": any(sides["with"] for sides in matchups.values()),
-            "pair_brackets": ("as target" if source == STRATZ
-                              else "all brackets pooled"),
+            # WHAT THE PAIRWISE DATA ACTUALLY SPANS. It said "as
+            # target" for every Stratz build, which is only true when
+            # the filter came out EXACT — if Stratz could express the
+            # target ranks only through its coarser paired enum, this
+            # data covers a wider band and the meta was claiming
+            # otherwise. `stratz_bracket_filter` had the truth beside it
+            # the whole time.
+            "pair_brackets": (
+                "all brackets pooled" if source != STRATZ else
+                "as target" if bracket_filter["exact"] else
+                "+".join(bracket_filter["covers"])),
             "stratz_bracket_filter": bracket_filter,
             "bracket_check": bracket_check,
             "matrices_hold": "normalised deltas (see normalize.py), NOT raw win rates",
