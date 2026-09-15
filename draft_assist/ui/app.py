@@ -213,6 +213,19 @@ _DRAFT_STATE_NAMES = frozenset(
 
 
 class MainWindow(QMainWindow):
+    # IS DOTA'S CONFIG FILE THERE, cached, because the banner asks on
+    # every tick and `find_dota_dir` is a registry read plus a walk of
+    # every Steam library. The banner that asks is the one a fresh
+    # install sits under for a whole session, so this would be four
+    # filesystem walks a second at exactly the wrong moment — the same
+    # trap the gate's signature and the hidden debug view were both
+    # found in. `GSI_CONFIG_TTL` is generous because the answer only
+    # changes when something in this app changes it, and both of those
+    # paths clear the cache outright.
+    GSI_CONFIG_TTL = 10.0
+    _gsi_config_seen: bool | None = None
+    _gsi_config_asked: float = 0.0
+
     def __init__(self, ds: Dataset, provider, rules, rules_meta,
                  manual: ManualDraft | None = None):
         super().__init__()
@@ -1585,12 +1598,152 @@ class MainWindow(QMainWindow):
         from .setup_wizard import SetupWizard
         wizard = SetupWizard(self)
         accepted = wizard.exec() == SetupWizard.DialogCode.Accepted
-        self._update_first_run_banner()
+        # WHICH WAY THEY LEFT IS REMEMBERED, and it decides exactly one
+        # thing: whether the GSI config gets written for them from now on
+        # without being asked. Finishing setup is that agreement; Skip is
+        # somebody who has not agreed to anything yet, and the banner is
+        # where they say so later.
+        self.settings["setup_skipped"] = not accepted
+        ui_settings.save(self.settings)
         if accepted:
             # TICKING THE BOXES IS THE WHOLE INTERACTION. An install that
             # ends by telling the user to go and find a menu item has not
-            # finished installing.
+            # finished installing. GSI is part of that: the config file is
+            # a write into the Dota install with nothing to choose, so it
+            # happens here rather than being a menu item to discover.
+            self._ensure_gsi_config()
             self._update_everything()
+        self._update_first_run_banner()
+
+    def _ensure_gsi_config(self) -> str:
+        """Write Dota's GSI config unless the user skipped setup.
+
+        THIS IS THE HALF THAT NEEDS NO HUMAN. Game data has exactly two
+        requirements: this file in the Dota install, and
+        `-gamestateintegration` in Steam's launch options. The second is
+        the user's and cannot be automated at all -- it lives in Steam's
+        own localconfig.vdf, which Steam rewrites from memory on exit.
+        The first is a mkdir and a write with nothing whatever to decide,
+        and it was a menu item somebody had to find, named by a banner,
+        for no reason anybody could state: "why is it not just auto run
+        at setup with all the other crap like portraits".
+
+        IDEMPOTENT, so it can run at every start: `gsi_install.ensure`
+        reuses the token already on disk, which means an unchanged config
+        renders identical text and nothing is written. Minting a fresh
+        token here would make the app reject the payloads of a Dota that
+        is already running, which looks exactly like no payloads at all.
+
+        Returns a short note for the status line, or "" when there was
+        nothing to do. NEVER RAISES: a Dota install that cannot be found
+        or written to is a thing to say on the banner, not a reason for
+        the app to fail to open.
+        """
+        if self.settings.get("setup_skipped"):
+            return ""
+        from ..gsi import install as gsi_install
+
+        server = getattr(self.provider, "server", None)
+        port = getattr(server, "port", gsi_install.DEFAULT_PORT)
+        try:
+            result = gsi_install.ensure(port=port)
+        except gsi_install.DotaNotFound:
+            return ""
+        except OSError:
+            return ""
+        # THE TOKEN HAS TO REACH THE LISTENER IN THE SAME BREATH. The
+        # server was built with whatever token was on disk at startup,
+        # which on a fresh install was none -- so a config written now
+        # and a listener still expecting nothing would reject every
+        # payload Dota sent, and a rejected payload is indistinguishable
+        # from a silent game.
+        if server is not None:
+            server.token = result.token
+        self._forget_gsi_config()
+        return "Game data config installed" if result.created else ""
+
+    def _launch_option_help(self) -> None:
+        """The one step that is the user's, spelled out and pasteable.
+
+        It is a procedure rather than a sentence at the user's request --
+        "there should be instruction at setup for the user to add the
+        -gamestateintegration in their steam... step by step". The steps
+        themselves live in `gsi_install.LAUNCH_STEPS` so this dialog, the
+        wizard's third card and the manual cannot drift apart.
+        """
+        from ..gsi import install as gsi_install
+
+        steps = "\n".join(
+            f"{n}.  {step}"
+            for n, step in enumerate(gsi_install.LAUNCH_STEPS, 1))
+        # IT REOPENS AFTER A COPY. Every button on a QMessageBox closes
+        # it, so pressing Copy took the seven steps off the screen at the
+        # exact moment somebody was about to follow them -- and this
+        # dialog IS the steps. Showing it again is a flash; losing them
+        # is the whole feature.
+        copied = False
+        while True:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setWindowTitle("One step in Steam")
+            box.setText("Dota needs one launch option before it will send "
+                        "anything.")
+            box.setInformativeText(
+                steps + ("\n\nCopied. Paste it into the Launch Options box."
+                         if copied else ""))
+            copy = box.addButton("Copy the launch option",
+                                 QMessageBox.ButtonRole.ActionRole)
+            box.addButton(QMessageBox.StandardButton.Close)
+            box.exec()
+            if box.clickedButton() is not copy:
+                return
+            QApplication.clipboard().setText(gsi_install.LAUNCH_OPTION)
+            self._say(f"Copied {gsi_install.LAUNCH_OPTION} — paste it into "
+                      "Steam ▸ Dota 2 ▸ Properties ▸ Launch Options.", 8000)
+            copied = True
+
+    def _gsi_config_installed(self) -> bool:
+        """Is Dota's config file there? Cached — see `GSI_CONFIG_TTL`."""
+        now = time.monotonic()
+        if (self._gsi_config_seen is not None
+                and now - self._gsi_config_asked < self.GSI_CONFIG_TTL):
+            return self._gsi_config_seen
+        from ..gsi import install as gsi_install
+        try:
+            path = (gsi_install.config_dir(gsi_install.find_dota_dir())
+                    / gsi_install.CONFIG_NAME)
+            answer = path.exists()
+        except (gsi_install.DotaNotFound, OSError):
+            answer = False
+        self._gsi_config_seen = answer
+        self._gsi_config_asked = now
+        return answer
+
+    def _forget_gsi_config(self) -> None:
+        """Ask again next time. Called by everything that WRITES the
+        config, since a cache that outlives the thing it describes is how
+        a banner goes on reporting a fault that was just fixed."""
+        self._gsi_config_seen = None
+
+    def _install_gsi_from_banner(self) -> None:
+        """The banner's button DOES the install rather than naming a menu.
+
+        Pressing it is the agreement that Skip withheld, so it clears
+        `setup_skipped` as well -- otherwise the config would be written
+        once here and then never kept up to date.
+        """
+        self.settings["setup_skipped"] = False
+        ui_settings.save(self.settings)
+        note = self._ensure_gsi_config()
+        if note:
+            self._say(note + " — now add the launch option in Steam.", 8000)
+            self._launch_option_help()
+        elif self._gsi_config_installed():
+            # Already there, so the missing half is the one in Steam.
+            self._launch_option_help()
+        else:
+            self._install_gsi()          # say WHY it could not be written
+        self._update_first_run_banner()
 
     def offer_setup(self) -> None:
         """Show the wizard on a fresh install, once, after the window is up.
@@ -1603,6 +1756,18 @@ class MainWindow(QMainWindow):
         from .setup_wizard import needed
         if needed():
             self._run_setup()
+            return
+        # AND AN INSTALL THAT IS ALREADY PAST THE WIZARD STILL GETS THE
+        # CONFIG. `needed()` asks about the KEY alone, so every existing
+        # install -- including the one this app was written on -- skips
+        # the wizard entirely and would never have had the file written
+        # for it. This is the line that makes "GSI setup happens at
+        # startup" true for them rather than only for a fresh unzip. It
+        # writes nothing when the config is already right.
+        note = self._ensure_gsi_config()
+        if note:
+            self._say(note, 6000)
+        self._update_first_run_banner()
 
     def _stale_days(self) -> float:
         """How many days past the reminder the statistics are, or 0.
@@ -1643,10 +1808,25 @@ class MainWindow(QMainWindow):
         nobody reads on the night it matters.
         """
         if snap is not None and getattr(snap, "gsi_setup_broken", False):
-            reason = snap.warning.split("—", 1)[-1].strip()
+            # THE BUTTON DOES THE HALF THAT IS OURS, which it used to
+            # describe instead: "check game data should not jsut give an
+            # error and instruct you to download game data... instead it
+            # should just facilitate the installation directly". So the
+            # strip asks which half is missing and offers that -- the
+            # config file, which nobody has anything to decide about, or
+            # the Steam launch option, which is the user's and gets the
+            # procedure rather than its name.
+            if not self._gsi_config_installed():
+                self._show_banner(
+                    "<b>Dota is not sending game data.</b> Its config "
+                    "file has not been written yet.",
+                    "Install it", self._install_gsi_from_banner)
+                return
             self._show_banner(
-                f"<b>Dota is not sending game data.</b> {reason}",
-                "Check game data", self._diagnose_gsi)
+                "<b>Dota is not sending game data.</b> Add "
+                "-gamestateintegration to Dota's launch options in Steam, "
+                "then restart Dota.",
+                "Show me how", self._launch_option_help)
             return
         # THE CROP BOXES, second only to the feed, because between them
         # they are the two ways the app goes blind for a whole draft. This
@@ -1849,17 +2029,10 @@ class MainWindow(QMainWindow):
                 "as administrator, or copy the config in by hand.")
             return
 
-        # WHAT THE SCREEN READER IS DOING. At strategy time the game
-        # fills the slots itself, so a full board said nothing about
-        # whether recognition had run - and the portrait search takes
-        # seconds on a worker with nothing on screen to say so, which is
-        # long enough to close the app in the middle of.
-        note = getattr(snap, "vision_note", "")
-        if note:
-            parts.append(note)
         server = getattr(self.provider, "server", None)
         if server is not None:
             server.token = result.token
+        self._forget_gsi_config()
 
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Information)
@@ -1867,13 +2040,17 @@ class MainWindow(QMainWindow):
         box.setText("Game State Integration is installed."
                     if result.created else
                     "Game State Integration was already installed.")
+        # THE SAME SEVEN STEPS THE WIZARD AND THE BANNER SHOW. This box
+        # used to carry its own three-line abbreviation of them, which is
+        # one more place for the procedure to go stale -- and the shorter
+        # telling was missing the two things people actually get wrong:
+        # that an existing launch option must be kept, and that Steam has
+        # no OK button.
         box.setInformativeText(
-            "One more step, and Dota must be restarted for it to take "
-            "effect:\n\n"
-            "In Steam, right-click Dota 2 → Properties → Launch Options, "
-            f"and add:\n\n    {gsi_install.LAUNCH_OPTION}\n\n"
-            "Then restart Dota. This app will start receiving game data "
-            "automatically.")
+            "One more step, and it is yours -- no program can set it for "
+            "you:\n\n"
+            + "\n".join(f"{n}.  {step}" for n, step
+                        in enumerate(gsi_install.LAUNCH_STEPS, 1)))
         box.setDetailedText(
             f"Config written to:\n{result.config_path}\n\n"
             f"Dota install:\n{result.dota_dir}\n\n"
@@ -4258,6 +4435,14 @@ class MainWindow(QMainWindow):
         parts.append(snap.mode)
         if snap.game_state:
             parts.append(snap.game_state.replace("DOTA_GAMERULES_STATE_", ""))
+        # WHAT THE SCREEN READER IS DOING. At strategy time the game
+        # fills the slots itself, so a full board said nothing about
+        # whether recognition had run - and the portrait search takes
+        # seconds on a worker with nothing on screen to say so, which is
+        # long enough to close the app in the middle of.
+        note = getattr(snap, "vision_note", "")
+        if note:
+            parts.append(note)
         server = getattr(self.provider, "server", None)
         if server is not None and getattr(server, "recording", False):
             parts.append(f"REC {server._archived}")

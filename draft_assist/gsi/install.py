@@ -30,6 +30,26 @@ CONFIG_NAME = "gamestate_integration_draft_assist.cfg"
 LAUNCH_OPTION = "-gamestateintegration"
 DEFAULT_PORT = 53000
 
+# THE ONE STEP THAT CANNOT BE AUTOMATED, written out rather than named.
+# The config file below the app writes for itself; this lives in Steam's
+# own localconfig.vdf, which Steam holds in memory and rewrites on exit,
+# so editing it behind Steam's back is silently discarded. Naming the
+# option and leaving somebody to it is what "Dota is not sending game
+# data" meant for several rounds, so the procedure is spelled out here,
+# ONCE, and read by the wizard, the banner's dialog and the manual --
+# three places that would otherwise be three chances to go stale.
+LAUNCH_STEPS = (
+    "Open Steam and go to your Library.",
+    "Right-click Dota 2, then choose Properties.",
+    "The General page opens. Find the Launch Options box on it.",
+    f"Click that box and paste  {LAUNCH_OPTION}",
+    "If the box already has something in it, keep that and add this "
+    "after a space.",
+    "Close the Properties window. Steam saves as you type; there is no "
+    "OK button.",
+    "Restart Dota 2. It reads this only when it starts.",
+)
+
 
 class DotaNotFound(RuntimeError):
     """Raised with everything that was searched, so the user can point us at
@@ -184,3 +204,25 @@ def read_installed_token(dota_dir: str | Path | None = None) -> str | None:
     match = re.search(r'"token"\s*"([^"]+)"',
                       path.read_text(encoding="utf-8", errors="replace"))
     return match.group(1) if match else None
+
+
+def ensure(port: int = DEFAULT_PORT,
+           dota_dir: str | Path | None = None) -> InstallResult:
+    """Install the config if it is missing or wrong, and NOT otherwise.
+
+    The whole difference from `install` is the TOKEN, and it is what
+    makes this safe to run at every start. `install` mints a fresh token
+    whenever it is not handed one, so its rendered text never matches
+    what is on disk and it rewrites on every call. That is right for a
+    button somebody pressed and wrong for something automatic: a Dota
+    that is already running holds the token it was given at launch, so
+    minting a new one would make this app reject that whole session's
+    payloads -- silently, because a rejected payload looks exactly like
+    no payload at all.
+
+    Reusing the installed token makes the call idempotent. Same port and
+    same token render identical text, so `created` comes back False and
+    nothing is written.
+    """
+    return install(port=port, token=read_installed_token(dota_dir),
+                   dota_dir=dota_dir)

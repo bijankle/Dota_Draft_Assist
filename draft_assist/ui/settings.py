@@ -44,6 +44,12 @@ DEFAULTS = {
     # app wants both. Turning one off is a debugging step, never a mode.
     "use_gsi": True,
     "use_vision": True,
+    # Did the user press Skip on the first-run wizard? It decides one
+    # thing only: whether the GSI config is written for them silently at
+    # every start, or offered on the banner instead. Somebody who skipped
+    # the wizard has not agreed to anything yet, and writing a file into
+    # their Dota install on that footing is not ours to do unasked.
+    "setup_skipped": False,
     # How see-through the window is. It HAS to be listed here: `save`
     # writes only the keys DEFAULTS names, so a preference the app set
     # but this dict did not know about was written by the slider, kept in
