@@ -82,7 +82,7 @@ from . import portraits
 from .framebox import FrameView
 from .item_row import ItemRow
 from .flowlayout import fits_in_one_row
-from .suggest_row import SuggestRow
+from .suggest_row import STRIP_GAP, SuggestRow
 from .manual import ManualDraft
 from .tables import MatrixTable, minimum_grid_width
 from .task_dialog import TaskDialog
@@ -207,6 +207,25 @@ def _scrolling(page: QWidget) -> QScrollArea:
 # eye should not have to re-scale between three rows of them. One number,
 # so going back to a smaller strip is one number.
 STRIP_OF_PICK = 1.0
+
+# HOW MANY SUGGESTIONS FIT ACROSS ONE ROW, at the user's request: "as
+# there is space here it would be ideal to allow more portraits - 11 per
+# row, and scale it down so they fit snug (aligned edge with dire right
+# portrait".
+#
+# THIS IS THE ONE PLACE `STRIP_OF_PICK` GIVES WAY, and it is a deliberate
+# exception rather than a reversal. Every other portrait in the app is
+# the pick tile's box — that is what stops the same hero being three
+# sizes down one screen — but the suggestion strip is the only row whose
+# job is to hold as MANY as will fit rather than a fixed five a side, and
+# at a pick's size eleven of them overflow a card that had visible slack
+# on the right. So the strip derives its own width from the card: eleven
+# tiles and ten gaps, exactly filling it, which is what "snug" and
+# "aligned edge with dire right portrait" both mean — the last tile ends
+# where the board above it ends.
+# The HEIGHT still follows the width at 16:9, so a suggestion is a
+# smaller pick rather than a differently-shaped one.
+SUGGESTIONS_PER_ROW = 11
 
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
@@ -862,30 +881,28 @@ class MainWindow(QMainWindow):
         # the draft or the tabs, and it is now beside the other things
         # that are about the window itself.
         #
-        # ONE implementation of the detail: the callout holds the same
-        # `AccountRow` the Draft tab used to, so "who is this and when
-        # was it measured" is spelled once. The button carries the name
-        # alone, because that is what fits between the menus and the pin.
-        self.account_row = accountrow.AccountRow()
-        self.account_row.clicked.connect(self._show_history_tab)
+        # WHAT DROPS OUT OF IT IS `ProfileCard`, not the History tab's
+        # row. They answer different questions — that row says when an
+        # account was last measured, this card says how it is GOING and
+        # offers to re-measure it over a different window — and the card
+        # is the shape the user asked for: "when you click you see
+        # profiele pic  Bijson and below that you see a 6 motnhs box ...
+        # and an apply button next to that".
+        self.account_card = accountrow.ProfileCard()
+        self.account_card.applied.connect(self._apply_history_window)
         self.profile_button = accountrow.ProfileButton()
         self.profile_button.clicked.connect(self._show_profile)
         self.title_bar.add_widget(self.profile_button)
         self._build_profile_menu()
 
-        # BACK ON THE TAB ROW, at the user's request one message after
-        # they left it: "on second thought it makes more senxse to have
-        # the clear / detect / demo o nthe same row as the draft /
-        # history now that i have moved profiel to the top bar next to
-        # the pin". Moving the profile into the title bar is what freed
-        # this end of the row, and these three are the controls pressed
-        # mid-draft, so the row that is always on screen is where they
-        # belong. They keep the OUTLINED red from their trip to the
-        # board bar — "make the button red so they look like buttons".
-        for button in (self.clear_all_button, self.detect_all_button,
-                       self.demo_button):
-            tabs.add_rule()
-            tabs.add_tools(button)
+        # THE TAB ROW HOLDS THE TABS AND NOTHING ELSE AGAIN. Clear all,
+        # Detect all and Demo sat here and have gone back to the board
+        # bar, at the user's request: "move these 3 buttons clear /
+        # detect / demon into the middle in line with Radiant and dire".
+        # What makes that work this time is the other half of the same
+        # message — the two headings came OUT of their cards, so there is
+        # a row above the board for the three of them to sit in the
+        # middle of. See `_build_board_head`.
 
         shell_lay.addWidget(tabs.strip)
         shell_lay.addWidget(tabs, 1)
@@ -1006,6 +1023,7 @@ class MainWindow(QMainWindow):
             slay.addWidget(self.role_bar.bars[side])
             self.side_cards[side] = side_card
             teams_row.addWidget(side_card, 1)
+        outer.addWidget(self._build_board_head())
         outer.addLayout(teams_row)
         # VIEW HIDES THE TWO BARS THEMSELVES now that there is no block
         # of their own to hide. `_apply_sections` takes a sequence for
@@ -1054,11 +1072,22 @@ class MainWindow(QMainWindow):
         # rather than by a measurement somebody has to keep right.
         self.suggested_box = self._count_box("suggested_picks")
         picks_card, playy = card()
-        playy.addWidget(self._picks_controls())
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
             self._on_suggestion_clicked)
+        # THE PORTRAITS FIRST AND THE CONTROLS UNDER THEM, at the user's
+        # request: "can you switch the position of the suggested heroes
+        # and the filters? filters belwo the hero portraits... so that
+        # the sequence is portrait, boxes, protrait, boxes".
+        # That is the tab reading as one alternating rhythm — the ten
+        # picks, their role pills, the suggestions, the filters that cut
+        # them — rather than as a card of controls standing between the
+        # board and the advice it produces. It also puts each set of
+        # boxes directly under the thing it is about, which is the
+        # argument the count boxes were moved out of Settings on.
+        playy.addWidget(self._picks_controls())
         playy.addWidget(self.suggest_row)
+        playy.addWidget(self._picks_filter(picks_card))
         self.picks_card = picks_card
         outer.addWidget(picks_card)
 
@@ -2493,8 +2522,8 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
         action = QWidgetAction(menu)
-        self.account_row.setParent(menu)
-        action.setDefaultWidget(self.account_row)
+        self.account_card.setParent(menu)
+        action.setDefaultWidget(self.account_card)
         menu.addAction(action)
         menu.addSeparator()
         menu.addAction("Open the History tab").triggered.connect(
@@ -3758,6 +3787,74 @@ class MainWindow(QMainWindow):
         # read beside.
         self._order_panels("enemy" if mine == "Dire" else "ally")
 
+    def _build_board_head(self) -> QWidget:
+        """The row above the two cards: Radiant, the board actions, Dire.
+
+        TWO REQUESTS, ONE ROW. "change the paddign so that dire and
+        radiant are above it, not in it" took the two headings out of the
+        cards, and "move these 3 buttons clear / detect / demon into the
+        middle in line with Radiant and dire" put the three controls in
+        the space that left. Neither works without the other: the buttons
+        had nowhere to be in line WITH while the names were inside the
+        padding, and the names had nothing beside them once they came
+        out.
+
+        **THE TWO HEADINGS STRETCH AND THE BUTTONS DO NOT**, which is
+        what makes each name line up with its own card. The cards split
+        the width in half; here the buttons take what they need out of
+        the middle and the two headings share the rest — so the left one
+        still STARTS at the left card's edge and the right one still
+        FINISHES at the right card's, whatever the window is doing.
+        Anything else and the names drift towards the middle with the
+        buttons.
+        """
+        self.board_actions = QWidget()
+        self.board_actions.setProperty("bare", True)
+        acts = QHBoxLayout(self.board_actions)
+        acts.setContentsMargins(0, 0, 0, 0)
+        acts.setSpacing(8)
+        for button in (self.clear_all_button, self.detect_all_button,
+                       self.demo_button):
+            # OUTLINE ONLY: the gold border, the app's own bold, and the
+            # surface behind showing through. See the `plain` rule in
+            # `theme` — "there is a bit of a grey color added to the
+            # cclear / detect / etc button backgfground".
+            button.setProperty("plain", True)
+            acts.addWidget(button)
+
+        self.board_head = QWidget()
+        self.board_head.setProperty("bare", True)
+        self.head_row = QHBoxLayout(self.board_head)
+        self.head_row.setContentsMargins(0, 0, 0, 0)
+        self.head_row.setSpacing(10)
+        self._seat_headings()
+        return self.board_head
+
+    def _seat_headings(self) -> None:
+        """Put the two headings either side of the board actions.
+
+        Called again from `_order_panels`, because on Dire the whole
+        board swaps and a heading that stayed put would be sitting over
+        the other team's five.
+
+        `takeAt` leaves each header widget PARENTED to the row it was in
+        — it unmanages rather than orphans — which is the one thing this
+        must not get wrong: a parentless QWidget is a window the moment
+        anything shows it, and this app has opened a stray second
+        "Dota Draft Assist" that way three times.
+        """
+        left, right = self._panel_order
+        while self.head_row.count():
+            self.head_row.takeAt(0)
+        self.team_panels[left].align_heading(False)
+        self.team_panels[right].align_heading(True)
+        self.head_row.addWidget(self.team_panels[left].header, 1)
+        self.head_row.addWidget(self.board_actions, 0)
+        self.head_row.addWidget(self.team_panels[right].header, 1)
+        for widget in (self.team_panels[left].header, self.board_actions,
+                       self.team_panels[right].header):
+            widget.show()
+
     def _order_panels(self, radiant: str) -> None:
         """Seat the Radiant panel on the left. THE GRIDS DO NOT MOVE.
 
@@ -3795,6 +3892,10 @@ class MainWindow(QMainWindow):
         for side in want:
             self.teams_row.addWidget(self.side_cards[side], 1)
             self.side_cards[side].show()
+        # The headings are ABOVE the cards now, in a row of their own, so
+        # they have to swap with them: a name seated over the other
+        # team's five is worse than no name at all.
+        self._seat_headings()
 
     def _update_manual_hint(self, snap) -> None:
         """Say plainly which picks the game reported and which need typing —
@@ -4325,8 +4426,9 @@ class MainWindow(QMainWindow):
         # line under one.
         title = QLabel("Top picks", counts)
         title.setProperty("heading", True)
-        stack.addWidget(title, 0, 0, 1, 3)
-        stack.addWidget(self.suggested_box, 0, 3)
+        stack.addWidget(title, 0, 0)
+        stack.addWidget(self.suggested_box, 0, 1)
+        stack.setColumnStretch(2, 1)
 
         # TWO COUNTS AGAIN, WHICH REVERSES THE ONE THAT REPLACED THEM.
         # They were merged on the argument that the marks answer the
@@ -4335,25 +4437,96 @@ class MainWindow(QMainWindow):
         # which is what a legend is. One value behind two lines each
         # showing a number is the fault this app has a rule about: two
         # places to read one setting is two places for it to go stale.
-        for line_no, (shield, word, key) in enumerate(
-                ((False, "comfort", "heart_count"),
-                 (True, "counter", "shield_count")), start=1):
-            stack.addWidget(MarkLabel(shield, counts), line_no, 0)
-            stack.addWidget(QLabel("=", counts), line_no, 1)
-            stack.addWidget(QLabel(word, counts), line_no, 2)
-            box = self._badge_box(key)
-            stack.addWidget(box, line_no, 3)
-            setattr(self, f"{'shield' if shield else 'heart'}_box", box)
         line.addWidget(counts)
-        # THE FILTER TAKES THE SPARE WIDTH rather than a trailing
-        # stretch taking it. It reflows from the width it is GIVEN, so a
-        # layout that hands it only what it asks for is a chicken and an
-        # egg: it laid out one column deep, which made it narrow, which
-        # kept it one column deep — eight rows tall, for ever. The stretch
-        # factor is what lets it see the room it has to fill.
+        # THE ROLE FILTER IS NO LONGER ON THIS ROW. It shared it, taking
+        # the spare width to the right of the legend, and has gone BELOW
+        # the suggestion strip at the user's request: "top picks will be
+        # at the top above the sugegsted hero portraits still, but the
+        # filters for carry , supprot etc, will be below the portraits".
+        # So the card reads heading, then the answer, then the controls
+        # that narrow it — which is the same alternating rhythm the board
+        # above it has (portraits, then the pills that describe them).
+        # What it USED to need from this row it now gets for free: the
+        # filter reflows from the width it is GIVEN, and on a row of its
+        # own that is the whole card rather than whatever the legend left.
+        # The chicken-and-egg that made it eight rows tall for ever —
+        # narrow because one column deep, one column deep because narrow
+        # — cannot happen at full width.
+        line.addStretch(1)
+        self._picks_head = row
+        return row
+
+    def _picks_filter(self, parent) -> QWidget:
+        """Everything that CUTS the strip, on one row beneath it.
+
+        Two rows of controls side by side, at the user's request: "you
+        sohuld be able to have comfort be in line (row-wwise) with carry
+        / nuker / etc and counter in line with support / disabler / etc...
+        as they are no longer with the header".
+
+            <heart>  = comfort [N]    Carry   [0]  Nuker    [0]  ...
+            <shield> = counter [N]    Support [0]  Disabler [0]  ...
+
+        The two marks used to be rows 1 and 2 of the HEADING's grid,
+        under "Top picks" — which is where they belonged while the
+        heading was the only thing on the card above the strip. With the
+        heading left up there alone and these moved down, the legend's
+        two rows and the filter's two rows are the same two rows, and
+        putting them level costs nothing because both grids already use
+        the same vertical spacing.
+
+        ALIGNED TO THE TOP, and the filter takes the spare width: it
+        REFLOWS from the width it is given, so a layout that hands it
+        only what it asks for lays it out one column deep, which makes it
+        narrow, which keeps it one column deep — the eight-rows-tall trap
+        this widget carries its own note about.
+        """
+        row = QWidget(parent)
+        row.setProperty("bare", True)       # see `_picks_controls`
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(10)
+        line.addWidget(self._picks_legend(row), 0,
+                       Qt.AlignmentFlag.AlignTop)
         line.addWidget(self._role_filter(row), 1)
         self._picks_row = row
         return row
+
+    def _picks_legend(self, parent) -> QWidget:
+        """Which mark means what, and how many suggestions get it.
+
+        THE COUNTS ARE HERE rather than in Settings for the reason every
+        count box in this app moved out of it: a number you tune by
+        looking at the result belongs beside the result.
+
+        AND THEY ARE TWO SETTINGS, not one, which reverses the single
+        `mark_count` that briefly replaced them. The marks were merged on
+        the argument that they answer the same question — how far down
+        the strip is worth marking — and that held right up until the
+        rows were LABELLED separately, which is what a legend is. One
+        value behind two lines each printing a number is two controls for
+        one setting.
+        """
+        legend = QWidget(parent)
+        legend.setProperty("bare", True)
+        grid = QGridLayout(legend)
+        grid.setContentsMargins(0, 0, 0, 0)
+        # The same two numbers `rolebar.RoleFilter` uses, so the rows of
+        # the two grids sit at the same heights without either being
+        # measured against the other.
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(2)
+        for line_no, (shield, word, key) in enumerate(
+                ((False, "comfort", "heart_count"),
+                 (True, "counter", "shield_count"))):
+            grid.addWidget(MarkLabel(shield, legend), line_no, 0)
+            grid.addWidget(QLabel("=", legend), line_no, 1)
+            grid.addWidget(QLabel(word, legend), line_no, 2)
+            box = self._badge_box(key)
+            box.setParent(legend)
+            grid.addWidget(box, line_no, 3)
+            setattr(self, f"{'shield' if shield else 'heart'}_box", box)
+        return legend
 
     def _role_filter(self, parent) -> QWidget:
         """The eight role floors, beside the strip they cut.
@@ -4509,7 +4682,10 @@ class MainWindow(QMainWindow):
             return
         width = max(1, round(width * STRIP_OF_PICK))
         height = max(1, round(height * STRIP_OF_PICK))
-        picks.set_tile_size(width, height)
+        # THE SUGGESTIONS GET THEIR OWN, NARROWER BOX. See
+        # `SUGGESTIONS_PER_ROW`: eleven across the card it is in, rather
+        # than a pick's width with the remainder left over on the right.
+        picks.set_tile_size(*self._suggestion_box(picks, width, height))
         items.set_tile_size(width, height)
         # And the grids' portraits follow the same box. They had a size of
         # their own (`HEADER_ICON_MAX`), so the same hero was one size at
@@ -4522,6 +4698,37 @@ class MainWindow(QMainWindow):
         if (not self.settings.get("suggested_picks")
                 or not self.settings.get("suggested_items")):
             self._refresh_views()
+
+    def _suggestion_box(self, strip, width: int,
+                        height: int) -> tuple[int, int]:
+        """Eleven across the strip's own width, or the pick's box.
+
+        The pick's box is the FALLBACK, not a floor: before the card has
+        been laid out the strip has no width to divide, and a size
+        derived from nought would put every suggestion at one pixel.
+
+        **NEVER BIGGER THAN A PICK.** Eleven across a very wide window
+        would work out larger than the five picks above, which is the one
+        thing the "every portrait is the pick tile's box" rule exists to
+        prevent — advice drawn larger than the board it is about.
+
+        **AND IT IS DAMPED.** A strip one row taller can raise the page's
+        vertical scrollbar, which takes ~10px of width, which is ~1px per
+        tile, which can shorten the strip again — the same loop
+        `TeamPanel.STEADY` damps one card up. A pixel either way is
+        invisible; an oscillation is not.
+        """
+        room = strip.width()
+        if room <= 0:
+            return width, height
+        gaps = SUGGESTIONS_PER_ROW - 1
+        each = (room - gaps * STRIP_GAP) // SUGGESTIONS_PER_ROW
+        each = max(teams.TILE_MIN, min(width, each))
+        told = getattr(self, "_told_suggestion_w", None)
+        if told is not None and abs(told - each) < 2:
+            each = told
+        self._told_suggestion_w = each
+        return each, max(1, round(each * height / max(1, width)))
 
     def _row_capacity(self, key: str) -> int:
         """How many tiles fit across the strip as it is RIGHT NOW."""
@@ -4700,14 +4907,43 @@ class MainWindow(QMainWindow):
         # And the row at the top says whose run it is. Same signal, same
         # moment: the star bars and the face must never describe two
         # different accounts.
-        self.account_row.show_report(report)
-        # THE NAME, not the row's display text. With nothing measured the
-        # row says "No account measured yet" — a sentence, right for a
-        # callout and four times too long for a title bar, where the
-        # button says "No account" instead. Passing "" is how the button
-        # is told there is no name, and it chooses its own short form.
-        self.profile_button.show_name(
-            self.account_row.who.text() if matches else "")
+        self.account_card.show_report(report)
+        # THE NAME AND THE WINDOW, which is what the button reads:
+        # "Bijson (6 months)", at the user's request — "Instead of
+        # showign the date where it is atm next to bijson, i want it to
+        # be in brackets after bijson". With nothing measured there is
+        # neither, and the button falls back to its own short form: the
+        # card says "No account measured yet", which is a sentence, right
+        # for a callout and four times too long for a title bar.
+        options = getattr(report, "options", None)
+        self.profile_button.show_run(
+            self.account_card.who.text() if matches else "",
+            getattr(options, "account_id", 0) if matches else 0,
+            getattr(options, "window_short", "") if matches else "")
+
+    def _apply_history_window(self, key: str) -> None:
+        """Re-measure this account over a different stretch, from today.
+
+        At the user's request, from the profile callout: "a 6 motnhs box
+        that you can click to see a dropdown and select different
+        durations and an apply button next to that to change the history
+        look back range... updates from today backlwards".
+
+        IT DRIVES THE HISTORY TAB rather than running anything itself.
+        That tab owns the account, the cap, the filters, the thread and
+        the cache; a second path to a run would be a second set of
+        answers to all of those, and the first time they disagreed the
+        callout would be describing a report nobody else had.
+        """
+        tab = getattr(self, "history_tab", None)
+        if tab is None:
+            return
+        index = tab.window_box.findData(key)
+        if index < 0:
+            return
+        tab.window_box.setCurrentIndex(index)
+        self._show_history_tab()
+        tab.start()
 
     def _show_history_tab(self) -> None:
         """Clicking the account row opens the tab that fills it.

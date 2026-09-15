@@ -81,7 +81,10 @@ def test_the_number_line_is_reserved_whether_or_not_it_holds_a_number(qapp):
     tall = tile.sizeHint().height()
     tile.show_delta(-0.03, "vs")
     assert tile.sizeHint().height() == tall
-    assert tile.delta_text() == "vs -3.0"
+    # The figure alone: the words "with" and "vs" are a gold box round it
+    # now, and `relation_kind` is where the kind is asked for.
+    assert tile.delta_text() == "-3.0"
+    assert tile.relation_kind() == "vs" and tile._boxed
     tile.clear_delta()
     assert tile.sizeHint().height() == tall
     assert tile.delta_text() == ""
@@ -235,7 +238,7 @@ def test_a_drop_from_something_else_is_ignored(qapp):
 def ring_pixels(widget) -> int:
     """How many pixels of the window's own gold the widget painted."""
     from draft_assist.ui import tilekit
-    want = QColor(tilekit.FOCUS_COLOUR)
+    want = QColor(tilekit.focus_colour())
     image = widget.grab().toImage()
     seen = 0
     for y in range(image.height()):
@@ -252,7 +255,7 @@ def test_the_focused_pick_wears_the_windows_own_frame(qapp):
     At the user's request it is the gold and the weight of the frame
     painted round the whole window."""
     from draft_assist.ui import ornate, theme, tilekit
-    assert tilekit.FOCUS_COLOUR == theme.FRAME_GOLD
+    assert tilekit.focus_colour() == theme.FRAME_GOLD
     assert tilekit.FOCUS_WIDTH == ornate.WIDTH
 
     panel = teams.TeamPanel("ally", "Radiant")
@@ -276,7 +279,7 @@ def test_the_ring_is_inside_the_tile(qapp):
     tile.resize(120, 68)
     tile.set_focused(True)
     image = tile.grab().toImage()
-    want = QColor(tilekit.FOCUS_COLOUR)
+    want = QColor(tilekit.focus_colour())
     # Down the middle of the left edge, where no rounded corner reaches.
     middle = image.height() // 2
     run = [x for x in range(10)

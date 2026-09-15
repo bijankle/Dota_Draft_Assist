@@ -26,7 +26,8 @@ from datetime import timedelta
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QPushButton,
+                             QVBoxLayout, QWidget)
 
 from . import chrome, theme
 
@@ -44,6 +45,23 @@ NOTHING_YET = "No account measured yet"
 # sentence in a callout; this sits between the menus and the pin.
 NO_PROFILE = "No account"
 PROMPT = "Open the History tab to analyse one"
+# WHAT AN EMPTY FIGURE PRINTS. An em dash rather than "0%" or "0": those
+# are measurements, and nothing has been measured yet.
+NOTHING = "\u2014"
+
+
+def avatar_path(account_id: int):
+    """The picture on disk for this account, or None.
+
+    Here rather than imported at the top of the module: `history.avatars`
+    reaches `history.cache`, and this module is imported while the window
+    is being built. A file check, no network, safe in the live loop —
+    which is the whole reason the avatar is fetched during a RUN.
+    """
+    if not account_id:
+        return None
+    from ..history import avatars
+    return avatars.stored(int(account_id))
 
 
 class Face(QWidget):
@@ -195,10 +213,7 @@ class AccountRow(QWidget):
         self.who.setText(name or (str(account) if account else NOTHING_YET))
         self.when.setText(self.span(report))
 
-        shown = False
-        if account:
-            from ..history import avatars
-            shown = self.face.show_file(avatars.stored(account))
+        shown = bool(account) and self.face.show_file(avatar_path(account))
         if not shown:
             self.face.show_initial(name or str(account))
         # "Click to open the History tab" is only true on the DRAFT tab.
@@ -222,7 +237,7 @@ class AccountRow(QWidget):
         if not isinstance(row, dict) or not row.get("account_id"):
             self.show_report(None)
             return
-        from ..history import avatars, store
+        from ..history import store
 
         account = int(row["account_id"])
         name = (row.get("name") or "").strip()
@@ -230,7 +245,7 @@ class AccountRow(QWidget):
         when = (row.get("last_run") or "").strip()
         self.when.setText(f"Last run {when}" if when
                           else "Not run on this machine yet")
-        if not self.face.show_file(avatars.stored(account)):
+        if not self.face.show_file(avatar_path(account)):
             self.face.show_initial(name or str(account))
         matches, wins = row.get("matches", 0), row.get("wins", 0)
         rate = f", {wins / matches * 100:.1f}% win rate" if matches else ""
@@ -322,12 +337,206 @@ class ProfileButton(QWidget):
         self.face.show_initial("")
         self.setToolTip("Your account — click for the details")
 
-    def show_name(self, name: str) -> None:
-        """Just the name. Everything else is in the callout."""
-        self.who.setText(name or NO_PROFILE)
+    def show_run(self, name: str, account: int = 0,
+                 window: str = "") -> None:
+        """The name, the window in brackets, and the account's picture.
+
+        **THE PICTURE WAS NEVER DRAWN, and that was a whole missing
+        call** — "why is the thumbnail not working??". This method was
+        `show_name` and set the LABEL and nothing else, so `self.face`
+        kept the "?" it was given in `__init__` for the life of the app,
+        on every account, however many runs had been measured. The
+        picture was on disk the whole time: `AccountRow` two classes up
+        has always drawn it from the same file. One widget asked and the
+        other did not.
+
+        THE WINDOW GOES IN BRACKETS AFTER THE NAME, at the user's
+        request: "Instead of showign the date where it is atm next to
+        bijson, i want it to be in brackets after bijson in the main menu
+        look, so Bijson (6 months)". The dates it replaces — "Mar → Sep
+        2026" — are two figures a reader has to subtract to get the one
+        thing that line was for, which is how far back the numbers reach.
+        """
+        self.who.setText(
+            f"{name} ({window})" if name and window else (name or NO_PROFILE))
+        if not (name and self.face.show_file(avatar_path(account))):
+            self.face.show_initial(name)
 
     def mouseReleaseEvent(self, event):          # noqa: N802 - Qt naming
         if (event.button() == Qt.MouseButton.LeftButton
                 and self.rect().contains(event.position().toPoint())):
             self.clicked.emit()
         super().mouseReleaseEvent(event)
+
+
+class ProfileCard(QWidget):
+    """What drops out of the profile button in the title bar.
+
+    THE SHAPE IS THE USER'S, stated twice and drawn once: "when you click
+    you see profiele pic  Bijson and below that you see a 6 motnhs box
+    that you can click to see a dropdown and select different durations
+    and an apply button next to that to change the history look back
+    range", then "when the user clicks the down arrow on the profile i
+    want to see win rate %, in brackets after that i want the delta from
+    the previous XXX duration... and below those two i want games played
+    (with a delta also, qty)". So:
+
+        [face]  Bijson
+                Win rate   53% (+2.1%)
+                Games      412 (+37)
+                [ Last 6 months v ] [ Apply ]
+
+    IT REPLACES `AccountRow` HERE and does not replace it everywhere:
+    the History tab still uses that row, where the question is "when was
+    this account last measured" rather than "how is it going". The two
+    read the same report and neither computes anything of its own.
+
+    NOTHING ON IT MAKES A REQUEST. The face is read off disk, the figures
+    are on the report, and Apply hands a window key back to the window to
+    run — which is the one path in this app allowed on the network.
+    """
+
+    applied = pyqtSignal(str)          # a key from `report.WINDOWS`
+
+    def __init__(self, parent=None):
+        from ..history.report import WINDOWS
+        # THE ONE HALO IN THE APP, borrowed rather than re-implemented.
+        # Every signed number here is stroked — the badge on a pick, the
+        # figure in a grid cell, the total beside a team's name — and a
+        # second implementation is how two of them come to disagree.
+        from .teams import HaloLabel
+
+        super().__init__(parent)
+        self.setObjectName("profileCard")
+        self.setProperty("bare", True)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(10)
+
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        self.face = Face(self)
+        top.addWidget(self.face, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.who = QLabel(NOTHING_YET, self)
+        self.who.setProperty("heading", True)
+        top.addWidget(self.who, 0, Qt.AlignmentFlag.AlignVCenter)
+        top.addStretch(1)
+        lay.addLayout(top)
+
+        # A GRID, so the two figures and the two deltas each line up in
+        # their own column — three labels per row laid out by hand would
+        # put the delta wherever the figure before it happened to end.
+        figures = QGridLayout()
+        figures.setContentsMargins(0, 0, 0, 0)
+        figures.setHorizontalSpacing(10)
+        figures.setVerticalSpacing(4)
+        self.values: dict[str, QLabel] = {}
+        self.deltas: dict[str, HaloLabel] = {}
+        for row, (key, label) in enumerate((("rate", "Win rate"),
+                                            ("games", "Games"))):
+            name = QLabel(label, self)
+            name.setProperty("dim", True)
+            figures.addWidget(name, row, 0)
+            value = QLabel(NOTHING, self)
+            value.setProperty("strong", True)
+            figures.addWidget(value, row, 1)
+            delta = HaloLabel(self)
+            figures.addWidget(delta, row, 2)
+            self.values[key] = value
+            self.deltas[key] = delta
+        figures.setColumnStretch(3, 1)
+        lay.addLayout(figures)
+
+        pick = QHBoxLayout()
+        pick.setSpacing(8)
+        self.window_box = chrome.Dropdown(self)
+        self.window_box.setToolTip(
+            "How far back to measure. Apply re-runs the analysis from "
+            "today backwards.")
+        for key, label, _days in WINDOWS:
+            self.window_box.addItem(label, key)
+        pick.addWidget(self.window_box)
+        self.apply_button = QPushButton("Apply", self)
+        self.apply_button.setProperty("accent", True)
+        self.apply_button.clicked.connect(self._apply)
+        pick.addWidget(self.apply_button)
+        pick.addStretch(1)
+        lay.addLayout(pick)
+
+        self.face.show_initial("")
+
+    def _apply(self) -> None:
+        key = self.window_box.currentData()
+        if key:
+            self.applied.emit(str(key))
+
+    def window_key(self) -> str:
+        return str(self.window_box.currentData() or "")
+
+    def set_window(self, key: str) -> None:
+        """Follow the run on screen, without announcing it as a choice.
+
+        Nothing is connected to the box's own signal — Apply is the only
+        way out of this card — so there is no signal to block here. It is
+        worth saying: the moment anything IS connected, this becomes the
+        `_apply_options` trap, where restoring a control to what was
+        already saved rewrites the file on every start.
+        """
+        index = self.window_box.findData(key)
+        if index >= 0:
+            self.window_box.setCurrentIndex(index)
+
+    def show_report(self, report) -> None:
+        """Draw whichever run the History tab is showing, or the prompt."""
+        if report is None:
+            self.who.setText(NOTHING_YET)
+            self.face.show_initial("")
+            for key in self.values:
+                self.values[key].setText(NOTHING)
+                self.deltas[key].set_value("", theme.TEXT_DIM)
+            return
+
+        account = getattr(getattr(report, "options", None), "account_id", 0)
+        name = (getattr(report, "name", "") or "").strip()
+        self.who.setText(name or (str(account) if account else NOTHING_YET))
+        if not (account and self.face.show_file(avatar_path(account))):
+            self.face.show_initial(name or str(account))
+        self.set_window(getattr(getattr(report, "options", None),
+                                "window", "") or "")
+
+        rate = getattr(report, "win_rate", None)
+        self.values["rate"].setText(
+            NOTHING if rate is None else f"{rate * 100:.0f}%")
+        self.values["games"].setText(f"{getattr(report, 'n', 0)}")
+        self._delta("rate", getattr(report, "win_rate_delta", None),
+                    lambda value: f"{value:+.1f}%")
+        self._delta("games", getattr(report, "games_delta", None),
+                    lambda value: f"{value:+d}")
+        before = getattr(report, "before", None)
+        self.setToolTip(
+            "Against the same length of time before it: "
+            f"{before.matches} matches, {before.wins} won."
+            if before is not None else
+            "No stretch before this one was measured, so there is nothing "
+            "to compare it against.")
+
+    def _delta(self, key, value, spell) -> None:
+        """Green up, red down, black halo round both.
+
+        At the user's request: "for these deltas i want them to show
+        green if positive and red if negative... ensure bvlack halo
+        effect is on green / red text so it is readable". The halo is
+        this app's rule for every signed number anyway, and it is doing
+        real work here — the callout is a menu over a running game.
+
+        NO BRACKETS AROUND NOTHING. With no stretch before this one the
+        label is EMPTY rather than "(+0.0%)", which would be a
+        measurement nobody made.
+        """
+        label = self.deltas[key]
+        if value is None:
+            label.set_value("", theme.TEXT_DIM)
+            return
+        colour = (theme.GOOD if value > 0 else
+                  theme.BAD if value < 0 else theme.TEXT_DIM)
+        label.set_value(f"({spell(value)})", colour)

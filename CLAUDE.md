@@ -339,6 +339,31 @@ credentials, and put the account at risk. Do not go there.
 
 ## Other standing decisions
 
+- **THE RANK PICKERS OFFER PAIRS ONLY WHEN STRATZ CAN ONLY DO PAIRS**
+  (`data.store.pair_only_brackets` / `bracket_coverage`,
+  `setup_wizard._fill_ranks`, `ui/bracket_dialog.py`), at the user's
+  request: "One thing is to me it seems that the rank preference only
+  works in pairs... If this is true, then don't give the option of
+  individual ranks", then "if stratz is pari only, then i want pair only
+  options".
+  **READ FROM WHAT THE LAST BUILD ACTUALLY DID, never assumed.**
+  `data/build.py` has recorded `stratz_bracket_filter["exact"]` in the
+  dataset meta all along and nothing looked at it; both pickers read it
+  now, so an offer Stratz cannot honour is never made and the answer
+  updates itself on the next pull without anybody editing a constant.
+  **THREE-VALUED, and the third value is why this is not a constant.**
+  Paired hides the eight individual ranks and says WHY ("Stratz can only
+  filter its pairwise data in pairs, so it spans Legend + Ancient");
+  exact keeps them; and NEVER MEASURED keeps them too, because the
+  individual ranks control the OpenDota BASELINES exactly whatever Stratz
+  can do with the pairwise half — hiding them on an unmeasured guess
+  would remove real control to prevent a problem nobody has seen.
+  **AND `meta["pair_brackets"]` WAS LYING.** It recorded "as target" for
+  EVERY Stratz build, which is only true when the filter came out exact;
+  when it widened, the metadata actively claimed otherwise with
+  `stratz_bracket_filter` sitting beside it holding the truth. It records
+  the span actually pulled now.
+
 - **Bracket is a user setting, not a constant.** The user plays Legend and is
   climbing to Ancient, so the DEFAULT is one bracket above — Ancient and
   Divine **combined** (summed wins / summed picks), two adjacent brackets
@@ -3180,6 +3205,216 @@ credentials, and put the account at risk. Do not go there.
   two picks nobody has made. **The strip never re-orders either**, also
   asked for: only the numbers on the tiles change, so a hero stays where
   it was last seen instead of the whole strip reshuffling on every click.
+- **THE HEADINGS ARE ABOVE THE CARDS AND THE BOARD ACTIONS ARE BETWEEN
+  THEM** (`TeamPanel.align_heading`, `MainWindow._build_board_head` /
+  `_seat_headings`, `theme` `QPushButton[plain="true"]`). Two requests
+  that only work together: "change the paddign so that dire and radiant
+  are above it, not in it" took the two names out of the padding that
+  says which five are whose, and "move these 3 buttons clear / detect /
+  demon into the middle in line with Radiant and dire" put the three
+  controls in the gap that left. Neither half stands alone — the buttons
+  had nothing to be in line WITH while the names were inside the cards,
+  and the names had nothing beside them once they came out. This is the
+  FOURTH seating for both (the tab row, a board bar, the tab row again,
+  and now this), and each move has cost one line because the heading is
+  a WIDGET rather than a layout: a layout cannot be re-parented.
+  **THE TWO HEADINGS STRETCH AND THE BUTTONS DO NOT**, which is what
+  keeps each name over its own card: the cards split the width in half,
+  so the buttons take what they need out of the middle and the two
+  headings share the rest — the left one still STARTS at the left card's
+  edge and the right one still FINISHES at the right card's. Anything
+  else and both names drift towards the middle with the buttons.
+  **DIRE IS ANCHORED RIGHT AND NOT MIRRORED**, also at the user's
+  request ("move dire to align on the right side"): "Radiant | -9.0"
+  reads the same way on both sides and only the end it hangs from
+  changes, because flipping one to "-9.8 | Dire" would make the two
+  halves of the board disagree about which of the two figures is the
+  heading. `_seat_headings` runs again from `_order_panels`, since on
+  Dire the whole board swaps and a name left over the other team's five
+  is worse than no name at all.
+  **AND THE THREE BUTTONS ARE OUTLINE ONLY** (`plain`): the base
+  `QPushButton` rule fills with `BG_INPUT`, which against a darker
+  surface reads as a grey box — "there is a bit of a grey color added to
+  the cclear / detect / etc button backgfground... should be same as the
+  background behidn it" — and sets `font-weight: 500`, the one weight in
+  this app that is not the app's bold, which is what "the clear / detec
+  / etc fotn looks different to draft / analysis" was. A PROPERTY rather
+  than an ancestor selector, because a rule keyed to where they sit stops
+  applying the next time they move, which on this evidence is soon.
+
+- **EVERY CONTROL IS ONE HEIGHT, AND IT IS THE NUMBER BOX'S**
+  (`theme.CONTROL_H` = 33). "the yellow box is too tall... it shoudl be
+  the height of the boxes around the number entry fields... standardize
+  the height of these button boxes across the board to be this height".
+  A button was 41px against a count box's 33, so three controls wearing
+  the same border sat visibly taller than the boxes below them. The
+  button gets there through its own PADDING — 3px lands on exactly 33 at
+  the body size — rather than through `min-height`, so a button that has
+  to hold two lines is still free to be two lines tall; `chrome.CountBox`
+  applies the number outright, because it paints its own border and so no
+  longer takes its height from the stylesheet's box.
+
+- **THE NUMBER BOX'S BORDER GOES ROUND THE FIELD, AND THE ARROWS SIT
+  OUTSIDE IT** (`CountBox.field_box`, `_arrow_boxes`, `paintEvent`). "the
+  numebr boxes should be about the size shown in green, with the ...
+  border jsut aroudn thaat green box area and the arrows on the putside".
+  A stylesheet border wraps the whole WIDGET and there is no sub-control
+  to exclude, so it enclosed the arrow strip too and the box read half
+  again as wide as the number in it. The border is PAINTED now — the same
+  answer as the arrows themselves, the tick box and the window buttons —
+  and its hover state is a FLAG the widget sets from enter/leave rather
+  than a call to `underMouse()`: with no pointer on the screen at all Qt
+  answers that from a cursor position of (0, 0), so an offscreen render
+  of a box at the origin came out drawn in its hover colour and every
+  pixel test of this border would have been measuring the wrong state.
+
+- **NO GOLD ON A CONTROL, WHICH REVERSES "A GOLD BORDER ON EVERY
+  BUTTON"** (`theme`). It was asked for — "id like to make all buttons
+  have a gold border (the same as the app border).. even for the quantity
+  boxes" — and withdrawn on sight one round later: "remove the gold
+  border from all the input boxes ... revert that change i made - i dont
+  liek it now that i have seen it... obviosuly keep the app window border
+  though". So gold goes back to meaning "THIS ONE" and nothing else: the
+  window's frame, the focus ring, the suggestion star, the pin, the role
+  pills and the box round a relation's figure. A border every control in
+  the app wears says nothing about any of them, and it was competing with
+  the five marks that are supposed to catch the eye.
+
+- **A RELATION'S FIGURE WEARS A GOLD BOX, AND THE WORDS ARE GONE**
+  (`tilekit.delta_text`, `paint_badge(boxed=...)`, `_ring_the_badge`,
+  `HeroTile.relation_kind`). Clicking a pick put "with +5.2" under each
+  ally and "vs -1.8" under each enemy; at the user's request that is a
+  rectangle instead — "i dont think this is needed ... just use the
+  capital delta symbol", then "actually no scrap that... just use a gold
+  rectangle aroudn the score (bottom right)" and "no delta required at
+  all". (The delta was drawn and then withdrawn in the same breath; the
+  glyph is not in the code.) A mark that is not a character cannot be
+  mistaken for part of the number, cannot resize away from it, and costs
+  the badge no width — which on a small tile is the whole budget. The
+  words were also saying what the PANEL already says: an ally tile is in
+  the ally panel.
+  Two details. The ring is MEASURED OFF THE TEXT the painter actually
+  drew, never off the tile, because the badge steps its own size down
+  when a wide figure will not fit — the grid outlines' lesson. And the
+  ring's own padding comes out of the room the figure is allowed, or a
+  relation badge on the narrowest tile would fit its digits exactly and
+  then hang its box over the edge.
+  `kind` survives the change and still says WHETHER this is a relation;
+  it just no longer changes the text, and `relation_kind()` is where it
+  is asked for — an ally-to-ally pairing being scored as synergy and not
+  as a matchup is a fact about the app worth being able to check, and it
+  was only ever incidentally a fact about the label.
+
+- **THE SUGGESTION STRIP IS ELEVEN ACROSS, AND IT IS THE ONE PLACE THE
+  ONE-BOX RULE GIVES WAY** (`app.SUGGESTIONS_PER_ROW`,
+  `_suggestion_box`, `suggest_row.STRIP_GAP`). "as there is space here it
+  would be ideal to allow more portraits - 11 per row, and scale it down
+  so they fit snug (aligned edge with dire right portrait... and increase
+  the max to 33 so we can see 3 rows of suggested heroes".
+  Every other portrait in the app is the pick tile's box and that still
+  holds — the items, both grids. This strip is the only row whose job is
+  to hold as MANY as fit rather than a fixed five a side, and at a pick's
+  size eleven of them overflow a card that had visible slack on the
+  right. So it derives its width from the card, eleven tiles and ten
+  gaps, which is what "snug" and "aligned edge with dire right portrait"
+  both mean — the last tile ends where the board above it ends. It is
+  NEVER BIGGER than a pick, which is the half of the old rule doing the
+  real work: advice drawn larger than the board it is about. And it is
+  DAMPED, because a strip one row taller raises the page's scrollbar,
+  which takes ~10px of width, which is ~1px per tile, which can shorten
+  the strip again — `TeamPanel.STEADY` one card up.
+  `MAX_SHOWN` went 20 to 33 with it. The old ceiling's argument was about
+  ROWS ("past that the strip is a list"), and twenty no longer buys two
+  of them.
+
+- **THE TOP PICKS CARD READS HEADING, ANSWER, CONTROLS**
+  (`_picks_controls`, `_picks_filter`, `_picks_legend`). At the user's
+  request, in two messages: "can you switch the position of the suggested
+  heroes and the filters? filters belwo the hero portraits... so that the
+  sequence is portrait, boxes, protrait, boxes", then "top picks will be
+  at the top above the sugegsted hero portraits still, but the filters
+  for carry , supprot etc, will be below the portraits". So the heading
+  and its own count stay above the strip and everything that CUTS the
+  strip sits under it — which is the alternating rhythm the board above
+  already has (portraits, then the pills that describe them), and it puts
+  each set of boxes directly under the thing it is about, the argument
+  the count boxes were moved out of Settings on.
+  **AND THE LEGEND IS LEVEL WITH THE ROLES**: "you sohuld be able to have
+  comfort be in line (row-wwise) with carry / nuker / etc and counter in
+  line with support / disabler / etc... as they are no longer with the
+  header". The two marks were rows 1 and 2 of the HEADING's grid, which
+  was right while the heading was the only thing above the strip; with
+  both moved down, the legend's two rows and the filter's two rows are
+  the same two rows. They are two separate grids sharing a vertical
+  spacing rather than one grid, so neither is measured against the other.
+  The filter also stopped needing the stretch factor it used to take from
+  the legend's row: on a row of its own it reflows from the whole card,
+  so the chicken-and-egg that made it eight rows tall for ever — narrow
+  because one column deep, one column deep because narrow — cannot
+  happen.
+
+- **THE PROFILE BUTTON NAMES THE WINDOW, AND THE CALLOUT SAYS HOW IT IS
+  GOING** (`accountrow.ProfileButton.show_run`, `accountrow.ProfileCard`,
+  `report.Before`, `runner.measure_before`, `MainWindow.
+  _apply_history_window`). The button reads "Bijson (6 months)" and the
+  callout is a face, the name, two figures with a delta each, and a
+  duration dropdown with an Apply beside it — the user's own shape,
+  stated across four messages.
+  **THE PICTURE WAS NEVER DRAWN, and that was a whole missing call** —
+  "why is the thumbnail not working??". `show_name` set the LABEL and
+  nothing else, so the face kept the "?" it was given in `__init__` for
+  the life of the app, on every account, however many runs had been
+  measured. The picture was on disk the whole time: `AccountRow` two
+  classes up has always drawn it from the same file. One widget asked and
+  the other did not, so `avatar_path` is now the one resolver all three
+  go through.
+  **THE DELTA IS AN EXTRA REQUEST, AND IT HAS TO BE.** The run's own
+  fetch asks OpenDota for the last `days` days, so the matches before
+  that were never sent — there is no filtering them in. The endpoint
+  takes only "the last N days", so `measure_before` asks for TWICE the
+  window and keeps the older half, through the SAME `shape` filters, or
+  the delta would compare a ranked turbo-free sample against everything
+  the account has played and report a change that is entirely the
+  filters.
+  **NONE IN EVERY DOUBTFUL CASE**, which is the whole point of `Before`
+  being absent rather than zeroed: "All history" has nothing before it,
+  the request can fail, and it can come back CLIPPED — which matters more
+  here than anywhere else, because a limit keeps the most RECENT rows, so
+  the half that gets lost is exactly the half being measured. A delta
+  drawn from a clipped fetch would say the account played far less last
+  year, which is a claim about the cap rather than about them. An EMPTY
+  stretch is a different answer and is kept: a new account is up from
+  nothing and the games delta says so.
+  **IT IS THE ONE MEASUREMENT THE CACHE CANNOT RECOMPUTE**, so it is
+  stored. Every block is rebuilt from `matches` on the way back in; this
+  is not in that list and never will be, and a run re-opened from the
+  cache would silently drop both deltas with nothing saying why. A run
+  cached before it existed reads as not-measured, not as no-change.
+  **GREEN UP, RED DOWN, HALOED** — "ensure bvlack halo effect is on green
+  / red text so it is readable" — through `teams.HaloLabel`, which is the
+  app's one stroked label, so the callout's figures and a team's total
+  cannot drift into two conventions. A flat delta is DIM: green means
+  better and red means worse, so "no different" has to be a third thing.
+  **AND APPLY DRIVES THE HISTORY TAB rather than running anything.** That
+  tab owns the account, the cap, the filters, the thread and the cache; a
+  second path to a run would be a second set of answers to all of those,
+  and the first time they disagreed the callout would be describing a
+  report nobody else had.
+
+- **THE APP'S NAME IS THE BODY FACE AT A WEIGHT THAT FACE REALLY HAS**
+  (`theme.TITLE_PX` 22, `TITLE_WEIGHT` 700). "reduce the font size of the
+  app logo by 10% and reduce the thickess of the font by 20%" — and, to
+  be clear about which logo, "not logo sorry i mean the logo texct.. the
+  logo (app icon) should not be touchned". The size was arithmetic; the
+  WEIGHT could not be done where it was. The rule named `TITLE_FAMILY`,
+  which is Alegreya BLACK — a single-weight file — with `font-weight:
+  600` beside it, which was always a contradiction: Qt synthesises
+  heavier and never lighter, so the name drew at ~900 whatever the number
+  said. A fifth off that is ~720, which is Alegreya's own BOLD, already
+  bundled and already registered. `TITLE_FAMILY` itself stays: the rank
+  digit inside a heart or a shield is drawn in it, so removing it with
+  the title rule would have taken those figures with it.
+
 - **A STAR IS WHERE THE TWO TABS MEET** (`history/stars.py`,
   `SuggestTile.set_star`, `tilekit.paint_star`,
   `MainWindow._history_run_changed`), at the user's request. The

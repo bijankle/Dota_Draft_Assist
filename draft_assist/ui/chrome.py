@@ -937,6 +937,10 @@ class CountBox(QSpinBox):
     # The strip we keep for the arrows, and how big the arrowheads in it
     # are. Both are drawn, never styled — see the class docstring.
     ARROWS_W = 18
+    # Between the painted border and the digits inside it. The border is
+    # drawn on the field's own edge, so with no padding the first digit
+    # would sit on the gold.
+    FIELD_PAD = 5
     ARROW_W = 9
 
     def wheelEvent(self, event) -> None:            # noqa: N802 - Qt naming
@@ -952,6 +956,7 @@ class CountBox(QSpinBox):
 
     def __init__(self, value: int, low: int, high: int, parent=None):
         super().__init__(parent)
+        self._hover = False
         self.setRange(low, high)
         self.setValue(value)
         self.setAccelerated(True)
@@ -979,8 +984,29 @@ class CountBox(QSpinBox):
         # already measures the widest value the range can hold against the
         # real font and the real chrome — the only thing it does not know
         # about is our arrow strip, because we draw that ourselves.
-        self.setStyleSheet(f"padding-right: {self.ARROWS_W}px;")
+        # THE BORDER IS OURS NOW, and it goes round the FIELD ONLY, at
+        # the user's request: "the numebr boxes should be about the size
+        # shown in green, with the ... border jsut aroudn thaat green box
+        # area and the arrows on the putside". The stylesheet's border
+        # wraps the whole WIDGET, arrow strip included, and there is no
+        # sub-control to exclude — so it enclosed the arrows and made the
+        # box read half again as wide as the number in it. (It was gold
+        # when that was asked for; the gold has since been taken off
+        # every control, and the shape is what the request was about.)
+        # A widget stylesheet outranks the app's `QSpinBox` rule on the
+        # properties it names, so the app-level gold still reaches the
+        # spin boxes that are not one of these.
+        self.setStyleSheet(
+            "border: none; background: transparent;"
+            f"padding-left: {self.FIELD_PAD}px;"
+            f"padding-right: {self.ARROWS_W + self.FIELD_PAD}px;")
         self._fit_width()
+        # THE ONE HEIGHT EVERY CONTROL IN THE APP IS, stated rather than
+        # inherited: with the border painted rather than styled, the
+        # stylesheet's own box no longer decides this widget's height,
+        # and a number box that is not a button's height is exactly what
+        # `theme.CONTROL_H` exists to prevent.
+        self.setFixedHeight(theme.CONTROL_H)
         self.setSizePolicy(QSizePolicy.Policy.Fixed,
                            QSizePolicy.Policy.Fixed)
 
@@ -1025,9 +1051,20 @@ class CountBox(QSpinBox):
         super().setPrefix(text)
         self._fit_width()
 
+    def field_box(self) -> QRect:
+        """The bordered part: everything left of the arrow strip.
+
+        Public because it is what the box LOOKS like — a test asking
+        where the gold is should not have to work it out from two
+        constants — and because `paintEvent` and `_arrow_boxes` must
+        agree about where the field stops.
+        """
+        return QRect(0, 0, max(1, self.width() - self.ARROWS_W),
+                     self.height())
+
     def _arrow_boxes(self) -> tuple[QRect, QRect]:
-        """Up and down, stacked in the strip at the right-hand end."""
-        strip = QRect(self.width() - self.ARROWS_W - 2, 1,
+        """Up and down, stacked in the strip OUTSIDE the field's border."""
+        strip = QRect(self.field_box().right() + 1, 1,
                       self.ARROWS_W, self.height() - 2)
         half = strip.height() // 2
         return (QRect(strip.x(), strip.y(), strip.width(), half),
@@ -1038,6 +1075,16 @@ class CountBox(QSpinBox):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # THE GOLD, ROUND THE FIELD AND NOTHING ELSE. Half a pixel in,
+        # because a 1px pen is centred on its coordinate: on the rect's
+        # own edge the right and bottom sides fall outside the widget and
+        # are clipped, which is the even-width-pen lesson from the grid
+        # borders one width down.
+        field = QRectF(self.field_box()).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.setPen(QPen(QColor(theme.ACCENT if self._hover
+                                   else theme.BORDER), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(field, 4, 4)
         painter.setPen(Qt.PenStyle.NoPen)
         up, down = self._arrow_boxes()
         for box, rising in ((up, True), (down, False)):
@@ -1053,6 +1100,29 @@ class CountBox(QSpinBox):
                 QPointF(mid - self.ARROW_W / 2, base),
                 QPointF(mid + self.ARROW_W / 2, base)]))
         painter.end()
+
+    def enterEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        """The border is painted, so its hover state is ours to notice.
+
+        `QSpinBox:hover` in the stylesheet cannot reach a line this
+        widget draws itself — the same reason `TickBox` reads its colour
+        off the palette rather than being handed one.
+
+        A FLAG RATHER THAN `underMouse()`, which is not the same
+        question: with no pointer on the screen at all Qt answers it
+        from a cursor position of (0, 0), so an offscreen render of a
+        box at the origin came out drawn in its HOVER colour — white
+        where the gold should be — and every pixel test of this border
+        would have been measuring the wrong state.
+        """
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:            # noqa: N802 - Qt naming
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event) -> None:       # noqa: N802 - Qt naming
         """The arrows are painted, so the clicks on them are ours too."""

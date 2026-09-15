@@ -155,6 +155,8 @@ class HeroTile(QAbstractButton):
         self.role: str | None = None
         self._delta = ""
         self._delta_colour = theme.TEXT_DIM
+        self._boxed = False
+        self._kind = ""
         self._focused = False
         self._drop_target = False
         self.setFixedSize(tile_cap(), round(tile_cap() * 9 / 16))
@@ -262,14 +264,36 @@ class HeroTile(QAbstractButton):
     def show_delta(self, delta: float, kind: str | None = None) -> None:
         self._delta = tilekit.delta_text(delta, kind)
         self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
+        # WHETHER THIS IS A RELATION, which is what the gold box says.
+        # It used to be said in words — "with +5.2", "vs -1.8" — and is
+        # now a frame round the figure, at the user's request. `kind` is
+        # empty at rest (`net_contributions`, what the pick is worth
+        # overall), and that number is not a relation to anything, so it
+        # gets no box.
+        self._boxed = bool(kind)
+        self._kind = kind or ""
         self.update()
 
     def clear_delta(self) -> None:
         self._delta = ""
+        self._boxed = False
+        self._kind = ""
         self.update()
 
     def delta_text(self) -> str:
         return self._delta
+
+    def relation_kind(self) -> str:
+        """"with", "vs", or "" when the badge is this pick's own figure.
+
+        It used to be readable off `delta_text` — the badge SAID "with"
+        or "vs" — and the words are gone, replaced by a gold box round
+        the figure. Kept as an accessor rather than lost with them:
+        whether an ally-to-ally pairing is scored as synergy and not as a
+        matchup is a fact about the app that is worth being able to
+        check, and it was only ever incidentally a fact about the label.
+        """
+        return self._kind
 
     # ---- the focused pick ----------------------------------------------
     def set_focused(self, on: bool) -> None:
@@ -349,7 +373,7 @@ class HeroTile(QAbstractButton):
         would hide as much of the portrait as the name used to.
         """
         tilekit.paint_badge(painter, box, self._delta, self._delta_colour,
-                            self.font())
+                            self.font(), boxed=self._boxed)
 
     def _paint_border(self, painter: QPainter, box: QRect) -> None:
         if self._focused and not self._drop_target:
@@ -524,15 +548,19 @@ class TeamPanel(QFrame):
         lay.setSpacing(6)
 
         # THE HEADING IS A WIDGET rather than a layout dropped into this
-        # one. It was briefly lifted OUT, to share a row above both
-        # cards with Clear all / Detect all / Demo — "forget what i said
-        # about the radiant and dire header moving ... keep exactly
-        # where they are", so it is back inside the card where the
-        # padding that says which five are whose encloses it.
-        # It stays a widget: a layout cannot be re-parented and a widget
-        # can, so the next arrangement costs a line rather than a
-        # rebuild, and nothing that reads `panel.caption`, `panel.total`
-        # or `panel.note` has to know where it is.
+        # one, and the window LIFTS IT OUT — "change the paddign so that
+        # dire and radiant are above it, not in it", with the three board
+        # actions on the same line between them: "move these 3 buttons
+        # clear / detect / demon into the middle in line with Radiant and
+        # dire".
+        # That is the third arrangement this heading has had (inside the
+        # card, out on a board bar, back inside, out again), and the
+        # reason each move has cost one line is exactly this: a layout
+        # cannot be re-parented and a widget can, so nothing that reads
+        # `panel.caption`, `panel.total` or `panel.note` has to know
+        # where it currently sits. It is still added here, so a panel
+        # built on its own — which is how most of the tests build one —
+        # still has its heading.
         self.header = QWidget(self)
         self.header.setProperty("bare", True)
         head = QHBoxLayout(self.header)
@@ -565,8 +593,7 @@ class TeamPanel(QFrame):
         # sitting on the darker card at the end of every team's heading.
         self.note.setVisible(False)
         head.addWidget(self.note)
-        # Added here so a panel built on its own still has its heading —
-        # the window takes it away again when it builds the board bar.
+        self._heading_right = False
         lay.addWidget(self.header)
 
         self.spacing = TILE_GAP
@@ -579,6 +606,47 @@ class TeamPanel(QFrame):
         row.addStretch(1)
         lay.addLayout(row)
         self._resize_tiles(self.width())
+
+    def align_heading(self, right: bool) -> None:
+        """Which END of its row the name and total sit at.
+
+        At the user's request, about the panel on the right: "move dire
+        to align on the right side". With the two headings lifted out
+        into one row above the cards, the left one starts where its card
+        starts and the right one has to FINISH where its card finishes —
+        otherwise the two names sit either side of the board actions in
+        the middle and neither lines up with the five picks it belongs
+        to.
+
+        The ORDER of the name and its total is not mirrored, only the
+        end they are anchored to: "Radiant | -9.0" reads the same way on
+        both sides, and flipping one to "-9.8 | Dire" would make the two
+        halves of the board disagree about which of the two figures is
+        the heading.
+
+        Re-laid rather than re-built, and the widgets keep their parent
+        throughout — `takeAt` unmanages a widget without orphaning it,
+        and a parentless QWidget is a WINDOW the moment anything shows
+        it.
+        """
+        head = self.header.layout()
+        if right == self._heading_right and head.count():
+            return
+        self._heading_right = right
+        while head.count():
+            head.takeAt(0)
+        if right:
+            head.addWidget(self.note)
+            head.addStretch(1)
+            head.addWidget(self.caption)
+            head.addWidget(self.rule)
+            head.addWidget(self.total)
+        else:
+            head.addWidget(self.caption)
+            head.addWidget(self.rule)
+            head.addWidget(self.total)
+            head.addStretch(1)
+            head.addWidget(self.note)
 
     # The panel owns the tile size: a square edge from the width available,
     # clamped, with the remainder going to the stretches either side. Qt

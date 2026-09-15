@@ -178,7 +178,7 @@ def test_a_focused_suggestion_wears_the_same_ring_as_a_pick(qapp):
 
     def gold() -> int:
         image = tile.grab().toImage()
-        want = QColor(tilekit.FOCUS_COLOUR)
+        want = QColor(tilekit.focus_colour())
         return sum(QColor(image.pixel(x, y)) == want
                    for y in range(image.height())
                    for x in range(image.width()))
@@ -194,12 +194,17 @@ def test_a_suggestion_shows_a_relation_instead_of_its_fit(qapp):
     for."""
     tile = SuggestTile(1, "Anti-Mage", 0.05)
     assert tile.delta_text() == ""
+    # THE WORDS ARE GONE FROM THE FIGURE. It read "with +5.2" and "vs
+    # -1.8" until the user asked for the mark to stop being characters:
+    # "just use a gold rectangle aroudn the score (bottom right)", "no
+    # delta required at all". So the text is the number and `_boxed` is
+    # what says it is a relation.
     tile.show_delta(0.052, "with")
-    assert tile.delta_text() == "with +5.2"
+    assert (tile.delta_text(), tile._boxed) == ("+5.2", True)
     tile.show_delta(-0.018, "vs")
-    assert tile.delta_text() == "vs -1.8"
+    assert (tile.delta_text(), tile._boxed) == ("-1.8", True)
     tile.clear_delta()
-    assert tile.delta_text() == ""
+    assert (tile.delta_text(), tile._boxed) == ("", False)
 
 
 def test_the_row_hands_the_numbers_round_and_takes_them_back(qapp):
@@ -211,7 +216,9 @@ def test_the_row_hands_the_numbers_round_and_takes_them_back(qapp):
                      (3, "Bane", 0.03, "")])
     assert row.hero_ids == [1, 2, 3]
     row.show_deltas({1: (0.02, "with"), 3: (-0.01, "vs")})
-    assert [t.delta_text() for t in row.tiles] == ["with +2.0", "", "vs -1.0"]
+    assert [t.delta_text() for t in row.tiles] == ["+2.0", "", "-1.0"]
+    # The gold box is what marks the two that are relations.
+    assert [t._boxed for t in row.tiles] == [True, False, True]
     row.set_focus(2)
     assert [t.focused for t in row.tiles] == [False, True, False]
     row.clear_deltas()
@@ -245,24 +252,24 @@ def test_the_heart_is_pink_and_the_shield_is_the_frames_gold(qapp):
     tile.resize(120, 68)
 
     assert _ink(tile, theme.HEART_PINK) == 0
-    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
+    assert _ink(tile, tilekit.focus_colour()) == 0
 
     tile.set_star(True, "40 games at 65%")
     assert _ink(tile, theme.HEART_PINK) > 0, "the heart draws"
     assert tile.starred
     # The heart must NOT be gold, or the two marks would be one colour
     # saying two things.
-    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
+    assert _ink(tile, tilekit.focus_colour()) == 0
 
     tile.set_shield(True, "Hard to counter = 1.8 vs the field (top 12%)")
-    assert _ink(tile, tilekit.FOCUS_COLOUR) > 0, "the shield draws"
+    assert _ink(tile, tilekit.focus_colour()) > 0, "the shield draws"
     assert tile.shielded
     assert _ink(tile, theme.HEART_PINK) > 0, "both at once"
 
     tile.set_star(False)
     tile.set_shield(False)
     assert _ink(tile, theme.HEART_PINK) == 0
-    assert _ink(tile, tilekit.FOCUS_COLOUR) == 0
+    assert _ink(tile, tilekit.focus_colour()) == 0
 
 
 def test_the_two_marks_take_opposite_corners(qapp):
@@ -284,7 +291,7 @@ def test_the_two_marks_take_opposite_corners(qapp):
               if QColor(image.pixel(x, y)) == want]
         return sum(xs) / len(xs)
 
-    assert middle_x(tilekit.FOCUS_COLOUR) < image.width() / 2, "shield left"
+    assert middle_x(tilekit.focus_colour()) < image.width() / 2, "shield left"
     assert middle_x(theme.HEART_PINK) > image.width() / 2, "heart right"
 
 

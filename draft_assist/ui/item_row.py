@@ -271,6 +271,12 @@ class ItemRow(QWidget):
         self.row.invalidate()
         self.updateGeometry()
 
+    def tile_height(self) -> int:
+        """The other half of the box. Named for the same reason
+        `tile_width` is: a caller that needs the tile's size should not
+        have to reach into `_tile_size` to get half of it."""
+        return self._tile_size[1]
+
     def tile_width(self) -> int:
         return self._tile_size[0]
 

@@ -12,10 +12,18 @@ from ..config import REPO_ROOT
 
 SETTINGS_FILE = REPO_ROOT / "ui_settings.json"
 
-# The ceiling on both "how many to show" settings. Twenty suggested picks
-# is already more than a draft screen can be read against; past that the
-# strip is a list and the point of a strip is that it is not one.
-MAX_SHOWN = 20
+# The ceiling on both "how many to show" settings. It was twenty, on the
+# argument that past that the strip is a list and the point of a strip is
+# that it is not one — and the argument was about ROWS rather than about
+# the number, which twenty no longer buys: the suggestions fit ELEVEN
+# across a row now (`app.SUGGESTIONS_PER_ROW`), so twenty is a full row
+# and most of a second.
+# THIRTY-THREE IS THREE OF THOSE ROWS, at the user's request: "increase
+# the max to 33 so we can see 3 rows of suggested heroes". Still a strip
+# you read at a glance, and still a CEILING rather than a quota — the
+# default is "as many as fit on one row" and the items are cut by
+# severity first whatever this says.
+MAX_SHOWN = 33
 # The keys that ceiling applies to, clamped on the way IN as well as out —
 # a hand-edited file asking for two hundred tiles must not be honoured.
 COUNTS = ("suggested_picks", "suggested_items")

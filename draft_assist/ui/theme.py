@@ -64,6 +64,32 @@ HEADING_PX = 21
 # same value rather than from one that happens to match today.
 BODY_PX = 18
 
+# EVERY BUTTON IS THE HEIGHT OF A NUMBER BOX, at the user's request:
+# "the yellow box is too tall... it shoudl be the height of the boxes
+# around the number entry fields... standardize the height of these
+# button boxes across the board to be this height". A button was 41px
+# against a count box's 33, so the three board actions sat visibly
+# taller than the quantity boxes below them wearing the same gold.
+# ONE NUMBER, read by the QPushButton rule's own padding (which lands
+# on it exactly at the body size) and applied outright by
+# `chrome.CountBox`, which paints its own border and so cannot get its
+# height from the stylesheet's.
+CONTROL_H = 33
+
+# THE APP'S NAME IN THE TITLE BAR, at the user's request: "reduce the
+# font size of the app logo by 10% and reduce the thickess of the font
+# by 20%" — and then, to be clear about which logo: "not logo sorry i
+# mean the logo texct.. the logo (app icon) should not be touchned".
+# 25px less a tenth is 22, and the weight is the part that could not be
+# done where it was: `TITLE_FAMILY` is Alegreya BLACK, a single-weight
+# face, so `font-weight` on it changes nothing at all (Qt synthesises
+# heavier, never lighter). A fifth off ~900 is ~720, which is Alegreya's
+# own BOLD — already bundled, already registered, so the name is still
+# the body face raised rather than a second typeface. TITLE_FAMILY
+# itself stays: the rank digit on a suggestion is drawn in it.
+TITLE_PX = 22
+TITLE_WEIGHT = 700
+
 # The app's own name. The same family as the body at its heaviest weight
 # — `assets/fonts/Alegreya-Black.ttf` registers it — so the title is the
 # app's own voice raised rather than a second typeface arguing with it.
@@ -187,6 +213,7 @@ QWidget#tabStrip QLabel,
 QWidget#tabStrip QCheckBox,
 QWidget#tabStrip QSlider,
 QWidget#tabStrip QToolBar {{ background: {BG_DEEP}; }}
+
 QTabWidget::pane {{ border: none; background: {BG}; }}
 QTabBar {{ background: transparent; }}
 QTabBar::tab {{
@@ -198,35 +225,41 @@ QTabBar::tab {{
 QTabBar::tab:selected {{ color: {TEXT}; border-bottom: 2px solid {ACCENT}; }}
 QTabBar::tab:hover {{ color: {TEXT}; }}
 
-/* A GOLD BORDER ON EVERY BUTTON, at the user's request: "id like to
-   make all buttons have a gold border (the same as the app border)..
-   not for headers like file / view // etc and not for draft / hisstory,
-   jsut the other ones... even for the quantity boxes id liek the gold
-   border".
-   It is `FRAME_GOLD`, the window frame's own colour — so a control and
-   the border round the whole app read as one piece, which is the
-   argument the title text already followed. The two EXCLUSIONS fall out
-   for free: a menu title is a QMenuBar item and a tab is a QTabBar tab,
-   and neither is a QPushButton. */
+/* NO GOLD ON A CONTROL, which REVERSES "a gold border on every button".
+   That was asked for — "id like to make all buttons have a gold border
+   (the same as the app border).. even for the quantity boxes" — and then
+   withdrawn on sight: "remove the gold border from all the input boxes
+   ... revert that change i made - i dont liek it now that i have seen
+   it... obviosuly keep the app window border though".
+   So gold goes back to meaning "THIS ONE" and nothing else: the window's
+   frame, the focus ring, the suggestion star, the pin, the role pills
+   and the box round a relation's figure. A border that every control in
+   the app wears says nothing about any of them, and it was competing
+   with the five marks that are supposed to catch the eye. */
 QPushButton {{
     background: {BG_INPUT};
-    border: 1px solid {FRAME_GOLD};
+    border: 1px solid transparent;
     border-radius: 4px;
-    padding: 7px 14px;
+    /* 3px, NOT a min-height: at the body size this lands on exactly
+       {CONTROL_H}px, which is what a count box measures, and it leaves a
+       button that has to hold two lines free to be two lines tall. A
+       min-height would have capped those instead. */
+    padding: 3px 14px;
     color: {TEXT};
     font-weight: 500;
 }}
-QPushButton:hover {{ background: {BG_HOVER}; border-color: {FRAME_GOLD}; }}
+QPushButton:hover {{ background: {BG_HOVER}; border-color: {BG_HOVER}; }}
 QPushButton:pressed {{ background: {BG_DEEP}; }}
-/* A disabled button keeps a border so it still reads as a control, but
-   a dim one — gold at full strength says "press me". */
 QPushButton:disabled {{
-    color: {TEXT_DIM}; background: {BG_ELEVATED}; border-color: {BORDER};
+    color: {TEXT_DIM}; background: {BG_ELEVATED};
 }}
 QPushButton[accent="true"] {{
-    background: {ACCENT}; color: #ffffff; font-weight: 600;
+    background: {ACCENT}; border-color: {ACCENT}; color: #ffffff;
+    font-weight: 600;
 }}
-QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; }}
+QPushButton[accent="true"]:hover {{
+    background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER};
+}}
 /* AFTER the accent rule, or it never applies. The plain
    `QPushButton:disabled` above is declared earlier, so on a button
    carrying [accent="true"] the accent wins on specificity and a disabled
@@ -235,6 +268,33 @@ QPushButton[accent="true"]:hover {{ background: {ACCENT_HOVER}; }}
 QPushButton[accent="true"]:disabled {{
     background: {BG_ELEVATED}; border-color: {BG_INPUT}; color: {TEXT_DIM};
     font-weight: 500;
+}}
+/* A BUTTON THAT IS ONLY ITS OUTLINE — the gold, the app's own bold, and
+   whatever is behind it showing through. At the user's request, about
+   Clear all / Detect all / Demo: "there is a bit of a grey color added
+   to the cclear / detect / etc button backgfground... should be same as
+   the background behidn it", and "the clear / detec / etc fotn looks
+   different to draft / analysis".
+   Both are the base rule above doing what it does everywhere else:
+   {BG_INPUT} is a raised plate, which against a darker surface reads as
+   a grey box, and `font-weight: 500` is the one weight in this app that
+   is not the app's bold. A PROPERTY rather than an ancestor selector,
+   because these three have now been seated on the tab row, on a board
+   bar, back on the tab row and on a board bar again — a rule keyed to
+   where they happen to sit is a rule that stops applying the next time
+   they move.
+   DECLARED AFTER every `QPushButton:` state above: a property selector
+   and a pseudo-class score the same, so the tie goes to whichever is
+   written last. */
+QPushButton[plain="true"] {{
+    background: transparent; border-color: {BORDER}; font-weight: bold;
+}}
+QPushButton[plain="true"]:hover {{
+    background: {BG_HOVER}; border-color: {TEXT_DIM};
+}}
+QPushButton[plain="true"]:pressed {{ background: {BG_INPUT}; }}
+QPushButton[plain="true"]:disabled {{
+    background: transparent; color: {TEXT_DIM}; border-color: {BORDER};
 }}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
@@ -291,11 +351,11 @@ QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
    box lost its arrows altogether. `chrome.CountBox` draws them, the same
    answer as the tick box and the three window buttons. */
 QSpinBox {{
-    background: transparent; border: 1px solid {FRAME_GOLD};
+    background: transparent; border: 1px solid {BORDER};
     border-radius: 4px; padding: 1px 3px; color: {TEXT};
     selection-background-color: {ACCENT}; selection-color: #ffffff;
 }}
-QSpinBox:hover {{ border-color: {TEXT_STRONG}; }}
+QSpinBox:hover {{ border-color: {ACCENT}; }}
 
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{
@@ -429,8 +489,8 @@ QWidget#titleBar QToolButton {{
    name and the border it sits inside are the same thing. */
 QLabel#titleText {{
     background: transparent; color: {FRAME_GOLD};
-    font-family: "{TITLE_FAMILY}", {FONT_STACK};
-    font-weight: 600; font-size: 25px;
+    font-family: {FONT_STACK};
+    font-weight: {TITLE_WEIGHT}; font-size: {TITLE_PX}px;
 }}
 QMenuBar#titleMenus {{ background: transparent; border: none; }}
 QMenuBar#titleMenus::item {{ padding: 5px 10px; background: transparent; }}

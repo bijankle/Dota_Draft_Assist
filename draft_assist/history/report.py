@@ -44,6 +44,18 @@ class Options:
                 return label
         return self.window
 
+    @property
+    def window_short(self) -> str:
+        """"6 months", not "Last 6 months".
+
+        The title bar's profile button reads "Bijson (6 months)", at the
+        user's request, and the word "Last" is four characters of a label
+        that only has to work inside brackets after a name. "All history"
+        has no prefix to drop and keeps its own words.
+        """
+        label = self.window_label
+        return label[5:] if label.startswith("Last ") else label
+
     def as_dict(self) -> dict:
         return {"window": self.window, "cap": self.cap,
                 "no_turbo": self.no_turbo, "ranked_only": self.ranked_only,
@@ -65,6 +77,53 @@ class Options:
 
 
 @dataclass
+class Before:
+    """How the equal-length stretch IMMEDIATELY BEFORE this window went.
+
+    Two numbers and nothing else, because that is all anything asks of
+    it: the profile callout prints this window's win rate and games with
+    a delta after each, at the user's request — "if 1 year is selected it
+    sohudl be XXX % (+ YYY%) where XXX is the winr rate for the last year
+    and YYY is the win rate % increase or decrease since the year before
+    that... and below those two i want games played (with a delta also,
+    qty)".
+
+    IT IS NOT AN ANALYSIS AND MUST NOT BECOME ONE. Everything in this
+    module is measured against the matches in `Report.matches`, which are
+    the window's own; these two figures come from a stretch that is
+    deliberately NOT in that list, so letting a block reach them would
+    mean a finding computed over a sample the rest of the tab cannot see.
+
+    ABSENT IS A REAL ANSWER, which is why `Report.before` is None rather
+    than a zeroed one of these. "All history" has nothing before it, the
+    fetch can fail, and it can come back clipped by the cap — in all
+    three cases the honest thing to draw is no delta at all, and a zero
+    would read as "exactly the same as last time".
+    """
+
+    matches: int = 0
+    wins: int = 0
+
+    @property
+    def rate(self) -> float | None:
+        """None with no games in it: a rate over nothing is not 0%."""
+        return self.wins / self.matches if self.matches else None
+
+    def as_dict(self) -> dict:
+        return {"matches": int(self.matches), "wins": int(self.wins)}
+
+    @classmethod
+    def from_dict(cls, raw) -> "Before | None":
+        if not isinstance(raw, dict):
+            return None
+        try:
+            return cls(matches=int(raw.get("matches") or 0),
+                       wins=int(raw.get("wins") or 0))
+        except (TypeError, ValueError):
+            return None
+
+
+@dataclass
 class Report:
     options: Options
     how: str
@@ -75,10 +134,38 @@ class Report:
     sessions: int
     returned: int
     ran_at: datetime = field(default_factory=datetime.now)
+    # See `Before`. None means "not measured", never "no change".
+    before: "Before | None" = None
 
     @property
     def n(self) -> int:
         return len(self.matches)
+
+    @property
+    def win_rate(self) -> float | None:
+        """This window's own win rate, or None with nothing in it.
+
+        `baseline` is the same number as a float that answers 0.0 for an
+        empty run, because every analysis divides by it and a None there
+        would be an exception per block. This one is for DISPLAY, where
+        "0%" and "we did not measure" must not look the same.
+        """
+        return self.wins / self.n if self.n else None
+
+    @property
+    def win_rate_delta(self) -> float | None:
+        """Points, not a ratio: 53% against 51% is +2, never +0.039."""
+        was = self.before.rate if self.before else None
+        now = self.win_rate
+        if was is None or now is None:
+            return None
+        return (now - was) * 100
+
+    @property
+    def games_delta(self) -> int | None:
+        if self.before is None:
+            return None
+        return self.n - self.before.matches
 
     @property
     def wins(self) -> int:

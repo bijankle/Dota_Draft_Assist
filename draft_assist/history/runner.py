@@ -7,10 +7,11 @@ analyser at all — and because the app's live loop is not allowed anywhere
 near a network call.
 """
 
+import time
 from datetime import datetime
 
 from . import analyse, avatars, cache, opendota, shape
-from .report import Options, Report
+from .report import Before, Options, Report
 
 
 class Refused(Exception):
@@ -100,6 +101,11 @@ def run(options: Options, say=None, cancelled=None) -> Report:
         item_names = cache.item_names()
         item_names.update(fetched)
 
+    # HOW THE STRETCH BEFORE THIS ONE WENT, for the two deltas in the
+    # profile callout. Cosmetic and never fatal — see `measure_before`.
+    say("Looking at the stretch before…")
+    before = measure_before(options, heroes, cancelled)
+
     say("Measuring…")
     blocks = analyse.build_blocks(shaped.matches, shaped.baseline,
                                   options.picked, item_names,
@@ -107,7 +113,59 @@ def run(options: Options, say=None, cancelled=None) -> Report:
     return Report(options=options, how="", name=name, matches=shaped.matches,
                   blocks=blocks, dropped=shaped.dropped,
                   sessions=shaped.sessions, returned=shaped.returned,
-                  ran_at=datetime.now())
+                  ran_at=datetime.now(), before=before)
+
+
+def measure_before(options: Options, heroes: dict,
+                   cancelled=None) -> Before | None:
+    """The equal-length stretch immediately before the window measured.
+
+    ONE EXTRA REQUEST, and it has to be a request: the run's own fetch
+    asks OpenDota for the last `days` days, so the matches before that
+    are not merely filtered out, they were never sent. There is no
+    "before" parameter either — the endpoint only takes "the last N
+    days" — so this asks for TWICE the window and keeps the older half.
+
+    FILTERED THE SAME WAY the window itself is, through `shape`, or the
+    delta would compare a ranked, turbo-free sample against everything
+    the account has played and report a change that is entirely the
+    filters.
+
+    **NONE IN EVERY DOUBTFUL CASE, and that is the point of it being
+    three-valued.** "All history" has nothing before it; the request can
+    fail; and it can come back CLIPPED by the limit, which matters more
+    here than anywhere else because a limit keeps the most RECENT rows —
+    so the half that gets lost is exactly the half being measured. A
+    delta drawn from a clipped fetch would say the account played far
+    less last year, which is a claim about the cap rather than about
+    them. Never fatal: the two figures beside it are the answer, and the
+    delta is the sentence after it.
+    """
+    days = options.days
+    if not days:
+        return None
+    if cancelled and cancelled():
+        return None
+    limit = max(1, int(options.cap)) * 2
+    try:
+        rows = opendota.matches(options.account_id, limit, days * 2)
+    except opendota.ApiError:
+        return None
+    if not rows or len(rows) >= limit:
+        return None
+    cutoff = time.time() - days * 86400
+    older = [row for row in rows if isinstance(row, dict)
+             and (row.get("start_time") or 0) < cutoff]
+    if not older:
+        # A real answer, not a missing one: the account has a window's
+        # worth of history and nothing before it, so both figures are
+        # up from nothing and the deltas say so.
+        return Before()
+    shaped = shape.shape(older, heroes, days=None,
+                         no_turbo=options.no_turbo,
+                         ranked_only=options.ranked_only)
+    return Before(matches=len(shaped.matches),
+                  wins=sum(1 for m in shaped.matches if m.win))
 
 
 def enrich_items(report: Report, say=None, cancelled=None) -> int:

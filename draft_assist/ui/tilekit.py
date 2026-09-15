@@ -159,7 +159,7 @@ def stroke_width(pixel_size: int | None = None) -> float:
 
 
 def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
-                base: QFont) -> None:
+                base: QFont, boxed: bool = False) -> None:
     """The signed number, snug into the bottom-right, OUTLINED not plated.
 
     It used to sit on a solid black rounded plate. The plate is the part
@@ -185,6 +185,12 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # a number clipped to "+21." is not a smaller number, it is a WRONG
     # one. So it steps down only far enough to fit, and only there.
     room = box.width() - 2 * (BADGE_INSET + stroke_width() / 2)
+    # The gold frame is drawn OUTSIDE the digits, so it is part of what
+    # has to fit — without this a relation badge on the narrowest tile
+    # would step its figure down to exactly the room available and then
+    # hang its box over the edge.
+    if boxed:
+        room -= 2 * BADGE_RING_PAD
     size = number_px()
     while width > room and size > NUMBER_MIN_PX:
         size -= 1
@@ -208,9 +214,52 @@ def paint_badge(painter: QPainter, box: QRect, text: str, colour: str,
     # exactly where its neighbours do. Only the stroke reaches below it,
     # and `edge` is what leaves it room.
     edge = BADGE_INSET + stroke_width() / 2
-    stroked(painter, QPointF(box.right() - edge - width,
-                             box.bottom() - edge),
-            text, colour, font)
+    left = box.right() - edge - width
+    baseline = box.bottom() - edge
+    if boxed:
+        _ring_the_badge(painter, metrics, left, baseline, width)
+    stroked(painter, QPointF(left, baseline), text, colour, font)
+
+
+# How far the gold sits off the digits it encloses, and how round its
+# corners are. Small: the box has to read as a frame round THIS number
+# rather than as a plate, which is the argument that took the badge's
+# black plate away in the first place.
+BADGE_RING_PAD = 3.0
+BADGE_RING_RADIUS = 3.0
+
+
+def _ring_the_badge(painter: QPainter, metrics: QFontMetricsF,
+                    left: float, baseline: float, width: float) -> None:
+    """A gold rectangle round a RELATION's figure.
+
+    At the user's request, replacing the words "with" and "vs": "just use
+    a gold rectangle aroudn the score (bottom right)". Gold because that
+    is this app's "this one" colour — the window's border, the focus ring
+    and the suggestion star all wear it, and none of them means good or
+    bad. Green and red are spoken for by the figure INSIDE the box, so a
+    frame in either would argue with it.
+
+    MEASURED OFF THE TEXT, never off the tile: the badge steps its own
+    size down when a wide figure will not fit, so a box derived from the
+    tile's corner would come away from the digits exactly when they
+    moved. Same rule as the grid's team outlines, which trace the
+    rectangle the painter actually drew rather than an inset computed
+    from a constant.
+
+    HALF A PIXEL IN, because a 1px pen is centred on its coordinate.
+    """
+    ring = QRectF(left - BADGE_RING_PAD,
+                  baseline - metrics.ascent() - BADGE_RING_PAD,
+                  width + 2 * BADGE_RING_PAD,
+                  metrics.ascent() + 2 * BADGE_RING_PAD)
+    ring = ring.adjusted(0.5, 0.5, -0.5, -0.5)
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(QPen(QColor(focus_colour()), 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(ring, BADGE_RING_RADIUS, BADGE_RING_RADIUS)
+    painter.restore()
 
 
 def paint_number(painter: QPainter, box: QRect, text: str, colour: str,
@@ -294,7 +343,15 @@ def paint_art(painter: QPainter, box: QRect, art) -> bool:
 # palette in place, and a colour copied into a module global at import
 # keeps whatever it was then — this one would have stayed gold while
 # every other mark on the same tile went grey.
-def _focus_colour() -> str:
+def focus_colour() -> str:
+    """PUBLIC, and a call rather than a constant.
+
+    It was `FOCUS_COLOUR`, a module global, until greyscale needed it
+    read at call time — and the rename was made without looking for who
+    else named it, which broke six tests in three files. A thing worth
+    asking from outside the module is worth a public name; the leading
+    underscore was what made the rename look free.
+    """
     return theme.FRAME_GOLD
 FOCUS_WIDTH = ornate.WIDTH
 
@@ -319,7 +376,7 @@ def paint_focus_ring(painter: QPainter, box: QRect,
     half = FOCUS_WIDTH / 2.0
     ring = QRectF(box.x() + half, box.y() + half,
                   box.width() - FOCUS_WIDTH, box.height() - FOCUS_WIDTH)
-    painter.setPen(QPen(QColor(_focus_colour()), FOCUS_WIDTH))
+    painter.setPen(QPen(QColor(focus_colour()), FOCUS_WIDTH))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     corner = PLATE_RADIUS if radius is None else radius
     painter.drawRoundedRect(ring, corner, corner)
@@ -603,21 +660,34 @@ def paint_shield(painter: QPainter, box: QRect, rank=None) -> None:
     difficulty to counter; 1 is the hardest of them to counter.
     """
     where = star_box(box, left=True)
-    _stamp(painter, _shape(where, SHIELD), _focus_colour(),
+    _stamp(painter, _shape(where, SHIELD), focus_colour(),
            where.width() * 0.20)
     _paint_rank(painter, where, rank, SHIELD_CENTRE)
 
 
 def delta_text(delta: float, kind: str | None = None) -> str:
-    """"with +5.2" — the badge on any tile showing a RELATION.
+    """"+5.2" — the badge on any tile, relation or not.
 
     Spelled here because the ten picks and the suggestion strip both draw
     it and two spellings of one badge is one of them going stale. The
     figures are stored as fractions of a win rate and read as percentage
     points, which is the only place that conversion happens.
+
+    **THE WORDS ARE GONE AND NOTHING REPLACES THEM IN THE TEXT.** It read
+    "with +5.2" under each ally and "vs -1.8" under each enemy, and at
+    the user's request that is now a GOLD BOX round the figure instead:
+    "when the user clicks on a 5 / 5 portrait the others say with or
+    v.s.... i dont think this is needed", then "just use a gold rectangle
+    aroudn the score (bottom right)" and "no delta required at all". A
+    mark that is not a character cannot be mistaken for part of the
+    number, cannot resize away from it, and costs the badge no width at
+    all — which on a small tile is the whole budget.
+
+    `kind` is kept and still says WHETHER this is a relation; it just no
+    longer changes the text. The tiles read it to decide whether to draw
+    the box — see `paint_badge(boxed=...)`.
     """
-    mark = {"with": "with", "vs": "vs"}.get(kind or "", "")
-    return f"{mark} {delta * 100:+.1f}".strip()
+    return f"{delta * 100:+.1f}"
 
 
 PLATE_RADIUS = 6

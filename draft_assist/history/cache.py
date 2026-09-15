@@ -133,6 +133,13 @@ def save(report: Report, where: Path | None = None) -> bool:
             "sessions": report.sessions,
             "returned": report.returned,
             "matches": [_match_to_dict(m) for m in report.matches],
+            # THE ONE MEASUREMENT HERE THAT CANNOT BE RECOMPUTED. Every
+            # block is rebuilt from `matches` on the way back in (see the
+            # module note), but the stretch BEFORE the window is not in
+            # that list and never will be — it came from its own request.
+            # Stored, or re-opening a cached run would silently drop both
+            # deltas and there would be nothing on screen saying why.
+            "before": (report.before.as_dict() if report.before else None),
         }
         _path(account_id, folder).write_text(
             json.dumps(payload), encoding="utf-8")
@@ -273,11 +280,18 @@ def rebuild(options: Options, matches: list, raw: dict,
     blocks = analyse.build_blocks(matches, baseline, options.picked,
                                   item_names(),
                                   ds=analyse.ranked_dataset())
+    from .report import Before
+
     return Report(options=options, how=str(raw.get("how") or ""),
                   name=str(raw.get("name") or ""), matches=matches,
                   blocks=blocks, dropped=dict(raw.get("dropped") or {}),
                   sessions=int(raw.get("sessions") or 0),
-                  returned=int(raw.get("returned") or 0), ran_at=ran_at)
+                  returned=int(raw.get("returned") or 0), ran_at=ran_at,
+                  # A run cached before this existed has no key, and
+                  # `from_dict` answers None for it — which is the same
+                  # "not measured" the rest of the app already handles,
+                  # rather than a zero pretending nothing changed.
+                  before=Before.from_dict(raw.get("before")))
 
 
 def forget(account_id: int, where: Path | None = None) -> None:

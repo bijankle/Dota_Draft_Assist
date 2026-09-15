@@ -8,6 +8,7 @@ app, the same way a missing portrait is normal rather than an error.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -37,18 +38,46 @@ def test_it_registers_what_it_finds_and_ignores_what_it_does_not(qapp,
     assert fonts.load_bundled(tmp_path) == []
 
 
-def test_the_stylesheet_names_both_supplied_faces_and_a_fallback():
+def test_the_stylesheet_names_the_body_face_and_a_fallback():
     """A machine without the files still has to open a readable app."""
-    assert f'"{theme.TITLE_FAMILY}"' in theme.STYLESHEET
     assert f'"{theme.BODY_FAMILY}"' in theme.STYLESHEET
     # A generic family last, so there is always something to fall back to.
     assert theme.FONT_STACK.rsplit(",", 1)[-1].strip() in (
         "serif", "sans-serif", "system-ui")
     assert theme.FONT_STACK.startswith(f'"{theme.BODY_FAMILY}"')
-    # The title is its own face, with the body stack behind it.
+
+
+def test_the_title_is_the_body_face_at_a_weight_the_family_really_has():
+    """THIS REVERSES "the title is its own face".
+
+    It was Alegreya BLACK with `font-weight: 600` beside it, which was
+    always a contradiction: Black is a single-weight file, so the weight
+    said nothing and the name drew at ~900 whatever the number was. Asked
+    to take "the thickess of the font" down by a fifth, there was nowhere
+    for it to go — Qt synthesises heavier, never lighter — so the rule
+    names the family that HAS the weight, and gets it from a bundled file
+    rather than by synthesis.
+    """
     rule = theme.STYLESHEET[theme.STYLESHEET.index("QLabel#titleText"):]
     rule = rule[:rule.index("}")]
-    assert theme.TITLE_FAMILY in rule and theme.FONT_STACK in rule
+    assert theme.FONT_STACK in rule
+    assert f"font-weight: {theme.TITLE_WEIGHT}" in rule
+    assert f"font-size: {theme.TITLE_PX}px" in rule
+    # Bold, which Alegreya ships — not a weight it would have to invent.
+    assert theme.TITLE_WEIGHT == 700
+    # A tenth smaller than the 25px it stood at, and no bigger.
+    assert theme.TITLE_PX == 22
+
+
+def test_the_black_face_is_still_bundled_and_still_used():
+    """It stopped being the title's and did NOT stop being needed: the
+    rank digit inside a heart or a shield is drawn in it, so removing it
+    with the title rule would have taken the marks' figures with it."""
+    from draft_assist.ui import tilekit
+
+    assert theme.TITLE_FAMILY == "Alegreya Black"
+    source = (Path(tilekit.__file__)).read_text(encoding="utf-8")
+    assert "theme.TITLE_FAMILY" in source
 
 
 def test_the_names_the_loader_and_the_theme_use_are_the_same():

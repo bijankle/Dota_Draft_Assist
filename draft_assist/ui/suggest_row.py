@@ -49,6 +49,13 @@ BAND_H = tilekit.STRIP_BAND_H
 PLACEHOLDERS = 5
 
 
+# The gap between two tiles on this strip. Named because the window
+# divides the card's width by it to work out how wide eleven tiles may
+# be (`MainWindow._suggestion_box`), and a spacing typed in two places is
+# a strip whose last tile hangs over the edge by exactly the difference.
+STRIP_GAP = 8
+
+
 class SuggestTile(QWidget):
     """One candidate: the portrait, with a number in the corner.
 
@@ -68,6 +75,7 @@ class SuggestTile(QWidget):
         self.fit = float(fit_value)
         self._delta: str = ""
         self._delta_colour: str = theme.GOOD
+        self._boxed = False
         # What the badge is currently a relation TO, for the tooltip:
         # the figure, whether it is a matchup or a synergy, and whose.
         self._relation: tuple[float, str, str] | None = None
@@ -101,6 +109,10 @@ class SuggestTile(QWidget):
         """
         self._delta = tilekit.delta_text(delta, kind)
         self._delta_colour = theme.GOOD if delta >= 0 else theme.BAD
+        # The gold frame that says "this is a relation, not this hero's
+        # own fit" — see `HeroTile.show_delta`. A suggestion and a pick
+        # have to be comparable at a glance, so both wear it.
+        self._boxed = bool(kind)
         # `against` NAMES the focused hero for the tooltip. The badge has
         # no room for it and does not need it — you just clicked that
         # hero — but a tooltip line reading "with +5.20" beside four
@@ -112,6 +124,7 @@ class SuggestTile(QWidget):
 
     def clear_delta(self) -> None:
         self._delta = ""
+        self._boxed = False
         self._relation = None
         self._refresh_tip()
         self.update()
@@ -219,7 +232,8 @@ class SuggestTile(QWidget):
         # suggestion and a pick have to be comparable at a glance.
         if self._delta:
             tilekit.paint_badge(painter, box, self._delta,
-                                self._delta_colour, self.font())
+                                self._delta_colour, self.font(),
+                                boxed=self._boxed)
         else:
             tilekit.paint_badge(painter, box,
                                 f"{self.fit * 100:+.1f}",
@@ -273,7 +287,7 @@ class SuggestRow(QWidget):
         # WRAPS rather than scrolls: a strip you have to scroll to read is
         # a strip you do not read at a glance, which is the one thing it is
         # for. Past the width it has been given the tiles go to a new row.
-        self.row = FlowLayout(self, spacing=8)
+        self.row = FlowLayout(self, spacing=STRIP_GAP)
         # AND THE WIDGET HAS TO DECLARE THAT IT WRAPS, or the layout
         # above it never asks. `FlowLayout` answers `hasHeightForWidth`
         # and `heightForWidth` correctly — but Qt only consults a child's
@@ -308,6 +322,12 @@ class SuggestRow(QWidget):
         # strip and the window above has to be told to ask again.
         self.row.invalidate()
         self.updateGeometry()
+
+    def tile_height(self) -> int:
+        """The other half of the box. Named for the same reason
+        `tile_width` is: a caller that needs the tile's size should not
+        have to reach into `_tile_size` to get half of it."""
+        return self._tile_size[1]
 
     def tile_width(self) -> int:
         """What "how many fit on one row" has to divide by."""
