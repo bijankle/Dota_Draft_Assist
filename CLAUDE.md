@@ -1802,8 +1802,8 @@ credentials, and put the account at risk. Do not go there.
   there is one value to change rather than two to keep in step.
   **THE USER SETS THE BASE, AND ONLY THE BASE** (View ▸ Sizes,
   `ui_settings.portrait_scale` / `number_scale`, `teams.set_scale`,
-  `tilekit.set_scale`). Two sliders, 50% to 200%, one for every portrait
-  in the app and one for every signed number — a setting that has to be
+  `tilekit.set_scale`). Two sliders, **25% to 175%, centred on 100%**,
+  one for every portrait in the app and one for every signed number — a setting that has to be
   applied in four places is four settings. They move the CAP, not the
   behaviour: a portrait still grows and shrinks with the window between
   its own floor and this ceiling, which is what "size dynamically, but
@@ -1820,6 +1820,18 @@ credentials, and put the account at risk. Do not go there.
   state, so `tests/conftest.py` resets them either side of every test —
   a test that turns them down and then fails would otherwise leave every
   test after it measuring smaller tiles.
+  **THE RANGE IS SYMMETRICAL, which it was not**, at the user's request:
+  "redefine what 100% is and rejig the min / max percentage to be
+  relative to this and jsut make it 25% to 175%". It ran 50% to 200%
+  with the default at 100, so the MIDDLE of the travel was 125 — the
+  handle sat a third of the way along and dragging right reached twice
+  as far as dragging left, over a slider whose centre was a size nobody
+  had asked for. 100% still draws exactly what it always drew; what
+  moved is where it SITS. The ends are `SCALE_MIN` / `SCALE_MAX` read by
+  the slider rather than typed into it, since a slider offering a value
+  the module clamps away is a control that lies about what it does — and
+  a machine that had turned the portraits past 175 comes back inside the
+  range rather than keeping a size the slider can no longer show.
   **AND EVERY ONE OF THEM IS HALOED** (`tilekit.paint_number`,
   `tables.DeltaCellDelegate`). The two grids printed their deltas as
   ordinary table text, which made them the one place in the app where a
@@ -2116,6 +2128,63 @@ credentials, and put the account at risk. Do not go there.
   the middle is two different teams.
   **AND THE CARD'S HEIGHT IS PAID FOR BY EVERYTHING BELOW IT**, which is
   what turned up the oldest bug in this family — see the strips note.
+
+- **EVERY BLOCK OF THE DRAFT TAB EXCEPT THE PICKS HAS A TICK BOX IN
+  VIEW** (`MainWindow.SECTIONS`, `_add_section_menu`, `_apply_sections`,
+  `ui_settings.show_roles` / `show_suggestions` / `show_items` /
+  `show_matrices`), at the user's request: "i want to be able to tick
+  on/off all the subheaders, except for the top 5 / 5 portraits - as
+  that is the main part of the app... they are on by default, the only
+  oen off by defautl are the matrices".
+  **THE TEN PICKS ARE NOT ON THE LIST AND MUST NOT BE ADDED.**
+  Everything that has a box is ADVICE ABOUT the board; the board is what
+  the app IS, and a tick box that empties the window is not something to
+  be able to find by accident. A test holds the list to that.
+  **THE HEADING GOES WITH THE CARD** — "I dont want the header to even
+  show if its unticked" — so what is hidden is the whole block rather
+  than its contents, and nothing is left behind marking where a card
+  used to be. That is also why the two side-by-side ROWS (the roles
+  cards, and the two matrices) are each wrapped in a block widget:
+  hiding the CARDS instead leaves the layout in the column, and a
+  layout whose children are all hidden still takes the spacing either
+  side of it — a double gap exactly where a block was.
+  **IN THE VIEW MENU rather than Settings ▸ Appearance**, which is where
+  it was first asked for and then moved from: "maybe its best to go in
+  the view dropdown menu and have a tick box on it". Same argument the
+  strip counts were moved on — a control you work by looking at the
+  result belongs beside the result. Added LAST of the three View items,
+  because `_add_transparency_menu` moves ITSELF to the top of the menu
+  whenever anything is already there and Sizes would otherwise be
+  stranded below the tick boxes.
+  **OPEN LEAD: AN INTERMITTENT ABORT NOBODY HAS ROOT-CAUSED.** Running
+  `tests/test_view_sections.py` alongside `test_ui_smoke.py` and
+  `test_the_draft_tab_shrinks.py` segfaults about one run in six, and it
+  narrows to ONE test — the one that unticks **Suggested items**. What
+  was ruled out, each over several runs: window churn alone (nine
+  windows built and closed, nothing toggled) is clean; the two existing
+  files without this one are clean; the trio with the toggling tests
+  deselected is clean; and the same hide performed on the code BEFORE
+  this feature was clean. But the trio then ran ten times clean while a
+  stack was being chased, so six clean control runs is weak evidence
+  against a one-in-six fault and **this is NOT established as
+  pre-existing**. It is the family this file already warns about — Qt
+  aborts on an unbounded layout rather than raising, so there is no
+  traceback into our own code — and the item strip is a
+  `heightForWidth` flow layout inside a scroll area, which is where
+  that loop lives. Get a stack before changing anything on the strength
+  of it.
+
+  **`_apply_sections` IS CALLED TWICE AT STARTUP, and the second one is
+  the one that works.** The menu is built with the toolbar, long before
+  the Draft tab is laid out, so the blocks it wants to hide are not
+  attributes yet — the first call hides nothing, and the matrices drew
+  on a fresh install with their own box unticked beside them. The
+  second call sits at the end of `__init__`. It is idempotent and
+  reads the SETTING as the truth, correcting the tick to match with
+  signals blocked: setting a control to what the file already says is
+  not the user pressing it, and unblocked it rewrites the settings file
+  on every start — the guard `TitleBar.set_pinned` carries for the same
+  reason.
 
 - **THE SUGGESTION COUNTS ARE THREE ROWS, AND THE LAST TWO ARE A LEGEND**
   (`_picks_controls`), at the user's request: "i want a legend added to

@@ -101,6 +101,19 @@ DEFAULTS = {
     # replaced them; see `_picks_controls`.
     "heart_count": 3,
     "shield_count": 3,
+    # WHICH BLOCKS OF THE DRAFT TAB ARE DRAWN, at the user's request -
+    # "i want to be able to tick on/off all the subheaders, except for
+    # the top 5 / 5 portraits - as that is the main part of the app".
+    # Four tick boxes in the View menu; the ten picks are not among them
+    # and never will be, since they are the subject the rest is advice
+    # about. THE MATRICES ARE THE ONE THAT STARTS OFF - "they are on by
+    # default, the only oen off by defautl are the matrices" - so an
+    # install that updates loses them until it asks for them back, which
+    # is the request rather than an accident.
+    "show_roles": True,
+    "show_suggestions": True,
+    "show_items": True,
+    "show_matrices": False,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather

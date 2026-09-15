@@ -1163,6 +1163,10 @@ def test_the_grids_sit_under_the_team_they_are_about(window):
     """Synergy is ally-by-ally so it belongs under your five; counters are
     read against theirs. A column then reads straight down from the tile
     it describes."""
+    # THE MATRICES START OFF (View ▸ Synergies and counters), so this
+    # test has to ask for the thing it is about before looking at where
+    # it sits.
+    window.section_actions["show_matrices"].setChecked(True)
     window.resize(1400, 900)
     window.show()
     QApplication.processEvents()
@@ -3692,8 +3696,15 @@ def test_the_sizes_are_two_sliders_in_the_view_menu(window):
     assert ui_settings.DEFAULTS["portrait_scale"] == 1.0
     assert ui_settings.DEFAULTS["number_scale"] == 1.0
     assert set(window.size_sliders) == {"portrait_scale", "number_scale"}
+    from draft_assist.ui import teams
     for slider in window.size_sliders.values():
-        assert (slider.minimum(), slider.maximum()) == (50, 200)
+        # 25 to 175, CENTRED on the 100% the app actually draws. Read
+        # off the module's own clamps rather than repeated as numbers,
+        # since a slider offering a value the code refuses is a control
+        # that lies about what it does.
+        assert (slider.minimum(), slider.maximum()) == (
+            round(teams.SCALE_MIN * 100), round(teams.SCALE_MAX * 100))
+    assert (teams.SCALE_MIN + teams.SCALE_MAX) / 2 == 1.0
     assert window.sizes_menu.menuAction() in window.view_menu.actions()
 
 

@@ -356,6 +356,13 @@ class MainWindow(QMainWindow):
         # (`closeEvent`) and applied above, which is what the lock was
         # really for.
         self.setMinimumSize(self._floor_w, 0)
+        # AFTER THE TABS EXIST, which is the whole reason it is repeated
+        # here. `_add_section_menu` builds the tick boxes with the
+        # toolbar, long before the Draft tab is laid out, so the blocks
+        # it wants to hide are not attributes yet and the first call
+        # silently hid nothing — the matrices drew on a fresh install
+        # with their own tick box unticked beside them.
+        self._apply_sections()
         # Before the window is shown, because the taskbar reads a window's
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
@@ -779,6 +786,11 @@ class MainWindow(QMainWindow):
         # glance mid-draft should hold the things pressed mid-draft.
         self._add_transparency_menu()
         self._add_sizes_menu()
+        # LAST, so the four tick boxes sit under the two sliders.
+        # `_add_transparency_menu` moves ITSELF to the top of the menu
+        # when anything is already there, so adding these first would
+        # have left Sizes stranded below them.
+        self._add_section_menu()
 
         # There is no capture pill: it said the same sentence as the status
         # bar in less room, one line higher up. Keeping it around invisible
@@ -937,7 +949,17 @@ class MainWindow(QMainWindow):
             slay.addWidget(self.role_bar.bars[side])
             self.roles_cards[side] = side_card
             roles_row.addWidget(side_card, 1)
-        outer.addLayout(roles_row)
+        # IN A BLOCK OF ITS OWN, so View can hide the whole thing with
+        # one `setVisible`. Hiding the two CARDS instead leaves the row
+        # in the column: a layout whose children are all hidden still
+        # takes the spacing either side of it, which is a double gap
+        # where a block used to be. `bare`, since it holds a layout
+        # rather than being a surface - see the QWidget[bare] rule.
+        roles_row.setContentsMargins(0, 0, 0, 0)
+        self.roles_block = QWidget()
+        self.roles_block.setProperty("bare", True)
+        self.roles_block.setLayout(roles_row)
+        outer.addWidget(self.roles_block)
 
         # The board is the top of the screen and everything under it is
         # advice about the board: first which hero to take, then what to
@@ -957,6 +979,7 @@ class MainWindow(QMainWindow):
         self.suggest_row.clicked_hero.connect(
             self._on_suggestion_clicked)
         playy.addWidget(self.suggest_row)
+        self.picks_card = picks_card
         outer.addWidget(picks_card)
 
         items_card, ilay = card(
@@ -964,6 +987,7 @@ class MainWindow(QMainWindow):
         self.item_row = ItemRow()
         self.item_row.asked_why.connect(self._why_this_item)
         ilay.addWidget(self.item_row)
+        self.items_card = items_card
         outer.addWidget(items_card)
 
         # ----- the grids, each under the team whose heroes head it.
@@ -1002,7 +1026,11 @@ class MainWindow(QMainWindow):
         # SYNERGIES LEFT, COUNTERS RIGHT, ALWAYS — they are never
         # re-seated. See `_order_panels`.
         self.synergy_card, self.matchup_card = with_card, vs_card
-        outer.addLayout(grids)
+        grids.setContentsMargins(0, 0, 0, 0)
+        self.grids_block = QWidget()
+        self.grids_block.setProperty("bare", True)
+        self.grids_block.setLayout(grids)
+        outer.addWidget(self.grids_block)
         # The stretch goes at the BOTTOM, not into the grids. Giving it to
         # them left half the window blank and, worse, meant the window had
         # no shorter size to offer — a stretching widget never asks for
@@ -1926,6 +1954,77 @@ class MainWindow(QMainWindow):
         self.last_draft_key = None
         self._say("Cleared hand-entered draft slots", 5000)
 
+    # WHAT THE DRAFT TAB MAY BE CUT DOWN TO, at the user's request: "i
+    # want to be able to tick on/off all the subheaders, except for the
+    # top 5 / 5 portraits - as that is the main part of the app". Each
+    # entry is a setting, the words on the tick box, and the attribute
+    # holding the whole block — heading and all, since "if the user
+    # unticks them the headers should hide away".
+    #
+    # THE TEN PICKS ARE NOT ON THIS LIST and must not be added to it.
+    # Everything here is ADVICE ABOUT the board; the board itself is
+    # what the app is, and a tick box that empties the window is not a
+    # setting anybody wants to find by accident.
+    #
+    # IN THE VIEW MENU rather than Settings ▸ Appearance, also at the
+    # user's request — "maybe its best to go in the view dropdown menu
+    # and have a tick box on it". It is the same argument the mark
+    # counts were moved on: a control you work by looking at the result
+    # belongs beside the result, not two menus away.
+    SECTIONS = (
+        ("show_roles", "Team roles", "roles_block"),
+        ("show_suggestions", "Suggested picks", "picks_card"),
+        ("show_items", "Suggested items", "items_card"),
+        ("show_matrices", "Synergies and counters", "grids_block"),
+    )
+
+    def _add_section_menu(self) -> None:
+        """A tick box per block of the Draft tab."""
+        self.view_menu.addSeparator()
+        self.section_actions = {}
+        for key, label, _attr in self.SECTIONS:
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setChecked(bool(self.settings.get(key, True)))
+            act.toggled.connect(
+                lambda on, k=key: self._set_section(k, on))
+            self.view_menu.addAction(act)
+            self.section_actions[key] = act
+        self._apply_sections()
+
+    def _set_section(self, key: str, shown: bool) -> None:
+        """Remember a tick and redraw. Written through `ui_settings.save`
+        like every other preference — `DEFAULTS` is the write filter, so
+        each of these four has an entry there or it would be kept for the
+        session and dropped on the way to disk."""
+        if bool(self.settings.get(key)) == bool(shown):
+            return
+        self.settings[key] = bool(shown)
+        ui_settings.save(self.settings)
+        self._apply_sections()
+
+    def _apply_sections(self) -> None:
+        """Show or hide each block, and keep the ticks in step with it.
+
+        IDEMPOTENT, and called from `_apply_settings` as well as from the
+        menu: a settings file edited by hand, or a window built before
+        the menu existed, must arrive at the same place as a click.
+        `blockSignals` while a tick is corrected, since setting a control
+        to what the file already says is not the user pressing it — and
+        unblocked it would write the settings file on every start, which
+        is the fault `TitleBar.set_pinned` carries the same guard for.
+        """
+        for key, _label, attr in self.SECTIONS:
+            shown = bool(self.settings.get(key, True))
+            block = getattr(self, attr, None)
+            if block is not None:
+                block.setVisible(shown)
+            act = getattr(self, "section_actions", {}).get(key)
+            if act is not None and act.isChecked() != shown:
+                act.blockSignals(True)
+                act.setChecked(shown)
+                act.blockSignals(False)
+
     def _add_transparency_menu(self) -> None:
         """View ▸ Transparency: the same slider, in a menu.
 
@@ -1999,7 +2098,12 @@ class MainWindow(QMainWindow):
             name.setMinimumWidth(78)
             slider = QSlider(Qt.Orientation.Horizontal, row)
             slider.setFixedWidth(140)
-            slider.setRange(50, 200)
+            # 25 to 175, CENTRED ON 100 — see `teams.SCALE_MIN`. The
+            # two ends are the module's own clamps rather than numbers
+            # repeated here, or a slider could offer a value the code
+            # behind it silently refuses.
+            slider.setRange(round(teams.SCALE_MIN * 100),
+                            round(teams.SCALE_MAX * 100))
             slider.setValue(int(float(self.settings.get(key, 1.0)) * 100))
             readout = QLabel("", row)
             readout.setMinimumWidth(46)
@@ -2957,6 +3061,7 @@ class MainWindow(QMainWindow):
         if (self.settings.get("use_gsi"), self.settings.get("use_vision")) != (
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
+        self._apply_sections()
         marks = ("heart_count", "shield_count")
         if any(self.settings.get(k) != before.get(k) for k in marks):
             # RE-APPLIED, NOT RE-MEASURED, and that is the change: these

@@ -64,7 +64,14 @@ TILE_MIN = 64
 # when a display setting does, or turning the portraits up would leave a
 # window that cannot be made narrow again.
 SCALE = 1.0
-SCALE_MIN, SCALE_MAX = 0.5, 2.0
+# SYMMETRICAL AROUND 100%, at the user's request: "redefine what 100%
+# is and rejig the min / max percentage to be relative to this and jsut
+# make it 25% to 175%". It ran 50% to 200% with the default at 100, so
+# the MIDDLE of the travel was 125 and dragging right reached twice as
+# far as dragging left — the handle sat a third of the way along a
+# slider whose centre was a size nobody had asked for. 100% is what the
+# app has always drawn and still is; what moved is where it SITS.
+SCALE_MIN, SCALE_MAX = 0.25, 1.75
 
 
 def set_scale(factor: float) -> None:
