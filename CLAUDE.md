@@ -5682,6 +5682,53 @@ credentials, and put the account at risk. Do not go there.
   that puts the bar above the top of its own box is refuted PER FRAME
   rather than by a spread, so one picture is enough to kill the
   letterboxed candidate.
+  **AND A MINORITY IS NOT A SECOND POPULATION** (`bad_frames`,
+  `mark_shared_dissent`, `settled`). The majority rule was written for
+  ONE bad fit among six and cannot tell that from a GROUP disagreeing
+  for a reason. A seven-frame run met the second case and WROTE IT:
+  `radiant_x` and `dire_x` each came out 5 of 7, cleared the majority
+  and were saved — while the same run's consensus section printed
+  `x_of_hudbox ... worst miss 0.0546  NOT CONSISTENT` two sections
+  above. Two halves of one tool disagreeing about one number.
+  **AND THE TWO APART WERE THE SAME TWO FRAMES BOTH TIMES**, which is
+  the tell. 1360x768 and 1920x1080 — the only two at 16:9 in that
+  sample — read `radiant_x` at 0.1037 and 0.1083 where the five taller
+  frames read 0.0506 to 0.0547, and `dire_x` at 0.571 where the five
+  read 0.592. The median of the five is then one group's number
+  written as everybody's, on a machine whose own display is in the
+  group that dissented.
+  **THE ASPECT SPLIT IS THEREFORE MEASURED RATHER THAN NOTICED**, and
+  it is ALL FOUR horizontal fractions rather than `dire_x` alone:
+
+      fraction    taller than 16:9   at 16:9
+      radiant_x   0.0506 - 0.0547    0.1037, 0.1083
+      dire_x      0.5914 - 0.5938    0.5708, 0.5713
+      slot_w      0.0674 - 0.0711    0.0615, 0.0618
+      pitch       0.0703 - 0.0715    0.0645, 0.0654
+
+  Nobody has explained the mechanism and nothing has been changed on
+  the strength of it. What it settles is that ONE constant cannot
+  carry the horizontal, so the shipped four stay and the tool refuses
+  rather than averaging across the split.
+  **AND THE VERTICAL IS SETTLED BY THAT SAME RUN**: `y` 0.0052 and
+  `slot_h` 0.0533, both 7 of 7, worst miss 0.0008 on `y`. Those two
+  decide whether a crop lands on a portrait at all, and the sample
+  that finally settles them is the one whose horizontal half it does
+  not.
+  **TELLING THE TWO CASES APART IS `bad_frames`**, and without it they
+  are indistinguishable from any single fraction. A frame apart on
+  MORE THAN HALF the fractions fitted the wrong thing entirely — the
+  1440x900 that located a CHOOSE YOUR HERO grid measures every
+  fraction off that grid — so it is DROPPED before any median is
+  taken and the rest stand. Frames apart on only a FEW, together, are
+  the opposite: `mark_shared_dissent` refuses a fraction whose
+  dissenters also dissent on another, because two frames disagreeing
+  about one number is a bad fit and the same two disagreeing about
+  several is a population.
+  Dropping the bad frame rather than outvoting it also moved `y` from
+  0.0054 to 0.0052 and `slot_h` from 0.0524 to 0.0525 on the
+  six-frame fixture — a fifth of a pixel at 1080p, and the right
+  fifth.
   **WHAT THAT RUN MEASURED, and it is not yet in the shipped six**: the
   app's box lands **+24px too low and +36px too tall at 1080p** (median
   over six frames), against `y` 0.0054 where 0.0330 ships and `slot_h`

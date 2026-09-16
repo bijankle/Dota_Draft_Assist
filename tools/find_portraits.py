@@ -56,6 +56,7 @@ import json
 import re
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 import cv2
@@ -1845,6 +1846,55 @@ def _boxes_against_the_bar(good: list) -> None:
                                  ("width", 8))))
 
 
+def _measure_rows(good: list, shipped, skip=()) -> tuple:
+    """The per-fraction median, who agreed, and who did not."""
+    rows, thin = [], []
+    for name, key, against in FRACTIONS:
+        column = [(r[key], r["file"]) for r in good
+                  if r.get(key) is not None and r["file"] not in skip]
+        if len(column) < MIN_VOTERS:
+            # SKIPPED, NEVER RETURNED FROM. This used to `return` on the
+            # first thin fraction, and `radiant_x` is the first entry in
+            # FRACTIONS - so a run where one fraction was short abandoned
+            # the other five WITHOUT PRINTING THEM, and a run given
+            # --apply ended having written nothing and said nothing about
+            # it. The line it did print named one fraction, so it read as
+            # a note rather than as the whole fit giving up.
+            thin.append((name, len(column)))
+            continue
+        values = np.array([v for v, _f in column], dtype=float)
+        mid = float(np.median(values))
+        with_it = [f for v, f in column if abs(v - mid) <= AGREE_WITHIN]
+        rows.append({
+            "name": name, "mid": mid, "shipped": getattr(shipped, name),
+            "against": against, "voters": len(column), "agree": len(with_it),
+            "worst": float(np.max(np.abs(values - mid))),
+            "apart": [f for v, f in column if abs(v - mid) > AGREE_WITHIN],
+        })
+    return rows, thin
+
+
+def bad_frames(rows: list) -> list:
+    """Frames apart on MORE THAN HALF the fractions - fitted wrong.
+
+    THIS IS WHAT TELLS A BAD FIT FROM A SECOND POPULATION, and without
+    it they are indistinguishable from any single fraction. A frame that
+    located a hero-grid row instead of the pick bar measures EVERY
+    fraction off the wrong thing, so it is apart on nearly all of them;
+    two frames that share an aspect and disagree about the HORIZONTAL
+    while agreeing with everybody about the vertical are not broken,
+    they are a different case. One is dropped and the rest stand; the
+    other means the fraction cannot be written as one constant.
+
+    Both are real runs. Six frames where 1440x900 fitted a CHOOSE YOUR
+    HERO grid is the first; seven where 1360x768 and 1920x1080 - the
+    only two at 16:9 - read `radiant_x` at 0.104 against 0.050 and
+    agreed on `slot_w`, `pitch`, `y` and `slot_h` is the second.
+    """
+    seen = Counter(name for row in rows for name in row["apart"])
+    return sorted(f for f, count in seen.items() if count * 2 > len(rows))
+
+
 def _fitted_layout(good: list, apply: bool = False) -> None:
     """THE SIX FRACTIONS THESE SCREENSHOTS MEASURE, beside the six shipped.
 
@@ -1877,28 +1927,19 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
     coincidence.
     """
     shipped = DraftLayout()
-    rows, thin = [], []
-    for name, key, against in FRACTIONS:
-        column = [(r[key], r["file"]) for r in good if r.get(key) is not None]
-        if len(column) < MIN_VOTERS:
-            # SKIPPED, NEVER RETURNED FROM. This used to `return` on the
-            # first thin fraction, and `radiant_x` is the first entry in
-            # FRACTIONS - so a run where one fraction was short abandoned
-            # the other five WITHOUT PRINTING THEM, and a run given
-            # --apply ended having written nothing and said nothing about
-            # it. The line it did print named one fraction, so it read as
-            # a note rather than as the whole fit giving up.
-            thin.append((name, len(column)))
-            continue
-        values = np.array([v for v, _f in column], dtype=float)
-        mid = float(np.median(values))
-        with_it = [f for v, f in column if abs(v - mid) <= AGREE_WITHIN]
-        rows.append({
-            "name": name, "mid": mid, "shipped": getattr(shipped, name),
-            "against": against, "voters": len(column), "agree": len(with_it),
-            "worst": float(np.max(np.abs(values - mid))),
-            "apart": [f for v, f in column if abs(v - mid) > AGREE_WITHIN],
-        })
+    rows, thin = _measure_rows(good, shipped)
+    # A BAD FRAME IS DROPPED BEFORE A POPULATION IS LOOKED FOR, because
+    # the two look alike from one fraction and are opposites. See
+    # `bad_frames`.
+    bad = bad_frames(rows)
+    if bad:
+        print(f"\nSET ASIDE as bad fits rather than dissent: "
+              f"{', '.join(bad)}")
+        print(f"  Each is apart from the consensus on more than half the "
+              f"fractions, which is one frame fitted wrong rather than a "
+              f"disagreement about any single number.")
+        rows, thin = _measure_rows(good, shipped, skip=set(bad))
+        good = [r for r in good if r["file"] not in set(bad)]
     if thin:
         print(f"\nTOO FEW FRAMES TO FIT: "
               + ", ".join(f"{name} ({seen})" for name, seen in thin))
@@ -1921,6 +1962,7 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
                   f"{MIN_VOTERS} screenshots that locate all ten "
                   f"portraits.")
         return
+    shared = mark_shared_dissent(rows)
     print(f"\nWHAT THESE {len(good)} PICTURES MEASURE ({len(rows)} of "
           f"{len(FRACTIONS)} fractions)")
     print(f"  {'fraction':<11}{'measured':>10}{'shipped':>10}"
@@ -1933,6 +1975,12 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
               f"{str(row['agree']) + '/' + str(row['voters']):>8}"
               f"    {moves:>+5} px")
     print("  " + ", ".join(f"{r['name']}={r['mid']:.4f}" for r in rows))
+    for name, files in shared:
+        print(f"  {name} IS TWO POPULATIONS, not a bad fit: the frames "
+              f"apart from it are apart on another fraction too "
+              f"({', '.join(files)}). A median over the rest is one "
+              f"group's number written as everybody's, so it is left "
+              f"at the shipped value.")
     if not apply:
         print("  NOT APPLIED. These are what the pictures say; changing "
               "the shipped six invalidates every saved "
@@ -1960,10 +2008,47 @@ def settled(row: dict) -> bool:
     A clear majority, never all of them: requiring every frame makes one
     bad fit a veto over every resolution, and the whole reason the median
     is the estimator is that it survives a minority of bad fits.
+
+    **AND A MINORITY IS NOT THE SAME THING AS A SECOND POPULATION**
+    (`mark_shared_dissent`). The majority rule was written for ONE bad
+    fit among six, which is what a missed leading portrait looks like.
+    It cannot tell that from a GROUP that disagrees for a reason - and
+    the first seven-frame run met exactly that: `radiant_x` and
+    `dire_x` were each 5 of 7, and the two apart were the same two
+    frames both times, the only two at 16:9 in the sample. A median
+    over the other five is then not a constant measured seven times,
+    it is one group's number written as everybody's.
     """
     return (row["voters"] >= MIN_VOTERS
             and row["agree"] * 3 >= row["voters"] * 2
-            and row["agree"] >= MIN_VOTERS)
+            and row["agree"] >= MIN_VOTERS
+            and not row.get("shared_dissent"))
+
+
+def mark_shared_dissent(rows: list) -> list:
+    """Flag every fraction whose dissenters also dissent on another.
+
+    TWO FRAMES DISAGREEING ABOUT ONE NUMBER IS A BAD FIT; THE SAME TWO
+    DISAGREEING ABOUT SEVERAL IS A POPULATION. `banks_from` reads a
+    bank's origin off the first portrait found in it, so a missed
+    leading portrait moves THAT ONE FRACTION on THAT ONE FRAME and
+    nothing else - which is the argument this file already makes for
+    believing the fractions that settle. Turned round, a frame that is
+    apart on two unrelated fractions was not unlucky once.
+
+    Returns the names flagged, so the caller can say which and why.
+    """
+    apart = {r["name"]: set(r["apart"]) for r in rows if r["apart"]}
+    flagged = []
+    for name, dissent in apart.items():
+        others = set().union(*(f for other, f in apart.items()
+                               if other != name)) if len(apart) > 1 else set()
+        if dissent & others:
+            flagged.append((name, sorted(dissent)))
+    shared = {name for name, _files in flagged}
+    for row in rows:
+        row["shared_dissent"] = row["name"] in shared
+    return flagged
 
 
 def _write_calibration(rows: list) -> None:

@@ -308,12 +308,18 @@ def test_one_bad_frame_does_not_veto_what_five_others_agree_on(
     run had already named an outlier twice. Nothing was written. The
     whole reason the median is the estimator is that it survives a
     minority of bad fits.
+
+    It is now SET ASIDE rather than merely outvoted: a frame apart on
+    more than half the fractions fitted the wrong thing entirely, so it
+    is dropped before the median is taken rather than dragging it. That
+    moves `y` from 0.0054 to 0.0052 and `slot_h` from 0.0524 to 0.0525 —
+    a fifth of a pixel at 1080p, and the right fifth.
     """
     tool = _tool()
     on_disk = _apply(tool, _their_frames(tool), tmp_path, monkeypatch)
     assert on_disk is not None, "a settled measurement was not written"
-    assert round(on_disk["y"], 4) == 0.0054
-    assert round(on_disk["slot_h"], 4) == 0.0524
+    assert round(on_disk["y"], 4) == 0.0052
+    assert round(on_disk["slot_h"], 4) == 0.0525
 
 
 def test_the_two_that_do_not_settle_are_the_two_BANK_ORIGINS(
@@ -479,6 +485,9 @@ def test_a_fraction_with_too_few_frames_does_not_abandon_the_others(
     than as the whole fit giving up, which is how a real `--apply` run
     over two pictures ended having written nothing and said nothing
     about it.
+
+    The expected `y` and `slot_h` are FIVE-frame medians: 1440x900 is
+    set aside as a bad fit before any median is taken.
     """
     tool = _tool()
     frames = _their_frames(tool)
@@ -488,8 +497,8 @@ def test_a_fraction_with_too_few_frames_does_not_abandon_the_others(
         frame["x_of_hudbox"] = None
     on_disk = _apply(tool, frames, tmp_path, monkeypatch)
     assert on_disk is not None, "five good fractions were abandoned by one"
-    assert round(on_disk["y"], 4) == 0.0054
-    assert round(on_disk["slot_h"], 4) == 0.0524
+    assert round(on_disk["y"], 4) == 0.0052
+    assert round(on_disk["slot_h"], 4) == 0.0525
 
 
 def test_apply_always_says_whether_it_wrote_anything(
@@ -546,3 +555,83 @@ def test_three_pictures_are_allowed_to_name_one(capsys):
     tool._vertical(three)
     said = capsys.readouterr().out
     assert "only 3 picture(s) here can tell" not in said
+
+
+# The user's own seven-frame run, transcribed from its table. The two at
+# 16:9 read radiant_x at 0.104 and 0.108 where the five taller frames
+# read 0.050 to 0.055 — and those same two are the two apart on dire_x,
+# while all seven agree on slot_w, pitch, y and slot_h.
+THEIR_SEVEN = [
+    ("800 x 600",   41,  474,  55,  57, 3, 32,  800,  600),
+    ("1024 x 768",  55,  606,  72,  72, 4, 39, 1024,  768),
+    ("1280 x 1024", 70,  757,  91,  90, 6, 50, 1280, 1024),
+    ("1360 x 768", 141,  777,  84,  89, 4, 46, 1360,  768),
+    ("1440 x 900",  73,  854,  97, 103, 4, 57, 1440,  900),
+    ("1600 x 1200", 81,  950, 112, 114, 6, 63, 1600, 1200),
+    ("1920 x 1080", 208, 1096, 118, 124, 6, 66, 1920, 1080),
+]
+
+
+def _frames_from(tool, table):
+    out = []
+    for name, rx, dx, sw, pitch, top, sh, w, h in table:
+        _left, span = tool.hud_box(w, h)
+        out.append({"file": name,
+                    "x_of_hudbox": rx / span, "dire_x_of_hudbox": dx / span,
+                    "slot_w_of_hudbox": sw / span,
+                    "pitch_of_hudbox": pitch / span,
+                    "y_of_window": top / h, "slot_h_of_window": sh / h})
+    return out
+
+
+def test_two_frames_that_disagree_together_are_not_outvoted(
+        tmp_path, monkeypatch):
+    """A MINORITY IS NOT THE SAME THING AS A SECOND POPULATION.
+
+    The majority rule was written for ONE bad fit among six — a missed
+    leading portrait, which moves a bank's origin and nothing else. It
+    cannot tell that from a GROUP disagreeing for a reason, and the
+    user's seven-frame run was exactly that: `radiant_x` and `dire_x`
+    each came out 5 of 7, and the two apart were the same two frames
+    both times, the only two at 16:9 in the sample. Writing the median
+    of the other five puts one group's number on everybody's machine —
+    and the machine it was written on is in the group that dissented.
+    """
+    tool = _tool()
+    on_disk = _apply(tool, _frames_from(tool, THEIR_SEVEN),
+                     tmp_path, monkeypatch)
+    assert on_disk is not None, "the four that agree 7/7 were not written"
+    shipped = tool.DraftLayout()
+    assert on_disk["radiant_x"] == shipped.radiant_x, "wrote one group's x"
+    assert on_disk["dire_x"] == shipped.dire_x, "wrote one group's dire_x"
+
+
+def test_the_vertical_is_still_written_from_those_seven(
+        tmp_path, monkeypatch):
+    """Refusing the horizontal must not refuse the whole fit.
+
+    All seven agree on `y` and `slot_h`, which are the two that decide
+    whether a crop lands on a portrait at all.
+    """
+    tool = _tool()
+    on_disk = _apply(tool, _frames_from(tool, THEIR_SEVEN),
+                     tmp_path, monkeypatch)
+    assert round(on_disk["y"], 4) == 0.0052
+    assert round(on_disk["slot_h"], 4) == 0.0533
+
+
+def test_one_frame_apart_on_everything_is_dropped_not_deferred_to():
+    """The other half of the same question.
+
+    1440x900 in the six-frame run fitted a CHOOSE YOUR HERO grid rather
+    than the pick bar, so it measures every fraction off the wrong
+    thing and is apart on nearly all of them. That is one frame to set
+    aside, not a reason to doubt any fraction — the opposite reading
+    from two frames that share an aspect and are apart on two.
+    """
+    tool = _tool()
+    rows, _thin = tool._measure_rows(_their_frames(tool), tool.DraftLayout())
+    assert tool.bad_frames(rows) == ["1440 x 900"]
+    seven, _ = tool._measure_rows(_frames_from(tool, THEIR_SEVEN),
+                                  tool.DraftLayout())
+    assert tool.bad_frames(seven) == [], "an aspect group is not a bad fit"
