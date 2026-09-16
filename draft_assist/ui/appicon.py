@@ -141,7 +141,9 @@ def _drawn(size: int = 256) -> QPixmap:
     theirs = QPolygonF([QPointF(size * 0.80, size * 0.26),
                         QPointF(size * 0.50 + gap, size * 0.80),
                         QPointF(size * 0.50 + gap, size * 0.26)])
-    painter.setBrush(QColor(theme.ACCENT))
+    # THE MARK MAROON, because this is drawn at 16px and has to read as
+    # a shape at that size. The fill maroon would be a black wedge.
+    painter.setBrush(QColor(theme.ACCENT_MARK))
     painter.drawPolygon(mine)
     painter.setBrush(QColor(theme.BAD))
     painter.drawPolygon(theirs)

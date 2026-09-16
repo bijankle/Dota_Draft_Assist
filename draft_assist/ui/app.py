@@ -226,6 +226,12 @@ STRIP_OF_PICK = 1.0
 # where the board above it ends.
 # The HEIGHT still follows the width at 16:9, so a suggestion is a
 # smaller pick rather than a differently-shaped one.
+# THE GREY PILL'S MARGIN, ONE NUMBER ON ALL FOUR SIDES. Spelled once
+# because the request was that the sides and the top match: four
+# literals in a `setContentsMargins` call is three chances for them to
+# stop matching.
+PILL_PAD = 8
+
 SUGGESTIONS_PER_ROW = 11
 
 # The two states where the pick bar IS on screen, without their prefix.
@@ -3938,9 +3944,30 @@ class MainWindow(QMainWindow):
         buttons.
         """
         self.board_actions = QWidget()
-        self.board_actions.setProperty("bare", True)
+        # ONE PILL ROUND ALL THREE, at the user's request, so they read as
+        # a group rather than as three loose controls in the gap between
+        # the headings. `group` rather than `bare`: this one is a SURFACE
+        # now, where bare exists to say "I only hold a layout".
+        self.board_actions.setProperty("group", True)
+        # A PLAIN QWidget PAINTS A STYLESHEET BACKGROUND ONLY WHEN ASKED.
+        # Without this the rule parses and draws absolutely nothing —
+        # the fault `QWidget#titleBar` already cost this app once.
+        self.board_actions.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground, True)
+        # AND IT HUGS ITS BUTTONS RATHER THAN THE ROW. `head_row` is a
+        # QHBoxLayout and the two headings either side set its height, so
+        # left to itself the pill STRETCHES to meet them and the grey
+        # above and below the buttons becomes whatever those labels
+        # happen to need — "the grey padding background is too tall".
+        # Fixed vertically, the margins below are what is actually drawn.
+        self.board_actions.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                         QSizePolicy.Policy.Fixed)
         acts = QHBoxLayout(self.board_actions)
-        acts.setContentsMargins(0, 0, 0, 0)
+        # THE PILL'S PADDING, AND IT IS THE SAME NUMBER ON ALL FOUR SIDES
+        # at the user's request. Stylesheet padding on a container does
+        # not move its children, so the breathing room has to come from
+        # the layout's own margins.
+        acts.setContentsMargins(PILL_PAD, PILL_PAD, PILL_PAD, PILL_PAD)
         acts.setSpacing(8)
         for button in (self.clear_all_button, self.detect_all_button,
                        self.demo_button):

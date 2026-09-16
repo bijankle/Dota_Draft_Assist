@@ -27,8 +27,8 @@ BORDER = "#3f4147"
 TEXT = "#dbdee1"
 TEXT_STRONG = "#f2f3f5"
 TEXT_DIM = "#949ba4"
-ACCENT = "#b5342c"        # deep vermilion; see the note above
-ACCENT_HOVER = "#95271f"
+ACCENT = "#38040e"        # maroon; see the note below
+ACCENT_HOVER = "#540716"
 # THE ACCENT WITH THE PRESS TAKEN OUT OF IT, for a control that is there
 # and cannot be used — the down arrow on a count box already at nought.
 # At the user's request: "if i cant go any lower e.e.g im at 0, i sitll
@@ -37,7 +37,31 @@ ACCENT_HOVER = "#95271f"
 # twin; a dim red says it is the same control with nothing left to do.
 # Mixed against `BG_INPUT` rather than darkened, so it sits on the
 # surface it is drawn on.
-ACCENT_DIM = "#7d3735"
+# TWO MAROONS, AND THE SPLIT IS MEASURED RATHER THAN TASTE. At the
+# user's request every red accent in the chrome is #38040e - but that
+# colour is 0.010 relative luminance, where the red it replaces was
+# 0.125. As a GROUND it is excellent: off-white on it measures 15.9:1,
+# against 5.4:1 before. As a MARK on any surface in this palette it sits
+# between 1.07 and 1.55:1 and effectively disappears, so a caret, a
+# count box arrow or the selected tab's underline drawn in it could be
+# located only by knowing where it was.
+# So ACCENT is the FILL - anything with white text or a tick on top -
+# and ACCENT_MARK is every line, edge and small shape drawn ON dark with
+# nothing over it. It is the same hue lifted to the visibility the old
+# accent had: 2.06-2.69:1 against these surfaces, where #b5342c managed
+# 2.10-2.74:1. Nothing became harder to see than it already was.
+# The signed numbers are NOT in this: GOOD and BAD are the app's one
+# universal convention and the user pointedly left every one of them
+# out of the request.
+ACCENT_MARK = "#c30e31"
+# The spent end of a stepper, at the same share of its own mark colour
+# that the old dim red was of the old accent (0.59).
+ACCENT_MARK_DIM = "#980b26"
+# The pill the three board buttons sit in. BG_DEEP rather than
+# BG_ELEVATED: elevated is the CARDS' own colour and the two team cards
+# flank that row, so a pill in that shade would read as a third card
+# rather than as a group.
+GROUP_BG = BG_DEEP
 GOOD = "#23a55a"
 BAD = "#f23f43"
 WARN = "#f0b232"
@@ -202,7 +226,7 @@ QToolTip {{
    that includes the one on the steam profile section top right of app
    window". A PROPERTY rather than a widget stylesheet, so
    `set_greyscale` rebuilds it with everything else. */
-QLabel[caret="true"] {{ background: transparent; color: {ACCENT}; }}
+QLabel[caret="true"] {{ background: transparent; color: {ACCENT_MARK}; }}
 QMainWindow::separator {{ background: {BORDER}; width: 1px; height: 1px; }}
 
 QMenuBar {{ background: {BG_DEEP}; border-bottom: 1px solid {BG_DEEP}; }}
@@ -226,7 +250,7 @@ QMenu::indicator {{
     width: 15px; height: 15px; margin-left: 6px;
     border-radius: 3px; border: 1px solid {BORDER}; background: {BG_INPUT};
 }}
-QMenu::indicator:checked {{ {TICK_URL} border-color: {ACCENT}; }}
+QMenu::indicator:checked {{ {TICK_URL} border-color: {ACCENT_MARK}; }}
 
 QToolBar {{
     background: {BG_DEEP};
@@ -280,7 +304,7 @@ QTabBar::tab {{
     padding: 8px 18px;
     border-bottom: 2px solid transparent;
 }}
-QTabBar::tab:selected {{ color: {TEXT}; border-bottom: 2px solid {ACCENT}; }}
+QTabBar::tab:selected {{ color: {TEXT}; border-bottom: 2px solid {ACCENT_MARK}; }}
 QTabBar::tab:hover {{ color: {TEXT}; }}
 
 /* NO GOLD ON A CONTROL, which REVERSES "a gold border on every button".
@@ -353,17 +377,25 @@ QPushButton[accent="true"]:disabled {{
    the padding box, so three pixels instead of one is four more pixels of
    height, and the vertical padding drops to hold `CONTROL_H` — the one
    height every control in this app is. */
+/* THE BORDER STAYS AND IS THE FILL'S OWN COLOUR, which is what removes
+   it to the eye without moving the button. {PLAIN_PAD_Y}px of padding
+   plus {FRAME_WIDTH}px of border is what lands this on {CONTROL_H}px,
+   exactly what a count box measures - drop the border and all three
+   lose 6px of height and stop matching the boxes below them. */
 QPushButton[plain="true"] {{
-    background: transparent; font-weight: bold;
+    background: {ACCENT}; font-weight: bold;
     border: {FRAME_WIDTH}px solid {ACCENT};
     padding: {PLAIN_PAD_Y}px 12px;
+    color: {TEXT_STRONG};
 }}
 QPushButton[plain="true"]:hover {{
-    background: {BG_HOVER}; border-color: {ACCENT_HOVER};
+    background: {ACCENT_HOVER}; border-color: {ACCENT_HOVER};
 }}
-QPushButton[plain="true"]:pressed {{ background: {BG_INPUT}; }}
+QPushButton[plain="true"]:pressed {{
+    background: {ACCENT}; border-color: {ACCENT_HOVER};
+}}
 QPushButton[plain="true"]:disabled {{
-    background: transparent; color: {TEXT_DIM}; border-color: {ACCENT_DIM};
+    background: {ACCENT}; color: {TEXT_DIM}; border-color: {ACCENT};
 }}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
@@ -383,7 +415,7 @@ QPushButton[slot="true"][filled="false"] {{
 /* The hero whose relations every other slot is currently showing. */
 QPushButton[slot="true"][focused="true"] {{
     background: {BG_HOVER}; color: {TEXT_STRONG};
-    border-left: 3px solid {ACCENT}; font-weight: 600;
+    border-left: 3px solid {ACCENT_MARK}; font-weight: 600;
 }}
 
 QComboBox {{
@@ -392,7 +424,7 @@ QComboBox {{
     border-radius: 5px;
     padding: 5px 10px;
 }}
-QComboBox:hover {{ border-color: {ACCENT}; }}
+QComboBox:hover {{ border-color: {ACCENT_MARK}; }}
 /* THE ARROW IS PAINTED BY `chrome.Dropdown`, so the sub-controls are
    cleared out of its way here. This is the tick box's lesson used
    deliberately for once: naming a sub-control puts Qt on the stylesheet
@@ -412,13 +444,13 @@ QSlider::groove:horizontal {{
     height: 4px; border-radius: 2px; background: {BG_INPUT};
 }}
 QSlider::sub-page:horizontal {{
-    height: 4px; border-radius: 2px; background: {ACCENT};
+    height: 4px; border-radius: 2px; background: {ACCENT_MARK};
 }}
 QSlider::handle:horizontal {{
-    background: {ACCENT}; border: none; width: 12px; height: 12px;
+    background: {ACCENT_MARK}; border: none; width: 12px; height: 12px;
     margin: -4px 0; border-radius: 6px;
 }}
-QSlider::handle:horizontal:hover {{ background: {ACCENT_HOVER}; }}
+QSlider::handle:horizontal:hover {{ background: {ACCENT_MARK_DIM}; }}
 
 /* The little count box beside a strip's heading. Without a rule of its
    own it took the base QWidget background — the same lighter-than-the-card
@@ -434,7 +466,7 @@ QSpinBox {{
     border-radius: 4px; padding: 1px 3px; color: {TEXT};
     selection-background-color: {ACCENT}; selection-color: #ffffff;
 }}
-QSpinBox:hover {{ border-color: {ACCENT}; }}
+QSpinBox:hover {{ border-color: {ACCENT_MARK}; }}
 
 QCheckBox {{ spacing: 7px; }}
 QCheckBox::indicator {{
@@ -546,7 +578,7 @@ QProgressBar {{
     background: {BG_INPUT}; border: 1px solid {BORDER};
     border-radius: 5px; height: 8px; text-align: center;
 }}
-QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+QProgressBar::chunk {{ background: {ACCENT_MARK}; border-radius: 4px; }}
 
 /* Our own title bar: the system one is a white strip above a dark app. */
 QWidget#titleBar {{ background: {BG_DEEP}; }}
@@ -588,7 +620,7 @@ QPushButton#overlayToggle {{
 QPushButton#overlayToggle:hover {{ border-color: {TEXT_DIM}; }}
 QPushButton#overlayToggle:checked {{
     background: {BG_DEEP};
-    border-color: {ACCENT};
+    border-color: {ACCENT_MARK};
 }}
 
 /* A BARE CONTAINER PAINTS NOTHING. The base rule above gives every
@@ -599,6 +631,15 @@ QPushButton#overlayToggle:checked {{
    the Suggested picks heading. Anything whose job is to hold a layout
    rather than to be a surface carries `bare`. */
 QWidget[bare="true"] {{ background: transparent; }}
+/* THE THREE BOARD BUTTONS SIT IN ONE PILL, at the user's request, so
+   they read as one group rather than as three loose controls between
+   the two team headings. Its padding is the LAYOUT's margins rather
+   than this rule's: stylesheet padding on a container does not move the
+   children inside it. */
+QWidget[group="true"] {{
+    background: {GROUP_BG};
+    border-radius: 8px;
+}}
 
 QFrame[card="true"] {{
     background: {BG_ELEVATED};

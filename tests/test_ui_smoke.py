@@ -3049,7 +3049,7 @@ def test_the_count_box_draws_its_own_arrows(qapp):
         ink = sum(1
                   for y in range(arrows.y(), arrows.bottom() + 1)
                   for x in range(arrows.x(), arrows.right() + 1)
-                  if picture.pixelColor(x, y).name() == theme.ACCENT)
+                  if picture.pixelColor(x, y).name() == theme.ACCENT_MARK)
         assert ink > 4, "an arrowhead with no ink in it"
     box.close()
 
@@ -3078,10 +3078,10 @@ def test_an_arrow_with_nowhere_to_go_is_a_DIM_RED_not_a_grey(qapp):
                    if picture.pixelColor(x, y).name() == colour)
 
     up, down = box._arrow_boxes()
-    assert ink(up, theme.ACCENT) > 4, "the live arrow lost its red"
-    assert ink(down, theme.ACCENT_DIM) > 4, "the spent arrow is not dim red"
-    assert ink(down, theme.ACCENT) == 0, "the spent arrow is still live"
-    assert theme.ACCENT_DIM != theme.ACCENT
+    assert ink(up, theme.ACCENT_MARK) > 4, "the live arrow lost its red"
+    assert ink(down, theme.ACCENT_MARK_DIM) > 4, "the spent arrow is not dim"
+    assert ink(down, theme.ACCENT_MARK) == 0, "the spent arrow is still live"
+    assert theme.ACCENT_MARK_DIM != theme.ACCENT_MARK
     box.close()
 
 
@@ -3478,8 +3478,7 @@ def test_a_message_the_user_asked_for_is_not_stamped_on_by_the_next_tick(
     assert "Dota window" in window.status.currentMessage()
 
 
-def test_the_board_actions_are_outlined_and_not_plated(window, qapp,
-                                                       styled):
+def test_the_board_actions_are_a_maroon_group(window, qapp, styled):
     """Clear all, Detect all and Demo: a border, the app's own bold, and
     the surface behind them showing through.
 
@@ -3491,9 +3490,15 @@ def test_the_board_actions_are_outlined_and_not_plated(window, qapp,
     "remove the gold border from all the input boxes ... revert that
     change i made - i dont liek it now that i have seen it... obviosuly
     keep the app window border though".
-    So: no gold on a control anywhere, and no raised plate either —
-    "there is a bit of a grey color added to the cclear / detect / etc
-    button backgfground... should be same as the background behidn it".
+    AND THE OUTLINE ITSELF IS NOW REVERSED, at the user's request: "i
+    want the clear / detect / demo buttons to have a dark grey
+    encapsulating all 3 buttons so they look related... then i want to
+    remove the red bordewr, but add a maroon fill #38040E".
+    So: a maroon FILL, no visible border, and one grey pill round all
+    three. The gold stays off — that reversal was never reversed.
+    THE BORDER IS STILL THREE PIXELS AND IS THE FILL'S OWN COLOUR. It
+    carries `PLAIN_PAD_Y` to `CONTROL_H`, so dropping it would take 6px
+    off all three and they would stop matching the count boxes.
     """
     from draft_assist.ui import theme
     window.show()
@@ -3508,14 +3513,30 @@ def test_the_board_actions_are_outlined_and_not_plated(window, qapp,
             f"{button.text()!r} still wears the frame's gold")
         assert theme.BG_INPUT not in colours, (
             f"{button.text()!r} still paints a raised plate")
-        # A RED OUTLINE, at the FOCUS RING'S OWN WEIGHT — "i want these
-        # buttons to have a red border, same line width as the border
-        # that goes aroudn the 5 /5 hero portrait when it is selected".
         assert theme.ACCENT in colours, (
-            f"{button.text()!r} has no outline at all")
+            f"{button.text()!r} lost its maroon fill")
         rule = theme.STYLESHEET[
             theme.STYLESHEET.index('QPushButton[plain="true"] {'):]
-        assert f"border: {theme.FRAME_WIDTH}px solid" in rule[:rule.index("}")]
+        rule = rule[:rule.index("}")]
+        # THE HEIGHT IS THE POINT OF KEEPING THE BORDER AT ALL.
+        assert f"border: {theme.FRAME_WIDTH}px solid {theme.ACCENT}" in rule, (
+            "the border is no longer the fill's own colour, so it is "
+            "either visible again or gone and taking 6px with it")
+    # AND THE BOX MODEL IS UNCHANGED, which is what keeps these on the
+    # count boxes' line. Asserted on the CONSTANTS rather than on a
+    # rendered height: the height that falls out of them is the app's
+    # bundled face plus the stylesheet, and a machine without Alegreya
+    # lays every button out shorter while a CountBox applies CONTROL_H
+    # outright — so a pixel comparison here measures the font, not the
+    # rule. `plain` must simply cost the same vertically as the base
+    # button rule, which is 3px of padding and a 1px border.
+    assert theme.PLAIN_PAD_Y + theme.FRAME_WIDTH == 3 + 1, (
+        "the plain button no longer costs what the base rule costs, so "
+        "the three board buttons have left the count boxes' line")
+    # ONE GREY PILL ROUND ALL THREE, so they read as a group.
+    pill = window.board_actions
+    assert pill.property("group") is True
+    assert theme.GROUP_BG in _colours_in(pill), "the pill draws no surface"
     # AND NOWHERE ELSE EITHER: the gold went off every control, so an
     # ordinary button and a count box must not have it back.
     assert theme.FRAME_GOLD not in _colours_in(window.suggested_box)

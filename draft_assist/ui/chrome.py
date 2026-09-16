@@ -960,8 +960,8 @@ class Dropdown(QComboBox):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(theme.ACCENT if self.isEnabled()
-                                else theme.ACCENT_DIM))
+        painter.setBrush(QColor(theme.ACCENT_MARK if self.isEnabled()
+                                else theme.ACCENT_MARK_DIM))
         mid = self.width() - theme.ARROW_STRIP / 2 - 2
         top = (self.height() - self.ARROW_H) / 2
         painter.drawPolygon(QPolygonF([
@@ -1151,7 +1151,7 @@ class CountBox(QSpinBox):
         # are clipped, which is the even-width-pen lesson from the grid
         # borders one width down.
         field = QRectF(self.field_box()).adjusted(0.5, 0.5, -0.5, -0.5)
-        painter.setPen(QPen(QColor(theme.ACCENT if self._hover
+        painter.setPen(QPen(QColor(theme.ACCENT_MARK if self._hover
                                    else theme.BORDER), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(field, 4, 4)
@@ -1168,8 +1168,8 @@ class CountBox(QSpinBox):
             # A grey one would read as a different kind of thing from the
             # arrow above it; a dim red is the same control with nothing
             # left to do.
-            painter.setBrush(QColor(theme.ACCENT if live
-                                    else theme.ACCENT_DIM))
+            painter.setBrush(QColor(theme.ACCENT_MARK if live
+                                    else theme.ACCENT_MARK_DIM))
             mid = box.center().x() + 1
             top = box.center().y() - self.ARROW_H // 2
             tip = top + (0 if rising else self.ARROW_H)
@@ -1406,7 +1406,7 @@ class LoadBar(QWidget):
         painter.setBrush(QColor(theme.BG_INPUT))
         painter.drawRoundedRect(QRectF(self.rect()), radius, radius)
         width = self.width()
-        painter.setBrush(QColor(theme.ACCENT))
+        painter.setBrush(QColor(theme.ACCENT_MARK))
         if self._pct >= 0:
             # FROM THE LEFT EDGE, as far as the run has got. A nought-wide
             # rectangle is not drawn at all, which is right: the start of

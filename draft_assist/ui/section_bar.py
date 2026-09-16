@@ -118,7 +118,7 @@ class SectionRow(QWidget):
             return
         painter = QPainter(self)
         painter.fillRect(QRectF(0, 0, self.MARK, self.height()),
-                         QColor(theme.ACCENT))
+                         QColor(theme.ACCENT_MARK))
         painter.end()
 
 
