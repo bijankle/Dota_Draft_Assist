@@ -124,3 +124,37 @@ def test_a_real_scrollbar_paints_without_falling_back(qapp):
     box.close()
     box.deleteLater()
     qapp.processEvents()
+
+
+# --- and the one menu nobody wrote -------------------------------------
+
+def test_the_app_turns_menu_icons_off_before_it_builds_any_widget():
+    """The standard context menu is the same fault one widget over.
+
+    Right-click any text in this app — the debug log, a selectable
+    label, a task's output — and the menu that opens is Qt's, not ours:
+    Copy, Select All, each with an icon from the PLATFORM's theme,
+    drawn at that theme's weight and colour beside labels drawn at this
+    app's. Every menu this app builds is words alone, so the one menu
+    nobody wrote was the only one that did not match its own text.
+
+    CHECKED IN THE SOURCE, for the reason the rest of this file is.
+    Rendered here the actions carry no icon at all — there is no icon
+    theme on this machine — so a test of the menu would pass against
+    the very build that is wrong on Windows. What decides it is that
+    the attribute is set, and that it is set BEFORE the widgets whose
+    menus it governs are built.
+    """
+    import inspect
+    from draft_assist.ui import app as ui_app
+    # `main` is the crash wrapper; `_main` is the body that
+    # builds the QApplication and the window.
+    body = inspect.getsource(ui_app._main)
+    assert "AA_DontShowIconsInMenus" in body, (
+        "nothing turns the platform's menu icons off")
+    at = body.index("AA_DontShowIconsInMenus")
+    # BEFORE THE WINDOW. The attribute governs menus built after it is
+    # set, and `MainWindow` builds the menu bar in its constructor.
+    assert at < body.index("MainWindow("), (
+        "the attribute is set after the window is built, which is after "
+        "the menus it governs already exist")

@@ -5761,6 +5761,22 @@ def _main() -> None:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Dota Draft Assist")
+    # NO MENU IN THIS APP CARRIES AN ICON, AND THE ONES WE DID NOT BUILD
+    # WERE CARRYING THEM. Right-click any text in here — the debug log,
+    # a selectable label, a task's output — and Qt supplies its own
+    # standard context menu: Copy, Select All, each with an icon from
+    # the PLATFORM's theme. Those are drawn at whatever weight and
+    # colour that theme uses, beside labels drawn at this app's, so the
+    # one menu nobody wrote is the only one that does not match its own
+    # text.
+    # Same family as the scrollbars, the tooltip and the tick box: what
+    # a stylesheet does not name is handed to the native style. The
+    # difference is that there is nothing here worth drawing — every
+    # other menu in this app is words alone — so the answer is to take
+    # the icons off rather than to paint them. This is Qt's own
+    # attribute for exactly that, and it must be set BEFORE the widgets
+    # that build those menus exist.
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, True)
     # BEFORE the stylesheet: a family registered afterwards is not picked
     # up by rules Qt has already resolved, so the app would open in the
     # fallback face and only look right after a restyle.
