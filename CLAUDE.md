@@ -5950,6 +5950,22 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   is the worst possible place: they run before anything else, so the
   error was the first thing a new user ever saw. The file's line endings
   are **CRLF** and must stay that way.
+  **AND THE GUARD TESTED THE WRONG FILE, so a gutted `.venv` could
+  never be repaired.** `if exist ".venv\Scripts\pythonw.exe" goto
+  :launch` — and `pythonw.exe` is merely a COPY of the interpreter that
+  happens to sit in `Scripts\`, where **`pyvenv.cfg` is what makes the
+  folder a virtual environment at all**. A `.venv` that had lost its
+  `pyvenv.cfg` therefore went straight to `:launch`, Windows answered
+  *"failed to locate pyvenv.cfg: The system cannot find the file
+  specified."* in a dialog with nothing behind it, and the launcher
+  failed identically on every double-click: "i cant open dota draft
+  assist at all". The worst possible place for it, because **Help ▸
+  Update application is INSIDE the app** — the one route to the fix is
+  behind the thing that will not start.
+  So the guard checks `pyvenv.cfg`, and a broken environment is REBUILT
+  rather than reported: `python -m venv` on an existing directory
+  repairs it in place, so nothing of the user's is deleted to fix it
+  and the launcher does the thing instead of naming it.
   **THE KEY IS THE APP'S JOB, NOT THE LAUNCHER'S.** The script used to
   copy `.env.example` over and open it in Notepad, so a new user was
   asked for a Stratz key TWICE — once by a text editor before the app had

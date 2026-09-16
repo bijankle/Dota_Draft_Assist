@@ -7,11 +7,29 @@ rem One launcher. First run installs everything; later runs just start the
 rem app. Updating the app, refreshing data, tuning recognition and choosing a
 rem capture source are all menu items inside the application itself.
 
-if exist ".venv\Scripts\pythonw.exe" goto :launch
+rem THE FILE THAT MAKES A FOLDER A VIRTUAL ENVIRONMENT IS pyvenv.cfg,
+rem not pythonw.exe. This guard tested for the interpreter, which is
+rem merely a copy that happens to sit in Scripts\ -- so a .venv whose
+rem pyvenv.cfg had gone sailed straight past setup, launched the broken
+rem exe, and produced "failed to locate pyvenv.cfg: The system cannot
+rem find the file specified." in a dialog with no traceback behind it.
+rem The launcher could never repair it and failed identically every
+rem time, which is what "i cant open dota draft assist at all" was.
+if not exist ".venv\Scripts\pythonw.exe" goto :firstrun
+if exist ".venv\pyvenv.cfg" goto :launch
 
+echo Repairing the Python environment...
+echo .venv\pyvenv.cfg is missing, which is what Windows means by
+echo "failed to locate pyvenv.cfg". Rebuilding it in place - your
+echo settings, your key and the downloaded artwork are not touched.
+echo.
+goto :setup
+
+:firstrun
 echo First run - setting up. This takes a few minutes and happens once.
 echo.
 
+:setup
 set "PYCMD="
 rem Redirect the Windows way, to nul. The Unix null device is not a path
 rem cmd.exe knows, so it printed "The system cannot find the path

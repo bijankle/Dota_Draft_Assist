@@ -75,3 +75,35 @@ def test_the_launcher_does_not_ask_for_the_key_itself(script):
         "the app asks for the key, in a dialog that verifies it")
     assert ".env.example" not in body, (
         "a .env full of the placeholder is not a setup step")
+
+
+def test_the_venv_guard_tests_pyvenv_cfg_not_the_interpreter():
+    """`pythonw.exe` is a COPY that happens to sit in `Scripts\\`;
+    `pyvenv.cfg` is what makes the folder a virtual environment at all.
+
+    Guarded on the interpreter, a .venv that had lost its pyvenv.cfg
+    went straight to :launch and Windows answered "failed to locate
+    pyvenv.cfg: The system cannot find the file specified." in a dialog
+    with nothing behind it. The launcher could not repair what it had
+    not noticed, so it failed the same way on every double-click — the
+    one failure mode this file exists to keep off somebody else's
+    machine.
+    """
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "pyvenv.cfg" in text, "the guard cannot see a gutted .venv"
+    jump = text.index("goto :launch")
+    assert text.index('if exist ".venv\\pyvenv.cfg"') < jump, (
+        "pyvenv.cfg must be checked before the launch shortcut is taken")
+
+
+def test_a_broken_venv_is_rebuilt_rather_than_reported():
+    """The app's standing rule: do the thing rather than name it.
+
+    Telling somebody to delete a folder is the answer this launcher
+    exists to avoid, and `python -m venv` on an existing directory
+    repairs it in place — so nothing of theirs is deleted to fix it.
+    """
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "rmdir" not in text, "a repair must not delete the user's folder"
+    assert ":firstrun" in text and ":setup" in text, (
+        "the repair path must reach the same environment build")
