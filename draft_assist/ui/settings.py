@@ -80,8 +80,8 @@ DEFAULTS = {
     # item strip stops at whatever clears the severity floor, so raising
     # this to 20 does not produce 20 items, it only stops truncating the
     # ones that were already worth showing.
-    "suggested_picks": 20,
-    "suggested_items": 7,
+    "suggested_picks": 33,
+    "suggested_items": 11,
     # HOW MANY SUGGESTIONS GET A MARK, as a share OF THE STRIP.
     #
     # At the user's request, and it replaces three percentile floors:
@@ -124,8 +124,8 @@ DEFAULTS = {
     # separate lines, so one box driving both lines would be a value
     # with two controls. This REVERSES the single `mark_count` that
     # replaced them; see `_picks_controls`.
-    "heart_count": 3,
-    "shield_count": 3,
+    "heart_count": 5,
+    "shield_count": 5,
     # WHICH BLOCKS OF THE DRAFT TAB ARE DRAWN, at the user's request -
     # "i want to be able to tick on/off all the subheaders, except for
     # the top 5 / 5 portraits - as that is the main part of the app".
@@ -158,24 +158,39 @@ DEFAULTS = {
     # falls back to the first (most played) hero, which is the right
     # answer for anybody.
     "history_tables": {
-        "hero": {"top": 10, "by": "games", "sort": "value", "desc": True},
-        "length": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "hero": {"top": 8, "by": "games", "sort": "value", "desc": True},
+        "counters": {"top": 12, "by": "games", "sort": "value", "desc": True},
+        "items": {"top": 8, "by": "games", "sort": "value", "desc": True},
         "tod": {"top": 0, "by": "games", "sort": "value", "desc": True},
-        "dow": {"top": 0, "by": "value", "sort": "value", "desc": True},
         "session": {"top": 0, "by": "games", "sort": "value", "desc": True},
         "tilt": {"top": 0, "by": "games", "sort": "value", "desc": True},
-        "side": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "dow": {"top": 0, "by": "value", "sort": "value", "desc": True},
         "party": {"top": 0, "by": "games", "sort": "value", "desc": True},
-        "items": {"top": 8, "by": "games", "sort": "value", "desc": True},
+        "length": {"top": 0, "by": "games", "sort": "value", "desc": True},
+        "side": {"top": 0, "by": "games", "sort": "value", "desc": True},
         "herodmg": {"top": 10, "by": "games", "sort": "value", "desc": True},
-        "herokda": {"top": 10, "by": "games", "sort": "value", "desc": True},
+        "herokda": {"top": 9, "by": "games", "sort": "value", "desc": True},
+        "towerdmg": {"top": 10, "by": "games", "sort": "value", "desc": True},
+        "gold": {"top": 8, "by": "games", "sort": "games", "desc": True},
+        "xp": {"top": 9, "by": "games", "sort": "games", "desc": True},
+        "cs": {"top": 8, "by": "games", "sort": "games", "desc": True},
+        "denies": {"top": 1, "by": "games", "sort": "games", "desc": True},
+        # `item_hero` IS DELIBERATELY NOT HERE, and it was in the file
+        # this was copied from. It names the owner's most played hero,
+        # so shipping it would open the item block on somebody who is
+        # not in a stranger's list at all. That exclusion was made once
+        # before, when `item_hero` was a key of its own; it has since
+        # moved INSIDE this dict, which is shipped wholesale, so it
+        # would have come back in unnoticed. `_item_block` falls back to
+        # the first (most played) hero, which is right for anybody.
     },
     "history_options": {
-        "window": "6m", "cap": 5000, "no_turbo": True, "ranked_only": True,
-        "picked": {"hero": True, "length": True, "tod": True, "dow": True,
-                   "session": True, "tilt": True, "side": True,
-                   "party": True, "herodmg": True, "herokda": True,
-                   "items": True},
+        "window": "1m", "cap": 5000, "no_turbo": True, "ranked_only": True,
+        "picked": {"hero": True, "counters": True, "items": True,
+                   "tod": True, "session": True, "tilt": True, "dow": True,
+                   "party": True, "length": True, "side": True,
+                   "herodmg": True, "herokda": True, "towerdmg": True,
+                   "gold": True, "xp": True, "cs": True, "denies": True},
     },
     # How old the statistics have to get before the app says anything at
     # all about it: ONE dialog when the app opens, and nothing on screen
@@ -199,12 +214,13 @@ DEFAULTS = {
     # write filter means a dead name would otherwise sit in everybody's
     # file for ever.
     "pick_roles": {},
-    # WHETHER THE WINDOW STAYS IN FRONT. True is what this app has always
-    # done — it was `WindowStaysOnTopHint` with no way to say otherwise —
-    # so the default keeps that and the pin is what makes it a choice
-    # rather than a mode. Remembered, because a window that forgets where
-    # it sits in the Z order is one you re-pin every session.
-    "always_on_top": True,
+    # WHETHER THE WINDOW STAYS IN FRONT. It was `WindowStaysOnTopHint`
+    # with no way to say otherwise, and the default kept that when the
+    # pin made it a choice — but the owner's own answer is OFF, and
+    # these defaults are their setup. Remembered either way, because a
+    # window that forgets where it sits in the Z order is one you re-pin
+    # every session.
+    "always_on_top": False,
     "portrait_scale": 1.0,
     "number_scale": 1.0,
     # The size the window opens at, and the size it is closed at is
@@ -224,7 +240,7 @@ DEFAULTS = {
     # height their wrap needs, so a window shorter than the content
     # scrolls instead of cropping, and a default taller than the
     # commonest monitor would have been its own bug.
-    "window_h": 998,
+    "window_h": 895,
     # And WHERE it opens, at the user's request: "I don't like that when
     # I close and reopen the app it doesn't open in the location where I
     # closed it... it opens with the same size which is great, just need

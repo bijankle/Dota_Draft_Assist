@@ -148,3 +148,29 @@ def test_no_screenshot_of_the_game_is_tracked():
            and f.rsplit(".", 1)[-1].lower() in {"png", "jpg", "jpeg", "bmp"}
            and not f.startswith("assets/app-default.")]
     assert not art, f"artwork is committed: {art}"
+
+
+def test_the_shipped_defaults_name_no_hero_of_the_owners():
+    """DEFAULTS is the owner's own setup, and that is the point — but
+    `item_hero` names their most played hero, which is about THEM rather
+    than about how the app is arranged.
+
+    IT WAS EXCLUDED ONCE AND CAME BACK BY A SIDE DOOR. When the defaults
+    were first copied from the owner's settings file, `item_hero` was a
+    key of its own and was deliberately left out: a fresh install
+    opening the item block on a hero who is not in a stranger's list at
+    all shows them nothing. It has since moved INSIDE `history_tables`,
+    which is copied wholesale, so the second copy would have carried it
+    silently. `_item_block` falls back to the first (most played) hero
+    of whoever is being looked at, which is right for anybody.
+    """
+    from draft_assist.ui.settings import DEFAULTS
+
+    tables = DEFAULTS.get("history_tables", {})
+    assert "item_hero" not in tables, (
+        f"the defaults ship a hero: {tables.get('item_hero')!r}")
+    # And nothing else in there is a hero NAME either — every block is a
+    # cut and a sort, which are numbers and field names.
+    for block, view in tables.items():
+        assert set(view) <= {"top", "by", "sort", "desc"}, (
+            f"{block} carries something that is not a view: {view}")

@@ -53,12 +53,21 @@ NAME_MIN_PT = 9
 # tiles get smaller under a number that goes on being legible.
 #
 # It was briefly the CARD HEADING's size, so a figure on a portrait was
-# the height of the "-3.0" beside "Radiant". At the user's request it is
-# now the BODY size, which is what the counters grid prints its deltas at
-# — so every signed number in the app is one size, whether it sits on a
-# pick, on a suggestion, in a triangle or in a counters cell, and there is
-# one value to change rather than two to keep in step.
-NUMBER_PX = theme.BODY_PX
+# the height of the "-3.0" beside "Radiant"; it then became the BODY
+# size, which is what the counters grid prints its deltas at.
+# IT IS NOW THE OWNER'S OWN SIZE, which is 20% ABOVE the body size
+# rather than equal to it. Their settings file had `number_scale: 1.2`
+# and they asked for their current look to BE 100% — "for the portrait
+# and text size, i want the my current size to be considered 100% and to
+# make this the default" — so the multiplier is folded into the base and
+# the slider goes back to centre. round(18 * 1.2) is 22, which is
+# exactly what they were already seeing, so nothing moves by a pixel.
+# THE ONE-SIZE RULE SURVIVES because it never depended on this being
+# BODY_PX: a badge on a pick, a figure on a suggestion and a counters
+# cell all read `number_px()`, and `tables.DeltaCellDelegate` paints
+# through `paint_number`, which reads it too. One value still changes
+# all of them; it is simply no longer the same value as the body text.
+NUMBER_PX = round(theme.BODY_PX * 1.2)
 # Only ever used when the tile is too narrow to print the figure at all.
 NUMBER_MIN_PX = 9
 # THE USER'S OWN MULTIPLIER (View ▸ Sizes ▸ Numbers). The size above is
