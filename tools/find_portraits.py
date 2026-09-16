@@ -1911,8 +1911,15 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
         if apply:
             print("  --apply WROTE NOTHING. calibration_local.json is "
                   "untouched and this machine keeps the boxes it had.")
-            print("  Point it at a folder with more screenshots in it, or "
-                  "drop --tall so the 16:9 shots count too.")
+            # NAMING A FLAG THE RUN MAY NOT HAVE PASSED is the same
+            # fault one layer down - advice assembled from our own
+            # options rather than from what actually happened. This
+            # said "or drop --tall so the 16:9 shots count too" at a
+            # run that never passed --tall and simply had two files in
+            # the folder.
+            print(f"  Point it at a folder holding at least "
+                  f"{MIN_VOTERS} screenshots that locate all ten "
+                  f"portraits.")
         return
     print(f"\nWHAT THESE {len(good)} PICTURES MEASURE ({len(rows)} of "
           f"{len(FRACTIONS)} fractions)")
