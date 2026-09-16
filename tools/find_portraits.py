@@ -1963,6 +1963,7 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
                   f"portraits.")
         return
     shared = mark_shared_dissent(rows)
+    one_sided = mark_one_aspect(rows, good)
     print(f"\nWHAT THESE {len(good)} PICTURES MEASURE ({len(rows)} of "
           f"{len(FRACTIONS)} fractions)")
     print(f"  {'fraction':<11}{'measured':>10}{'shipped':>10}"
@@ -1981,6 +1982,19 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
               f"({', '.join(files)}). A median over the rest is one "
               f"group's number written as everybody's, so it is left "
               f"at the shipped value.")
+    if one_sided:
+        side = ("16:9 OR WIDER" if aspect_sides(good) == {True}
+                else "TALLER THAN 16:9")
+        print(f"  EVERY PICTURE HERE IS {side}, so "
+              f"{', '.join(one_sided)} cannot be written from them.")
+        print(f"  Those four are measured against the HUD span and they "
+              f"SPLIT by aspect - 1440x900 reads radiant_x at 0.052 "
+              f"where 1920x1080 reads 0.104. Frames from one side agree "
+              f"with each other perfectly and say nothing whatever about "
+              f"the other, so they are left at the shipped values.")
+        print(f"  Add a screenshot from the other side of the split and "
+              f"they become answerable. y and slot_h are unaffected: "
+              f"they came out 7 of 7 ACROSS the split.")
     if not apply:
         print("  NOT APPLIED. These are what the pictures say; changing "
               "the shipped six invalidates every saved "
@@ -2000,6 +2014,66 @@ AGREE_WITHIN = 0.01
 # `spread_over_spans` is built on. So three is the floor, and at three
 # the majority rule below means all three must agree.
 MIN_VOTERS = 3
+
+
+# WHICH SIDE OF THE MEASURED ASPECT SPLIT A FRAME SITS ON.
+# The split is not a guess: in the seven-frame run 1440x900 (1.60) read
+# `radiant_x` at 0.052 with the 4:3 and 5:4 frames, and 1360x768 (1.77)
+# read it at 0.104 with 1920x1080. The boundary is anywhere between
+# those two and 1.70 is the middle of the gap, which is also where the
+# hardware distinction is - 16:10 and below on one side, 16:9 and wider
+# on the other.
+ASPECT_SPLIT = 1.70
+
+
+def aspect_sides(good: list, skip=()) -> set:
+    """The sides of `ASPECT_SPLIT` these frames stand on."""
+    return {row["w"] >= row["h"] * ASPECT_SPLIT
+            for row in good
+            if row.get("w") and row.get("h") and row["file"] not in skip}
+
+
+def mark_one_aspect(rows: list, good: list, skip=()) -> list:
+    """Refuse a HORIZONTAL fraction measured at one aspect only.
+
+    THIS IS `spread_over_spans`' OWN ARGUMENT, ONE AXIS OVER. One
+    picture cannot demonstrate scaling with the span, because a single
+    point fits any constant you care to name; frames that all share an
+    aspect cannot demonstrate that a horizontal fraction is constant
+    ACROSS aspects, for exactly the same reason. And here the split is
+    measured rather than feared - see `ASPECT_SPLIT`.
+
+    `mark_shared_dissent` catches the split when both groups are in the
+    sample and cannot see it when only one is. Five frames all taller
+    than 16:9 settle `radiant_x` at 0.0512 and `dire_x` at 0.5925 seven
+    ways from Sunday, 5 of 5, nothing apart - and those are one group's
+    numbers, written as everybody's, with nothing on screen saying so.
+    That is the failure this refuses, and it is the one a `--sample`
+    that happens to miss the 16:9 shots walks straight into.
+
+    The VERTICAL is deliberately untouched: `y` and `slot_h` came out
+    7 of 7 across both groups in that same run, worst miss 0.0008, so
+    they are constant across the split as far as anything has measured.
+    """
+    # THREE-VALUED, and the third value is why this asks for exactly
+    # one side rather than for both. Both sides present is an answer
+    # and one side is an answer; NO frame carrying a size at all is the
+    # tool unable to tell, and refusing on that would turn a missing
+    # field into a silent veto over four fractions. Same rule as
+    # `required` in the capture session, and as `Profile.known`:
+    # asked-and-not-answered is not a no.
+    sides = aspect_sides(good, skip)
+    if len(sides) != 1:
+        for row in rows:
+            row["one_aspect"] = False
+        return []
+    flagged = []
+    for row in rows:
+        alone = row["against"] == "span"
+        row["one_aspect"] = alone
+        if alone:
+            flagged.append(row["name"])
+    return flagged
 
 
 def settled(row: dict) -> bool:
@@ -2022,7 +2096,8 @@ def settled(row: dict) -> bool:
     return (row["voters"] >= MIN_VOTERS
             and row["agree"] * 3 >= row["voters"] * 2
             and row["agree"] >= MIN_VOTERS
-            and not row.get("shared_dissent"))
+            and not row.get("shared_dissent")
+            and not row.get("one_aspect"))
 
 
 def mark_shared_dissent(rows: list) -> list:

@@ -283,7 +283,13 @@ def _their_frames(tool):
                     "x_of_hudbox": rx / span, "dire_x_of_hudbox": dx / span,
                     "slot_w_of_hudbox": sw / span,
                     "pitch_of_hudbox": pitch / span,
-                    "y_of_window": top / h, "slot_h_of_window": sh / h})
+                    "y_of_window": top / h, "slot_h_of_window": sh / h,
+                    # The SIZE is what says which side of the aspect
+                    # split a frame stands on, and `mark_one_aspect`
+                    # needs it. A fixture without it cannot exercise
+                    # that rule, and a real frame always has it —
+                    # `read_image` puts w and h on every row it returns.
+                    "w": w, "h": h})
     return out
 
 
@@ -580,7 +586,13 @@ def _frames_from(tool, table):
                     "x_of_hudbox": rx / span, "dire_x_of_hudbox": dx / span,
                     "slot_w_of_hudbox": sw / span,
                     "pitch_of_hudbox": pitch / span,
-                    "y_of_window": top / h, "slot_h_of_window": sh / h})
+                    "y_of_window": top / h, "slot_h_of_window": sh / h,
+                    # The SIZE is what says which side of the aspect
+                    # split a frame stands on, and `mark_one_aspect`
+                    # needs it. A fixture without it cannot exercise
+                    # that rule, and a real frame always has it —
+                    # `read_image` puts w and h on every row it returns.
+                    "w": w, "h": h})
     return out
 
 
@@ -635,3 +647,69 @@ def test_one_frame_apart_on_everything_is_dropped_not_deferred_to():
     seven, _ = tool._measure_rows(_frames_from(tool, THEIR_SEVEN),
                                   tool.DraftLayout())
     assert tool.bad_frames(seven) == [], "an aspect group is not a bad fit"
+
+
+def test_frames_all_at_one_aspect_do_not_settle_the_horizontal(
+        tmp_path, monkeypatch):
+    """The failure `mark_shared_dissent` cannot see.
+
+    That rule refuses a fraction whose dissenters are apart on another
+    fraction too — which needs both groups in the sample. Take the two
+    16:9 shots out of the user's seven and the remaining five settle
+    `radiant_x` at 0.0512 and `dire_x` at 0.5925, 5 of 5, nothing
+    apart: one group's numbers written as everybody's, with nothing on
+    screen saying so. A `--sample` that happens to miss the 16:9 shots
+    walks straight into it.
+    """
+    tool = _tool()
+    taller = [row for row in THEIR_SEVEN
+              if row[0] not in ("1360 x 768", "1920 x 1080")]
+    on_disk = _apply(tool, _frames_from(tool, taller), tmp_path, monkeypatch)
+    assert on_disk is not None, "the vertical still had to be written"
+    shipped = tool.DraftLayout()
+    for name in ("radiant_x", "dire_x", "slot_w", "pitch"):
+        assert on_disk[name] == getattr(shipped, name), (
+            f"{name} was written from one aspect group alone")
+    # AND THE VERTICAL IS UNTOUCHED BY THE RULE. `y` and `slot_h` came
+    # out 7 of 7 ACROSS the split, so one-sidedness says nothing about
+    # them and refusing them would cost the one thing this run settles.
+    assert round(on_disk["y"], 4) == 0.0050
+    assert round(on_disk["slot_h"], 4) == 0.0525
+
+
+def test_both_sides_of_the_split_are_judged_on_the_readings():
+    """One aspect group present is a refusal; two is an ordinary fit.
+
+    The guard must not fire on the mixed sample — there the existing
+    population rule already has the evidence it needs, and a second
+    refusal for the same numbers would be this tool saying one thing
+    twice.
+    """
+    tool = _tool()
+    seven = _frames_from(tool, THEIR_SEVEN)
+    rows, _thin = tool._measure_rows(seven, tool.DraftLayout())
+    assert tool.aspect_sides(seven) == {True, False}
+    assert tool.mark_one_aspect(rows, seven) == []
+    taller = _frames_from(
+        tool, [r for r in THEIR_SEVEN
+               if r[0] not in ("1360 x 768", "1920 x 1080")])
+    rows, _thin = tool._measure_rows(taller, tool.DraftLayout())
+    assert tool.aspect_sides(taller) == {False}
+    assert tool.mark_one_aspect(rows, taller) == [
+        "radiant_x", "dire_x", "slot_w", "pitch"]
+
+
+def test_a_frame_with_no_size_is_not_a_veto():
+    """Asked-and-not-answered is not a no.
+
+    `aspect_sides` reads `w` and `h`, which every row `read_image`
+    returns carries. A caller that supplies neither cannot be told
+    which side its frames are on — and turning that into a refusal
+    would make a missing field a silent veto over four fractions.
+    """
+    tool = _tool()
+    sizeless = [{k: v for k, v in row.items() if k not in ("w", "h")}
+                for row in _frames_from(tool, THEIR_SEVEN)]
+    assert tool.aspect_sides(sizeless) == set()
+    rows, _thin = tool._measure_rows(sizeless, tool.DraftLayout())
+    assert tool.mark_one_aspect(rows, sizeless) == []
