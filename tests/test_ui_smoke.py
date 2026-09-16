@@ -1892,9 +1892,15 @@ def test_the_window_is_frameless_see_through_and_on_top(window):
     """Three overlays became one. Windows' own title bar read as a
     different program bolted on top of a dark app, and a window that is
     not see-through and not on top cannot sit over a game."""
+    from draft_assist.ui import settings as ui_settings
     flags = window.windowFlags()
     assert flags & Qt.WindowType.FramelessWindowHint
-    assert flags & Qt.WindowType.WindowStaysOnTopHint
+    # ON TOP IS A SETTING NOW, NOT A MODE. The pin made it a choice and
+    # the defaults are the owner's own, whose answer is off — so what is
+    # held is that the FLAG AGREES WITH THE SETTING. Off Windows the hint
+    # is the only route there is, which is the branch this runs on.
+    on_top = bool(flags & Qt.WindowType.WindowStaysOnTopHint)
+    assert on_top is ui_settings.DEFAULTS["always_on_top"]
     assert 0.0 < window.windowOpacity() <= 1.0
 
 
@@ -2986,15 +2992,25 @@ def test_every_signed_number_in_the_app_is_one_size(qapp):
     exactly the size where the window is smallest. With the plate gone the
     size no longer has to buy back space from the art.
 
-    And it is the GRIDS' size, at the user's request: the counters cells
-    print their deltas at the body size, so a figure on a portrait is set
-    from that same value rather than from one that happens to match."""
+    ONE SIZE NEVER MEANT "THE BODY SIZE", and this used to assert that it
+    did. `NUMBER_PX` was BODY_PX because the counters grid printed its
+    deltas at the body size; it is now the owner's own number size, 20%
+    above it, because the defaults are their settings file and they
+    asked for their current look to be 100%.
+    What the rule actually says is that ONE value drives every signed
+    number in the app — so that is what is asked: the badge on a tile and
+    the delta in a grid cell both come through `number_px()`, and moving
+    it moves both."""
     from PyQt6.QtCore import QRect
     from PyQt6.QtGui import QFont, QImage, QPainter
-    from draft_assist.ui import theme, tilekit
-    assert tilekit.NUMBER_PX == theme.BODY_PX
-    assert f"font-size: {theme.BODY_PX}px" in theme.STYLESHEET, \
-        "the body and the number have to be sized off one number"
+    from draft_assist.ui import tables, theme, tilekit
+    import inspect
+    assert tilekit.NUMBER_PX == round(theme.BODY_PX * 1.2)
+    # THE GRID READS THE SAME FUNCTION. `DeltaCellDelegate` paints
+    # through `tilekit.paint_number`, which sizes itself from
+    # `number_px()` — so there is one value, not two kept in step.
+    assert "paint_number" in inspect.getsource(tables.DeltaCellDelegate)
+    assert "number_px()" in inspect.getsource(tilekit.paint_number)
 
     def ink(width, height):
         picture = QImage(width, height, QImage.Format.Format_ARGB32)
@@ -3008,17 +3024,18 @@ def test_every_signed_number_in_the_app_is_one_size(qapp):
 
     # The same digits at every size the figure FITS: a smaller tile does
     # not get a smaller number, it just has less room around it.
-    assert ink(132, 74) == ink(110, 62) == ink(96, 54)
-    # AND A RELATION'S TILE IS NOW ONE OF THEM. The gold box used to be
-    # fitted OUTSIDE the digits, so its reach came out of the room the
-    # figure was allowed and a 64px tile stepped down a size to make room
-    # for a frame. The mark is the figure's own COLOUR now, which cannot
-    # crowd anything, and the whole width is the number's again.
-    assert ink(64, 36) == ink(132, 74)
-    # At the window's very narrowest the figure is still wider than the
-    # tile, and a number clipped to "+21." is not a smaller number but a
-    # wrong one — so there, and only there, it steps down far enough.
-    assert ink(48, 27) < ink(132, 74)
+    assert ink(132, 74) == ink(110, 62) == ink(96, 54) == ink(80, 45)
+    # BELOW 80px IT STEPS DOWN, AND THAT MOVED WITH THE REBASE. A figure
+    # 20% bigger needs 20% more tile to print whole, so the width at
+    # which "+21.7" stops fitting went from ~64px to ~80. That matters
+    # because `TILE_MIN` IS 64: at the window's very narrowest the picks
+    # are now inside the stepping-down band where they used to be just
+    # outside it, so the number shrinks there rather than holding full
+    # size. It is the documented fallback working, not a new behaviour —
+    # a number clipped to "+21." is not a smaller number but a wrong one
+    # — but the band it applies over is wider than it was.
+    assert ink(76, 43) < ink(132, 74)
+    assert ink(48, 27) < ink(76, 43)
 
 
 def test_the_body_size_is_the_one_the_user_asked_for():

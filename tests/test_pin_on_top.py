@@ -108,22 +108,36 @@ def test_the_controls_touch_with_a_rule_at_every_join(win):
             f"{type(before).__name__} -> {type(after).__name__}")
 
 
-def test_it_starts_filled_because_that_is_what_the_app_always_did(win):
-    """Changing the default silently would be a behaviour regression
-    nobody asked for: this window has been always-on-top from the start."""
-    assert ui_settings.DEFAULTS["always_on_top"] is True
-    assert win.title_bar.pin.isChecked() is True
+def test_it_starts_on_whatever_the_defaults_say(win):
+    """IT USED TO ASSERT True, AND THE REASON EXPIRED.
+
+    The default was True because that is what the app had always done -
+    it was `WindowStaysOnTopHint` with no way to say otherwise, and
+    changing it when the pin arrived would have been a silent behaviour
+    change nobody asked for. `DEFAULTS` is now the owner's own settings
+    file, at their request, and their own answer is OFF.
+    So what is actually worth holding is that the PIN AGREES WITH THE
+    SETTING at startup, whichever way it is set - a pin drawn filled
+    over a window that is not in front is the one state that lies.
+    """
+    assert (win.title_bar.pin.isChecked()
+            is ui_settings.DEFAULTS["always_on_top"])
 
 
 def test_hollow_and_filled_are_the_two_states(win, qapp):
+    """A press flips it and a second press flips it back, from wherever
+    the defaults start it. Written against the STARTING state rather
+    than against True, so it says the same thing whichever way the
+    owner's own setting happens to sit."""
     pin = win.title_bar.pin
     assert pin.isCheckable()
+    was = pin.isChecked()
     pin.click()
     qapp.processEvents()
-    assert pin.isChecked() is False, "one press should empty it"
+    assert pin.isChecked() is not was, "one press should flip it"
     pin.click()
     qapp.processEvents()
-    assert pin.isChecked() is True
+    assert pin.isChecked() is was
 
 
 def test_pressing_it_is_remembered(qapp, tmp_path, monkeypatch):
@@ -131,17 +145,20 @@ def test_pressing_it_is_remembered(qapp, tmp_path, monkeypatch):
     re-pin every session."""
     monkeypatch.setattr(ui_settings, "SETTINGS_FILE", tmp_path / "s.json")
     first = build(qapp)
+    # WHATEVER IT STARTED AS, a press is the other one - the point is
+    # that the press SURVIVES, not which way it went.
+    flipped = not ui_settings.DEFAULTS["always_on_top"]
     try:
         first.title_bar.pin.click()
         qapp.processEvents()
-        assert first.settings["always_on_top"] is False
+        assert first.settings["always_on_top"] is flipped
     finally:
         first.close()
 
     second = build(qapp)
     try:
-        assert second.settings["always_on_top"] is False
-        assert second.title_bar.pin.isChecked() is False
+        assert second.settings["always_on_top"] is flipped
+        assert second.title_bar.pin.isChecked() is flipped
     finally:
         second.close()
 

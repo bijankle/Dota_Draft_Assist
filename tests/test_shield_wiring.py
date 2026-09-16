@@ -78,8 +78,15 @@ def test_moving_the_count_REDRAWS_THE_MARKS(window):
     window.suggest_row.set_shields = lambda rows, count=0: marked.append(
         count)
     window.suggest_row.set_stars = lambda stars, count=0: None
-    window._apply_settings({"shield_count": 5})
-    assert marked and marked[-1] == 5, (
+    # NOT THE DEFAULT. `_apply_settings` is idempotent by design - it
+    # compares against what is already in `self.settings` - so handing it
+    # the value that is already there is correctly a no-op, and this
+    # asserted a redraw for a change that never happened. It passed only
+    # while 5 differed from the shipped count, which it no longer does.
+    from draft_assist.ui import settings as ui_settings
+    want = ui_settings.DEFAULTS["shield_count"] + 2
+    window._apply_settings({"shield_count": want})
+    assert marked and marked[-1] == want, (
         "the strip was not told the new count")
 
 
