@@ -339,12 +339,19 @@ def test_the_bar_costs_nothing_when_nobody_is_looking(qapp):
     bar.deleteLater()
 
 
-def test_the_bar_is_painted_in_the_apps_accent(qapp):
+def test_the_bar_is_painted_in_the_apps_mark_maroon(qapp):
     """PAINTED, not a QProgressBar: this app's stylesheet does not name
     that widget's sub-controls, and once a stylesheet touches a widget
     the parts it does not name go to the NATIVE style — which on Windows
     would be a stock blue bar in the one palette where blue means
-    nothing. The scrollbars' lesson."""
+    nothing. The scrollbars' lesson.
+
+    AND IT IS THE MARK MAROON, NOT THE FILL. A load bar is a shape drawn
+    ON a dark track with nothing over it, and the fill maroon measures
+    1.55:1 against `BG_INPUT` — a bar you could not watch move, which is
+    the one thing this widget exists to do. See the two-maroon note in
+    `theme`.
+    """
     from PyQt6.QtGui import QColor
 
     from draft_assist.ui import chrome, theme
@@ -358,10 +365,10 @@ def test_the_bar_is_painted_in_the_apps_accent(qapp):
     for _ in range(12):
         bar._step()
     picture = bar.grab().toImage()
-    want = QColor(theme.ACCENT).rgb()
+    want = QColor(theme.ACCENT_MARK).rgb()
     assert any(picture.pixel(x, y) == want
                for x in range(picture.width())
-               for y in range(picture.height())), "no accent on the bar"
+               for y in range(picture.height())), "no maroon on the bar"
     # And it MOVES, or it is a red rectangle rather than a loading bar.
     was = bar._at
     for _ in range(3):
