@@ -466,3 +466,83 @@ def test_every_picture_this_tool_writes_goes_through_one_writer():
     source = (ROOT / "tools" / "find_portraits.py").read_text("utf-8")
     assert source.count("cv2.imencode") == 1, "a second encode-and-write"
     assert "write_bytes(buffer" not in source
+
+
+def test_a_fraction_with_too_few_frames_does_not_abandon_the_others(
+        tmp_path, monkeypatch):
+    """It used to `return` on the first thin fraction, and `radiant_x`
+    is the FIRST entry in `FRACTIONS`.
+
+    So a run where one fraction was short printed one line naming that
+    fraction and stopped — never printing the other five, never reaching
+    the apply branch. The line read as a note about `radiant_x` rather
+    than as the whole fit giving up, which is how a real `--apply` run
+    over two pictures ended having written nothing and said nothing
+    about it.
+    """
+    tool = _tool()
+    frames = _their_frames(tool)
+    # Only two frames measured a bank origin; the other four fractions
+    # still have all six behind them.
+    for frame in frames[2:]:
+        frame["x_of_hudbox"] = None
+    on_disk = _apply(tool, frames, tmp_path, monkeypatch)
+    assert on_disk is not None, "five good fractions were abandoned by one"
+    assert round(on_disk["y"], 4) == 0.0054
+    assert round(on_disk["slot_h"], 4) == 0.0524
+
+
+def test_apply_always_says_whether_it_wrote_anything(
+        tmp_path, monkeypatch, capsys):
+    """Doing nothing silently is indistinguishable from being broken.
+
+    Two pictures cannot fit any fraction — three is the floor — and the
+    run that found that out printed a line about `radiant_x` and then
+    ended. The user had asked it to write a calibration.
+    """
+    tool = _tool()
+    on_disk = _apply(tool, _their_frames(tool)[:2], tmp_path, monkeypatch)
+    said = capsys.readouterr().out
+    assert on_disk is None, "two pictures must not write a calibration"
+    assert "WROTE NOTHING" in said
+    assert "untouched" in said
+
+
+def _tall_frame(tool, name, w, h, top, slot_h):
+    _left, span = tool.hud_box(w, h)
+    box_h = span * 9 / 16
+    return {"file": name, "aspect": round(w / h, 4), "bar_top_px": top,
+            "y_of_window": top / h, "slot_h_of_window": slot_h / h,
+            "y_of_hudbox": top / box_h,
+            "slot_h_of_hudbox": slot_h / box_h,
+            "y_of_hudbox_centred": (top - (h - box_h) / 2) / box_h}
+
+
+def test_two_pictures_never_name_a_vertical_winner(capsys):
+    """A spread across two frames is the distance between two points,
+    which no model can fail — so ranking the readings on it is not a
+    measurement.
+
+    The real two-picture run printed "the bar is measured against a HUD
+    BOX hung at the TOP — that is NOT what `SlotRect.to_pixels` does
+    today", which is an instruction to make the one change this project
+    has already made and reverted against the user's own screenshots.
+    """
+    tool = _tool()
+    two = [_tall_frame(tool, "800 x 600", 800, 600, 3, 32),
+           _tall_frame(tool, "1440 x 900", 1440, 900, 4, 57)]
+    tool._vertical(two)
+    said = capsys.readouterr().out
+    assert "NO VERDICT" in said
+    assert "the bar is measured against" not in said
+
+
+def test_three_pictures_are_allowed_to_name_one(capsys):
+    """The floor is a floor, not a refusal to ever answer."""
+    tool = _tool()
+    three = [_tall_frame(tool, "800 x 600", 800, 600, 3, 32),
+             _tall_frame(tool, "1440 x 900", 1440, 900, 4, 57),
+             _tall_frame(tool, "1280 x 1024", 1280, 1024, 6, 50)]
+    tool._vertical(three)
+    said = capsys.readouterr().out
+    assert "only 3 picture(s) here can tell" not in said

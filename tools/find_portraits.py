@@ -1707,6 +1707,31 @@ def _vertical(good: list) -> None:
         print(f"  The bar's top is only {min(tops)}-{max(tops)} PIXELS "
               f"down, so one pixel of rounding is a large share of it: "
               f"the HEIGHT decides this, not the top.")
+    # AND A SPREAD ACROSS TWO FRAMES IS NOT A MEASUREMENT OF ANYTHING.
+    # Every candidate here is ranked on how tightly its reading agrees
+    # across frames, and with two frames that "agreement" is just the
+    # distance between two points - which no model can fail. So the
+    # ranking is refused below the same floor `_fitted_layout` uses,
+    # and for the same reason: two points define a constant and cannot
+    # test it. This is not hypothetical. A real two-picture run printed
+    # "the bar is measured against a HUD BOX hung at the TOP - that is
+    # NOT what `SlotRect.to_pixels` does today", which is an
+    # instruction to make the ONE change this project has already made
+    # and reverted against the user's own screenshots.
+    # The struck-out models above still stand: a reading that puts the
+    # bar above the top of its own box is refuted PER FRAME rather than
+    # by a spread, so one picture is enough to kill it.
+    if len(taller) < MIN_VOTERS:
+        print(f"  NO VERDICT: only {len(taller)} picture(s) here can tell "
+              f"the readings apart, and {MIN_VOTERS} is the fewest this "
+              f"will call. Two frames always agree - the spread between "
+              f"them is just the distance between them.")
+        if impossible:
+            print("     What IS settled is the struck-out model above, "
+                  "which is refuted per frame rather than by a spread - "
+                  "and it was the only one that would have missed the "
+                  "portraits.")
+        return
     order = [label for label in sorted(spreads, key=spreads.get)
              if label not in impossible]
     if not order:
@@ -1852,13 +1877,19 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
     coincidence.
     """
     shipped = DraftLayout()
-    rows = []
+    rows, thin = [], []
     for name, key, against in FRACTIONS:
         column = [(r[key], r["file"]) for r in good if r.get(key) is not None]
         if len(column) < MIN_VOTERS:
-            print(f"\nOnly {len(column)} picture(s) measured {name} - "
-                  f"{MIN_VOTERS} is the fewest this will fit against.")
-            return
+            # SKIPPED, NEVER RETURNED FROM. This used to `return` on the
+            # first thin fraction, and `radiant_x` is the first entry in
+            # FRACTIONS - so a run where one fraction was short abandoned
+            # the other five WITHOUT PRINTING THEM, and a run given
+            # --apply ended having written nothing and said nothing about
+            # it. The line it did print named one fraction, so it read as
+            # a note rather than as the whole fit giving up.
+            thin.append((name, len(column)))
+            continue
         values = np.array([v for v, _f in column], dtype=float)
         mid = float(np.median(values))
         with_it = [f for v, f in column if abs(v - mid) <= AGREE_WITHIN]
@@ -1868,8 +1899,23 @@ def _fitted_layout(good: list, apply: bool = False) -> None:
             "worst": float(np.max(np.abs(values - mid))),
             "apart": [f for v, f in column if abs(v - mid) > AGREE_WITHIN],
         })
-    print(f"\nWHAT THESE {len(good)} PICTURES MEASURE THE SIX FRACTIONS "
-          f"TO BE")
+    if thin:
+        print(f"\nTOO FEW FRAMES TO FIT: "
+              + ", ".join(f"{name} ({seen})" for name, seen in thin))
+        print(f"  {MIN_VOTERS} frames is the fewest any fraction is "
+              f"fitted against - two points define a constant and cannot "
+              f"test it. The rest are still fitted below.")
+    if not rows:
+        print(f"\nNOTHING WAS FITTED: none of the six fractions had "
+              f"{MIN_VOTERS} frames behind it.")
+        if apply:
+            print("  --apply WROTE NOTHING. calibration_local.json is "
+                  "untouched and this machine keeps the boxes it had.")
+            print("  Point it at a folder with more screenshots in it, or "
+                  "drop --tall so the 16:9 shots count too.")
+        return
+    print(f"\nWHAT THESE {len(good)} PICTURES MEASURE ({len(rows)} of "
+          f"{len(FRACTIONS)} fractions)")
     print(f"  {'fraction':<11}{'measured':>10}{'shipped':>10}"
           f"{'worst miss':>12}{'agree':>8}    at {AT[0]}x{AT[1]}")
     for row in rows:

@@ -5652,6 +5652,36 @@ credentials, and put the account at risk. Do not go there.
   coincidence.
   An unsettled fraction KEEPS THE SHIPPED VALUE and the file still names
   all six, since `load_layout` reads whatever keys are in it.
+  **AND A THIN FRACTION MUST NOT ABANDON THE OTHER FIVE, NOR `--apply`
+  GO SILENT** (`_fitted_layout`). It looped over `FRACTIONS` and
+  `return`ed on the first one with fewer than `MIN_VOTERS` behind it —
+  and `radiant_x` is the FIRST entry in that tuple. So a real
+  two-picture run printed
+
+      Only 2 picture(s) measured radiant_x - 3 is the fewest this
+      will fit against.
+
+  and stopped there: no table, no apply branch, and **not one word
+  about `--apply`**, which the user had passed. That line names one
+  fraction, so it reads as a note about `radiant_x` rather than as the
+  whole fit giving up. A thin fraction is SKIPPED and named now, the
+  rest are still fitted, and an `--apply` run always ends with a
+  sentence about whether it wrote — `WROTE NOTHING ... untouched` when
+  nothing could be. Doing nothing silently is indistinguishable from
+  being broken, inside the tool that exists to enforce that rule.
+  **AND TWO FRAMES NEVER NAME A VERTICAL WINNER** (`_vertical`). The
+  same run printed "-> the bar is measured against a HUD BOX hung at
+  the TOP. That is NOT what `SlotRect.to_pixels` does today" — an
+  instruction to make the ONE change this project has already made and
+  REVERTED against the user's own screenshots. The three readings are
+  ranked on how tightly each agrees ACROSS frames, and across two
+  frames that agreement is the distance between two points, which no
+  model can fail. The ranking is refused below `MIN_VOTERS` tall
+  frames now, on the same floor and the same argument.
+  The struck-out models SURVIVE that floor deliberately: a reading
+  that puts the bar above the top of its own box is refuted PER FRAME
+  rather than by a spread, so one picture is enough to kill the
+  letterboxed candidate.
   **WHAT THAT RUN MEASURED, and it is not yet in the shipped six**: the
   app's box lands **+24px too low and +36px too tall at 1080p** (median
   over six frames), against `y` 0.0054 where 0.0330 ships and `slot_h`
