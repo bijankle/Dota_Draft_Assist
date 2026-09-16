@@ -154,13 +154,33 @@ credentials, and put the account at risk. Do not go there.
        800x600       y= 20  h= 56           y= 15  h= 42
        1280x1024     y= 34  h= 95           y= 24  h= 67
 
-   **800x600 AND 1440x900 REMAIN GENUINELY OPEN** — the search locates
-   nothing on one and locates ten and fits them wrong on the other — and
-   they are NOT a licence to move the twenty that work. An end-to-end
-   read test earns its place back here when it can draw its portraits at
-   pixel positions MEASURED off real screenshots (`tools/find_portraits.
-   py <folder> --boxes-only` produces them) rather than computed from
-   the layout it is checking.
+   **800x600 AND 1440x900 ARE EXPLAINED, AND NEITHER IS ABOUT THE
+   RESOLUTION.** They were carried here as genuinely open for a long
+   time — the search locating nothing on one, and locating ten and
+   fitting them wrong on the other — and the answer was in the
+   screenshots the whole time, readable at a glance once somebody
+   LOOKED at them instead of measuring them: **those two are the only
+   frames in the sample taken at hero selection, and their pick bar is
+   EMPTY.** Nobody had picked yet. There is no portrait in either bar
+   to find, so locating nothing is the CORRECT answer rather than a
+   fault, and no amount of widening the size sweep was ever going to
+   change it. The other twenty are strategy time with all ten
+   portraits in the top bar, which is why they locate.
+   The 1440x900 one also has the whole CHOOSE YOUR HERO grid on
+   screen, which is where its ten came from and why its `y` read
+   **0.0800 against 0.0050-0.0059 on every other frame** — a roster
+   row fitted as a pick bar, which is the exact failure `bar_shape`
+   exists to refuse and which got past it on that frame. That single
+   outlier is what vetoed the entire calibration under the old
+   worst-miss gate; see the per-fraction majority below.
+   **WHAT IS STILL NOT ESTABLISHED** is whether a FILLED
+   hero-selection bar sits where the strategy-time bar does. No frame
+   in this sample can say, because the only two hero-selection frames
+   in it are the empty ones. An end-to-end read test earns its place
+   back here when it can draw its portraits at pixel positions
+   MEASURED off real screenshots (`tools/find_portraits.py <folder>
+   --boxes-only` produces them) rather than computed from the layout
+   it is checking.
 
    **THE LETTERBOXED MODEL IS REFUTED** (`find_portraits._vertical`,
    run as `python tools/find_portraits.py <folder>`; there is no menu
@@ -5641,6 +5661,20 @@ credentials, and put the account at risk. Do not go there.
   the bank origins split by ASPECT (dire_x reads 0.570 on 16:9 frames
   and 0.592 on 4:3 and 5:4), which one constant cannot explain and
   nobody has explained yet.
+  **AND THOSE FRAMES ARE A SCREEN THE APP READS, WHICH WAS DOUBTED
+  AND SHOULD NOT HAVE BEEN.** The sample was read once as "not a pick
+  bar at all — the loading and menu screen", on the strength of the
+  words in the context crops: ENTERING BATTLE AS, WORLD & INTERFACE,
+  FRIENDS AND FOES, GUIDES. Those words are really there and the
+  reading was still wrong. That IS strategy time; every one of those
+  frames carries all ten heroes in the top bar; and `DRAFTING_STATES`
+  is `{HERO_SELECTION, STRATEGY}`, so strategy time is not a screen
+  NEAR the one the app reads — it is precisely the screen
+  `read_placed` scores the calibrated boxes against once the game has
+  named the ten, which is what raises the crop-boxes-wrong banner and
+  what `_remember_measured_layout` saves a layout from. The
+  measurement stands, and the twenty frames behind it are the right
+  frames.
   **AND A PICTURE NOBODY CAN OPEN IS A MEASUREMENT NOBODY TOOK**
   (`save_png`, `folder_note`, `_save_beside`, `CHUNK`). That same run
   put every number on screen and `OSError: [Errno 22] Invalid argument`
