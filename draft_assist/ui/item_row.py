@@ -75,8 +75,26 @@ def _fitted(item: str, width: int, height: int):
     key = (item, width, height)
     hit = _fitted_cache.get(key)
     if hit is None:
-        hit = art.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatio,
-                         Qt.TransformationMode.SmoothTransformation)
+        # THE WIDTH IS WHAT MATCHES, AND THE HEIGHT IS WHAT GIVES, at the
+        # user's request: "match the width... width is what i care
+        # about". Valve draws item icons at 88x64 (1.375) and this tile
+        # is a hero portrait's 16:9 box, so KeepAspectRatio fitted the
+        # icon by its HEIGHT and left ~28px of dead space either side —
+        # the tile measured exactly a Top Hero's 124px while the picture
+        # in it measured 96, which is the gap that looked wrong.
+        # Expanding fills the width and overflows the height instead, and
+        # the overflow is cropped from the CENTRE so the item keeps its
+        # middle. It costs about a fifth of the icon's height, top and
+        # bottom, which is the trade that was put to the user and taken.
+        grown = art.scaled(width, height,
+                           Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                           Qt.TransformationMode.SmoothTransformation)
+        # Cropped HERE rather than clipped at paint time: `paint_art`
+        # centres whatever it is handed, so a pixmap bigger than the box
+        # would spill over the tiles either side of it.
+        hit = grown.copy(max(0, (grown.width() - width) // 2),
+                         max(0, (grown.height() - height) // 2),
+                         width, height)
         _fitted_cache[key] = hit
     return hit
 

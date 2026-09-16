@@ -4336,3 +4336,40 @@ def test_the_menu_tick_follows_the_palette(window, qapp):
     finally:
         window.settings["greyscale"] = False
         window._apply_greyscale()
+
+
+def test_every_row_on_the_draft_tab_starts_in_the_same_column(window, qapp,
+                                                              styled):
+    """The heading, the five picks, Top Heroes and Top Items line up.
+
+    THE USER DREW A LINE DOWN THEM. Two separate faults put three
+    different left edges on one column:
+    `TeamPanel` carried `PANEL_MARGIN` of its own INSIDE a card that
+    already insets its body by the same amount, so the five portraits
+    sat at card+24 where both strips sit at card+12; and the leftover
+    from dividing the card's width by five was split between a stretch
+    at each end, which moved the first portrait again by half of it.
+    The board head is not in a card at all, so "Radiant" sat on the
+    card's outer edge, a border and a padding short of its own picks.
+    """
+    from draft_assist.ui.suggest_row import SuggestTile
+    from draft_assist.ui.item_row import ItemTile
+    window.show()
+    window.resize(1500, 1000)
+    window.refresh()
+    _settle(qapp)
+
+    def left_of(widget):
+        return widget.mapTo(window, QPoint(0, 0)).x()
+
+    edges = {"Radiant heading": left_of(window.team_panels["ally"].header),
+             "first pick tile": left_of(window.team_buttons["ally"][0])}
+    sug = window.suggest_row.findChildren(SuggestTile)
+    assert sug, "no suggestions to measure against"
+    edges["first Top Hero"] = left_of(sug[0])
+    items = window.item_row.findChildren(ItemTile)
+    if items:                      # the strip is empty on an empty board
+        edges["first Top Item"] = left_of(items[0])
+    assert len(set(edges.values())) == 1, (
+        "these should share one left edge: "
+        + ", ".join(f"{k}={v}" for k, v in edges.items()))

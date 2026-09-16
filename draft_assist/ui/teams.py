@@ -554,7 +554,16 @@ class TeamPanel(QFrame):
         # minimum of five tiles at their CURRENT size, which only ever
         # goes up.
         lay.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
-        lay.setContentsMargins(PANEL_MARGIN, 8, PANEL_MARGIN, 10)
+        # NOTHING OF ITS OWN. This panel is `bare` INSIDE a card, and
+        # `chrome.card` already insets its body by 12 — so a margin here
+        # was a SECOND inset stacked on the first, and the five portraits
+        # sat at card+24 where the two strips below them sit at card+12.
+        # That is the twelve pixels the user drew a line through. The
+        # card's padding is the one that shows, and equalising it there
+        # ("the margins between the content and the edge of the padding
+        # is the same in all 4 directions") is what `_equal_card_margins`
+        # in `app` does.
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
         # THE HEADING IS A WIDGET rather than a layout dropped into this
@@ -608,14 +617,24 @@ class TeamPanel(QFrame):
 
         self.spacing = TILE_GAP
         self._placed: tuple[int, int] | None = None
-        row = QHBoxLayout()
-        row.setSpacing(self.spacing)
-        row.addStretch(1)
+        # NO LEADING STRETCH. The leftover from dividing the width by
+        # five used to be split between a stretch at each end, which put
+        # the first portrait at the card's padding PLUS half the slack —
+        # 26px in against the strips below, which sit on the padding
+        # itself at 12. The two rows were a dozen pixels out of column
+        # and the user drew a line down them to say so. The slack goes
+        # into the GAPS now ("you can either make the spacing between
+        # portraits bigger"), so the first tile lands on the padding and
+        # the columns line up by construction rather than by luck.
+        # The trailing stretch stays: four gaps cannot always divide the
+        # slack exactly, and the 0-3px that is left has to go somewhere.
+        self.row = QHBoxLayout()
+        self.row.setSpacing(self.spacing)
         self.slots = [HeroTile(side, i, self) for i in range(5)]
         for tile in self.slots:
-            row.addWidget(tile)
-        row.addStretch(1)
-        lay.addLayout(row)
+            self.row.addWidget(tile)
+        self.row.addStretch(1)
+        lay.addLayout(self.row)
         self._resize_tiles(self.width())
 
     def align_heading(self, right: bool) -> None:
@@ -722,9 +741,15 @@ class TeamPanel(QFrame):
         # renders a laid-out panel and holds this against the real
         # geometry: if Qt ever distributes it the other way the test says
         # so, rather than the Roles card quietly sitting a pixel out.
+        # THE SLACK IS THE GAP NOW, not an inset. Four gaps share it; the
+        # 0-3px that will not divide is left to the trailing stretch, so
+        # the LEFT edge is exact — which is the edge every other row in
+        # this window is measured against.
         slack = max(0, inner - 5 * edge)
-        placed = (margins.left() + (slack + 1) // 2,
-                  margins.right() + slack // 2)
+        gap = self.spacing + slack // 4
+        if self.row.spacing() != gap:
+            self.row.setSpacing(gap)
+        placed = (margins.left(), margins.right() + slack % 4)
         if placed != self._placed:
             self._placed = placed
             self.tiles_placed.emit(*placed)

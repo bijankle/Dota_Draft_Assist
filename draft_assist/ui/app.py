@@ -231,6 +231,10 @@ STRIP_OF_PICK = 1.0
 # literals in a `setContentsMargins` call is three chances for them to
 # stop matching.
 PILL_PAD = 8
+# A CARD'S OWN INSET: its 1px border plus the padding its body carries.
+# Anything laid out BESIDE a card rather than inside one has to add this
+# to sit in the same column as the card's contents.
+CARD_EDGE = 1 + teams.PANEL_MARGIN
 
 SUGGESTIONS_PER_ROW = 11
 
@@ -1062,6 +1066,11 @@ class MainWindow(QMainWindow):
         self.side_cards = {}
         for side in ("ally", "enemy"):
             side_card, slay = card()
+            # EQUAL ON ALL FOUR SIDES, at the user's request. `card`
+            # ships 12/10/12/12, and this is the one card whose content
+            # the user measures against everything else in the column.
+            slay.setContentsMargins(teams.PANEL_MARGIN, teams.PANEL_MARGIN,
+                                    teams.PANEL_MARGIN, teams.PANEL_MARGIN)
             slay.setSpacing(6)
             slay.addWidget(self.team_panels[side])
             slay.addWidget(self.role_bar.bars[side])
@@ -3997,7 +4006,14 @@ class MainWindow(QMainWindow):
         self.board_head = QWidget()
         self.board_head.setProperty("bare", True)
         self.head_row = QHBoxLayout(self.board_head)
-        self.head_row.setContentsMargins(0, 0, 0, 0)
+        # THE NAMES START WHERE THE PORTRAITS DO. This row is not in a
+        # card, so at nought margins "Radiant" sat on the card's OUTER
+        # edge while the five portraits under it sat on the card's inner
+        # padding — thirteen pixels apart, which is the second line the
+        # user drew. A card is a 1px border and `PANEL_MARGIN` of
+        # padding, so that sum is what puts the name in the same column
+        # as the first portrait, and as the first Top Hero below it.
+        self.head_row.setContentsMargins(CARD_EDGE, 0, CARD_EDGE, 0)
         self.head_row.setSpacing(10)
         self._seat_headings()
         return self.board_head

@@ -83,23 +83,42 @@ def test_each_heading_sits_above_its_own_card(window):
                 <= _at(window, card).y() + 2), f"{side} heading is inside"
 
 
-def test_the_left_name_starts_where_its_card_starts(window):
-    left, right = window._panel_order
-    assert abs(_at(window, window.team_panels[left].caption).x()
-               - _at(window, window.side_cards[left]).x()) <= 6
+def test_the_left_name_starts_where_its_own_PORTRAITS_start(window):
+    """AND THAT IS ITS CARD'S INNER EDGE, NOT ITS OUTER ONE.
+
+    This asked for the name to sit on the card's outer edge, which is
+    where it sat while the five portraits were inset twice — once by the
+    card and again by the panel inside it. With that duplicate gone the
+    portraits sit on the card's padding, and a name on the outer edge is
+    a border and a padding to the left of the picks it names: "i can
+    aklls osee that the radiant header is not horixontally aligned with
+    top heores". The column is what matters, so the column is what is
+    asked for.
+    """
+    left, _right = window._panel_order
+    name = _at(window, window.team_panels[left].caption).x()
+    tile = _at(window, window.team_buttons[left][0]).x()
+    assert abs(name - tile) <= 2, (
+        f"the name starts at {name} and its first portrait at {tile}")
 
 
 def test_the_right_name_finishes_where_its_card_finishes(window):
     """"move dire to align on the right side". The left heading starts at
-    its card's edge, so the right one has to FINISH at its card's or the
-    two drift towards the middle with the buttons between them."""
-    left, right = window._panel_order
+    its picks' column, so the right one has to FINISH at its own or the
+    two drift towards the middle with the buttons between them.
+
+    THE CARD'S INNER EDGE, mirroring the left. The name used to be held
+    to the card's OUTER edge, which is a border and a padding past the
+    last portrait now that the panel no longer insets itself twice.
+    """
+    _left, right = window._panel_order
     panel = window.team_panels[right]
     end = max(w.mapTo(window, w.rect().topRight()).x()
               for w in (panel.caption, panel.total) if w.isVisible())
-    card = window.side_cards[right]
-    edge = card.mapTo(window, card.rect().topRight()).x()
-    assert abs(end - edge) <= 12, f"the right heading ends {edge - end}px in"
+    last = window.team_buttons[right][-1]
+    edge = last.mapTo(window, last.rect().topRight()).x()
+    assert abs(end - edge) <= 2, (
+        f"the right heading ends at {end} and its last portrait at {edge}")
 
 
 def test_the_order_of_the_name_is_not_mirrored(window):
