@@ -5715,6 +5715,65 @@ credentials, and put the account at risk. Do not go there.
   decide whether a crop lands on a portrait at all, and the sample
   that finally settles them is the one whose horizontal half it does
   not.
+  **AND THE PICK BAR IS CENTRED ON THE HUD SPAN, WHICH MAKES
+  `radiant_x` NOT A FREE PARAMETER AT ALL.** An eight-picture run over
+  the user's own folder settles it: predict the left edge as the
+  MIRROR of the right one — `span - (dire_x + 4*pitch + slot_w)` — and
+  it lands within 1 to 4 PIXELS of the measured origin on all seven
+  frames that located ten.
+
+      frame        measured x   if centred   out
+      800x600              41           43    -2
+      1024x768             55           58    -3
+      1280x1024            70           72    -2
+      1360x768            141          143    -2
+      1440x900             73           77    -4
+      1600x1200            81           82    -1
+      1920x1080           208          210    -2
+
+  Two things follow and both are worth more than the fraction itself.
+  A frame that MISSED its leading portrait can have its origin
+  REPAIRED from the mirror, which is the one failure `banks_from` has
+  and the reason `radiant_x` is the fraction that never settles: the
+  2560x1440 frame in that run located nine, read its origin at 123
+  against a mirror of 281, and was set aside — and 281 is the answer.
+  And what the four horizontal fractions are really disagreeing about
+  is ONE number, the bar's overall SCALE, rather than four independent
+  ones.
+
+  **SO THE SPLIT IS THE BAR'S WIDTH, AND IT IS TWO VALUES**:
+
+      bar width / span     frames
+      0.889 - 0.898        800x600, 1024x768, 1280x1024,
+                           1440x900, 1600x1200
+      0.780 - 0.791        1360x768, 1920x1080, 2560x1440
+
+  The second group is exactly the 16:9 frames, and the 2560x1440 one
+  joins it only once its origin is repaired — its `slot_w` and `pitch`
+  had already put it there. The MECHANISM is still unexplained; what
+  is now measured is that the bar is centred, that its width takes two
+  values in this sample, and that the four horizontal fractions are
+  that one number seen four ways.
+
+  **AND `AGREE_WITHIN` IS TOO LOOSE TO SEE IT, WHICH IS HOW A REAL
+  RUN WROTE ONE GROUP'S NUMBERS ANYWAY.** That same run printed
+  `slot_w ... 7/7` and `pitch ... 7/7` and SAVED both — while its own
+  maths section, four sections above, called 1920x1080 and 1360x768
+  **OUTLIERS at 14px and 10px** and told the reader to open those rows
+  first. Two halves of one tool disagreeing about one number, which is
+  the exact fault recorded above for `radiant_x`, recurring on the two
+  fractions that did settle. The cause is arithmetic: the gap between
+  the groups is 0.0070 on `slot_w` and 0.0049 on `pitch`, and
+  `AGREE_WITHIN` is 0.01 — wider than the split it is meant to catch,
+  where the real frame-to-frame noise is 0.0023. Anything from 0.003
+  to 0.006 separates them.
+  **IT IS NOT A ONE-LINE CHANGE AND MUST NOT BE MADE AS ONE.**
+  Tightening it uniformly also refuses `slot_h`, which spreads 0.0488
+  to 0.0633 against the WINDOW and only looks settled at 0.01 — and
+  that is the HUD-box measurement this file already records and
+  already deliberately did not act on, at the cost of a working app
+  the one time it was. `slot_h` is the fraction that would move, so
+  the tolerance and the convention are one decision rather than two.
   **TELLING THE TWO CASES APART IS `bad_frames`**, and without it they
   are indistinguishable from any single fraction. A frame apart on
   MORE THAN HALF the fractions fitted the wrong thing entirely — the
