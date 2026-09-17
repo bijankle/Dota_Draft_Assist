@@ -149,8 +149,17 @@ def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
     SEPARATOR columns only, so with nothing stretching before the first
     cell or after the last the block is pinned to both ends, and the
     separators being equally weighted shares what is left between them.
-    Measured against the SUGGESTION STRIP above it, since "the margins"
-    are the portraits' own edges rather than a number.
+
+    **THE EXACT COMPARISON IS AGAINST ITS OWN ROW, AND THE STRIP GETS A
+    TOLERANCE.** Both are "the margins" and only one of them is
+    deterministic: the strip's width is ELEVEN TILES AND TEN GAPS
+    (`_suggestion_box`), and `TeamPanel.STEADY` only takes a tile size
+    at least three pixels BIGGER than the one it has — so the strip's
+    right edge depends on the sequence of widths the window has already
+    been through, and lands a pixel off the card in a long run where it
+    is exact in a short one. That is the damping working, not a fault in
+    this block, and asserting the strip to the pixel made this test pass
+    alone and fail in the full suite.
     """
     from PyQt6.QtWidgets import QApplication
 
@@ -177,11 +186,20 @@ def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
         for _ in range(8):
             QApplication.processEvents()
         per = len(roles_mod.ROLES) // filt.columns
-        strip = win.suggest_row
+        row, strip = win._picks_row, win.suggest_row
         first, last = names[0], boxes[(filt.columns - 1) * per]
-        assert left(first) == left(strip), (
+        # Pinned to both ends of its own row, exactly. This is what the
+        # spread IS: no slack column before the first cell or after the
+        # last.
+        assert left(first) == left(row), (
+            f"at {width} the filter does not start at the row's left edge")
+        assert right(last) == right(row), (
+            f"at {width} the filter does not reach the row's right edge")
+        # And that row is the strip's own span, to within the pixel
+        # `STEADY` can leave on the tiles — see the docstring.
+        assert abs(left(first) - left(strip)) <= 2, (
             f"at {width} the filter does not start where the portraits do")
-        assert right(last) == right(strip), (
+        assert abs(right(last) - right(strip)) <= 2, (
             f"at {width} the filter does not end where the portraits do")
 
         # And the gaps between the cells on the top row are equal —
