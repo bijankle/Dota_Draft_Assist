@@ -28,7 +28,7 @@ Two constraints it has to respect and one thing it must not do:
 * it must NOT reproduce Blizzard's frame.
 """
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QLinearGradient, QPainter, QPen
 
 from . import theme

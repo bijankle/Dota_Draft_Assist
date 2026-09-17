@@ -40,11 +40,6 @@ from draft_assist.ui.appicon import APP_ID  # noqa: E402
 
 
 
-def python_for_launch() -> str:
-    """pythonw from the app's own venv, so no console window appears."""
-    return appicon.launch_python()
-
-
 def icon_path() -> str | None:
     """A real .ico, generated from the app's own icon if need be.
 

@@ -17,7 +17,7 @@ from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
 from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPainterPath, QPen,
                          QPolygonF)
 from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
-                             QHBoxLayout, QLabel, QMenuBar, QPushButton,
+                             QHBoxLayout, QLabel, QMenuBar,
                              QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
                              QTabWidget, QVBoxLayout, QWidget)
 
@@ -1553,14 +1553,6 @@ class BandedTabs(QTabWidget):
         self.currentChanged.connect(self._page_changed)
 
     # -- the row ---------------------------------------------------------
-    def add_tools(self, widget: QWidget) -> None:
-        """Put a widget at the right-hand end of the tab row."""
-        self._row.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
-
-    def add_rule(self) -> None:
-        """A rule between the tab labels and the controls beside them."""
-        self._row.addWidget(Divider(), 0, Qt.AlignmentFlag.AlignVCenter)
-
     def addTab(self, page, label):                  # noqa: N802 - Qt naming
         index = super().addTab(page, label)
         while self.bar.count() <= index:

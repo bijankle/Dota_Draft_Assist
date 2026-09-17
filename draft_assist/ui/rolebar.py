@@ -70,7 +70,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import (QColor, QPainter, QPainterPath, QPen, QPolygonF)
-from PyQt6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QGridLayout, QLabel,
                              QSizePolicy, QVBoxLayout, QWidget)
 
 from ..model import roles as roles_mod

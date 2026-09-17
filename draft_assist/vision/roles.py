@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from ..config import ASSETS_DIR
-from .layout import DraftLayout, SlotRect
+from .layout import SlotRect
 
 ROLE_ICONS_DIR = ASSETS_DIR / "role_icons"
 ROLES = ("carry", "mid", "offlane", "soft_support", "hard_support")
@@ -57,10 +57,3 @@ def read_role(frame: np.ndarray, role_rect: SlotRect,
     return best_role
 
 
-def read_all_roles(frame: np.ndarray, layout: DraftLayout,
-                   templates: dict[str, np.ndarray] | None = None
-                   ) -> dict[tuple[str, int], str | None]:
-    templates = templates if templates is not None else load_templates()
-    return {(rect.team, rect.slot):
-            read_role(frame, layout.role_rect(rect), templates)
-            for rect in layout.slots()}

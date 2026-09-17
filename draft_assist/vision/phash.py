@@ -34,7 +34,3 @@ def hamming(a: np.ndarray, b: np.ndarray) -> int:
     return int(np.count_nonzero(a != b))
 
 
-def hamming_to_all(query: np.ndarray, library_bits: np.ndarray) -> np.ndarray:
-    """Distances from one query hash to every row of an (N, bits) matrix.
-    Vectorised; sub-millisecond for a few hundred library entries."""
-    return np.count_nonzero(library_bits != query[None, :], axis=1)

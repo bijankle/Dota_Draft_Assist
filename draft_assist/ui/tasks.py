@@ -15,7 +15,6 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 

@@ -325,23 +325,6 @@ def clamp_days(value, fallback: int) -> int:
     return max(0, min(MAX_REMINDER_DAYS, number))
 
 
-def clamp_pct(value, fallback: int) -> int:
-    """A percentile floor, 0 to 99.
-
-    NOT 100. At 100 a hero would have to stand above every hero
-    including itself, so nothing could ever qualify and the strip would
-    lose its stars with nothing on screen saying why — a setting whose
-    top end silently turns the feature off is one somebody reaches by
-    dragging rather than by deciding. 99 is "the very top", 0 is "no bar
-    on this axis".
-    """
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return max(0, min(99, number))
-
-
 def load(path: Path | None = None) -> dict:
     """Path is resolved at call time, never bound as a default, so the
     destination can be repointed (tests do this)."""

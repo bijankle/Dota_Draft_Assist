@@ -14,7 +14,7 @@ How old the statistics may get before the app asks about it IS here, and
 it is the only place their age is mentioned at all now.
 """
 
-from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog,
+from PyQt6.QtWidgets import (QButtonGroup, QDialog,
                              QDialogButtonBox, QFrame, QHBoxLayout, QLabel,
                              QRadioButton, QSpinBox, QVBoxLayout)
 

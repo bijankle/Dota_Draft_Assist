@@ -244,12 +244,19 @@ credentials, and put the account at risk. Do not go there.
    nothing: `read_lineup` refuses anything short of ten portraits in two
    banks of five.
 
-   `autocal.measure_bank` and `layout_from_banks` SURVIVE the deletion
-   and are still under test — they fit (start, pitch, width) against the
+   `autocal.measure_bank` SURVIVES the deletion and is still under
+   test — it fits (start, pitch, width) against the
    per-column edge profile, scored on the sum AND the WEAKEST of the ten
    because the sum alone cannot tell the right fit from one whose
    portrait width equals its pitch. What went is only the two places a
-   human drew the rectangles they were fitted to.
+   human drew the rectangles it was fitted to.
+   **`layout_from_banks` WAS NAMED HERE BESIDE IT AND WAS NOT UNDER
+   TEST AT ALL** — one reference in the whole repository, its own
+   `def`. It is DELETED. Worth recording as a shape rather than as a
+   loss: this file says what SURVIVED a deletion, the two names were
+   written down together, and a few rounds later only one of them was
+   true. A name in a note is not a reference, and nothing fails when
+   it stops being one.
 
    **`load_layout` and `save_calibration` resolve the path at CALL time**,
    never as a default argument. A default is evaluated once at import, so a
@@ -360,8 +367,9 @@ credentials, and put the account at risk. Do not go there.
 ## Other standing decisions
 
 - **THE RANK PICKERS OFFER PAIRS ONLY WHEN STRATZ CAN ONLY DO PAIRS**
-  (`data.store.pair_only_brackets` / `bracket_coverage`,
-  `setup_wizard._fill_ranks`, `ui/bracket_dialog.py`), at the user's
+  (`data.store.pair_only_brackets`, `setup_wizard._fill_ranks`,
+  `ui/bracket_dialog.py` — `bracket_coverage` was named here too
+  and nothing ever called it, so it is deleted), at the user's
   request: "One thing is to me it seems that the rank preference only
   works in pairs... If this is true, then don't give the option of
   individual ranks", then "if stratz is pari only, then i want pair only

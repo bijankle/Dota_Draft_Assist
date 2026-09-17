@@ -104,16 +104,6 @@ def pair_only_brackets(path: Path = META_FILE) -> bool | None:
     return not bool(chosen["exact"])
 
 
-def bracket_coverage(path: Path = META_FILE) -> list:
-    """Which ranks the pairwise data actually spans, or []."""
-    try:
-        meta = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    chosen = meta.get("stratz_bracket_filter") or {}
-    return list(chosen.get("covers") or []) if isinstance(chosen, dict) else []
-
-
 def empty_dataset() -> Dataset:
     """A valid but heroless dataset, so the application can open and explain
     itself before the first download instead of crashing on a missing file."""

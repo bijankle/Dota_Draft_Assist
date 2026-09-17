@@ -54,8 +54,7 @@ from dataclasses import dataclass, field
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame,
-                             QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
                              QPushButton, QScrollArea, QStackedWidget,
                              QVBoxLayout, QWidget)
 

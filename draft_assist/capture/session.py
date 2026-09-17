@@ -17,7 +17,7 @@ this file fine on Linux.
 
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 

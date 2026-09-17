@@ -183,26 +183,6 @@ class AccountRow(QWidget):
 
         self.face.show_initial("")
 
-    def on_band(self) -> None:
-        """Make this row read as part of the tab strip it now sits on.
-
-        A QLabel is transparent by the app's own stylesheet rule, but
-        THIS widget is a plain QWidget holding a layout — which takes the
-        base `QWidget` rule, the CONTENT colour, lighter than the band.
-        It drew as a pale block across the right-hand end of the tab row,
-        which is the same fault the strip's own note in `chrome` warns
-        about: "every child of the strip is given the band's colour
-        explicitly".
-
-        `bare` is the app's word for "this holds a layout rather than
-        being a surface", and it is what the stylesheet keys on.
-        """
-        self.setProperty("bare", True)
-        for child in self.findChildren(QWidget):
-            child.setProperty("bare", True)
-        self.style().unpolish(self)
-        self.style().polish(self)
-
     def mouseReleaseEvent(self, event):
         if self._clickable and event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()

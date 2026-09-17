@@ -12,7 +12,6 @@ table hides — the screen is protecting you from reading noise, the
 workbook is the record.
 """
 
-from datetime import datetime
 
 from .analyse import MIN_BUCKET, MIN_DISPLAY, SIGMA_CAT
 from .shape import GAME_MODE, LANE_ROLE, LOBBY_TYPE, WEEKDAY

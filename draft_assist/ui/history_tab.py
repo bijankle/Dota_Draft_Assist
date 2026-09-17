@@ -18,10 +18,9 @@ carrying that across would have made one window that looks like two
 programs.
 """
 
-from datetime import datetime
 
 from PyQt6.QtCore import QPoint, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QFrame, QGridLayout,
                              QHBoxLayout,
                              QHeaderView, QLabel, QLineEdit, QPushButton,

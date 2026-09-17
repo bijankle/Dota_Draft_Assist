@@ -27,7 +27,7 @@ of the plot is a correlation nobody can see.
 
 import math
 
-from PyQt6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt
+from PyQt6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QSizePolicy, QToolTip, QWidget
 

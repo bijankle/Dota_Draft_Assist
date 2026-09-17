@@ -36,25 +36,6 @@ def draw_overlay(frame: np.ndarray, read: DraftRead,
     return out
 
 
-def draw_boxes(frame: np.ndarray, layout) -> np.ndarray:
-    """The crop boxes alone, with no recognition behind them.
-
-    `draw_overlay` needs a DraftRead, which needs a live capture. Calibrating
-    from a still — a frame saved earlier with Ctrl+S — has no read and does
-    not need one: the question is only whether the rectangles sit on the
-    portraits.
-    """
-    out = frame.copy()
-    height, width = out.shape[:2]
-    for rect in layout.slots():
-        x, y, w, h = rect.to_pixels(width, height)
-        colour = (0, 220, 255) if rect.team == "radiant" else (255, 180, 0)
-        cv2.rectangle(out, (x, y), (x + w, y + h), colour, 2)
-        cv2.putText(out, f"{rect.team[0]}{rect.slot}", (x + 3, y + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA)
-    return out
-
-
 def dump(frame: np.ndarray, read: DraftRead,
          names: dict[int, str] | None = None,
          out_root: Path | None = None) -> Path:

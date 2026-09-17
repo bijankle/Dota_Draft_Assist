@@ -10,7 +10,6 @@ bracket above where you currently play, so the advice reflects the games you
 are trying to win rather than the ones you already do.
 """
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel,
                              QPushButton, QVBoxLayout)
 

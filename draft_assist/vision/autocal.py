@@ -418,58 +418,6 @@ def measure_bank(frame, rect, slots: int = TEAM_SIZE):
     return (left + begin, top + y_origin, slot_w, y_span, pitch), note
 
 
-def layout_from_banks(frame, first, second, base: DraftLayout | None = None):
-    """Two dragged bank rectangles -> the whole layout.
-
-    Which bank is which is decided by x, not by the order they were drawn:
-    Radiant is always the left bank of the pick bar.
-    """
-    base = base or DraftLayout()
-    if frame is None:
-        return None, "there is no picture to measure"
-    height, width = frame.shape[:2]
-    left_edge, span = hud_box(width, height)
-    if not span or not height:
-        return None, "the frame has no size"
-
-    banks = sorted((tuple(first), tuple(second)), key=lambda r: r[0])
-    measured, notes = [], []
-    for rect in banks:
-        fit, note = measure_bank(frame, rect)
-        if fit is None:
-            return None, note
-        measured.append(fit)
-        notes.append(note)
-
-    (lx, ly, lw, lh, lpitch), (rx, _ry, rw, _rh, rpitch) = measured
-    # Both banks are the same bar, so the pitch and the portrait size are
-    # one measurement made twice; averaging halves the error in a drag.
-    pitch = (lpitch + rpitch) / 2.0
-    slot_w = (lw + rw) / 2.0
-    # THE VERTICAL IS A FRACTION OF THE FRAME'S HEIGHT, exactly as
-    # `SlotRect.to_pixels` reads it back. This briefly divided by the HUD
-    # box's height instead; the real screenshots put those boxes on the
-    # player NAME strip at every resolution, so it went back. A
-    # measurement stored under a convention nothing renders it with is
-    # worse than no measurement. On 16:9 and wider the two are the same
-    # number anyway.
-    layout = DraftLayout(
-        radiant_x=(lx - left_edge) / span,
-        dire_x=(rx - left_edge) / span,
-        y=ly / height,
-        slot_w=slot_w / span,
-        slot_h=lh / height,
-        pitch=pitch / span,
-        role_dy=base.role_dy, role_h=base.role_h,
-    )
-    for name in ("radiant_x", "dire_x", "y", "slot_w", "slot_h", "pitch"):
-        value = getattr(layout, name)
-        if not 0.0 <= value <= 1.0:
-            return None, (f"{name} came out at {value:.3f}, which is off the "
-                          "frame — is one rectangle in the wrong place?")
-    return layout, "; ".join(notes)
-
-
 def calibrate(frame, portraits: dict[int, np.ndarray],
               base: DraftLayout | None = None) -> Calibration:
     if frame is None or not portraits:

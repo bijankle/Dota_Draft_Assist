@@ -30,12 +30,12 @@ from PyQt6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel,
 
 from . import theme, tilekit
 from .portraits import scaled
-from .textfit import fit, split_two  # noqa: F401  (re-exported)
+from .textfit import fit  # noqa: F401  (re-exported)
 # One look for every tile in the app: the name band, the number badge and
 # the point sizes are shared with the item strip and the suggested picks,
 # so the three strips cannot drift apart again.
-from .tilekit import (BADGE_PAD_X, BADGE_PAD_Y, CHROME,  # noqa: F401
-                      NAME_MAX_PT, NAME_MIN_PT, NUMBER_PX)
+from .tilekit import (# noqa: F401
+                      NAME_MAX_PT, NAME_MIN_PT)
 
 # "with" and "vs" are different questions and the eye should not have to
 # read a legend to tell which it is looking at. Words rather than glyphs:
@@ -93,10 +93,6 @@ def set_grid_cap(px: int | None) -> None:
     """What the matrix cards can fit a portrait into. See `_grid_cap`."""
     global _grid_cap
     _grid_cap = None if px is None else max(TILE_MIN, int(px))
-
-
-def grid_cap() -> int | None:
-    return _grid_cap
 
 
 def tile_cap() -> int:

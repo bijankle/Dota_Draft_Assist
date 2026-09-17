@@ -34,15 +34,15 @@ import sys
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import (PYQT_VERSION_STR, QEvent, QPoint, QRect, QSize,
+from PyQt6.QtCore import (PYQT_VERSION_STR, QPoint, QRect,
                           QT_VERSION_STR, Qt, QTimer)
 from PyQt6.QtGui import (QAction, QColor, QImage, QKeySequence,
-                         QPainter, QPen, QPixmap)
+                         QPainter, QPixmap)
 from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QDialog, QFrame, QGridLayout,
                              QHBoxLayout, QLabel,
                              QFileDialog,
-                             QMainWindow, QMenuBar, QMessageBox,
+                             QMainWindow, QMessageBox,
                              QPlainTextEdit,
                              QDoubleSpinBox, QListWidget,
                              QPushButton,
@@ -3299,32 +3299,6 @@ class MainWindow(QMainWindow):
             else:
                 where[hero_id] = hero_picker.IN_DRAFT
         return where
-
-    def resolve_hero(self, text: str, exclude: set[int] | None = None):
-        """Text a user typed under time pressure -> hero id, or None.
-
-        Exact name wins, then a prefix, then a word start, then anything
-        containing it — and an ambiguous prefix is NOT resolved, because
-        silently entering the wrong hero is worse than entering none.
-        """
-        needle = " ".join(text.split()).lower()
-        if not needle:
-            return None
-        exclude = exclude or set()
-        pool = [(hid, self.ds.name(hid)) for hid in self.ds.hero_ids
-                if hid not in exclude]
-        for hid, name in pool:
-            if name.lower() == needle:
-                return hid
-        for match in (lambda n: n.startswith(needle),
-                      lambda n: any(w.startswith(needle) for w in n.split()),
-                      lambda n: needle in n):
-            hits = [hid for hid, name in pool if match(name.lower())]
-            if len(hits) == 1:
-                return hits[0]
-            if hits:
-                return None          # ambiguous: make the user type more
-        return None
 
     def _edit_slot(self, side: str, index: int) -> None:
         """Fill, change or clear a draft slot by hand."""

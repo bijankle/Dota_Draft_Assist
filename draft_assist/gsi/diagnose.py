@@ -15,7 +15,6 @@ import re
 import socket
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 from . import install as gsi_install
 

@@ -13,9 +13,9 @@ Two things live here that Qt does not give for free:
   the rows are then laid side by side.
 """
 
-from PyQt6.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt6.QtWidgets import (QHeaderView, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QHeaderView, QLabel,
                              QStyledItemDelegate, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget)
 
@@ -63,23 +63,6 @@ def delta_item(delta: float) -> ValueItem:
     if delta:
         item.setForeground(QColor(theme.GOOD if delta > 0 else theme.BAD))
     return item
-
-
-class QuickEntry(QLineEdit):
-    """A line edit that reports Tab instead of letting Qt move focus.
-
-    During a draft the same field is used for both teams, so Tab has to
-    mean 'other side' — losing focus mid-draft costs more than tab order
-    is worth here.
-    """
-
-    tab_pressed = pyqtSignal()
-
-    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
-            self.tab_pressed.emit()
-            return
-        super().keyPressEvent(event)
 
 
 TOTAL_LABEL = "Σ"

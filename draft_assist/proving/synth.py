@@ -14,7 +14,7 @@ Portraits come from the real downloaded library when present; tests and
 network-less environments use deterministic procedural portraits instead.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import cv2
 import numpy as np

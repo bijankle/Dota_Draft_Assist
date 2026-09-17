@@ -17,14 +17,13 @@ that explained itself in place would be the paragraph again.
 """
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 from . import theme, tilekit
 from .flowlayout import FlowLayout
 from ..model.items import ONE_TRIGGER, importance, severity_pct
 from .item_icons import icon, why_missing
-from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 
 # The same box the suggested picks use, and the same name band the ten
 # picks use. Three strips that look like three different apps was the
@@ -297,9 +296,6 @@ class ItemRow(QWidget):
 
     def tile_width(self) -> int:
         return self._tile_size[0]
-
-    def blank_width(self) -> int:
-        return self._blank_size[0]
 
     def set_note(self, text: str) -> None:
         """A word about the strip itself, beside it rather than in place of

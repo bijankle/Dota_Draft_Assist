@@ -110,16 +110,6 @@ def baseline_winrates(hero_stats: list[dict],
     return out
 
 
-def per_tier_winrates(hero_stats: list[dict], tier: int) -> dict[int, float]:
-    """Single-tier hero winrates, used only by the bracket verification."""
-    out = {}
-    for entry in hero_stats:
-        picks = int(entry[f"{tier}_pick"])
-        if picks > 0:
-            out[int(entry["id"])] = int(entry[f"{tier}_win"]) / picks
-    return out
-
-
 def fetch_matchups(hero_ids: list[int]) -> dict[int, dict]:
     """Pairwise counts from /heroes/{id}/matchups, in Stratz's shape.
 

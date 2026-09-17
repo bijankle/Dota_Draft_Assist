@@ -64,10 +64,6 @@ class GsiState:
         return self.game_state in DRAFTING_STATES
 
     @property
-    def in_game(self) -> bool:
-        return bool(self.game_state)
-
-    @property
     def has_full_draft(self) -> bool:
         """True only when GSI really did hand us both line-ups.
 
