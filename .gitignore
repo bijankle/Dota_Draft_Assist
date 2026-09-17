@@ -65,3 +65,8 @@ assets/tick-generated.png
 # The single-instance lock (see `ui/single.py`) — a PID, written at
 # startup and removed on the way out.
 running.lock
+
+# The console-free front door the app writes beside the launcher at
+# every start (see appicon.folder_link). Local, per machine, never ours
+# to commit.
+*.lnk

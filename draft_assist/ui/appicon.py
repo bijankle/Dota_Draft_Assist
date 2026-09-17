@@ -636,12 +636,49 @@ SHORTCUT_NAME = APP_NAME
 # What `ensure_start_menu_shortcut` last did, for the paste.
 shortcut_note = "not attempted"
 _shortcut_done = False
+# The console-free front door reports separately: the two are
+# written independently, and one failing must not be readable as
+# the other having failed.
+folder_shortcut_note = "not attempted"
+_folder_done = False
 
 
 def start_menu_link() -> Path:
     """Where the app's own Start-menu shortcut goes."""
     return (Path.home() / "AppData/Roaming/Microsoft/Windows"
             / "Start Menu/Programs" / f"{SHORTCUT_NAME}.lnk")
+
+
+# The front door that opens NO CONSOLE. `Start Dota Draft Assist.lnk`
+# rather than the app's bare name, because Explorer hides a .lnk's
+# extension and the folder would otherwise hold two items both reading
+# "Dota Draft Assist".
+FOLDER_SHORTCUT = f"Start {SHORTCUT_NAME}"
+
+
+def folder_link() -> Path:
+    """Where the console-free shortcut goes: beside the launcher.
+
+    **THE .bat IS THE SMALL BLANK WINDOW THAT FLASHES AT EVERY LAUNCH.**
+    cmd.exe creates a console for a batch file before a single line of it
+    runs, so nothing inside the script can prevent it — and on the
+    already-installed path this one echoes NOTHING (`@echo off`, straight
+    to `:launch`), which is why it reads as an empty box rather than as a
+    script doing something. It carries the app's own name because the
+    script sets `title Dota Draft Assist`, and the app's own icon when it
+    is started from a shortcut that has one: "still get these small
+    windows flashign up on the screen frequently jsut on boot - they have
+    the app logo top left and are small blank windowwws flickering on /
+    off".
+    A shortcut straight to `pythonw.exe` has no console to show, which is
+    what the Start-menu one has always done. This is the same shortcut
+    put where somebody actually double-clicks — next to the launcher —
+    because telling a person to go and find a Start-menu entry instead of
+    the file they have been opening for months is not a fix.
+    The launcher stays: it is what BUILDS the environment this shortcut
+    points into, and a first run has no `.venv` for it to target yet.
+    """
+    return REPO_ROOT / f"{FOLDER_SHORTCUT}.lnk"
 
 
 def write_shortcut(path=None) -> Path:
@@ -788,6 +825,50 @@ def ensure_start_menu_shortcut() -> bool:
         return False
     _shortcut_done = True
     shortcut_note = f"{written} -> {APP_ID}"
+    return True
+
+
+def ensure_folder_shortcut() -> bool:
+    """Put a console-free way in beside the launcher.
+
+    See `folder_link` for what this is for: the launcher is a batch file,
+    cmd.exe gives every batch file a console window before the script
+    runs, and on the installed path that window is blank and gone again
+    within a blink. It is the small flashing box, and no edit to the
+    script can remove it.
+
+    Written on every start, for the reason the Start-menu one is: this
+    app is normally run from a folder somebody unzipped, and a newer ZIP
+    makes a SECOND folder beside the first — a shortcut pointing into the
+    old one is worse than none. It costs a few milliseconds.
+
+    Never fatal and silent. A missing shortcut leaves exactly the
+    behaviour there has always been, which is a flashing console rather
+    than a broken app.
+    """
+    global folder_shortcut_note, _folder_done
+    import sys
+    if _folder_done:
+        return True
+    if sys.platform != "win32":
+        folder_shortcut_note = "not Windows"
+        return False
+    if not gui_ready():
+        # It reaches a QPixmap through `shell_ico`, which ABORTS the
+        # process when there is no QGuiApplication — the same trap the
+        # Start-menu one carries.
+        folder_shortcut_note = "called before the QApplication existed"
+        return False
+    try:
+        written = write_shortcut(folder_link())
+    except ImportError:
+        folder_shortcut_note = "pywin32 is not installed"
+        return False
+    except Exception as exc:            # noqa: BLE001 - see the docstring
+        folder_shortcut_note = f"{type(exc).__name__}: {exc}"
+        return False
+    _folder_done = True
+    folder_shortcut_note = str(written)
     return True
 
 

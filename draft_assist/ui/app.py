@@ -5564,6 +5564,7 @@ class MainWindow(QMainWindow):
             f"taskbar identity: {appicon.identity_note}",
             f"window icon: {appicon.window_icon_note}",
             f"start menu: {appicon.shortcut_note}",
+            f"folder shortcut: {appicon.folder_shortcut_note}",
             "",
             "--- what the app is reading ---",
             self.unknown_label.text(),
@@ -5937,6 +5938,13 @@ def _main() -> None:
     # the app stopped opening at all, with no traceback. Still before the
     # window is built, which is what the taskbar needs.
     appicon.ensure_start_menu_shortcut()
+    # AND ONE BESIDE THE LAUNCHER, which is the small blank window that
+    # flashes up at every boot: cmd.exe gives a batch file a console
+    # before the script runs, so nothing inside `Dota Draft Assist.bat`
+    # can stop it appearing, and on the installed path it echoes nothing
+    # at all. A shortcut straight to pythonw has no console to show. See
+    # `appicon.folder_link`.
+    appicon.ensure_folder_shortcut()
     manual = ManualDraft()
     provider = make_provider(args, ds, manual)
     win = MainWindow(ds, provider, rules, meta, manual)

@@ -1879,6 +1879,38 @@ def test_no_widget_is_left_without_a_parent(window):
     assert orphans == [], f"these would open as their own windows: {orphans}"
 
 
+def test_the_app_owns_exactly_one_window_and_nothing_else(window):
+    """The whole application, not just the window's own attributes.
+
+    `test_no_widget_is_left_without_a_parent` walks `vars(window)`, so a
+    widget held anywhere else — in a list, in another module, in a local
+    that a closure kept alive — is invisible to it. THAT is what a report
+    of "small blank windowwws flickering on / off... they have the app
+    logo top left" needs ruling out, because a parentless QWidget is a
+    top-level window carrying the application's icon and an empty client
+    area, which is exactly what one looks like.
+
+    `allWidgets()` is every widget the QApplication knows about, so this
+    holds the property itself rather than one place it can be broken.
+    """
+    from PyQt6.QtWidgets import QWidget
+    window.show()
+    qapp = QApplication.instance()
+    for _ in range(5):
+        qapp.processEvents()
+    # Other MainWindows are other TESTS' fixtures: `allWidgets` spans the
+    # whole QApplication and a run shares one. The class of bug being
+    # held here is a widget that is not a main window at all standing on
+    # its own, so the type is what is excluded rather than the instance.
+    loose = [f"{type(w).__name__}({w.objectName() or '-'})"
+             for w in qapp.allWidgets()
+             if isinstance(w, QWidget) and w.parentWidget() is None
+             and not isinstance(w, type(window))]
+    assert loose == [], (
+        "every one of these is a window of its own the moment anything "
+        f"shows it: {loose}")
+
+
 def test_capture_controls_do_not_open_windows_of_their_own(window,
                                                            monkeypatch):
     """_sync_source_controls shows them when the source is pixels, which is

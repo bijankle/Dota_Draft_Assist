@@ -68,8 +68,19 @@ rem the app. The wizard writes .env itself when it needs to.
 echo.
 echo Setup complete. Starting the application...
 echo It will ask for a free Stratz API key and which ranks to use.
+echo From now on open "Start Dota Draft Assist" in this folder instead of
+echo this file - it opens the app without this black window flashing up.
 echo.
 
+rem THIS WINDOW IS THE ONE THAT FLASHES, AND NOTHING IN HERE CAN STOP IT.
+rem cmd.exe creates a console for a batch file before its first line runs,
+rem so by the time anything below could hide it, it is already on screen -
+rem and on the installed path this script echoes nothing at all, which is
+rem why it reads as a small blank box rather than as a script working.
+rem The app writes "Start Dota Draft Assist.lnk" beside this file at every
+rem start; that one runs pythonw.exe directly and has no console to show.
+rem See `appicon.folder_link`. This launcher stays because it is what
+rem BUILDS the environment that shortcut points into.
 :launch
 start "" ".venv\Scripts\pythonw.exe" -m draft_assist.ui.app %*
 exit /b 0

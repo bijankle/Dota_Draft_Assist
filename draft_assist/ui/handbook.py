@@ -291,6 +291,13 @@ SECTIONS: tuple = (
              "Either Expose Public Match Data is off in Dota's "
              "settings, or the ID is not the one you meant. The tab "
              "says which."),
+            ("A small blank window flashes up when the app starts",
+             "That is the launcher's own command window. Windows gives "
+             "every .bat one before the script runs, so the script "
+             "cannot hide it. Open \"Start Dota Draft Assist\" in the "
+             "app's folder instead — the app writes that shortcut at "
+             "every start and it opens no command window at all. Keep "
+             "the .bat: it is what builds and repairs the environment."),
             ("The taskbar button is blank, or says Python",
              "Windows builds a pinned button from a Start-menu shortcut, "
              "which the app writes at every start. Nothing can pin on "
