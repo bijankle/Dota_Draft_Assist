@@ -215,18 +215,19 @@ def test_the_damper_only_refuses_to_grow(window):
 
 # ---- the heading, as asked ----------------------------------------------
 
-def test_the_legend_names_each_mark_on_its_own_row(window):
+def test_the_legend_names_both_marks_on_one_row(window):
     """"i want a legend added to the title (suggested picks)... so i
     want 1 row below the header to show the symbols and what they mean"
     - and "Remove the hand symbol its pointless".
 
-    Two rows, each with its own count box, and the two marks each
-    standing beside the word for what it means — "Comfort rank" and
-    "Counter rank" since the pair moved up beside the heading at the
-    user's request: "comfort and coutner fields should be o nthe same
-    row as top heroes jsut to its right".
-    So the STACK is the legend's own two rows; the strip's count is
-    beside them rather than above them, and is no longer in it.
+    ONE row holding both, each mark standing beside the word for what
+    it means — "Comfort rank" and "Counter rank" since the pair moved
+    up beside the heading at the user's request ("comfort and coutner
+    fields should be o nthe same row as top heroes jsut to its right"),
+    and side by side rather than stacked since "same row for all 3,
+    comfort right of counter".
+    So all three counts on this card are level, and the order across is
+    the strip's own count, counter, comfort.
     """
     from PyQt6.QtWidgets import QLabel
 
@@ -239,14 +240,20 @@ def test_the_legend_names_each_mark_on_its_own_row(window):
     def middle(widget):
         return widget.mapTo(window, widget.rect().center()).y()
 
-    rows = [middle(window.heart_box), middle(window.shield_box)]
-    assert rows == sorted(rows), "comfort does not lead counter"
-    assert len(set(rows)) == 2, "the two counts share a line"
-    assert abs(middle(hearts[0]) - rows[0]) <= 4
-    assert abs(middle(shields[0]) - rows[1]) <= 4
-    # The strip's own count sits BESIDE the pair now, so it is level
-    # with neither row on its own and between the two of them.
-    assert rows[0] <= middle(window.suggested_box) <= rows[1]
+    def left(widget):
+        return widget.mapTo(window, widget.rect().topLeft()).x()
+
+    assert middle(window.heart_box) == middle(window.shield_box), (
+        "the two rank counts are not on one row")
+    assert middle(window.suggested_box) == middle(window.shield_box), (
+        "the strip's own count is not level with them")
+    # Counter leads, comfort follows — "comfort right of counter".
+    assert left(window.suggested_box) < left(window.shield_box) < left(
+        window.heart_box)
+    # Each mark stands with its own box.
+    assert abs(middle(hearts[0]) - middle(window.heart_box)) <= 4
+    assert abs(middle(shields[0]) - middle(window.shield_box)) <= 4
+    assert left(shields[0]) < left(hearts[0])
 
     # And the words are there to read, which is the whole of a legend.
     words = {w.text().lower() for w in window._picks_head.findChildren(QLabel)}
@@ -393,24 +400,22 @@ def test_the_top_picks_heading_leads_its_own_grid(window):
     assert heads, "the heading is gone"
     head = heads[0]
 
-    # The heading and the legend share the row: the heading's own middle
-    # falls between the two mark rows rather than above both.
+    # The heading and the legend share ONE row — "same row for all 3" —
+    # so the heading is level with both rank counts rather than above
+    # them, and they sit to its right.
     def middle(widget):
         return widget.mapTo(window, widget.rect().center()).y()
 
-    assert (middle(window.heart_box) <= middle(head)
-            <= middle(window.shield_box)), (
-        "the heading is no longer level with the legend beside it")
-    assert head.mapTo(window, head.rect().topLeft()).x() < (
-        window.heart_box.mapTo(window, window.heart_box.rect().topLeft()).x()
-    ), "the rank counts are not to the right of the heading"
+    def left(widget):
+        return widget.mapTo(window, widget.rect().topLeft()).x()
+
+    assert middle(head) == middle(window.heart_box) == middle(
+        window.shield_box), "the heading is not level with the legend"
+    assert left(head) < left(window.shield_box) < left(window.heart_box), (
+        "the rank counts are not to the right of the heading")
 
     # And the whole row is still above the strip it heads.
     strip_top = window.suggest_row.mapTo(
         window, window.suggest_row.rect().topLeft()).y()
     for box in (window.suggested_box, window.heart_box, window.shield_box):
         assert box.mapTo(window, box.rect().bottomLeft()).y() <= strip_top + 2
-
-    lefts = {b.mapTo(window, b.rect().topLeft()).x()
-             for b in (window.heart_box, window.shield_box)}
-    assert len(lefts) == 1, f"the mark counts do not line up: {lefts}"

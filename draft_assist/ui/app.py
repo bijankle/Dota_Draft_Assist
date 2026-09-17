@@ -238,6 +238,11 @@ CARD_EDGE = 1 + teams.PANEL_MARGIN
 
 SUGGESTIONS_PER_ROW = 11
 
+# Between the two rank cells on the heading row, now that they sit side
+# by side rather than stacked. The role filter's own inter-cell gap, so
+# the two blocks of "name then number" on this card read at one spacing.
+LEGEND_GAP = rolebar.ReflowGrid.GAP
+
 # The two states where the pick bar IS on screen, without their prefix.
 _DRAFT_STATE_NAMES = frozenset(
     st.replace("DOTA_GAMERULES_STATE_", "") for st in DRAFTING_STATES)
@@ -4795,25 +4800,48 @@ class MainWindow(QMainWindow):
         legend.setProperty("bare", True)
         grid = QGridLayout(legend)
         grid.setContentsMargins(0, 0, 0, 0)
-        # The same two numbers `rolebar.RoleFilter` uses, so the rows of
-        # the two grids sit at the same heights without either being
-        # measured against the other.
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(2)
-        for line_no, (shield, word, key) in enumerate(
+        # ONE ROW, BOTH MARKS, at the user's request: "all in line on the
+        # same right is better", drawn as one green rule through the
+        # heading, its count and both rank cells. They were stacked —
+        # each mark on its own line, which is what a legend usually is —
+        # and stacking them beside a one-line heading made the row two
+        # controls tall for the sake of two cells that fit easily side
+        # by side: one line needs about 620px against a card that is
+        # ~898 even at the window's own floor, so it cannot push the
+        # window wider. The row is back to `CONTROL_H` and the card is a
+        # row shorter.
+        #
+        # FOUR COLUMNS PER CELL and a fifth for the gap between them, so
+        # the two cells are laid out by one rule rather than by a second
+        # set of coordinates.
+        for cell, (shield, word, key) in enumerate(
                 # NAMED AS RANKS, at the user's request: "Call it
                 # comfort rank and counter rank". Each number is how far
                 # down the strip the mark reaches, so "rank" is what it
                 # measures rather than a count of anything.
-                ((False, "Comfort rank", "heart_count"),
-                 (True, "Counter rank", "shield_count"))):
-            grid.addWidget(MarkLabel(shield, legend), line_no, 0)
-            grid.addWidget(QLabel("=", legend), line_no, 1)
-            grid.addWidget(QLabel(word, legend), line_no, 2)
+                #
+                # COUNTER FIRST, COMFORT TO ITS RIGHT — "comfort right
+                # of counter". The stacked pair read comfort over
+                # counter; side by side the user wants them the other
+                # way round, and this is the one place that order is
+                # stated, so the two cells cannot disagree with it.
+                ((True, "Counter rank", "shield_count"),
+                 (False, "Comfort rank", "heart_count"))):
+            at = cell * 5
+            grid.addWidget(MarkLabel(shield, legend), 0, at)
+            grid.addWidget(QLabel("=", legend), 0, at + 1)
+            grid.addWidget(QLabel(word, legend), 0, at + 2)
             box = self._badge_box(key)
             box.setParent(legend)
-            grid.addWidget(box, line_no, 3)
+            grid.addWidget(box, 0, at + 3)
             setattr(self, f"{'shield' if shield else 'heart'}_box", box)
+            # The gap goes AFTER every cell but the last, or the block
+            # would be held that much off the heading beside it — the
+            # `columns - 1` rule the role filter already follows.
+            if cell == 0:
+                grid.setColumnMinimumWidth(at + 4, LEGEND_GAP)
         return legend
 
     def _role_filter(self, parent) -> QWidget:

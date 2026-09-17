@@ -2286,8 +2286,8 @@ credentials, and put the account at risk. Do not go there.
   on every start — the guard `TitleBar.set_pinned` carries for the same
   reason.
 
-- **THE STRIP'S COUNT RIDES ON THE HEADING AND THE LEGEND IS TWO ROWS
-  BESIDE IT** (`_picks_controls`, `card(title, corner)`). It was three
+- **THE STRIP'S COUNT RIDES ON THE HEADING AND THE LEGEND IS BESIDE
+  IT** (`_picks_controls`, `card(title, corner)`). It was three
   rows, the first reading "Pick suggestions = 20" under a card headed
   "Suggested picks" — the same two words twice with a number after one
   of them: "you dont need suggested picks and pick suggestions - please
@@ -2303,8 +2303,8 @@ credentials, and put the account at risk. Do not go there.
   throughout.
   The LEGEND has since come back up to this row as well — see the
   card's reading order below — so what is on it is the title, its own
-  count, and the two rank counts in their own two-row grid beside them.
-  It is added to the row's layout rather than to the card's corner, for
+  count, and the two rank counts beside them, ALL ON ONE LINE. It is
+  added to the row's layout rather than to the card's corner, for
   exactly the reason the corner suits a count box and nothing else.
 
 - **EVERY ON/OFF BOX IN THE APP DRAWS AN ACTUAL TICK**
@@ -2513,9 +2513,9 @@ credentials, and put the account at risk. Do not go there.
   "Suggested picks" above it in heading weight and a second line in the
   same weight reads as two headings.
   **THE WORDS ARE "Comfort rank" AND "Counter rank" NOW**, and the two
-  rows sit BESIDE the heading rather than under it — see the card's
-  reading order below. The sketch above is the shape that was asked
-  for, not the one on screen.
+  are ONE ROW beside the heading rather than two under it — see the
+  card's reading order below. The sketch above is the shape that was
+  asked for, not the one on screen.
   **THE HAND IS GONE**: "Remove the hand symbol its pointless". It was
   a picture standing in for the words "pick suggestions", and with the
   rows carrying words anyway it was the one mark on the card explaining
@@ -3620,9 +3620,10 @@ credentials, and put the account at risk. Do not go there.
   size, still a divisor of eight so the last column is never short, and
   `columns_for` is back to four at 606px — long before the window
   reaches its own floor, which is the whole reason this class exists.
-  It also pays for the row the legend took: the heading is two mark rows
-  tall now and this is one instead of two, so the card's height is where
-  it was rather than a row taller.
+  It also paid for the row the legend took while that legend was two
+  rows tall. With the legend on ONE line the heading row is back to a
+  single control's height, so between them the two changes leave this
+  card a row SHORTER than it was before either.
   Two details, each a way to miss by a stated number. The inter-cell gap
   is set on `columns - 1` separators, not `columns`, or the block would
   be held 18px off the very edge it is being aligned to. And a column
@@ -3680,9 +3681,24 @@ credentials, and put the account at risk. Do not go there.
   its mark reaches, so rank is what it measures — and it is what makes
   the pair read as a kind of the count they now sit beside, how many
   tiles carry a mark next to how many tiles there are.
+  **AND ALL THREE COUNTS ARE ON ONE LINE, COUNTER THEN COMFORT**, at
+  the user's request: "same row for all 3, comfort right of counter".
+  The pair arrived here stacked, which is what a legend usually is, and
+  stacking them beside a one-line heading made the row two controls
+  tall for two cells that fit easily side by side — one line needs
+  about 620px against a card that is ~898 even at the window's own
+  floor, so it cannot push the window wider. `LEGEND_GAP` is the role
+  filter's own inter-cell gap, so the two blocks of "name then number"
+  on this card read at one spacing, and it is set on the separator
+  AFTER the first cell only — the `columns - 1` rule again, or the
+  block would be held that far off the heading it sits beside.
+  The ORDER is stated once, in the tuple `_picks_legend` loops over, so
+  the mark and its word cannot disagree about which cell they are in.
   The two marks keep their own grid rather than joining the heading's,
-  so the heading's box is not measured against theirs; the heading is
-  centred against the two rows they take.
+  so the heading's box is not measured against theirs.
+  **AND THE GREEN RULE THROUGH THE SCREENSHOT WAS ANNOTATION.** It was
+  drawn over the row to show what "in line" meant — "dont draw the
+  lne" — and nothing on this card draws one.
   The filter also stopped needing the stretch factor it used to take from
   the legend's row: on a row of its own it reflows from the whole card,
   so the chicken-and-egg that made it eight rows tall for ever — narrow

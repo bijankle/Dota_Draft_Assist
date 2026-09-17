@@ -4274,10 +4274,14 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
     def middle(box):
         return box.mapTo(window.picks_card, box.rect().center()).y()
 
-    assert left(window.heart_box) == left(window.shield_box), (
-        "the two mark counts do not line up with each other")
-    assert middle(window.heart_box) < middle(window.shield_box), (
-        "comfort rank should sit above counter rank")
+    # ONE ROW FOR ALL THREE, at the user's request — "same row for all
+    # 3, comfort right of counter" — so the two rank counts are level
+    # with each other and with the heading's own count, and COUNTER
+    # leads COMFORT rather than sitting under it.
+    assert middle(window.heart_box) == middle(window.shield_box), (
+        "the two rank counts are not on one row")
+    assert left(window.shield_box) < left(window.heart_box), (
+        "comfort rank should sit to the RIGHT of counter rank")
 
     # ALL THREE ARE ON THE HEADING ROW, which is the move: "comfort and
     # coutner fields should be o nthe same row as top heroes jsut to its
@@ -4288,8 +4292,9 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
                       ("shield", window.shield_box)):
         assert head.isAncestorOf(box), f"{name} left the heading row"
     # The strip's own count leads them, since it is the one the heading
-    # names; the two rank counts are to its right.
-    assert left(window.suggested_box) < left(window.heart_box)
+    # names; the two rank counts follow it.
+    assert left(window.suggested_box) < left(window.shield_box)
+    assert middle(window.suggested_box) == middle(window.shield_box)
 
     # AND THE ROW BELOW THE STRIP IS THE FILTER'S ALONE — "spread the
     # carr / support / etc filytters to fill the space left". It is no
