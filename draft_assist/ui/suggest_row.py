@@ -228,17 +228,24 @@ class SuggestTile(QWidget):
             tilekit.paint_band(painter,
                                box.adjusted(0, 0, 0, -box.height() // 4),
                                self.hero_name, self.font())
-        # Same figure, same corner, same colours as a drafted tile: a
-        # suggestion and a pick have to be comparable at a glance.
+        # THE STANDING FIT FIGURE IS GONE, at the user's request: "they
+        # shoudl all show with no number".
+        # It had to go with the ordering rather than as taste. The strip
+        # is ranked by how hard the field finds each hero to counter,
+        # which has nothing to do with this draft — so the fit numbers
+        # ran DOWN THE ROW OUT OF ORDER, a +2.0 above a +8.0, which
+        # reads as a broken sort rather than as two different questions.
+        # The rank is the answer here and the shields carry it.
+        #
+        # THE RELATION FIGURE STAYS, and it is not the same number. It
+        # only appears while a hero is clicked, it IS about this draft,
+        # and it is the whole of what clicking a suggestion is for —
+        # "the synergies/counters should now shift to show on the 5/5
+        # portraits", read the other way round.
         if self._delta:
             tilekit.paint_badge(painter, box, self._delta,
                                 self._delta_colour, self.font(),
                                 boxed=self._boxed)
-        else:
-            tilekit.paint_badge(painter, box,
-                                f"{self.fit * 100:+.1f}",
-                                theme.GOOD if self.fit >= 0 else theme.BAD,
-                                self.font())
         # UNDER the ring, not over it: the ring is the window's frame and
         # runs round the tile's edge, so a mark drawn afterwards would sit
         # on top of the one line that says what the whole board is being

@@ -153,3 +153,46 @@ def test_the_settings_page_prints_it_under_the_bar(window, qapp):
     label = window.settings_window.general.shield_note
     assert label.text() == window.shields_note
     assert label.text(), "opened blank"
+
+
+def test_the_strip_is_ordered_by_how_hard_a_hero_is_to_counter(window, qapp):
+    """AT THE USER'S REQUEST, and it reverses what this list answered.
+
+    "i want them to show based on the counterability rank with the
+    hardest to counter showing first". `counter_standings` measures
+    every hero against the WHOLE FIELD out of the matchup matrix and
+    never looks at the board, so this strip now shows the same heroes in
+    the same order every game, minus whoever is already picked. That was
+    put to them in those words and taken: "yes it would be the same
+    heroes, but you have the abiltiy to change things like support
+    score, etc, so it can be tweaked".
+    """
+    window._refresh_views()
+    qapp.processEvents()
+    shown = list(window.suggest_row.hero_ids)
+    assert shown, "the strip is empty"
+    ranks = window.shields or {}
+    got = [ranks[h][0] for h in shown if h in ranks]
+    assert len(got) > 1, "not enough ranked heroes to tell an order"
+    assert got == sorted(got, reverse=True), (
+        "the strip is not hardest-to-counter first")
+
+
+def test_a_hero_the_dataset_cannot_rank_goes_last_and_keeps_its_place(window):
+    """Stable, so unranked heroes stay in the order they arrived in
+    rather than being shuffled into an arbitrary one — and with NO
+    statistics at all every hero sorts equal and the strip falls back to
+    exactly the fit order it had before, which is the right answer when
+    there is nothing to rank by and is never an empty strip."""
+    class Fake:
+        def __init__(self, hero_id):
+            self.hero_id = hero_id
+
+    window.shields = {1: (0.9, "why"), 2: (0.1, "why")}
+    out = [s.hero_id for s in window._by_counter_rank(
+        [Fake(3), Fake(2), Fake(1), Fake(4)])]
+    assert out == [1, 2, 3, 4], out
+    window.shields = {}
+    same = [s.hero_id for s in window._by_counter_rank(
+        [Fake(3), Fake(2), Fake(1)])]
+    assert same == [3, 2, 1], "no statistics must not reorder anything"

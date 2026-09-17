@@ -5056,16 +5056,15 @@ class MainWindow(QMainWindow):
         of "+0.0" would be ranking nothing and inviting the user to read it
         as a recommendation.
         """
-        if not draft.allies and not draft.enemies:
-            # THE BLANKS ARE THE COUNT THIS STRIP IS SET TO. An empty
-            # panel is the SHAPE of its answer, and five plates under a
-            # strip set to twenty is the wrong shape — the card grew the
-            # moment the first pick landed. `_how_many` also resolves
-            # nought, which means "as many as fit on one row", so the
-            # plates then fill the width exactly.
-            self.suggest_row.show_heroes(
-                [], blanks=self._how_many("suggested_picks"))
-            return
+        # AN EMPTY BOARD NOW FILLS THE STRIP, which reverses the guard
+        # that used to sit here. It stayed blank until a hero was picked
+        # because "with an empty draft every fit is zero, so it would be
+        # ranking nothing while looking like a recommendation" — and
+        # that reason went with the fit ordering. The rank this strip
+        # shows never looked at the board, so it is exactly as true
+        # before the first pick as after it, and the user asked for it
+        # there in those words: "i want the main menu to show top 33
+        # heroes".
         # ONE LABELLED LINE PER FIGURE, at the user's request. It was a
         # sentence — "fit +12.43  (vs +6.46, with +5.97)" — carrying a
         # total and its two parts in one line, and the total is already
@@ -5077,7 +5076,8 @@ class MainWindow(QMainWindow):
         # answer, and a worse one: with Durable ticked it could show two
         # heroes while the list held forty more.
         wanted = self._picked_roles()
-        ranked = [s for s in self.scored if self._has_roles(s.hero_id, wanted)]
+        pool = [s for s in self.scored if self._has_roles(s.hero_id, wanted)]
+        ranked = self._by_counter_rank(pool)
         rows = [
             (s.hero_id, s.name, s.score,
              f"{s.name}\nCounter Score = {s.vs_total * 100:+.1f}"
@@ -5158,6 +5158,36 @@ class MainWindow(QMainWindow):
         window = getattr(self, "settings_window", None)
         if window is not None:
             window.set_shield_note(self.shields_note)
+
+    def _by_counter_rank(self, pool: list) -> list:
+        """Hardest to counter first, at the user's request.
+
+        THIS IS NOT A RANKING OF THE DRAFT, AND THAT IS THE POINT.
+        `counter_standings` measures every hero against the WHOLE FIELD
+        out of the matchup matrix — it never looks at the ten heroes on
+        the board — so this strip shows the same heroes in the same
+        order every game, minus whoever is already picked. That reverses
+        what the list used to answer, and it was put to the user in
+        those words: "yes it would be the same heroes, but you have the
+        abiltiy to change things like support score, etc, so it can be
+        tweaked". The ROLE FILTER is the part that moves now.
+
+        A hero the dataset cannot rank keeps its place BEHIND the ones
+        it can: `sorted` is stable, so they stay in the fit order they
+        arrived in rather than being shuffled into an arbitrary one.
+        And with no statistics at all `self.shields` is empty, every
+        hero sorts equal, and the strip falls back to exactly the fit
+        order it had before — which is the right answer when there is
+        nothing to rank by, and never an empty strip.
+        """
+        rank = self.shields or {}
+
+        def hardness(scored):
+            got = rank.get(scored.hero_id)
+            # Bigger means harder to counter, so it sorts first.
+            return -(got[0] if got else -1.0)
+
+        return sorted(pool, key=hardness)
 
     def _heart_count(self) -> int:
         """How many suggestions may carry a heart."""

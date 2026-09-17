@@ -122,7 +122,18 @@ def test_an_empty_draft_shows_the_shape_of_the_strip_not_a_sentence(qapp):
         assert window.item_row.items == []
         assert window.item_row.message.text() == ""
         assert len(window.item_row._blanks) == 7
-        assert len(window.suggest_row._blanks) == 12
+        # THE SUGGESTION STRIP IS NO LONGER ONE OF THESE, and that is the
+        # ordering change rather than a hole in the empty state. It stayed
+        # blank on an empty board because it ranked by draft FIT, and with
+        # nothing picked every fit is zero — it would have been ranking
+        # nothing while looking like a recommendation. It ranks by how
+        # hard the field finds each hero to counter now, which never
+        # looked at the board, so it is exactly as true before the first
+        # pick as after it: "i want the main menu to show top 33 heroes".
+        assert window.suggest_row.hero_ids, (
+            "the strip should be full on an empty board now")
+        assert not window.suggest_row._blanks, (
+            "a full strip needs no placeholders")
 
         # And nought means "as many as fit on one row", which the window
         # resolves — so the plates fill the width rather than falling
@@ -3457,7 +3468,13 @@ def test_every_empty_plate_in_the_window_is_the_same_rectangle(qapp):
         # replaces it, which is checked per strip below.
         assert 0 < win.item_row.tile_width() <= want[0]
         assert win.item_row.tile_width() == win.suggest_row.tile_width()
-        for strip in (win.suggest_row, win.item_row):
+        # ONLY THE ITEM STRIP IS EMPTY ON AN EMPTY BOARD NOW. The
+        # suggestions rank by how hard the field finds a hero to counter,
+        # which never looked at the draft, so that strip is full from the
+        # first paint — see the empty-draft test above. The item strip
+        # still has nothing to say until an enemy is picked, which is
+        # what keeps this test able to measure a hole at all.
+        for strip in (win.item_row,):
             blanks = strip._blanks
             assert blanks, "an empty strip should show its shape"
             # THE STRIP'S OWN TILE, not the pick's. The suggestions are

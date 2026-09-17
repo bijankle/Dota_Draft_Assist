@@ -154,7 +154,22 @@ def test_two_figures_means_BOTH_rather_than_either(win, qapp):
         assert levels["Durable"] >= 2 and levels["Initiator"] >= 2
 
 
-def test_the_strip_refills_and_stays_in_fit_order(win, qapp):
+def expected(win, role, least):
+    """The heroes that clear the filter, in the order the app ranks them.
+
+    IT ASKS THE APP FOR THE ORDER RATHER THAN RESTATING IT. These three
+    tests are about the FILTER — that it runs over the whole pool, before
+    the cut, and refills — and they used to spell the ranking out as
+    "fit order" alongside it. The strip is ranked by counter difficulty
+    now, and a test that hard-codes the sort fails for a change to the
+    sort while saying nothing about the filter it exists to guard.
+    """
+    pool = [s for s in win.scored
+            if roles_mod.levels_for(s.hero_id).get(role, 0) >= least]
+    return [s.hero_id for s in win._by_counter_rank(pool)]
+
+
+def test_the_strip_refills_and_keeps_the_apps_own_order(win, qapp):
     """"the suggested hero pool fills with more suggestions that are
     support strength 3 and its all still in order of synergy / counter
     score - with no more than the max suggest hero count"."""
@@ -166,8 +181,7 @@ def test_the_strip_refills_and_stays_in_fit_order(win, qapp):
     shown = list(win.suggest_row.hero_ids)
     assert len(shown) <= 6, "it went past the cap"
     # Still the ranked order, just with the misses taken out of it.
-    ranked = [s.hero_id for s in win.scored
-              if roles_mod.levels_for(s.hero_id).get("Support", 0) >= 1]
+    ranked = expected(win, "Support", 1)
     assert shown == ranked[:len(shown)]
     if len(ranked) >= 6:
         assert len(shown) == 6, "the strip did not refill to the cap"
@@ -182,8 +196,7 @@ def test_the_filter_runs_BEFORE_the_count_is_cut(win, qapp):
     qapp.processEvents()
     win._refresh_views()
     qapp.processEvents()
-    eligible = [s.hero_id for s in win.scored
-                if roles_mod.levels_for(s.hero_id).get("Durable", 0) >= 3]
+    eligible = expected(win, "Durable", 3)
     assert list(win.suggest_row.hero_ids) == eligible[:6]
 
 
@@ -306,8 +319,7 @@ def test_the_filter_searches_the_WHOLE_pool_not_a_window(win, qapp):
     qapp.processEvents()
     win._refresh_views()
     qapp.processEvents()
-    eligible = [s.hero_id for s in win.scored
-                if roles_mod.levels_for(s.hero_id).get("Support", 0) >= 3]
+    eligible = expected(win, "Support", 3)
     shown = list(win.suggest_row.hero_ids)
     assert shown == eligible[:20]
     # Short of the cap ONLY because the roster is short of them.

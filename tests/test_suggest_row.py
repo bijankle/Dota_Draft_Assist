@@ -82,12 +82,57 @@ def test_a_tile_draws_with_and_without_a_portrait(art, qapp):
     assert not SuggestTile(999, "Nobody", -0.05).grab().isNull()
 
 
-def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
-    """Same figure, same corner, same colours, so a suggestion and a pick
-    can be compared without translating between two layouts."""
-    drawn = []
-    badges = []
+def test_a_tile_prints_no_figure_at_rest_and_the_relation_when_clicked(
+        art, qapp):
+    """THE STANDING FIT FIGURE IS GONE, which reverses what this asserted.
+
+    The strip is ranked by how hard the field finds each hero to
+    counter, and that has nothing to do with this draft — so the fit
+    numbers ran DOWN THE ROW OUT OF ORDER, a +2.0 above a +8.0, which
+    reads as a broken sort rather than as two different questions. The
+    rank is the answer on this strip and the shields carry it.
+
+    The RELATION figure is a different number and stays: it appears only
+    while a hero is clicked, it IS about the draft, and showing it is
+    the whole of what clicking a suggestion is for.
+    """
     import draft_assist.ui.suggest_row as strip
+
+    def badges_of(tile):
+        seen = []
+        real_badge = strip.tilekit.paint_badge
+
+        def spy(painter, box, text, colour, base, **kw):
+            seen.append((text, colour))
+            return real_badge(painter, box, text, colour, base, **kw)
+
+        strip.tilekit.paint_badge = spy
+        try:
+            tile.grab()
+        finally:
+            strip.tilekit.paint_badge = real_badge
+        return seen
+
+    at_rest = SuggestTile(1, "Anti-Mage", 0.0542)
+    assert badges_of(at_rest) == [], "the tile still prints a standing figure"
+
+    # SET BEFORE THE SPY IS INSTALLED: `show_delta` repaints, and a
+    # repaint that lands while the painter is swapped out crashes Qt
+    # rather than failing.
+    clicked = SuggestTile(1, "Anti-Mage", 0.0542)
+    clicked.show_delta(0.054)
+    qapp.processEvents()
+    assert any(text == "+5.4" for text, _c in badges_of(clicked)), (
+        "clicking a hero no longer puts its relation on the tile")
+
+
+def test_a_tile_never_draws_the_hero_name_over_its_art(art, qapp):
+    """The picture IS the tile: a player who knows the game reads the
+    face faster than four letters, and a row of pictures reads at a
+    glance where a row of labelled pictures reads as a list. The name is
+    the tooltip's job — it comes back only when there is no art."""
+    import draft_assist.ui.suggest_row as strip
+    drawn = []
     real = strip.QPainter.drawText
 
     class Spy(strip.QPainter):
@@ -95,27 +140,12 @@ def test_the_fit_is_shown_the_way_a_drafted_tile_shows_it(art, qapp):
             drawn.append(args[-1])
             return real(self, *args)
 
-    real_badge = strip.tilekit.paint_badge
-
-    def spy_badge(painter, box, text, colour, base):
-        badges.append((text, colour))
-        return real_badge(painter, box, text, colour, base)
-
-    keep, keep_badge = strip.QPainter, strip.tilekit.paint_badge
+    keep = strip.QPainter
     strip.QPainter = Spy
-    strip.tilekit.paint_badge = spy_badge
     try:
         SuggestTile(1, "Anti-Mage", 0.0542).grab()
     finally:
         strip.QPainter = keep
-        strip.tilekit.paint_badge = keep_badge
-    # Through `paint_badge` rather than `drawText`: the number is an
-    # OUTLINED path now, so that the portrait shows through around it.
-    assert ("+5.4", theme.GOOD) in badges
-    # And the NAME is not drawn. The picture is the tile: a player who
-    # knows the game reads the face faster than four letters, and a row of
-    # pictures reads at a glance where a row of labelled pictures reads as
-    # a list. The name is the tooltip's job.
     assert "Anti-Mage" not in drawn
 
 
