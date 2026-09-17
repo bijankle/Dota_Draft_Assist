@@ -3047,6 +3047,49 @@ credentials, and put the account at risk. Do not go there.
   without the notes, so `snapshot_record` logs them along with whether a
   frame was captured and whether anything was recognised — capture failing
   and recognition failing are different bugs.
+- **A RECORDING IS THE SAMPLE THAT WAS MISSING, AND NOTHING HAD EVER READ
+  IT FOR THESE TWO QUESTIONS** (`tools/measure_recording.py`, Settings ▸
+  Debug ▸ Sessions ▸ Measure this session). Every calibration figure in
+  this file was measured off STRATEGY-TIME screenshots, and the note two
+  pages up says in its own words what that leaves open — "whether a
+  FILLED hero-selection bar sits where the strategy-time bar does. No
+  frame in this sample can say, because the only two hero-selection
+  frames in it are the empty ones." A recording answers it: `record.py`
+  saves frames from the START of a session, so they span hero selection
+  with the bar up and filling.
+  **THE NAMES COME FROM THE END AND ARE SEARCHED FOR AT THE BEGINNING.**
+  GSI names no hero during `HERO_SELECTION`, so a hero-selection frame
+  has nothing to match against — but the minimap names all ten at
+  strategy time, and they are the same ten that were on the bar while
+  picking. So the ten are read off the LAST payload and hunted in the
+  FIRST frames. That is the whole trick, and it is why this could only
+  ever have been a recording tool rather than a screenshot one.
+  It writes NOTHING — no calibration, no settings — which is what makes
+  it safe to put in front of somebody mid-patch, the same bar
+  `check_crop_boxes` and `locate_portraits` clear.
+
+  **AND IT ALREADY EXPLAINS A REAL WRONG BOARD.** The user's own match
+  put their team on the wrong side, and the cause is legible in their
+  screenshot: **CHOOSE YOUR LANE read 4/5**.
+  `_split_by_strategy_slots` is the one rule here that decides rather
+  than offers, and it requires `len(on_slots) == TEAM_SIZE` — exactly
+  five of your team standing on the canonical lane slots. A team-mate
+  who never chose a lane comes through at the ORIGIN instead, so four
+  stand on slots, the rule declines, `_split_by_lane_pairs` cannot fit
+  either, and the split falls to `ids[:5], ids[5:]` — object order,
+  which is the coin flip this file records as landing INVERTED. The
+  lead the tool prints rather than swallowing: a hero at the origin is
+  almost certainly YOURS, because the strategy screen has nothing to
+  draw the enemy from unless you predicted them. **Not yet acted on** —
+  the rule is not widened until a real payload from that match says so,
+  which is what the button is for.
+  **AND THE RAW MINIMAP IS NOT THE TEN** — the first version of this
+  tool read `hero_entries(payload, drop_origin=False)` and reported
+  FOUR heroes at the origin where one was. The other three are
+  duplicates of the player's own hero and pick-screen junk, which
+  `hero_entries` already drops, drawing origin entries back in only
+  when fewer than ten were placed. A diagnostic reading past the app's
+  own filter measures something the app never sees.
 - **One site supplies the pairwise numbers, never two** (`config.pair_source`,
   `data/build.py`). OpenDota supplies hero constants and bracket-indexed
   baselines either way; the SETTING chooses who supplies the matchup and

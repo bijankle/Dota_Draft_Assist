@@ -1569,6 +1569,12 @@ class MainWindow(QMainWindow):
             "Dota sent them — the highest-fidelity test there is")
         replay.clicked.connect(self._replay_session)
         buttons.addWidget(replay)
+        measure = QPushButton("Measure this session")
+        measure.setToolTip(
+            "Measure where the pick bar was and where each hero stood "
+            "when the teams were decided — reads only, writes nothing")
+        measure.clicked.connect(self._measure_session)
+        buttons.addWidget(measure)
         # The two that came off the toolbar. They belong beside the
         # recordings they are about, not in the row above the draft.
         buttons.addWidget(self.report_button)
@@ -1647,6 +1653,26 @@ class MainWindow(QMainWindow):
                 "Select a recording with game data first", 6000)
             return
         self.run_task("replay_gsi", str(folder / "gsi"))
+
+    def _measure_session(self) -> None:
+        """Measure the selected recording.
+
+        Beside Replay for the same reason Replay is here: it is one more
+        thing you do WITH a recording, and the recording is the thing
+        already selected. It is handed the WHOLE folder rather than the
+        `gsi` subfolder Replay takes, because it reads the frames and the
+        state log as well as the payloads - the frames are the half no
+        other tool here has ever looked at.
+        """
+        folder = self._current_session()
+        if folder is None:
+            self._say("Select a recording first", 6000)
+            return
+        if not (folder / "gsi").is_dir():
+            self._say(
+                "That recording has no game data to measure against", 6000)
+            return
+        self.run_task("measure_recording", str(folder))
 
     def _open_session_folder(self) -> None:
         folder = self._current_session()

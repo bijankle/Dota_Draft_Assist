@@ -148,6 +148,22 @@ TASKS = {
                "client is among them, with its measured size."),
         cancellable=False,
     ),
+    # IT READS A RECORDING AND WRITES NOTHING, which is what makes it
+    # safe to put beside Replay. The two questions it answers are the
+    # ones a screenshot cannot: the game's own account of where everybody
+    # stood (so a wrong split can be told from a coin flip), and whether
+    # the pick bar sits in the same place during HERO SELECTION as it
+    # does at strategy time - which every measurement so far has had to
+    # assume, because no screenshot in the sample was taken while the
+    # bar was both up and full.
+    "measure_recording": Task(
+        key="measure_recording",
+        title="Measure this recording",
+        steps=[[PY, "tools/measure_recording.py", "{arg}"]],
+        blurb=("Reads one recording and measures it: where each hero "
+               "stood when the teams were decided, and where the pick "
+               "bar really was. Seconds per frame; writes nothing."),
+    ),
     "replay_gsi": Task(
         key="replay_gsi",
         title="Replay recorded game data",
