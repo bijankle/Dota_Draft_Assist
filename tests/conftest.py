@@ -79,6 +79,33 @@ def _the_stylesheet_does_not_leak_between_tests():
 
 
 @pytest.fixture(autouse=True)
+def _the_palette_starts_in_colour():
+    """`theme`'s colours are MODULE state, reassigned in place.
+
+    `set_greyscale` swaps every colour name in the module and rebuilds
+    `STYLESHEET`, so a test that turns it on and walks away leaves every
+    test after it measuring a grey app —
+    `test_greyscale.test_the_window_frame_goes_grey_too` does exactly
+    that, deliberately, because its subject is the frame rather than the
+    tidying up.
+
+    It reaches further than a colour: the menus' tick is a GENERATED PNG
+    written to `assets/`, re-rendered from these colours whenever they
+    change, and shared by the whole run. So a leak here is a file on
+    disk that a later test reads and asserts about, which is how adding
+    an unrelated test file between two others moved the answer.
+
+    Same rule as the stylesheet, the size multipliers and the portrait
+    caches above: reset either side, so the leak cannot happen at all
+    rather than being tidied up by whichever test remembers.
+    """
+    from draft_assist.ui import theme
+    theme.set_greyscale(False)
+    yield
+    theme.set_greyscale(False)
+
+
+@pytest.fixture(autouse=True)
 def _portrait_caches_start_empty():
     """The portrait index is MODULE state too, and it caches ABSENCE.
 

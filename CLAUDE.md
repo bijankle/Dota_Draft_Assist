@@ -1149,6 +1149,19 @@ credentials, and put the account at risk. Do not go there.
      milder. There is no probe now: the real labels are built first and
      then given a common width, since they are the only things that
      know their own size for certain.
+  **AND THE PALETTE LEAKS THE SAME WAY, WITH A FILE ON DISK BEHIND
+  IT.** `theme.set_greyscale` reassigns every colour name in the module,
+  and `test_greyscale.test_the_window_frame_goes_grey_too` turns it on
+  and walks away — deliberately, since its subject is the frame rather
+  than the tidying up. That reaches further than a colour: the menus'
+  tick is a GENERATED PNG in `assets/`, re-rendered from those colours
+  whenever they change and shared by the whole run, so
+  `test_the_menu_tick_follows_the_palette` reads a file an earlier test
+  wrote. Adding an unrelated test FILE between the two (alphabetically,
+  `test_stray_windows` sits between `test_greyscale` and
+  `test_ui_smoke`) moved the answer and failed the suite while passing
+  alone. `conftest.py` resets the palette either side of every test now,
+  the same rule as the stylesheet, the sizes and the portrait caches.
   **AND A FIFTH THAT WAS INVISIBLE UNTIL THE WHOLE SUITE RAN.** A
   QApplication is shared by every test in a run and so is its STYLE, and
   five test files set the real stylesheet on the way past without putting
