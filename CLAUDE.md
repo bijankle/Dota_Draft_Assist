@@ -2949,6 +2949,28 @@ credentials, and put the account at risk. Do not go there.
   DEEPER red than `BAD` on purpose: `BAD` is the bright coral a negative
   number is printed in, and if the two matched, a selected tab would read
   as a warning. Keep them apart if either is ever retuned.
+  **AND IT WENT MAROON FOR EXACTLY ONE ROUND** (`theme.ACCENT`
+  `#b5342c`, `ACCENT_HOVER` `#95271f`). `#38040e` was asked for outright
+  and withdrawn on sight the next day: "im not sure if you recall the
+  old red buttons, the old color, it was a brighter conventional red...
+  can you please bring these button appearances back and apply the color
+  to the clear / detect / demo buttons". Both halves of that were ONE
+  change, because the three board buttons already read `ACCENT` for
+  their own fill — so `Clear all`, `Detect all` and `Demo` went bright
+  with `Update` and `Export workbook` and nothing had to be applied to
+  them separately.
+  **WHAT THE MAROON MEASURED SURVIVES IT, WHICH IS WHY THERE ARE STILL
+  TWO REDS** (`ACCENT_MARK` `#c30e31`, `ACCENT_MARK_DIM`). #38040e is
+  0.010 relative luminance: superb as a GROUND (off-white on it is
+  15.9:1 against this accent's 5.4:1) and useless as a MARK, sitting at
+  1.07 to 1.55:1 against every surface in this palette — so a caret, a
+  count box arrow, a slider handle or the selected tab's underline drawn
+  in it could be found only by knowing where it was. That is what split
+  one colour into two, and only the FILL was withdrawn. The marks were
+  never mentioned in either request, and `#c30e31` was chosen to carry
+  exactly the visibility `#b5342c` has, so the two are near-identical
+  and the split costs nothing on screen. Changing four things nobody
+  asked about would have cost more.
   **The team headings are PLAIN WHITE**, and they say only the side name.
   "Your team — ExampleDrafter · Radiant" said three things where one does, and the
   side is what the eye is looking for. They were briefly Dota's own green
@@ -3460,17 +3482,24 @@ credentials, and put the account at risk. Do not go there.
   it with `**` and needs no branch of its own. One spelling, because a
   fourth subprocess added tomorrow is the one somebody forgets.
 
-- **THE EIGHT WINDOWS THAT FLASHED AT BOOT WERE COUNT BOXES BEING
-  POLISHED WITH NO PARENT** (`chrome.CountBox`, `rolebar.RoleFilter`,
-  `app._count_box` / `_badge_box`, `ui/strays.py`). Reported as "small
+- **THE COUNT BOXES WERE POLISHED WITH NO PARENT, AND THAT IS NOT YET
+  ESTABLISHED AS THE FLICKER** (`chrome.CountBox`, `rolebar.RoleFilter`,
+  `app._count_box` / `_badge_box`, `ui/strays.py`). This heading said
+  "THE EIGHT WINDOWS THAT FLASHED AT BOOT WERE COUNT BOXES" and had to
+  be walked back; what follows is a real fault really fixed, and the
+  claim that it is THE fault is the fourth answer to this report rather
+  than the confirmed one. **WHAT IS MEASURED IS BELOW, UNDER "WHAT IS
+  STILL OPEN".** Reported as "small
   blank windowwws flickering on / off" with "the app logo top left", and
   then, which is what actually named it: **"the blue is my desktiop
   background"** and **"treansulscent when transitioning into
   materialsiing thje window"** — a rectangle with the DESKTOP showing
   through it, seen while a window comes into being.
-  **THE CAUSE IS THIS FILE'S OLDEST TRAP, ONE STEP ON.** A parentless
-  QWidget is a top-level window — and POLISHING one realises it, which
-  on Windows puts it on screen until it is re-parented.
+  **THE SUSPECTED CAUSE IS THIS FILE'S OLDEST TRAP, ONE STEP ON.** A
+  parentless QWidget is a top-level window — and POLISHING one realises
+  it, which on Windows was expected to put it on screen until it is
+  re-parented. A parentless polish is a real defect whatever it turns
+  out to cost, which is why it was fixed and stays fixed.
   `CountBox.__init__` polishes itself to measure its own width, and it
   has to: the font comes from the stylesheet, which is the whole reason
   `_fit_width` calls `ensurePolished`. Every one of its five call sites
@@ -3507,6 +3536,44 @@ credentials, and put the account at risk. Do not go there.
   beside the launcher, pointing at `pythonw.exe`, which has no console at
   all. Named that rather than the app's own name because Explorer hides a
   `.lnk`'s extension; gitignored (`*.lnk`), rewritten every start.
+  **WHAT IS STILL OPEN, AND WHY THE FOURTH REPORT DID NOT SETTLE IT.**
+  The report after the fix carried **SIX** windows, still `during
+  'building the window'`, against eight before it.
+  **THAT IS NOT A MEASURED REDUCTION AND MUST NOT BE READ AS ONE.** It
+  came from a DIFFERENT install — a clone in a home directory, where the
+  first three were an unzipped `Dota_Draft_Assist-main` under Downloads,
+  under a different Windows account, with statistics 235.7h old against
+  24.6h and a user-supplied `app.png` against the shipped default. Two numbers from two machines are not a
+  before and an after, and nothing in that paste said which BUILD it
+  was — which is the whole reason the paste now leads with
+  `version.described()`.
+  **AND THE QT SIDE SAYS THE MECHANISM IS NOT WHAT IT LOOKED LIKE.**
+  Measured here after the fix, ten parentless QMenus are polished while
+  the window is built — Qt's own, not ours: every `QMenu(` in
+  `draft_assist/ui/` passes a parent — and every one of them answers
+  **`WA_WState_Created` False**. No native handle means no window, and
+  `EnumWindows` cannot see it however parentless it is. Only
+  `MainWindow` answers True. So on this platform a parentless POLISH
+  does not by itself make a window, and the step from "polished with no
+  parent" to "on screen in Windows" is the part that is assumed rather
+  than shown.
+  **SO THE DIAGNOSTIC GREW THE HALF THAT NAMES THINGS**
+  (`strays.watch_widgets`, `loose_report`, `_has_native_window`). The
+  sampler counts WINDOWS and can only ever say "Qt made it"; this
+  records every parentless widget Qt polishes or shows, with its TYPE,
+  its boot stage, a COUNT, and whether Qt gave it a native handle. That
+  last field is what lets the two lists be set beside each other instead
+  of one being read as explaining the other. QMenu is INCLUDED here
+  where the source-scanning guard exempts it: "a menu carries the popup
+  window class so it cannot be one of these" is exactly the shape of the
+  three answers that were already wrong.
+  It runs on the GUI thread and the sampler does not — nothing in the
+  sampler touches Qt and nothing in the recorder touches Win32, which is
+  what makes the thread safe — and a single-shot QTimer takes the filter
+  off after `WATCH_FOR`, an application event filter being a Python call
+  per event. **A QTimer is right for STOPPING and was useless for
+  STARTING**, which is the same object failing and succeeding at the two
+  ends of this one fault.
   **AND `ui/strays.py` IS WHAT ANSWERED IT, so it stays.** `EnumWindows`
   filtered to our own process id, sampled every `PERIOD` (40ms — a flash
   has to survive a twentieth of a second to be caught) for `WATCH_FOR`

@@ -50,7 +50,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QStatusBar, QTabWidget,
                              QVBoxLayout, QWidget)
 
-from .. import console
+from .. import console, version
 from ..gsi.state import DRAFTING_STATES
 from ..config import (APP_NAME, ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
                       RECORDINGS_DIR,
@@ -2329,7 +2329,6 @@ class MainWindow(QMainWindow):
         answers "which one have I got, and who is it by", because that
         is the question somebody has when they open one.
         """
-        from .. import version
         from . import appicon
 
         box = QMessageBox(self)
@@ -5581,6 +5580,13 @@ class MainWindow(QMainWindow):
         snap = self.snapshot
         parts = [
             "=== Dota Draft Assist ===",
+            # WHICH COPY THIS IS, FIRST. Four reports of the boot
+            # flicker arrived with no way to tell whether the one that
+            # fixes it was on the machine that sent them - and one of
+            # them came from a different install path entirely. A
+            # diagnostic that cannot name its own build cannot say
+            # whether a fix reached it.
+            version.described(),
             f"status: {self.status.currentMessage()}",
             f"data: {self.ds.meta.get('pair_source', '?')} · "
             f"{self.ds.age_hours():.1f}h old · "
@@ -5593,6 +5599,9 @@ class MainWindow(QMainWindow):
             f"on top: {ontop.note}",
             "--- windows this process opened ---",
             self.strays.report(self._own_hwnd()),
+            "",
+            "--- widgets realised with no parent ---",
+            strays.loose_report(),
             "",
             "--- what the app is reading ---",
             self.unknown_label.text(),
@@ -5940,6 +5949,10 @@ def _main() -> None:
 
     strays.stage("starting Qt")
     app = QApplication(sys.argv)
+    # The sampler counts windows; this names the widgets behind them.
+    # It can only be installed once the application exists, which is
+    # why it is not part of `strays.start()` above.
+    strays.watch_widgets(app)
     app.setApplicationName(APP_NAME)
     # NO MENU IN THIS APP CARRIES AN ICON, AND THE ONES WE DID NOT BUILD
     # WERE CARRYING THEM. Right-click any text in here — the debug log,

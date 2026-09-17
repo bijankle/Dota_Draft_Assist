@@ -7,12 +7,21 @@ write in Qt's terms already says the Qt side is clean, so what is left is
 something only Windows can name.
 """
 
+import os
 import pathlib
 import threading
 import time
 
-import pytest
-from PyQt6.QtWidgets import QApplication
+# BEFORE PyQt6 IS IMPORTED. Every other Qt test file here does this and
+# this one did not, so it passed only ever because some file earlier in
+# the run had set it — alone, `QApplication([])` found no display and
+# ABORTED, which is not a failure anybody can read. Same family as the
+# stylesheet and the palette leaking between tests through one shared
+# QApplication: a file that cannot be run by itself hides its own bugs.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from draft_assist.config import RULES_FILE
 from draft_assist.model import items as items_mod
@@ -309,3 +318,96 @@ def test_nothing_is_realised_without_a_parent_while_the_window_builds(qapp):
     assert loose == [], (
         "these were realised with no parent, so each is a top-level "
         f"window flashing up while the app starts: {loose}")
+
+
+# --------------------------------------------------------------------
+# The OTHER half of the diagnostic: naming the widget, not counting the
+# window. Four reports of the boot flicker arrived and none of them
+# could say which widget made the windows in it — the Win32 class name
+# says "Qt" and stops there.
+
+
+def test_the_recorder_catches_a_parentless_widget(qapp):
+    """A widget realised with no parent is named, with its stage."""
+    from PyQt6.QtWidgets import QWidget
+
+    from draft_assist.ui import strays
+
+    strays._LOOSE.clear()
+    strays.stop_watching_widgets()
+    strays.watch_widgets(qapp)
+    try:
+        strays.stage("a step under test")
+        loose = QWidget()
+        loose.ensurePolished()
+        qapp.processEvents()
+        report = strays.loose_report()
+    finally:
+        strays.stop_watching_widgets()
+        strays._LOOSE.clear()
+        strays.stage("starting")
+
+    assert "QWidget" in report, report
+    assert "a step under test" in report, (
+        "the report must say WHICH boot step realised it")
+
+
+def test_a_parented_widget_is_not_reported(qapp):
+    """Only the ones with no parent count — everything else is normal."""
+    from PyQt6.QtWidgets import QWidget
+
+    from draft_assist.ui import strays
+
+    # The HOLDER is polished before the watch starts, because it is
+    # itself parentless and Qt polishes a widget's ancestors on the way
+    # to polishing it — so watching first would catch the holder and
+    # say nothing about the child, which is the case under test.
+    held = QWidget()
+    held.ensurePolished()
+
+    strays._LOOSE.clear()
+    strays.stop_watching_widgets()
+    strays.watch_widgets(qapp)
+    try:
+        child = QWidget(held)
+        child.ensurePolished()
+        qapp.processEvents()
+        report = strays.loose_report()
+    finally:
+        strays.stop_watching_widgets()
+        strays._LOOSE.clear()
+
+    assert "none" in report, (
+        f"a widget with a parent was reported as loose: {report}")
+
+
+def test_the_recorder_takes_itself_off(qapp):
+    """An application event filter costs a call per event; it stops."""
+    from draft_assist.ui import strays
+
+    strays.stop_watching_widgets()
+    strays.watch_widgets(qapp)
+    assert strays._FILTER is not None
+    strays.stop_watching_widgets()
+    assert strays._FILTER is None, (
+        "the filter must come off, and calling it twice must be safe")
+    strays.stop_watching_widgets()
+
+
+def test_the_paste_names_the_build_it_came_from():
+    """Four reports arrived with no way to tell which copy sent them.
+
+    One of them was from a different install path with data ten days
+    old, so whether the fix was even on that machine could not be read
+    off the paste. A diagnostic that cannot name its own build cannot
+    say whether a fix reached it.
+    """
+    import inspect
+
+    from draft_assist.ui import app as ui_app
+
+    body = inspect.getsource(ui_app.MainWindow._copy_debug_log)
+    assert "version.described()" in body, (
+        "the diagnostic paste must carry the version and build")
+    assert "loose_report" in body, (
+        "the paste must carry the widgets realised without a parent")

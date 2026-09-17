@@ -307,3 +307,143 @@ def watcher() -> Watcher:
     """Never None: a window built without `start` reports "not
     attempted" rather than having to be guarded at every call."""
     return _WATCHER if _WATCHER is not None else Watcher()
+
+
+# --------------------------------------------------------------------
+# THE OTHER HALF: WHICH WIDGET, ASKED OF QT RATHER THAN OF WINDOWS.
+#
+# The sampler above says how many windows appeared and when. It cannot
+# say what MADE them: a class name names whoever created a window (Qt)
+# and says nothing about why. That was enough to find the eight count
+# boxes only because the stage marker narrowed it to one step and there
+# was exactly one thing in that step doing it. It is not enough for what
+# is left — a report came back with SIX still appearing `during
+# 'building the window'`, and there is nothing in it that names them.
+#
+# So Qt is asked directly. A parentless QWidget is a top-level window
+# the moment anything REALISES it, and polishing is one of the things
+# that does, so every Polish and every Show delivered to a widget with
+# no parent is recorded along with the boot stage it happened in. That
+# is the exact event the eight were caught by, and unlike a window class
+# it carries the widget's own type name.
+#
+# QMENU IS INCLUDED HERE, where the source-scanning guard in
+# `tests/test_stray_windows.py` exempts it. A menu is a popup by design
+# and carries the popup window class, so on the evidence it cannot be
+# one of the six — but "cannot" is what the last three answers to this
+# fault all were, and this half is measurement rather than argument. It
+# is LABELLED rather than left out, so a menu in the list reads as a
+# menu instead of as a mystery.
+#
+# IT RUNS ON THE GUI THREAD AND THE SAMPLER DOES NOT. Nothing above this
+# line touches a Qt object and nothing below it touches Win32; that
+# split is what makes the sampler safe on a thread of its own, and it
+# has to stay.
+#
+# AND IT TAKES ITSELF OFF AGAIN. An application event filter is called,
+# in Python, for every event in the app — cheap per call and not free
+# over an evening, in a window whose refresh loop is measured to avoid
+# exactly this. A single-shot timer removes it after `WATCH_FOR`. A
+# QTimer is right for STOPPING where it was useless for STARTING: what
+# this exists to catch happens before the event loop runs, and taking
+# the filter off happens long after.
+_LOOSE: dict[str, int] = {}
+_FILTER = None
+
+
+def _has_native_window(obj: object) -> bool:
+    """Has Qt actually given this widget a window handle?
+
+    THIS IS THE ONE FACT THAT JOINS THE TWO HALVES OF THIS FILE. A
+    widget with no handle is not a window as far as Windows is
+    concerned, so it cannot be in the sampler's report however
+    parentless it is — and measured here, every parentless QMenu Qt
+    polishes while the window is built answers False, while
+    `MainWindow` answers True. Without it the widget list and the
+    window list cannot be put beside each other and either one can be
+    read as explaining the other.
+    """
+    try:
+        from PyQt6.QtCore import Qt
+
+        return bool(obj.testAttribute(
+            Qt.WidgetAttribute.WA_WState_Created))
+    except Exception:
+        return False
+
+
+def _note_loose(obj: object, what: str) -> None:
+    """Record one realisation, counted per (what, type, handle, stage)."""
+    kind = "menu" if type(obj).__name__.endswith("Menu") else "widget"
+    handle = ("HAS a native window"
+              if _has_native_window(obj) else "no native window")
+    line = (f"{what} {kind} {type(obj).__name__} "
+            f"({handle}) during {_stage!r}")
+    # COUNTED, NOT DEDUPLICATED AWAY. Ten of one thing and one of it
+    # are different findings, and the report this exists to replace was
+    # a COUNT - six windows - so a widget list that cannot be counted
+    # cannot be set against it.
+    _LOOSE[line] = _LOOSE.get(line, 0) + 1
+
+
+def watch_widgets(app: object) -> None:
+    """Record every parentless widget Qt realises, for `WATCH_FOR`.
+
+    Called straight after the QApplication is built. Never fatal: a
+    diagnostic that can stop the app is worse than the fault.
+    """
+    global _FILTER
+    if _FILTER is not None:
+        return
+    try:
+        from PyQt6.QtCore import QEvent, QObject, QTimer
+        from PyQt6.QtWidgets import QWidget
+
+        watched = (QEvent.Type.Polish, QEvent.Type.Show)
+
+        class _Loose(QObject):
+            def eventFilter(self, obj, event):  # noqa: N802 (Qt's name)
+                try:
+                    kind = event.type()
+                    if (kind in watched and isinstance(obj, QWidget)
+                            and obj.parentWidget() is None):
+                        _note_loose(
+                            obj,
+                            "polished" if kind == QEvent.Type.Polish
+                            else "shown")
+                except Exception:
+                    pass
+                return False
+
+        _FILTER = _Loose(app)
+        app.installEventFilter(_FILTER)
+        QTimer.singleShot(int(WATCH_FOR * 1000), stop_watching_widgets)
+    except Exception:
+        _FILTER = None
+
+
+def stop_watching_widgets() -> None:
+    """Take the filter off. Safe to call when it is already off."""
+    global _FILTER
+    if _FILTER is None:
+        return
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(_FILTER)
+    except Exception:
+        pass
+    _FILTER = None
+
+
+def loose_report() -> str:
+    """The parentless widgets Qt realised, in the order they appeared."""
+    if _FILTER is None and not _LOOSE:
+        return "not watched"
+    if not _LOOSE:
+        return "none - nothing was realised without a parent"
+    return "\n".join(
+        f"  {n} x {line}" if n > 1 else f"  {line}"
+        for line, n in _LOOSE.items())
