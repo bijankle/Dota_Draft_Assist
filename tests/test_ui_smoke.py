@@ -4235,20 +4235,21 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
     to end. Putting the heading in the same grid as the legend put all
     three boxes in one column.
 
-    **THE LEGEND HAS SINCE MOVED, so two of the three are no longer in
-    that column and must not be asserted into it.** At the user's
-    request the strip's own controls went BELOW the portraits — "top
-    picks will be at the top above the sugegsted hero portraits still,
-    but the filters for carry , supprot etc, will be below the
-    portraits" — and the two marks went with them, to sit level with the
-    roles they are read beside: "you sohuld be able to have comfort be
-    in line (row-wwise) with carry / nuker / etc and counter in line
-    with support / disabler / etc... as they are no longer with the
-    header".
-    So what is still true, and is what this test holds: the heading is
-    above the strip with its own count beside it, the card does not
-    paraphrase its own heading, and the two mark counts line up with
-    EACH OTHER and with the role boxes they now share rows with.
+    **THE LEGEND HAS MOVED TWICE AND IS BACK ON THE HEADING ROW.** It
+    went BELOW the strip with the role filter — "top picks will be at
+    the top above the sugegsted hero portraits still, but the filters
+    for carry , supprot etc, will be below the portraits" — and the two
+    marks went with it, to sit level with the roles. Then, at the user's
+    request, the two marks came back up on their own: "comfort and
+    coutner fields should be o nthe same row as top heroes jsut to its
+    right and spread the carr / support / etc filytters to fill the
+    space left", renamed "Comfort rank" and "Counter rank".
+    So all THREE counts are on the heading row again — the strip's own
+    count beside the title, the two rank counts beside that — and the
+    row below the strip belongs to the role filter alone. The column
+    this test is named for is now the one the two RANK boxes share; the
+    heading's own box sits in the grid to their left, which is why it is
+    no longer asserted into it.
     """
     from PyQt6.QtWidgets import QLabel
     window.show()
@@ -4275,17 +4276,31 @@ def test_the_picks_card_heading_and_its_boxes_share_one_column(
 
     assert left(window.heart_box) == left(window.shield_box), (
         "the two mark counts do not line up with each other")
-    # The heading and its count are ABOVE the strip; these two are below.
-    assert middle(window.suggested_box) < middle(window.heart_box)
-    assert middle(window.heart_box) < middle(window.shield_box)
-    # AND LEVEL WITH THE ROLE BOXES, which is what the move was for. The
-    # two grids use the same vertical spacing, so the rows land together
-    # rather than being measured against one another.
+    assert middle(window.heart_box) < middle(window.shield_box), (
+        "comfort rank should sit above counter rank")
+
+    # ALL THREE ARE ON THE HEADING ROW, which is the move: "comfort and
+    # coutner fields should be o nthe same row as top heroes jsut to its
+    # right".
+    head = window._picks_head
+    for name, box in (("suggested", window.suggested_box),
+                      ("heart", window.heart_box),
+                      ("shield", window.shield_box)):
+        assert head.isAncestorOf(box), f"{name} left the heading row"
+    # The strip's own count leads them, since it is the one the heading
+    # names; the two rank counts are to its right.
+    assert left(window.suggested_box) < left(window.heart_box)
+
+    # AND THE ROW BELOW THE STRIP IS THE FILTER'S ALONE — "spread the
+    # carr / support / etc filytters to fill the space left". It is no
+    # longer sharing a row with anything, so nothing of the legend's may
+    # still be found on it.
+    assert window._picks_row.isAncestorOf(window.role_filter)
+    assert not window._picks_row.isAncestorOf(window.heart_box)
+    assert not head.isAncestorOf(window.role_filter)
     roles = list(window.role_filter.boxes.values())
-    assert abs(middle(roles[0]) - middle(window.heart_box)) <= 4, (
-        "comfort is not on the first row of roles")
-    assert abs(middle(roles[1]) - middle(window.shield_box)) <= 4, (
-        "counter is not on the second row of roles")
+    assert middle(roles[0]) > middle(window.shield_box), (
+        "the role filter is not below the heading any more")
 
 
 def test_every_on_off_box_in_the_app_draws_an_actual_tick(styled, qapp):

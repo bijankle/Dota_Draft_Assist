@@ -34,6 +34,7 @@ file, an unwritable folder, a PID that cannot be checked — resolves to
 """
 
 import os
+import sys
 from pathlib import Path
 
 from ..config import REPO_ROOT
@@ -41,18 +42,81 @@ from ..config import REPO_ROOT
 LOCK_FILE = REPO_ROOT / "running.lock"
 
 
+# Windows constants, spelled here so the ctypes call below reads.
+_QUERY_LIMITED = 0x1000        # PROCESS_QUERY_LIMITED_INFORMATION
+_STILL_ACTIVE = 259            # what GetExitCodeProcess says for a live one
+_ERROR_ACCESS_DENIED = 5       # it exists and is not ours to look at
+
+
+def _alive_windows(pid: int) -> bool:
+    """Is this pid running? Asked WITHOUT the power to end it.
+
+    **`os.kill(pid, 0)` IS NOT A LIVENESS CHECK ON WINDOWS, AND THIS
+    MODULE USED IT AS ONE.** CPython maps `os.kill` to `OpenProcess`
+    followed by `TerminateProcess` for every signal except the two
+    console CTRL events — so signal 0 does not ask whether a process is
+    alive, it asks Windows to end it with exit code 0. What actually
+    decided the answer was how `OpenProcess(PROCESS_ALL_ACCESS)`
+    happened to fail: access denied came back as PermissionError and was
+    read as "alive", and any other failure came back as a plain OSError
+    and was read as "gone" — which frees the lock and lets a second copy
+    start. That is the two windows.
+    So this asks the question the documented way. It opens the process
+    for the WEAKEST right that can answer it, reads the exit code, and
+    closes the handle; there is no path through it that can stop
+    anything.
+
+    THREE-VALUED UNDERNEATH, like `required` in the capture session: a
+    process that exists but cannot be opened is somebody else's and the
+    id IS in use, so it counts as alive; only "no such process" and a
+    real exit code count as gone. A question we could not ask must never
+    refuse to start the app, which is why everything unexpected falls
+    through to False.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL,
+                                     wintypes.DWORD)
+    handle = kernel32.OpenProcess(_QUERY_LIMITED, False, pid)
+    if not handle:
+        err = ctypes.get_last_error()
+        # It is there and shut to us — that id is in use. Anything else
+        # (87, ERROR_INVALID_PARAMETER, is "no process has this id") is
+        # gone, and so is a question we could not ask: see above.
+        return err == _ERROR_ACCESS_DENIED
+    try:
+        code = wintypes.DWORD()
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE,
+                                                ctypes.POINTER(wintypes.DWORD))
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _alive(pid: int) -> bool:
     """Is a process with this id running?
 
-    `os.kill(pid, 0)` is the POSIX check and it works on Windows through
-    Python's emulation. UNKNOWN COUNTS AS ALIVE only for a permission
-    error — that is somebody else's process and the id is genuinely in
-    use; everything else is treated as gone, because refusing to start
-    over a question we could not ask is the failure mode this module is
-    least allowed to have.
+    POSIX answers with `os.kill(pid, 0)`, which really is a probe there.
+    Windows needs its own question entirely — see `_alive_windows`.
+
+    UNKNOWN COUNTS AS ALIVE only for a permission error: that is
+    somebody else's process and the id is genuinely in use. Everything
+    else is treated as gone, because refusing to start over a question
+    we could not ask is the failure mode this module is least allowed to
+    have.
     """
     if pid <= 0:
         return False
+    if sys.platform.startswith("win"):
+        try:
+            return _alive_windows(pid)
+        except Exception:      # noqa: BLE001 - never fatal, see above
+            return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

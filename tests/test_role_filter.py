@@ -74,6 +74,12 @@ def test_each_box_takes_nought_to_three_and_nothing_else(win):
         assert box.maximum() == roles_mod.MAX_LEVEL == 3, role
 
 
+def _cells(win):
+    """Every (row, column) the filter's grid is using."""
+    grid = win.role_boxes["Carry"].parent().layout()
+    return {grid.getItemPosition(index)[:2] for index in range(grid.count())}
+
+
 def test_they_are_laid_out_two_rows_by_four_columns(win):
     """As asked — and eight is only a clean 2x4 because Valve scores
     eight roles. A ninth (Jungler, which has no hero data at all) would
@@ -83,12 +89,15 @@ def test_they_are_laid_out_two_rows_by_four_columns(win):
     GRID, at the user's request: "when you say grid i dont want it to
     look like a grid, just said it in terms of row / column so that they
     fit nicely".
+
+    THIS IS THE NARROW SHAPE NOW, and it is still the one the window
+    opens at: the filter took the whole row when the two rank counts
+    moved up to the heading, so it reflows to eight across when there is
+    room for them (see below) and comes back to this at anything near the
+    window's own floor.
     """
-    grid = win.role_boxes["Carry"].parent().layout()
-    cells = set()
-    for index in range(grid.count()):
-        row, column, _rs, _cs = grid.getItemPosition(index)
-        cells.add((row, column))
+    win.role_filter._relayout(4)
+    cells = _cells(win)
     assert max(r for r, _c in cells) == 1, "more than two rows"
     # Each role takes THREE grid columns — its name, its box, and the
     # fixed gap to the next cell. The gap column is what keeps the two
@@ -103,6 +112,40 @@ def test_they_are_laid_out_two_rows_by_four_columns(win):
     assert min(c for _r, c in cells) == rolebar.RoleFilter.FIRST
     assert max(c for _r, c in cells) == 10 + rolebar.RoleFilter.FIRST
     assert len(cells) == 16, "a label and a box for each of eight roles"
+
+
+def test_it_goes_eight_across_when_the_row_is_its_own(win):
+    """"spread the carr / support / etc filytters to fill the space
+    left" — the space the two rank counts left when they moved up to the
+    heading row.
+
+    THE CELLS FILL IT, NOT THE GAPS. Spreading four columns over the
+    whole width was asked for once and disliked on sight — "a hand's
+    width of nothing between Carry 0 and Nuker 0" — so what fills the
+    row is the other four cells coming up to join them. Eight is still a
+    divisor of eight, so the last column is never short.
+    """
+    assert rolebar.RoleFilter.COLUMNS[0] == 8
+    assert len(roles_mod.ROLES) % 8 == 0, "the last column would be short"
+    win.role_filter._relayout(8)
+    cells = _cells(win)
+    assert max(r for r, _c in cells) == 0, "eight across is ONE row"
+    assert max(c for _r, c in cells) == 22 + rolebar.RoleFilter.FIRST
+    assert len(cells) == 16, "a label and a box for each of eight roles"
+
+
+def test_it_falls_back_to_four_before_the_window_reaches_its_floor(win):
+    """A block that reflows has to come back, or the card sets a floor
+    the window cannot honour — the fault this whole class was written
+    for. Eight across is 1230px; four is 606, which is inside the card
+    even at the narrowest window this app will open at.
+    """
+    filt = win.role_filter
+    assert filt.columns_for(2000) == 8
+    assert filt.columns_for(700) == 4
+    # And the minimum it REPORTS is still one cell, whatever it is
+    # currently laid out as: a widget's minimum is the window's.
+    assert filt.minimumSizeHint().width() <= filt._cell_width()
 
 
 def test_nothing_is_filtered_to_start_with(win):

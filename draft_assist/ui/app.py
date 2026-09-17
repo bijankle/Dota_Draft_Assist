@@ -4626,13 +4626,15 @@ class MainWindow(QMainWindow):
     def _picks_controls(self) -> QWidget:
         """The legend: which mark means what, and how many get it.
 
-        ALL THREE COUNTS ON THIS CARD, at the user's request: "it makes
+        ALL THREE COUNTS ON THIS ROW, at the user's request: "it makes
         sense to have the number of shields / hearts setting to be right
         next to the quantity dropdown for number of hero suggestions, and
-        this should be the same kind of entry field." The strip's own
-        count rides on the heading a line above these two, which is near
-        enough to satisfy that and near enough to the words "Suggested
-        picks" not to have to repeat them.
+        this should be the same kind of entry field." They were on this
+        row, then the two mark counts went below the strip with the role
+        filter, and they are back beside the heading - "comfort and
+        coutner fields should be o nthe same row as top heroes jsut to
+        its right" - which is as literally next to the quantity dropdown
+        as this card can put them.
 
         Which is the rule this row already followed for the first of
         them - a number you tune by looking at the result belongs beside
@@ -4706,6 +4708,16 @@ class MainWindow(QMainWindow):
         # showing a number is the fault this app has a rule about: two
         # places to read one setting is two places for it to go stale.
         line.addWidget(counts)
+        # AND THE TWO RANK COUNTS SIT BESIDE IT, at the user's request:
+        # "comfort and coutner fields should be o nthe same row as top
+        # heroes jsut to its right and spread the carr / support / etc
+        # filytters to fill the space left". They were on the row under
+        # the strip, sharing it with the eight role floors; up here they
+        # are beside the count they are a kind of — how many tiles carry
+        # a mark, next to how many tiles there are — and the row below
+        # becomes the filter's alone.
+        line.addWidget(self._picks_legend(row), 0,
+                       Qt.AlignmentFlag.AlignVCenter)
         # THE ROLE FILTER IS NO LONGER ON THIS ROW. It shared it, taking
         # the spare width to the right of the legend, and has gone BELOW
         # the suggestion strip at the user's request: "top picks will be
@@ -4754,8 +4766,12 @@ class MainWindow(QMainWindow):
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(10)
-        line.addWidget(self._picks_legend(row), 0,
-                       Qt.AlignmentFlag.AlignTop)
+        # THE EIGHT FLOORS HAVE THIS ROW TO THEMSELVES, at the user's
+        # request — "spread the carr / support / etc filytters to fill
+        # the space left" — now that the two rank counts have gone up
+        # beside the heading. They reflow from the width they are GIVEN,
+        # so the whole card is what they now lay themselves out against
+        # rather than whatever the legend left over.
         line.addWidget(self._role_filter(row), 1)
         self._picks_row = row
         return row
@@ -4785,8 +4801,12 @@ class MainWindow(QMainWindow):
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(2)
         for line_no, (shield, word, key) in enumerate(
-                ((False, "Comfort", "heart_count"),
-                 (True, "Counter", "shield_count"))):
+                # NAMED AS RANKS, at the user's request: "Call it
+                # comfort rank and counter rank". Each number is how far
+                # down the strip the mark reaches, so "rank" is what it
+                # measures rather than a count of anything.
+                ((False, "Comfort rank", "heart_count"),
+                 (True, "Counter rank", "shield_count"))):
             grid.addWidget(MarkLabel(shield, legend), line_no, 0)
             grid.addWidget(QLabel("=", legend), line_no, 1)
             grid.addWidget(QLabel(word, legend), line_no, 2)

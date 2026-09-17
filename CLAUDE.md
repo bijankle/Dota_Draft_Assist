@@ -2287,7 +2287,7 @@ credentials, and put the account at risk. Do not go there.
   reason.
 
 - **THE STRIP'S COUNT RIDES ON THE HEADING AND THE LEGEND IS TWO ROWS
-  UNDER IT** (`_picks_controls`, `card(title, corner)`). It was three
+  BESIDE IT** (`_picks_controls`, `card(title, corner)`). It was three
   rows, the first reading "Pick suggestions = 20" under a card headed
   "Suggested picks" — the same two words twice with a number after one
   of them: "you dont need suggested picks and pick suggestions - please
@@ -2295,12 +2295,17 @@ credentials, and put the account at risk. Do not go there.
   that row goes.
   **A PARTIAL REVERSAL OF "the header above all the text", and partial
   on purpose.** What that asked for was the TEXT off the heading line,
-  and the legend and the role filter stay exactly where it put them. A
-  corner is sized to ITSELF, so a count box is the one thing that can
-  ride there; the role filter REFLOWS and still needs the card's full
-  width in the body, or it cannot work out how many columns it has room
-  for. It also puts this card back in step with Suggested items, which
-  has had its count on the heading throughout.
+  and the ROLE FILTER stays exactly where it put it — it REFLOWS and
+  needs the card's full width in the body, or it cannot work out how
+  many columns it has room for. A corner is sized to ITSELF, so a count
+  box is the one thing that can ride there. It also puts this card back
+  in step with Suggested items, which has had its count on the heading
+  throughout.
+  The LEGEND has since come back up to this row as well — see the
+  card's reading order below — so what is on it is the title, its own
+  count, and the two rank counts in their own two-row grid beside them.
+  It is added to the row's layout rather than to the card's corner, for
+  exactly the reason the corner suits a count box and nothing else.
 
 - **EVERY ON/OFF BOX IN THE APP DRAWS AN ACTUAL TICK**
   (`chrome.TickBox`), at the user's request: "if something is a tick box
@@ -2507,6 +2512,10 @@ credentials, and put the account at risk. Do not go there.
   others, no need ot be header font" — since the card already carries
   "Suggested picks" above it in heading weight and a second line in the
   same weight reads as two headings.
+  **THE WORDS ARE "Comfort rank" AND "Counter rank" NOW**, and the two
+  rows sit BESIDE the heading rather than under it — see the card's
+  reading order below. The sketch above is the shape that was asked
+  for, not the one on screen.
   **THE HAND IS GONE**: "Remove the hand symbol its pointless". It was
   a picture standing in for the words "pick suggestions", and with the
   rows carrying words anyway it was the one mark on the card explaining
@@ -3449,6 +3458,34 @@ credentials, and put the account at risk. Do not go there.
   Windows-only call on Linux — none of them is a reason to refuse to
   start the app, and a single-instance guard that can lock somebody out
   of their own app is worse than the thing it prevents.
+  **AND `os.kill(pid, 0)` IS NOT A LIVENESS CHECK ON WINDOWS, WHICH IS
+  WHY IT NEVER WORKED** (`single._alive_windows`, `_alive`). "i can
+  literally open 2 weindows from the .bat". `_alive` asked the POSIX
+  question and its own docstring claimed "it works on Windows through
+  Python's emulation"; it does not. CPython maps `os.kill` to
+  `OpenProcess` followed by **`TerminateProcess`** for every signal
+  except the two console CTRL events — so signal 0 does not ask whether
+  a process is alive, it asks Windows to END it with exit code 0. What
+  decided the answer was how `OpenProcess(PROCESS_ALL_ACCESS)` happened
+  to fail: access denied surfaced as PermissionError and was read as
+  "alive", and **every other failure surfaced as a plain OSError and was
+  read as "gone"** — which frees the lock and lets the second copy
+  start. Two windows, from a check that could also have killed the first
+  one.
+  So Windows is asked the documented way: `OpenProcess` for
+  `PROCESS_QUERY_LIMITED_INFORMATION` — the WEAKEST right that can
+  answer — then `GetExitCodeProcess` against `STILL_ACTIVE`, then
+  `CloseHandle`. There is no path through it that can stop anything.
+  THREE-VALUED UNDERNEATH, like `required` in the capture session: a
+  process that exists but cannot be OPENED is somebody else's and that
+  id IS in use, so access denied counts as alive; only "no such process"
+  and a real exit code count as gone, and everything unexpected falls
+  through to "go ahead and run" per the rule above.
+  **THE SOURCE SCAN READS THE CODE, NOT THE PROSE.** The test that
+  forbids `os.kill` on the Windows path parses with `ast` and drops the
+  docstring first, because this module's own docstring has to NAME
+  `TerminateProcess` to explain the trap — and a scan over raw text
+  would fail on the sentence describing the bug it is guarding against.
   **AND IT RAISES THE ONE ALREADY RUNNING** instead of doing nothing: no
   popup was asked for, but a launcher that appears to do nothing at all
   is indistinguishable from a broken one, so the existing window is
@@ -3569,6 +3606,23 @@ credentials, and put the account at risk. Do not go there.
   end in the first place. It is still at one end; the end is now the
   left, which is a column of its own ahead of the cells, because a
   QGridLayout cannot be told to push its contents right.
+  **AND IT GOES EIGHT ACROSS NOW THAT THE ROW IS ITS OWN**
+  (`RoleFilter.COLUMNS` = (8, 4, 2, 1)), which is the other half of
+  moving the two rank counts up to the heading: "spread the carr /
+  support / etc filytters to fill the space left". It shared this row
+  with the legend and took what was left of it; with the row to itself
+  the base (4, 2, 1) left most of a card empty beside eight cells still
+  huddled at one end, which is not what filling the space asks for.
+  **THE CELLS FILL IT AND THE GAPS DO NOT**, so the rule above survives
+  the request that would otherwise have overturned it: what comes up to
+  fill the row is the OTHER FOUR CELLS, not four bigger gaps. One row of
+  eight is 1230px against a card that is ~1432 at an ordinary window
+  size, still a divisor of eight so the last column is never short, and
+  `columns_for` is back to four at 606px — long before the window
+  reaches its own floor, which is the whole reason this class exists.
+  It also pays for the row the legend took: the heading is two mark rows
+  tall now and this is one instead of two, so the card's height is where
+  it was rather than a row taller.
   Two details, each a way to miss by a stated number. The inter-cell gap
   is set on `columns - 1` separators, not `columns`, or the block would
   be held 18px off the very edge it is being aligned to. And a column
@@ -3610,14 +3664,25 @@ credentials, and put the account at risk. Do not go there.
   already has (portraits, then the pills that describe them), and it puts
   each set of boxes directly under the thing it is about, the argument
   the count boxes were moved out of Settings on.
-  **AND THE LEGEND IS LEVEL WITH THE ROLES**: "you sohuld be able to have
-  comfort be in line (row-wwise) with carry / nuker / etc and counter in
-  line with support / disabler / etc... as they are no longer with the
-  header". The two marks were rows 1 and 2 of the HEADING's grid, which
-  was right while the heading was the only thing above the strip; with
-  both moved down, the legend's two rows and the filter's two rows are
-  the same two rows. They are two separate grids sharing a vertical
-  spacing rather than one grid, so neither is measured against the other.
+  **THE LEGEND WAS LEVEL WITH THE ROLES AND IS BACK ON THE HEADING**,
+  which is this card's fourth arrangement and reverses the third. It
+  came down with the filter — "you sohuld be able to have comfort be in
+  line (row-wwise) with carry / nuker / etc and counter in line with
+  support / disabler / etc... as they are no longer with the header" —
+  and went back up on its own at the user's request: "comfort and
+  coutner fields should be o nthe same row as top heroes jsut to its
+  right and spread the carr / support / etc filytters to fill the space
+  left". So the heading row is "Top Heroes" and its count, then the two
+  rank counts beside them, and the row under the strip belongs to the
+  filter alone.
+  **THEY ARE RANKS, NOT COUNTS, IN THE WORDS ON THE CARD**: "Call it
+  comfort rank and counter rank". Each number is how far down the strip
+  its mark reaches, so rank is what it measures — and it is what makes
+  the pair read as a kind of the count they now sit beside, how many
+  tiles carry a mark next to how many tiles there are.
+  The two marks keep their own grid rather than joining the heading's,
+  so the heading's box is not measured against theirs; the heading is
+  centred against the two rows they take.
   The filter also stopped needing the stretch factor it used to take from
   the legend's row: on a row of its own it reflows from the whole card,
   so the chicken-and-egg that made it eight rows tall for ever — narrow

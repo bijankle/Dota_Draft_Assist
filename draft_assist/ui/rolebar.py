@@ -556,6 +556,29 @@ class RoleFilter(ReflowGrid):
 
     picked = pyqtSignal()
 
+    # **EIGHT ACROSS BEFORE FOUR**, at the user's request, and it is the
+    # other half of moving the two rank counts onto the heading: "comfort
+    # and coutner fields should be o nthe same row as top heroes jsut to
+    # its right and spread the carr / support / etc filytters to fill the
+    # space left". This block used to share its row with that legend and
+    # took what was left of it; with the row to itself the base (4, 2, 1)
+    # left most of a card empty beside eight cells still huddled at one
+    # end, which is not what "fill the space left" asks for.
+    #
+    # THE CELLS FILL IT, NOT THE GAPS. Spreading four columns over the
+    # whole width was tried and disliked — "a hand's width of nothing
+    # between Carry 0 and Nuker 0", which reads as four unrelated
+    # controls — so what fills the row is the OTHER four cells coming up
+    # to join them: one row of eight at 1230px, against a card that is
+    # 1432 at an ordinary window size. Still a divisor of eight, so the
+    # last column is never short, and `columns_for` drops back to four at
+    # 606px long before the window reaches its own floor.
+    #
+    # IT ALSO PAYS FOR THE ROW THE LEGEND TOOK. The heading is two mark
+    # rows tall now and this is one instead of two, so the card's height
+    # is where it was rather than a row taller.
+    COLUMNS = (8, 4, 2, 1)
+
     # The cells start in column 1, because column 0 is the slack: a grid
     # cannot be told to push its contents right, so the spare width has
     # to be a column of its own ahead of them.

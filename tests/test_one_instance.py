@@ -114,3 +114,72 @@ def _a_live_pid_that_is_not_ours() -> int:
     interpreter, which is the whole point.
     """
     return 1
+
+
+# ---- and the check itself ---------------------------------------------
+
+def test_the_windows_check_never_asks_to_terminate_anything():
+    """`os.kill(pid, 0)` IS NOT A LIVENESS CHECK ON WINDOWS, and this
+    module used it as one — which is how two windows opened from the
+    launcher.
+
+    CPython maps `os.kill` to OpenProcess + TerminateProcess for every
+    signal except the two console CTRL events, so signal 0 there does
+    not ask whether a process is alive: it asks Windows to end it with
+    exit code 0. What actually decided the answer was how
+    `OpenProcess(PROCESS_ALL_ACCESS)` happened to fail — access denied
+    arrived as PermissionError and read as "alive", anything else
+    arrived as a plain OSError and read as "gone", which frees the lock
+    and lets a second copy start.
+
+    CHECKED IN THE SOURCE, because this machine is Linux and cannot run
+    that branch at all — which is the whole reason it has to be a check
+    with no power to stop anything even when it is wrong.
+    """
+    import ast
+    import inspect
+
+    # THE CODE, NOT THE PROSE ABOUT IT. This function's own docstring
+    # names `TerminateProcess` to explain the trap, and a scan of the
+    # raw source would fail on the explanation — the same reason
+    # `test_no_stale_menu_trails` reads string literals rather than
+    # whole files.
+    tree = ast.parse(inspect.getsource(single._alive_windows).strip())
+    fn = tree.body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)):
+        fn.body = fn.body[1:]           # drop the docstring
+    body = ast.unparse(fn)
+    assert "TerminateProcess" not in body, "it can still end a process"
+    assert "os.kill" not in body
+    # The WEAKEST right that can answer the question.
+    assert "_QUERY_LIMITED" in body
+    assert single._QUERY_LIMITED == 0x1000
+    assert "GetExitCodeProcess" in body and "CloseHandle" in body
+    # And `_alive` must route Windows to it rather than falling through
+    # to the POSIX probe.
+    route = inspect.getsource(single._alive)
+    assert 'sys.platform.startswith("win")' in route
+    assert "_alive_windows" in route
+
+
+def test_a_pid_that_exists_but_is_shut_to_us_counts_as_alive():
+    """Three-valued underneath, like `required` in the capture session:
+    a pid we cannot open is somebody else's and IS in use, so the lock
+    stays taken. Only "no such process" frees it."""
+    import inspect
+
+    assert single._ERROR_ACCESS_DENIED == 5
+    assert single._STILL_ACTIVE == 259
+    body = inspect.getsource(single._alive_windows)
+    assert "return err == _ERROR_ACCESS_DENIED" in body, (
+        "a pid that cannot be opened no longer counts as in use")
+
+
+def test_our_own_pid_is_alive_and_a_made_up_one_is_not():
+    """The POSIX branch, which this machine can actually run."""
+    import os
+
+    assert single._alive(os.getpid()) is True
+    assert single._alive(4_000_000) is False
+    assert single._alive(0) is False
