@@ -150,16 +150,25 @@ def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
     cell or after the last the block is pinned to both ends, and the
     separators being equally weighted shares what is left between them.
 
-    **THE EXACT COMPARISON IS AGAINST ITS OWN ROW, AND THE STRIP GETS A
-    TOLERANCE.** Both are "the margins" and only one of them is
-    deterministic: the strip's width is ELEVEN TILES AND TEN GAPS
-    (`_suggestion_box`), and `TeamPanel.STEADY` only takes a tile size
-    at least three pixels BIGGER than the one it has — so the strip's
-    right edge depends on the sequence of widths the window has already
-    been through, and lands a pixel off the card in a long run where it
-    is exact in a short one. That is the damping working, not a fault in
-    this block, and asserting the strip to the pixel made this test pass
-    alone and fail in the full suite.
+    **NEITHER EDGE IS EXACT TO THE PIXEL, AND THE REASON IS INTEGER
+    ARITHMETIC RATHER THAN ANYTHING THIS BLOCK DOES.** Qt distributes
+    the leftover width across the stretch columns in whole pixels and it
+    need not divide: this failed in a full-suite run at 1180px with the
+    filter at EIGHT columns — seven separators sharing 156px — where it
+    passed alone at FOUR, three separators, dividing cleanly. The cell
+    measured 121px in the long run against 138 alone, which is what
+    changed the column count: a shared QApplication carries font and
+    style state between tests, so the same window is not the same width
+    in cells twice.
+    The STRIP is looser still, for a second reason: its width is eleven
+    tiles and ten gaps (`_suggestion_box`) and `TeamPanel.STEADY` only
+    takes a tile size at least three pixels bigger than the one it has,
+    so its right edge depends on the sequence of widths the window has
+    been through.
+    So what is asserted is the PROPERTY — the block starts at the row's
+    left edge and reaches its right edge, never falling short, which is
+    the huddle this change was made to end — rather than an equality
+    that was twice a statement about rounding.
     """
     from PyQt6.QtWidgets import QApplication
 
@@ -199,7 +208,15 @@ def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
                f"last {left(last)}..{right(last)} "
                f"grid margins={filt.layout().contentsMargins().left()},"
                f"{filt.layout().contentsMargins().right()}")
-        assert right(last) == right(row), (
+        # REACHES THE EDGE, AND MAY OVERSHOOT IT BY A PIXEL. Qt hands
+        # the leftover width to the stretch columns in whole pixels, and
+        # it does not always divide: at eight across there are SEVEN
+        # separators sharing whatever is left (156px in the run that
+        # caught this), so the grid can come out a pixel wider than the
+        # widget holding it and the parent clips that pixel. What must
+        # never happen is the block falling SHORT, which is the huddle
+        # this change was made to end.
+        assert right(row) <= right(last) <= right(row) + 1, (
             f"the filter does not reach the row's right edge — {why}")
         # And that row is the strip's own span, to within the pixel
         # `STEADY` can leave on the tiles — see the docstring.
