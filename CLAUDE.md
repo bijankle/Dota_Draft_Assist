@@ -3461,13 +3461,25 @@ credentials, and put the account at risk. Do not go there.
   **WHAT IS MEASURED AND STANDS.** The Qt side is clean: across a full
   boot with the timer running, the provider started and the window
   resized through six widths, the only top-level Show in the whole
-  application was `MainWindow`'s, and afterwards `allWidgets()` holds
+  application was `MainWindow`'s, and afterwards `allWidgets()` held
   exactly ONE parentless widget. `test_ui_smoke.
   test_the_app_owns_exactly_one_window_and_nothing_else` keeps it that
   way and is the stronger guard —
   `test_no_widget_is_left_without_a_parent` walks `vars(window)`, so a
   widget held in a list, in another module or in a closure was always
-  invisible to it. Every `subprocess` call in `draft_assist/` and
+  invisible to it.
+  **THAT TEST DIFFS RATHER THAN COUNTING, and its first version did
+  not.** It asserted the measurement literally — exactly one parentless
+  widget in `allWidgets()` — which is true of a BOOT and false of a
+  SUITE, since a QApplication is shared by every test in a run and every
+  dialog any other file has opened is still in that list. It passed
+  alone and failed in the full suite, which is the order-dependence this
+  file already records for the stylesheet, one list over. What is
+  actually worth holding is that OPENING THE APP adds no parentless
+  widget but its own window, so the baseline is taken first and only
+  what is new is judged — and the baseline list is kept alive
+  deliberately, because comparing by `id` against freed objects would
+  let a reused address read as "was there before". Every `subprocess` call in `draft_assist/` and
   `tools/` already passes `CREATE_NO_WINDOW`, and
   `tests/test_no_console_flashes.py` holds that per CALL SITE rather
   than per fix (exempting `open`, `xdg-open` and `explorer` — branches

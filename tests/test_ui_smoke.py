@@ -1879,36 +1879,50 @@ def test_no_widget_is_left_without_a_parent(window):
     assert orphans == [], f"these would open as their own windows: {orphans}"
 
 
-def test_the_app_owns_exactly_one_window_and_nothing_else(window):
+def test_the_app_owns_exactly_one_window_and_nothing_else(qapp):
     """The whole application, not just the window's own attributes.
 
     `test_no_widget_is_left_without_a_parent` walks `vars(window)`, so a
     widget held anywhere else — in a list, in another module, in a local
     that a closure kept alive — is invisible to it. THAT is what a report
-    of "small blank windowwws flickering on / off... they have the app
-    logo top left" needs ruling out, because a parentless QWidget is a
-    top-level window carrying the application's icon and an empty client
-    area, which is exactly what one looks like.
+    of "small blank windowwws flickering on / off" needs ruling out,
+    because a parentless QWidget is a top-level window carrying the
+    application's icon over an empty client area.
 
-    `allWidgets()` is every widget the QApplication knows about, so this
-    holds the property itself rather than one place it can be broken.
+    **IT DIFFS RATHER THAN COUNTING, and the first version did not.** It
+    asserted that `allWidgets()` held exactly one parentless widget,
+    which is true of a boot and false of a SUITE: a QApplication is
+    shared by every test in a run, so every dialog and window any other
+    file has opened is still in that list. It passed alone and failed in
+    the full suite — the same order-dependence this project already has
+    a note about, one list over. What is actually being held is that
+    BUILDING AND SHOWING A WINDOW adds no parentless widget but itself,
+    so the baseline is taken first and only what is new is judged.
+
+    The baseline list is kept alive deliberately: comparing by `id`
+    against objects that have been freed would let a reused address read
+    as "was there before".
     """
     from PyQt6.QtWidgets import QWidget
-    window.show()
-    qapp = QApplication.instance()
+    before = [w for w in qapp.allWidgets() if w.parentWidget() is None]
+    known = {id(w) for w in before}
+
+    ds = demo_dataset()
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, DemoProvider(ds), rules, meta)
+    win.timer.stop()
+    win.show()
     for _ in range(5):
         qapp.processEvents()
-    # Other MainWindows are other TESTS' fixtures: `allWidgets` spans the
-    # whole QApplication and a run shares one. The class of bug being
-    # held here is a widget that is not a main window at all standing on
-    # its own, so the type is what is excluded rather than the instance.
     loose = [f"{type(w).__name__}({w.objectName() or '-'})"
              for w in qapp.allWidgets()
              if isinstance(w, QWidget) and w.parentWidget() is None
-             and not isinstance(w, type(window))]
+             and id(w) not in known and w is not win]
+    win.close()
     assert loose == [], (
-        "every one of these is a window of its own the moment anything "
-        f"shows it: {loose}")
+        "opening the app added these, and every one of them is a window "
+        f"of its own the moment anything shows it: {loose}")
+    assert before is not None                # keep the baseline alive
 
 
 def test_capture_controls_do_not_open_windows_of_their_own(window,
