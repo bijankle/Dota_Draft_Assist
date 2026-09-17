@@ -5077,7 +5077,23 @@ class MainWindow(QMainWindow):
         # heroes while the list held forty more.
         wanted = self._picked_roles()
         pool = [s for s in self.scored if self._has_roles(s.hero_id, wanted)]
-        ranked = self._by_counter_rank(pool)
+        # TWO MODES, AND THE BOARD DECIDES WHICH, at the user's request:
+        # "when there is no pick to run off, the sort should be purely
+        # based off off coutner score sorted best to worst... then as
+        # soon as 1 pick is made, the numebrs shoudl show i nthe botto
+        # mright for synergy / counter and sort by highest synergy /
+        # coutner to lowest (as it was before)".
+        #
+        # WITH NOTHING DRAFTED there is no fit to rank by — every score
+        # is zero — so the strip answers the only question that can be
+        # asked of a hero on its own: how hard the field finds it to
+        # counter. No figure goes on the tiles, because "+0.0" down the
+        # row is a number that explains neither the hero nor the order.
+        # ONE PICK CHANGES IT. From there the fit is real and it is what
+        # this app is for, so the strip goes back to ranking by it and
+        # the figure comes back in the corner with it.
+        drafted = bool(draft.allies or draft.enemies)
+        ranked = pool if drafted else self._by_counter_rank(pool)
         rows = [
             (s.hero_id, s.name, s.score,
              f"{s.name}\nCounter Score = {s.vs_total * 100:+.1f}"
@@ -5092,7 +5108,7 @@ class MainWindow(QMainWindow):
             + ", ".join(f"{role} {least}" for role, least in wanted.items())
             + " — turn one down to widen it."
             if wanted and not rows else ""),
-            blanks=self._how_many("suggested_picks"))
+            blanks=self._how_many("suggested_picks"), show_fit=drafted)
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget
         # that no longer exists.

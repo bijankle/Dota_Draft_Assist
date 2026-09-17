@@ -160,12 +160,20 @@ def expected(win, role, least):
     IT ASKS THE APP FOR THE ORDER RATHER THAN RESTATING IT. These three
     tests are about the FILTER — that it runs over the whole pool, before
     the cut, and refills — and they used to spell the ranking out as
-    "fit order" alongside it. The strip is ranked by counter difficulty
-    now, and a test that hard-codes the sort fails for a change to the
-    sort while saying nothing about the filter it exists to guard.
+    "fit order" alongside it. A test that hard-codes the sort fails for a
+    change to the sort while saying nothing about the filter it guards.
+
+    AND THE SORT DEPENDS ON THE BOARD. With nothing drafted the strip
+    ranks by how hard a hero is to counter; from the first pick it ranks
+    by draft fit, which is the order `score_all` already returns. These
+    fixtures have a drafted board, so this mirrors that rather than
+    assuming either one.
     """
     pool = [s for s in win.scored
             if roles_mod.levels_for(s.hero_id).get(role, 0) >= least]
+    draft = win._current_draft()
+    if draft.allies or draft.enemies:
+        return [s.hero_id for s in pool]
     return [s.hero_id for s in win._by_counter_rank(pool)]
 
 

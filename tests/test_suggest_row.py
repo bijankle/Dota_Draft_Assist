@@ -82,19 +82,19 @@ def test_a_tile_draws_with_and_without_a_portrait(art, qapp):
     assert not SuggestTile(999, "Nobody", -0.05).grab().isNull()
 
 
-def test_a_tile_prints_no_figure_at_rest_and_the_relation_when_clicked(
-        art, qapp):
-    """THE STANDING FIT FIGURE IS GONE, which reverses what this asserted.
+def test_the_standing_figure_follows_whether_the_board_has_a_pick(art, qapp):
+    """TWO MODES, at the user's request, and the tile is told which.
 
-    The strip is ranked by how hard the field finds each hero to
-    counter, and that has nothing to do with this draft — so the fit
-    numbers ran DOWN THE ROW OUT OF ORDER, a +2.0 above a +8.0, which
-    reads as a broken sort rather than as two different questions. The
-    rank is the answer on this strip and the shields carry it.
+    "when there is no pick to run off, the sort should be purely based
+    off off coutner score sorted best to worst... then as soon as 1 pick
+    is made, the numebrs shoudl show i nthe botto mright for synergy /
+    counter and sort by highest synergy / coutner to lowest".
 
-    The RELATION figure is a different number and stays: it appears only
-    while a hero is clicked, it IS about the draft, and showing it is
-    the whole of what clicking a suggestion is for.
+    With nothing drafted every fit is zero and the strip ranks by how
+    hard a hero is to counter instead, so a badge there would print
+    "+0.0" down the row under an order it does not explain. From the
+    first pick the fit is real, the strip ranks by it again, and the
+    figure belongs in the corner again.
     """
     import draft_assist.ui.suggest_row as strip
 
@@ -113,17 +113,25 @@ def test_a_tile_prints_no_figure_at_rest_and_the_relation_when_clicked(
             strip.tilekit.paint_badge = real_badge
         return seen
 
-    at_rest = SuggestTile(1, "Anti-Mage", 0.0542)
-    assert badges_of(at_rest) == [], "the tile still prints a standing figure"
+    quiet = SuggestTile(1, "Anti-Mage", 0.0542, show_fit=False)
+    assert badges_of(quiet) == [], "an empty board should print no figure"
 
-    # SET BEFORE THE SPY IS INSTALLED: `show_delta` repaints, and a
-    # repaint that lands while the painter is swapped out crashes Qt
-    # rather than failing.
-    clicked = SuggestTile(1, "Anti-Mage", 0.0542)
-    clicked.show_delta(0.054)
+    loud = SuggestTile(1, "Anti-Mage", 0.0542, show_fit=True)
+    assert ("+5.4", theme.GOOD) in badges_of(loud), (
+        "a drafted board should print the fit in the corner")
+
+    # AND THE RELATION OUTRANKS BOTH. It only shows while a hero is
+    # clicked, it IS about this draft, and it is the whole of what
+    # clicking a suggestion is for — so it replaces the standing figure
+    # rather than printing beside it.
+    # SET BEFORE THE SPY: `show_delta` repaints, and a repaint landing
+    # while the painter is swapped out crashes Qt rather than failing.
+    clicked = SuggestTile(1, "Anti-Mage", 0.0542, show_fit=True)
+    clicked.show_delta(0.061)
     qapp.processEvents()
-    assert any(text == "+5.4" for text, _c in badges_of(clicked)), (
-        "clicking a hero no longer puts its relation on the tile")
+    seen = badges_of(clicked)
+    assert len(seen) == 1, f"two figures on one tile: {seen}"
+    assert seen[0][0] == "+6.1"
 
 
 def test_a_tile_never_draws_the_hero_name_over_its_art(art, qapp):

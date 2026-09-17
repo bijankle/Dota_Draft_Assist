@@ -68,11 +68,19 @@ class SuggestTile(QWidget):
 
     def __init__(self, hero_id: int, name: str, fit_value: float,
                  tooltip: str = "", parent=None,
-                 size: tuple[int, int] | None = None):
+                 size: tuple[int, int] | None = None,
+                 show_fit: bool = True):
         super().__init__(parent)
         self.hero_id = hero_id
         self.hero_name = name
         self.fit = float(fit_value)
+        # WHETHER THE STANDING FIGURE MEANS ANYTHING ON THIS STRIP.
+        # With nothing drafted every fit is zero and the strip is ranked
+        # by how hard a hero is to counter instead, so a badge there
+        # would print "+0.0" down the row under an order it does not
+        # explain. The moment a pick lands the fit is real, the strip
+        # goes back to ranking by it, and the number comes back with it.
+        self._show_fit = bool(show_fit)
         self._delta: str = ""
         self._delta_colour: str = theme.GOOD
         self._boxed = False
@@ -246,6 +254,11 @@ class SuggestTile(QWidget):
             tilekit.paint_badge(painter, box, self._delta,
                                 self._delta_colour, self.font(),
                                 boxed=self._boxed)
+        elif self._show_fit:
+            tilekit.paint_badge(painter, box,
+                                f"{self.fit * 100:+.1f}",
+                                theme.GOOD if self.fit >= 0 else theme.BAD,
+                                self.font())
         # UNDER the ring, not over it: the ring is the window's frame and
         # runs round the tile's edge, so a mark drawn afterwards would sit
         # on top of the one line that says what the whole board is being
@@ -341,7 +354,8 @@ class SuggestRow(QWidget):
         return self._tile_size[0]
 
     def show_heroes(self, rows: list[tuple[int, str, float, str]],
-                    empty: str = "", blanks: int | None = None) -> None:
+                    empty: str = "", blanks: int | None = None,
+                    show_fit: bool = True) -> None:
         """`rows` is (hero id, name, fit, tooltip), already in order.
 
         `blanks` is HOW MANY PLACEHOLDERS the empty state draws, and the
@@ -381,7 +395,7 @@ class SuggestRow(QWidget):
         wanted = PLACEHOLDERS if blanks is None else max(1, int(blanks))
         for hero_id, name, fit_value, tip in rows:
             tile = SuggestTile(hero_id, name, fit_value, tip, self,
-                               self._tile_size)
+                               self._tile_size, show_fit=show_fit)
             tile.clicked_hero.connect(self.clicked_hero)
             self.row.insertWidget(len(self._tiles), tile)
             self._tiles.append(tile)
