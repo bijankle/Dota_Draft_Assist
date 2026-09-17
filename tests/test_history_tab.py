@@ -926,3 +926,46 @@ def test_the_wheel_never_changes_a_control_it_rolls_over(qapp):
         assert now == was, f"{type(control).__name__} changed under the wheel"
         assert not event.isAccepted(), "the page never gets the wheel"
     tab.close()
+
+
+def test_rendering_a_report_realises_nothing_without_a_parent(qapp):
+    """The boot flicker was SEVEN of these, and it was reported four times.
+
+    `_metric_plot` and `_counter_plot` built a `ScatterPlot()` with no
+    parent and `refill()` then called `setVisible` on it — and
+    `setVisible(True)` on a parentless QWidget shows a TOP-LEVEL WINDOW.
+    This app's oldest trap, and the one `force_check` is recorded under.
+
+    IT IS CHECKED HERE RATHER THAN IN `test_stray_windows.py` BECAUSE OF
+    WHERE IT HID. The probe there builds a MainWindow with a demo
+    provider and no cached run, so the History tab draws no blocks, so
+    no plot is ever built — the earlier measurement said the Qt side was
+    clean and was only ever looking at a path this fault is not on. A
+    guard for it has to render a report.
+    """
+    from PyQt6.QtWidgets import QWidget
+
+    from draft_assist.ui import strays
+
+    strays._LOOSE.clear()
+    strays.stop_watching_widgets()
+    strays.watch_widgets(qapp)
+    tab = HistoryTab()
+    try:
+        tab.render(a_report())
+        qapp.processEvents()
+        loose = [line for line in strays._LOOSE
+                 if "HistoryTab" not in line]
+    finally:
+        strays.stop_watching_widgets()
+        strays._LOOSE.clear()
+
+    # A widget Qt gave a HANDLE to is one Windows can put on screen; a
+    # menu is a popup Qt never shows by itself. Those are the two the
+    # report separates, and only the first is a window.
+    realised = [line for line in loose if "HAS a native window" in line]
+    assert not realised, (
+        "a parentless widget was realised while a report rendered: "
+        + "; ".join(realised))
+    assert not [line for line in loose if "ScatterPlot" in line], loose
+    assert not [line for line in loose if "BucketTable" in line], loose

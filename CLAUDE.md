@@ -3482,14 +3482,44 @@ credentials, and put the account at risk. Do not go there.
   it with `**` and needs no branch of its own. One spelling, because a
   fourth subprocess added tomorrow is the one somebody forgets.
 
-- **THE COUNT BOXES WERE POLISHED WITH NO PARENT, AND THAT IS NOT YET
-  ESTABLISHED AS THE FLICKER** (`chrome.CountBox`, `rolebar.RoleFilter`,
-  `app._count_box` / `_badge_box`, `ui/strays.py`). This heading said
-  "THE EIGHT WINDOWS THAT FLASHED AT BOOT WERE COUNT BOXES" and had to
-  be walked back; what follows is a real fault really fixed, and the
-  claim that it is THE fault is the fourth answer to this report rather
-  than the confirmed one. **WHAT IS MEASURED IS BELOW, UNDER "WHAT IS
-  STILL OPEN".** Reported as "small
+- **THE BOOT FLICKER WAS `ScatterPlot`, SHOWN BEFORE IT HAD A PARENT**
+  (`history_tab._metric_plot` / `_counter_plot`, `ui/scatter.py`,
+  `chrome.CountBox`, `rolebar.RoleFilter`, `ui/strays.py`). Settled at
+  the FIFTH attempt, by reproduction and elimination rather than by
+  reasoning, and the four answers before it are kept below because
+  every one of them fitted the words.
+  **THE MECHANISM IS THIS FILE'S OLDEST TRAP, UNCHANGED.**
+  `_metric_plot` built `ScatterPlot()` with NO PARENT and the `refill`
+  closure directly under it called `plot.setVisible(len(rows) >= 3)` —
+  before the caller had added it to any layout. `setVisible(True)` on a
+  parentless QWidget does not show a hidden widget, it shows a
+  TOP-LEVEL WINDOW. That is `force_check` exactly, the bug recorded
+  under "A PARENTLESS QWidget IS A WINDOW" that opened a second "Dota
+  Draft Assist" holding one checkbox, and it is the flicker: one plot
+  per contribution block, **seven of them**, each flashing up and gone
+  as the History tab drew a cached run.
+  **THE REPORT THAT SETTLED IT NAMED THEM OUTRIGHT**, which is what the
+  diagnostic had just been rebuilt to do: `7 x polished widget
+  ScatterPlot (HAS a native window)` and `7 x shown widget ScatterPlot
+  (HAS a native window) during 'building the window'`, beside five
+  windows the Win32 sampler caught at 40ms. **The handle column is what
+  made it readable**: seventeen parentless `BucketTable` polishes sit in
+  the same list answering "no native window" and cannot be windows,
+  where a list of types alone would have made them equally suspect.
+  **AND IT WAS INVISIBLE TO THE EARLIER PROBE FOR A REASON WORTH
+  KEEPING.** That probe built a `MainWindow` with a demo provider and no
+  cached history run, so the History tab drew no blocks, so no plot was
+  ever constructed. "The Qt side is clean" was true of every path it
+  looked at and the fault was not on one of them — which is why the
+  guard for it (`test_history_tab.
+  test_rendering_a_report_realises_nothing_without_a_parent`) RENDERS A
+  REPORT, and why it was checked against the unfixed code before being
+  believed.
+  `BucketTable` was parented in the same change. It had not realised
+  anything, and polishing a parentless widget is the half-step before
+  showing one.
+  **WHAT FOLLOWS IS THE FOUR WRONG ANSWERS AND THE FIXES THEY LEFT
+  BEHIND**, each of which was a real defect and stays fixed. Reported as "small
   blank windowwws flickering on / off" with "the app logo top left", and
   then, which is what actually named it: **"the blue is my desktiop
   background"** and **"treansulscent when transitioning into
@@ -3536,9 +3566,9 @@ credentials, and put the account at risk. Do not go there.
   beside the launcher, pointing at `pythonw.exe`, which has no console at
   all. Named that rather than the app's own name because Explorer hides a
   `.lnk`'s extension; gitignored (`*.lnk`), rewritten every start.
-  **WHAT IS STILL OPEN, AND WHY THE FOURTH REPORT DID NOT SETTLE IT.**
-  The report after the fix carried **SIX** windows, still `during
-  'building the window'`, against eight before it.
+  **WHY THE FOURTH REPORT DID NOT SETTLE IT, AND WHAT THAT COST.**
+  The report after the count-box fix carried **SIX** windows, still
+  `during 'building the window'`, against eight before it.
   **THAT IS NOT A MEASURED REDUCTION AND MUST NOT BE READ AS ONE.** It
   came from a DIFFERENT install — a clone in a home directory, where the
   first three were an unzipped `Dota_Draft_Assist-main` under Downloads,
@@ -3547,16 +3577,16 @@ credentials, and put the account at risk. Do not go there.
   before and an after, and nothing in that paste said which BUILD it
   was — which is the whole reason the paste now leads with
   `version.described()`.
-  **AND THE QT SIDE SAYS THE MECHANISM IS NOT WHAT IT LOOKED LIKE.**
-  Measured here after the fix, ten parentless QMenus are polished while
-  the window is built — Qt's own, not ours: every `QMenu(` in
-  `draft_assist/ui/` passes a parent — and every one of them answers
-  **`WA_WState_Created` False**. No native handle means no window, and
-  `EnumWindows` cannot see it however parentless it is. Only
-  `MainWindow` answers True. So on this platform a parentless POLISH
-  does not by itself make a window, and the step from "polished with no
-  parent" to "on screen in Windows" is the part that is assumed rather
-  than shown.
+  **AND THE QT SIDE SAID THE MECHANISM WAS NOT WHAT IT LOOKED LIKE,
+  WHICH WAS RIGHT AND WAS THE STEP THAT FOUND IT.** Measured after that
+  fix, ten parentless QMenus are polished while the window is built —
+  Qt's own, not ours: every `QMenu(` in `draft_assist/ui/` passes a
+  parent — and every one answers **`WA_WState_Created` False**. No
+  native handle means no window, and `EnumWindows` cannot see it
+  however parentless it is. So a parentless POLISH does not by itself
+  make a window, the count boxes were never going to be the flicker,
+  and what was still missing was a widget that is **SHOWN**. Recording
+  the handle is what made the next report point straight at one.
   **SO THE DIAGNOSTIC GREW THE HALF THAT NAMES THINGS**
   (`strays.watch_widgets`, `loose_report`, `_has_native_window`). The
   sampler counts WINDOWS and can only ever say "Qt made it"; this

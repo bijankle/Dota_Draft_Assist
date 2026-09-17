@@ -1359,7 +1359,10 @@ class HistoryTab(QWidget):
         and it lives in the app's own settings file rather than beside
         the remembered accounts.
         """
-        table = BucketTable(headers)
+        # Parented at construction, the same rule the plots follow: a
+        # QTableWidget polishes itself as it is filled, and polishing a
+        # parentless widget is the half-step before showing one.
+        table = BucketTable(headers, self)
         # SHARED where one is handed in: the item block draws a table per
         # hero and they are the same question asked several times, so one
         # control governs all of them rather than each carrying its own.
@@ -1542,7 +1545,15 @@ class HistoryTab(QWidget):
         it renders - a heading click, a step of the count box, or the
         first fill - so there is one path rather than three.
         """
-        plot = ScatterPlot()
+        # THE PARENT IS GIVEN AT CONSTRUCTION, and `refill()` below is
+        # why this one is not merely untidy. It calls `setVisible` on
+        # the plot before the caller has added it to a layout — and
+        # `setVisible(True)` on a PARENTLESS QWidget shows a TOP-LEVEL
+        # WINDOW. That is this file's oldest trap (`force_check`, which
+        # opened a second "Dota Draft Assist" holding one checkbox), and
+        # it is the boot flicker: seven of these are built while the
+        # History tab draws a cached run. See `ui/strays.py`.
+        plot = ScatterPlot(self)
         short = analyse.METRICS.get(block.id, {}).get("short") or block.unit
 
         def refill(rows=None):
@@ -1562,7 +1573,8 @@ class HistoryTab(QWidget):
     def _counter_plot(self, table) -> QWidget:
         """Difficulty to counter across, your win rate up, following the
         table's own cut exactly as the Impact charts do."""
-        plot = ScatterPlot()
+        # Parented at construction — `refill()` shows it. See above.
+        plot = ScatterPlot(self)
 
         def refill(rows=None):
             rows = table.drawn_rows if rows is None else rows
