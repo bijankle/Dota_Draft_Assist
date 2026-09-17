@@ -105,10 +105,11 @@ def test_they_are_laid_out_two_rows_by_four_columns(win):
     # four columns it asked for 644px, which made the Suggested picks
     # card 1030px wide at its narrowest, over the window's own 940 floor,
     # so the Draft page stopped shrinking and the portraits with it.
-    # Plus ONE, because the cells start in column 1: column 0 is the
-    # slack that pushes the block flush RIGHT, so the last box lines up
-    # with the right edge of the portraits above it.
-    assert rolebar.RoleFilter.FIRST == 1
+    # COLUMN 0 IS THE FIRST CELL now: the leading slack column that
+    # pushed the block flush right is gone, since the slack goes between
+    # the cells — "spread it out to fit the margins on both left and
+    # right side, equal spacing".
+    assert rolebar.RoleFilter.FIRST == 0
     assert min(c for _r, c in cells) == rolebar.RoleFilter.FIRST
     assert max(c for _r, c in cells) == 10 + rolebar.RoleFilter.FIRST
     assert len(cells) == 16, "a label and a box for each of eight roles"
@@ -119,11 +120,10 @@ def test_it_goes_eight_across_when_the_row_is_its_own(win):
     left" — the space the two rank counts left when they moved up to the
     heading row.
 
-    THE CELLS FILL IT, NOT THE GAPS. Spreading four columns over the
-    whole width was asked for once and disliked on sight — "a hand's
-    width of nothing between Carry 0 and Nuker 0" — so what fills the
-    row is the other four cells coming up to join them. Eight is still a
-    divisor of eight, so the last column is never short.
+    Eight is still a divisor of eight, so the last column is never
+    short — and the CELLS are what fill the row where there is room for
+    all eight, with the gaps spreading whatever is left over (see
+    `test_the_cells_span_the_row_with_the_slack_shared_between_them`).
     """
     assert rolebar.RoleFilter.COLUMNS[0] == 8
     assert len(roles_mod.ROLES) % 8 == 0, "the last column would be short"
@@ -132,6 +132,66 @@ def test_it_goes_eight_across_when_the_row_is_its_own(win):
     assert max(r for r, _c in cells) == 0, "eight across is ONE row"
     assert max(c for _r, c in cells) == 22 + rolebar.RoleFilter.FIRST
     assert len(cells) == 16, "a label and a box for each of eight roles"
+
+
+def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
+                                                                   qapp):
+    """"dotn liek that this is all on the right.... spread it out to fit
+    the margins on both left and right side, equal spacing".
+
+    THIS REVERSES "SNUG, WITH THE SLACK ON THE LEFT", which put the
+    whole block flush right with an empty half beside it — the shape the
+    user was looking at when they asked for this. The objection that
+    rule carried (a hand's width of nothing between two controls) is
+    real and is the trade they have now chosen, having seen both.
+
+    BOTH EDGES AND EQUAL GAPS ARE ONE MECHANISM: the stretch is on the
+    SEPARATOR columns only, so with nothing stretching before the first
+    cell or after the last the block is pinned to both ends, and the
+    separators being equally weighted shares what is left between them.
+    Measured against the SUGGESTION STRIP above it, since "the margins"
+    are the portraits' own edges rather than a number.
+    """
+    from PyQt6.QtWidgets import QApplication
+
+    # SHOWN, because this is a test about GEOMETRY: the fixture does not
+    # show its window, and Qt does not lay out or deliver a resize to a
+    # hidden one — every edge would be measured off a layout that never
+    # ran. The same reason `ReflowGrid` re-fits on `showEvent`.
+    win.show()
+    for _ in range(4):
+        QApplication.processEvents()
+
+    filt = win.role_filter
+    names, boxes = list(filt._labels.values()), list(filt.boxes.values())
+
+    def left(widget):
+        return widget.mapTo(win, widget.rect().topLeft()).x()
+
+    def right(widget):
+        return widget.mapTo(win, widget.rect().topRight()).x()
+
+    for width in (1500, 1180, 960):
+        win.resize(width, 950)
+        win.refresh()
+        for _ in range(8):
+            QApplication.processEvents()
+        per = len(roles_mod.ROLES) // filt.columns
+        strip = win.suggest_row
+        first, last = names[0], boxes[(filt.columns - 1) * per]
+        assert left(first) == left(strip), (
+            f"at {width} the filter does not start where the portraits do")
+        assert right(last) == right(strip), (
+            f"at {width} the filter does not end where the portraits do")
+
+        # And the gaps between the cells on the top row are equal —
+        # within a pixel, since the leftover rarely divides exactly.
+        row = [(names[i * per], boxes[i * per]) for i in range(filt.columns)]
+        gaps = [left(row[i + 1][0]) - right(row[i][1])
+                for i in range(len(row) - 1)]
+        assert max(gaps) - min(gaps) <= 1, f"uneven at {width}: {gaps}"
+        # Never CLOSER than the minimum, whatever the width does.
+        assert min(gaps) >= rolebar.ReflowGrid.GAP, gaps
 
 
 def test_it_falls_back_to_four_before_the_window_reaches_its_floor(win):

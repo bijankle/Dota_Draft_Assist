@@ -579,10 +579,15 @@ class RoleFilter(ReflowGrid):
     # is where it was rather than a row taller.
     COLUMNS = (8, 4, 2, 1)
 
-    # The cells start in column 1, because column 0 is the slack: a grid
-    # cannot be told to push its contents right, so the spare width has
-    # to be a column of its own ahead of them.
-    FIRST = 1
+    # THE CELLS START IN COLUMN 0, because there is no leading slack
+    # column any more. It existed to push the block flush RIGHT — a grid
+    # cannot be told to do that, so the spare width had to be a column
+    # of its own ahead of the cells — and the slack now goes BETWEEN the
+    # cells instead, at the user's request: "spread it out to fit the
+    # margins on both left and right side, equal spacing". Left behind
+    # it would be an empty column that collapses to nothing and a
+    # comment describing a layout this no longer has.
+    FIRST = 0
 
     def __init__(self, wanted: dict, parent=None):
         super().__init__(parent)
@@ -661,29 +666,34 @@ class RoleFilter(ReflowGrid):
             grid.addWidget(self.boxes[role], line, column + 1)
             self._labels[role].show()
             self.boxes[role].show()
-        # SNUG, WITH THE SLACK ON THE LEFT. Spreading the cells across
-        # whatever width this is given put a hand's width of nothing
-        # between "Carry 0" and "Nuker 0", which reads as four unrelated
-        # controls rather than one block of eight — so the slack is all
-        # in one place, and that place is now the LEFT, at the user's
-        # request: "align this push / initiator box to be aligned to the
-        # right edge of these portraits".
+        # SPREAD, WITH THE SLACK SHARED EQUALLY BETWEEN THE CELLS, at
+        # the user's request — "spread it out to fit the margins on both
+        # left and right side, equal spacing".
         #
-        # The block sits directly under the suggestion strip, which is
-        # sized to fill its card exactly (`_suggestion_box`, eleven
-        # across, "aligned edge with dire right portrait"), so the last
-        # box's own right edge is the one thing on this row that can line
-        # up with it. With the slack on the right it stopped an inch
-        # short of it and nothing on the card agreed with anything else.
+        # THIS REVERSES "SNUG, WITH THE SLACK ON THE LEFT", and the
+        # objection that rule carried is the trade the user has now
+        # chosen having seen both: spreading does put a hand's width of
+        # nothing between "Carry 0" and "Nuker 0". What it buys is the
+        # thing the huddle could not — the block spanning the row rather
+        # than sitting in one end of it with an empty half beside it.
         #
-        # THE GAP GOES BETWEEN CELLS ONLY (`columns - 1`), or the block
-        # would be held that 18px off the very edge it is being aligned
-        # to — which is the same fault wearing a smaller number.
+        # BOTH EDGES COME FOR FREE from the stretch being on the
+        # SEPARATORS ONLY: with no stretching column before the first
+        # cell or after the last, the block is pinned to both ends of
+        # the row — the same span the suggestion strip above it fills
+        # exactly (`_suggestion_box`, eleven across, "aligned edge with
+        # dire right portrait"). So the first name starts where the
+        # portraits start and the last box ends where they end, which is
+        # the "margins on both left and right side" that was asked for.
+        #
+        # THE GAP IS STILL A MINIMUM (`columns - 1` of them, between the
+        # cells and nowhere else), so a narrow row can only put the
+        # cells 18px apart and never closer — the stretch adds to that
+        # rather than replacing it.
         for column in range(columns - 1):
             spacer = self.FIRST + column * 3 + 2
             grid.setColumnMinimumWidth(spacer, self.GAP)
-            grid.setColumnStretch(spacer, 0)
-        grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(spacer, 1)
 
     def values(self) -> dict:
         """Only the roles actually asked for — nought is not STORED.

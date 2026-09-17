@@ -3621,21 +3621,36 @@ credentials, and put the account at risk. Do not go there.
   removed here; 15px tall between two 48px buttons read as a tick mark
   rather than as a division.
 
-- **THE ROLE FILTER IS FLUSH RIGHT, AND THE SLACK MOVED TO THE LEFT**
-  (`rolebar.RoleFilter.FIRST`, `_relayout`), at the user's request:
-  "align this push / initiator box to be aligned to the right edge of
-  these portraits". The block sits directly under the suggestion strip,
-  which is sized to fill its card exactly (eleven across, "aligned edge
-  with dire right portrait"), so the last box's own right edge is the one
-  thing on that row that can line up with anything — and with the slack
-  on the right it stopped an inch short of it.
-  **STILL SNUG, which is why the slack MOVES rather than SPREADS.**
-  Spreading the eight cells across the width put a hand's width of
-  nothing between "Carry 0" and "Nuker 0", which reads as four unrelated
-  controls rather than one block — the argument that put the slack at one
-  end in the first place. It is still at one end; the end is now the
-  left, which is a column of its own ahead of the cells, because a
-  QGridLayout cannot be told to push its contents right.
+- **THE ROLE FILTER SPANS THE ROW, WITH THE SLACK SHARED BETWEEN THE
+  CELLS** (`rolebar.RoleFilter.FIRST`, `_relayout`), at the user's
+  request: "dotn liek that this is all on the right.... spread it out to
+  fit the margins on both left and right side, equal spacing".
+  **THIS REVERSES "FLUSH RIGHT, WITH THE SLACK ON THE LEFT"**, which was
+  itself asked for ("align this push / initiator box to be aligned to
+  the right edge of these portraits") and which put the whole block in
+  one end of the row with an empty half beside it — the shape the user
+  was looking at when they asked for this.
+  **AND IT REVERSES "STILL SNUG, which is why the slack MOVES rather
+  than SPREADS."** That rule's objection is real and is now the trade
+  the user has chosen having seen both: spreading DOES put a hand's
+  width of nothing between "Carry 0" and "Nuker 0". What it buys is the
+  block spanning the row rather than huddling in one end of it.
+  **BOTH EDGES AND THE EQUAL GAPS ARE ONE MECHANISM.** The stretch is on
+  the SEPARATOR columns only, so with nothing stretching before the
+  first cell or after the last the block is pinned to both ends — the
+  same span the suggestion strip above it fills exactly (eleven across,
+  "aligned edge with dire right portrait") — and the separators being
+  equally weighted shares what is left between them. There is no leading
+  slack column any more, so `FIRST` is 0: it existed only because a
+  QGridLayout cannot be told to push its contents right, and left behind
+  it would be an empty column and a comment describing a layout this no
+  longer has.
+  The GAP stays as the MINIMUM on those columns, so a narrow row can
+  only put the cells 18px apart and never closer; the stretch adds to
+  that rather than replacing it. `tests/test_role_filter.py` measures
+  both edges against the STRIP rather than against a number, since "the
+  margins" are the portraits' own edges — and it SHOWS the window first,
+  because Qt neither lays out nor delivers a resize to a hidden one.
   **AND IT GOES EIGHT ACROSS NOW THAT THE ROW IS ITS OWN**
   (`RoleFilter.COLUMNS` = (8, 4, 2, 1)), which is the other half of
   moving the two rank counts up to the heading: "spread the carr /
@@ -3643,13 +3658,13 @@ credentials, and put the account at risk. Do not go there.
   with the legend and took what was left of it; with the row to itself
   the base (4, 2, 1) left most of a card empty beside eight cells still
   huddled at one end, which is not what filling the space asks for.
-  **THE CELLS FILL IT AND THE GAPS DO NOT**, so the rule above survives
-  the request that would otherwise have overturned it: what comes up to
-  fill the row is the OTHER FOUR CELLS, not four bigger gaps. One row of
-  eight is 1230px against a card that is ~1432 at an ordinary window
-  size, still a divisor of eight so the last column is never short, and
-  `columns_for` is back to four at 606px — long before the window
-  reaches its own floor, which is the whole reason this class exists.
+  **THE CELLS COME UP FIRST AND THE GAPS TAKE THE REST**: where there is
+  room for all eight they fill the row, and whatever is left over is
+  shared between the separators by the spread above. One row of eight is
+  1230px against a card that is ~1432 at an ordinary window size, still
+  a divisor of eight so the last column is never short, and `columns_for`
+  is back to four at 606px — long before the window reaches its own
+  floor, which is the whole reason this class exists.
   It also paid for the row the legend took while that legend was two
   rows tall. With the legend on ONE line the heading row is back to a
   single control's height, so between them the two changes leave this
