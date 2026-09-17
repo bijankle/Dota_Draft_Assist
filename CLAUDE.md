@@ -3537,6 +3537,37 @@ credentials, and put the account at risk. Do not go there.
   since that one number is what showed the first version was blind.
   `tests/test_stray_windows.py` parses `_main` and requires
   `strays.start()` to appear before `QApplication`.
+  **AND THE SECOND REPORT FOUND THEM.** Sampling from before the
+  QApplication, a real boot shows **EIGHT short-lived
+  `Qt6112QWindowIcon` top-level windows between 0.86s and 1.57s**, one
+  per sample, every one of them gone by the next look — while the app's
+  own window does not appear until 3.94s. Confirmed against the eye in
+  the same breath: "looks liek a bunch of small windowws opening and
+  closign over about a second, approx 8 of them seems right". So the
+  thing being reported is real, it is Qt's own window class, and it
+  happens BEFORE the main window exists — which is why every check
+  written against `MainWindow` came back clean and said nothing.
+  **WHAT IS STILL NOT KNOWN IS WHICH STEP MAKES THEM**, and that is the
+  one thing left to measure rather than guess. They came back as `0x0 at
+  (0,0)`, which was the WATCHER's fault and not a reading: it collected
+  handles and read their geometry after the enumeration had finished,
+  and a window that dies in between leaves `GetWindowRect` failing and
+  the RECT zeroed. Each window is measured INSIDE the callback now,
+  while it is still there, and `Seen.biggest` keeps the largest reading
+  rather than the last — a window caught mid-teardown measures nothing,
+  and nought would overwrite a real reading of the same window a moment
+  earlier.
+  **AND EVERY WINDOW NOW SAYS WHAT THE APP WAS DOING** (`strays.stage`,
+  called through `_main`). A class name says who CREATED a window and
+  nothing about why: eight nameless Qt windows in a row is a mystery,
+  and eight during "rendering the app icon" is a lead. The steps are
+  named from starting Qt through the fonts, the stylesheet, the icon,
+  each shortcut, the provider, building and showing the window, and
+  first-run setup. The strongest candidate on the timings is the ICON:
+  the report says "1024px image, rebuilt at every size", `SIZES` has
+  nine entries, and eight windows were caught at one per sample — but
+  that is arithmetic that FITS rather than a measurement, which is the
+  exact kind of reasoning that has already been wrong twice here.
   **DO NOT NAME A THIRD CAUSE WITHOUT THAT REPORT.** The two leads it
   has to separate are a native handle being DESTROYED AND RECREATED
   (which `ui/ontop.py` exists to avoid and which `setWindowFlags` does

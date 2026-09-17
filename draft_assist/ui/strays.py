@@ -71,6 +71,20 @@ import time
 PERIOD = 0.04
 WATCH_FOR = 45.0
 
+# WHAT THE APP WAS DOING when a window appeared. A class name says who
+# CREATED a window and nothing about why; eight nameless Qt windows in a
+# row is a mystery, and eight during "rendering the app icon" is a lead.
+# Written from the GUI thread and read from the sampler, which is safe
+# because it is one assignment of one immutable string.
+_stage = "starting"
+
+
+def stage(what: str) -> None:
+    """Name the step the app is on, for anything that appears during it."""
+    global _stage
+    _stage = what
+
+
 # Win32 bits worth naming in the report. CAPTION is what draws the app's
 # icon in a corner; LAYERED is what lets the desktop show through.
 _WS_CAPTION = 0x00C00000
@@ -94,11 +108,15 @@ class Seen:
         self.rect = (0, 0, 0, 0)
         self.style = 0
         self.exstyle = 0
+        self.stage = _stage
+        # The BIGGEST it was ever seen, not the last: a window caught
+        # while it is being torn down measures nothing, and nought would
+        # then overwrite a real reading.
+        self.biggest = (0, 0)
 
     @property
     def size(self) -> tuple[int, int]:
-        left, top, right, bottom = self.rect
-        return right - left, bottom - top
+        return self.biggest
 
     def line(self, start: float, ours: int) -> str:
         width, height = self.size
@@ -114,7 +132,8 @@ class Seen:
         return (f"{self.cls!r} {self.title!r} {width}x{height} "
                 f"at ({self.rect[0]},{self.rect[1]}) "
                 f"{self.first - start:.2f}s..{self.last - start:.2f}s "
-                f"({self.samples} sample{'' if self.samples == 1 else 's'})"
+                f"({self.samples} sample{'' if self.samples == 1 else 's'}) "
+                f"during {self.stage!r}"
                 + (" - " + ", ".join(marks) if marks else ""))
 
 
@@ -134,7 +153,16 @@ class Watcher:
 
     # -- the one Windows call ------------------------------------------
     def _visible_windows(self) -> list[int]:
-        """Every VISIBLE top-level window owned by this process."""
+        """Every VISIBLE top-level window owned by this process.
+
+        **EACH ONE IS MEASURED INSIDE THE CALLBACK, NOT AFTERWARDS.**
+        The first version collected the handles and read their geometry
+        once the enumeration had finished — and a window that dies in
+        between leaves `GetWindowRect` failing and the RECT zeroed, which
+        is exactly how eight real windows came back as `0x0 at (0,0)`.
+        The whole subject here is windows that do not last, so anything
+        measured a moment later is measured too late.
+        """
         import ctypes
         from ctypes import wintypes
 
@@ -154,11 +182,28 @@ class Watcher:
             owner = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
             if owner.value == mine and user32.IsWindowVisible(hwnd):
-                found.append(int(hwnd))
+                handle = int(hwnd)
+                found.append(handle)
+                try:
+                    self._describe(self._entry(handle))
+                except Exception:           # noqa: BLE001 - diagnostic
+                    pass
             return True
 
         user32.EnumWindows(proto(each), None)
         return found
+
+    def _entry(self, hwnd: int) -> Seen:
+        """The record for `hwnd`, made now if this is the first sight."""
+        now = time.monotonic()
+        with self._lock:
+            entry = self.seen.get(hwnd)
+            if entry is None:
+                entry = self.seen[hwnd] = Seen(hwnd, now)
+            else:
+                entry.last = now
+                entry.samples += 1
+        return entry
 
     def _describe(self, entry: Seen) -> None:
         import ctypes
@@ -181,6 +226,10 @@ class Watcher:
         entry.style = int(longptr(ctypes.c_void_p(entry.hwnd), _GWL_STYLE))
         entry.exstyle = int(longptr(ctypes.c_void_p(entry.hwnd),
                                     _GWL_EXSTYLE))
+        width = entry.rect[2] - entry.rect[0]
+        height = entry.rect[3] - entry.rect[1]
+        if width * height > entry.biggest[0] * entry.biggest[1]:
+            entry.biggest = (width, height)
 
     # -- the loop ------------------------------------------------------
     def sample(self) -> None:
@@ -193,21 +242,10 @@ class Watcher:
         except Exception as exc:            # noqa: BLE001 - see above
             self.note = f"{type(exc).__name__}: {exc}"
             return
-        now = time.monotonic()
+        # The windows were recorded and measured inside the
+        # enumeration, while they were still alive.
         self.samples += 1
-        self.note = f"{self.samples} samples"
-        for hwnd in windows:
-            with self._lock:
-                entry = self.seen.get(hwnd)
-                if entry is None:
-                    entry = self.seen[hwnd] = Seen(hwnd, now)
-                else:
-                    entry.last = now
-                    entry.samples += 1
-            try:
-                self._describe(entry)
-            except Exception:               # noqa: BLE001 - see above
-                pass
+        self.note = f"{self.samples} samples, {len(windows)} up at the end"
 
     def start(self) -> None:
         """Sample on a daemon thread from now until `WATCH_FOR`.

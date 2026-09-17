@@ -5928,6 +5928,7 @@ def _main() -> None:
     # nothing at all off Windows. See `ui/strays.py`.
     strays.start()
 
+    strays.stage("starting Qt")
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     # NO MENU IN THIS APP CARRIES AN ICON, AND THE ONES WE DID NOT BUILD
@@ -5949,9 +5950,12 @@ def _main() -> None:
     # BEFORE the stylesheet: a family registered afterwards is not picked
     # up by rules Qt has already resolved, so the app would open in the
     # fallback face and only look right after a restyle.
+    strays.stage("loading the bundled fonts")
     from . import fonts as ui_fonts
     ui_fonts.load_bundled()
+    strays.stage("applying the stylesheet")
     app.setStyleSheet(theme.STYLESHEET)
+    strays.stage("rendering the app icon")
     app.setWindowIcon(appicon.icon())
     # THE SHORTCUT THE AppUserModelID RESOLVES TO. Declaring an ID stops
     # Windows treating this as pythonw.exe and makes it its own
@@ -5964,6 +5968,7 @@ def _main() -> None:
     # when there is no QGuiApplication yet. It was called there once and
     # the app stopped opening at all, with no traceback. Still before the
     # window is built, which is what the taskbar needs.
+    strays.stage("writing the Start-menu shortcut")
     appicon.ensure_start_menu_shortcut()
     # AND ONE BESIDE THE LAUNCHER, which is the small blank window that
     # flashes up at every boot: cmd.exe gives a batch file a console
@@ -5971,10 +5976,14 @@ def _main() -> None:
     # can stop it appearing, and on the installed path it echoes nothing
     # at all. A shortcut straight to pythonw has no console to show. See
     # `appicon.folder_link`.
+    strays.stage("writing the folder shortcut")
     appicon.ensure_folder_shortcut()
+    strays.stage("starting the draft source")
     manual = ManualDraft()
     provider = make_provider(args, ds, manual)
+    strays.stage("building the window")
     win = MainWindow(ds, provider, rules, meta, manual)
+    strays.stage("showing the window")
     win.show()
     # start() never raises for live capture: an unbound source is a state
     # the user fixes from the Capture menu, not a crash.
@@ -5983,9 +5992,11 @@ def _main() -> None:
     win._refresh_sources()
     # After show(), because it is a modal dialog and one raised over a
     # window that has not appeared yet is a dialog with nothing behind it.
+    strays.stage("first-run setup")
     win.offer_setup()
     if getattr(provider, "error", ""):
         win.snapshot_label.setText(provider.error.splitlines()[0])
+    strays.stage("running")
     code = app.exec()
     provider.stop()
     single.release()

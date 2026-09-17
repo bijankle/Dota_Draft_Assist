@@ -66,7 +66,12 @@ def test_a_window_that_came_and_went_is_still_in_the_report(monkeypatch):
     windows = [[1, 2], [1]]
 
     def next_sample(self):
-        return windows.pop(0) if windows else [1]
+        # Mirrors the real callback: a window is RECORDED as it is
+        # enumerated, while it is still there to measure.
+        handles = windows.pop(0) if windows else [1]
+        for handle in handles:
+            self._entry(handle)
+        return handles
 
     monkeypatch.setattr(strays.Watcher, "_visible_windows", next_sample)
     monkeypatch.setattr(strays.Watcher, "_describe", lambda self, e: None)
@@ -85,6 +90,7 @@ def test_the_line_names_what_the_eye_reported():
     entry = strays.Seen(99, 0.0)
     entry.cls, entry.title = "Qt5152QWindowIcon", ""
     entry.rect = (10, 20, 210, 170)
+    entry.biggest = (200, 150)
     entry.style = strays._WS_CAPTION | strays._WS_VISIBLE
     entry.exstyle = strays._WS_EX_LAYERED
     line = entry.line(0.0, ours=1)
@@ -132,7 +138,7 @@ def test_the_report_says_when_sampling_actually_began(monkeypatch):
     wrong span: 199 samples, earliest at 1.91s, window already up."""
     monkeypatch.setattr(strays.sys, "platform", "win32")
     monkeypatch.setattr(strays.Watcher, "_visible_windows",
-                        lambda self: [7])
+                        lambda self: [self._entry(7) and 7])
     monkeypatch.setattr(strays.Watcher, "_describe", lambda self, e: None)
     watcher = strays.Watcher()
     watcher.sample()
@@ -147,7 +153,7 @@ def test_the_report_can_be_read_while_the_thread_is_writing(monkeypatch):
     watcher = strays.Watcher()
     seq = iter(range(1, 4000))
     monkeypatch.setattr(strays.Watcher, "_visible_windows",
-                        lambda self: [next(seq)])
+                        lambda self: [self._entry(next(seq)).hwnd])
     stop = threading.Event()
 
     def churn():
@@ -162,6 +168,73 @@ def test_the_report_can_be_read_while_the_thread_is_writing(monkeypatch):
     finally:
         stop.set()
         worker.join(timeout=5)
+
+
+def test_a_window_is_measured_while_it_is_still_alive(monkeypatch):
+    """Eight real windows came back as `0x0 at (0,0)` because the first
+    version collected handles and read their geometry AFTER the
+    enumeration finished — and a window that dies in between leaves the
+    RECT zeroed. The whole subject is windows that do not last."""
+    monkeypatch.setattr(strays.sys, "platform", "win32")
+    watcher = strays.Watcher()
+    measured = []
+
+    def describe(self, entry):
+        measured.append(entry.hwnd)
+        entry.rect = (5, 6, 105, 86)
+        entry.biggest = (100, 80)
+
+    monkeypatch.setattr(strays.Watcher, "_describe", describe)
+    monkeypatch.setattr(strays.Watcher, "_visible_windows",
+                        lambda self: [self._describe(self._entry(3)) or 3])
+    watcher.sample()
+    assert measured == [3]
+    assert watcher.seen[3].size == (100, 80)
+
+
+def test_the_biggest_reading_wins_over_the_last(monkeypatch):
+    """A window caught mid-teardown measures nothing, and nought would
+    overwrite a real reading of the same window a moment earlier."""
+    monkeypatch.setattr(strays.sys, "platform", "win32")
+    watcher = strays.Watcher()
+    entry = watcher._entry(11)
+    entry.biggest = (300, 200)
+    sizes = iter([(300, 200), (0, 0)])
+
+    def describe(self, e):
+        width, height = next(sizes)
+        e.rect = (0, 0, width, height)
+        if width * height > e.biggest[0] * e.biggest[1]:
+            e.biggest = (width, height)
+
+    monkeypatch.setattr(strays.Watcher, "_describe", describe)
+    watcher._describe(entry)
+    watcher._describe(entry)
+    assert entry.size == (300, 200)
+
+
+def test_a_window_says_what_the_app_was_doing():
+    """A class name says who CREATED a window and nothing about why.
+    Eight nameless Qt windows in a row is a mystery; eight during
+    "rendering the app icon" is a lead."""
+    strays.stage("writing the Start-menu shortcut")
+    try:
+        entry = strays.Seen(4, 0.0)
+        assert entry.stage == "writing the Start-menu shortcut"
+        assert "writing the Start-menu shortcut" in entry.line(0.0, ours=0)
+    finally:
+        strays.stage("starting")
+
+
+def test_every_step_of_the_boot_names_itself():
+    """A stage nobody sets is a window reported against whatever ran
+    before it, which is worse than no stage at all."""
+    source = pathlib.Path("draft_assist/ui/app.py").read_text()
+    body = source.split("def _main")[1]
+    for step in ("starting Qt", "rendering the app icon",
+                 "writing the Start-menu shortcut", "building the window",
+                 "showing the window", "running"):
+        assert f'strays.stage("{step}")' in body, step
 
 
 def test_it_stops_rather_than_running_all_evening():
