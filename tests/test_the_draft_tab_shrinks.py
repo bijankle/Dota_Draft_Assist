@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QScrollArea
+from PyQt6.QtWidgets import QApplication, QLabel, QScrollArea
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
@@ -419,3 +419,53 @@ def test_the_top_picks_heading_leads_its_own_grid(window):
         window, window.suggest_row.rect().topLeft()).y()
     for box in (window.suggested_box, window.heart_box, window.shield_box):
         assert box.mapTo(window, box.rect().bottomLeft()).y() <= strip_top + 2
+
+
+def test_the_legend_spans_the_card_with_the_slack_between_the_cells(window):
+    """"shuffle the heart and shield here to the right so that the number
+    box for the heart aligns with the right edge of the top picks
+    portraits, evenly spac.... jsut like how you did for car / nuker /
+    etc".
+
+    The row held every cell at its own width and put ONE stretch at the
+    end, so the whole legend huddled in the left half of a card whose
+    right half was empty. "Just like" names the role filter's own
+    mechanism one row down: the stretch goes on the SEPARATORS, so with
+    nothing stretching before the first cell or after the last the block
+    is pinned to both edges and what is left over is shared equally
+    between the gaps.
+
+    MEASURED AGAINST THE STRIP rather than against a number, since "the
+    right edge of the top picks portraits" is the strip's own edge and it
+    moves with the window.
+    """
+    def left(widget):
+        return widget.mapTo(window, widget.rect().topLeft()).x()
+
+    def right(widget):
+        return widget.mapTo(window, widget.rect().topRight()).x()
+
+    for width in (1900, 1610, 1200, 940):
+        settle(window, width)
+        strip = window.suggest_row
+        # The comfort box finishes where the strip finishes.
+        assert abs(right(window.heart_box) - right(strip)) <= 1, (
+            f"at {width}px the comfort box ends "
+            f"{right(window.heart_box) - right(strip)}px off the strip")
+        # And the heading still starts where the strip starts: the block
+        # is pinned at BOTH ends, which is what spreads it rather than
+        # merely moving it to the other side.
+        heads = [w for w in window.picks_card.findChildren(QLabel)
+                 if w.text() == "Top Heroes"]
+        assert abs(left(heads[0]) - left(strip)) <= 1
+
+        # EQUAL GAPS. One pixel of slack goes to the first separator when
+        # the division leaves one over, exactly as the role filter's own
+        # spread does — so this allows one, and nothing more.
+        first = left(window.shield_box.parentWidget()) - right(
+            window.suggested_box)
+        second = left(window.heart_box.parentWidget()) - right(
+            window.shield_box)
+        assert abs(first - second) <= 1, (
+            f"at {width}px the gaps are {first} and {second}")
+        assert first >= 0 and second >= 0

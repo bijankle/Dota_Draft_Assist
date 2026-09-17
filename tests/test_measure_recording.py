@@ -76,12 +76,26 @@ def test_a_recording_with_no_strategy_payload_says_so(tmp_path, capsys):
     assert "cannot answer the teams question" in capsys.readouterr().out
 
 
-def test_hero_selection_is_where_the_phases_part():
+def test_a_frame_is_labelled_with_the_state_that_was_live(capsys):
+    """THE FAULT THE FIRST REAL RECORDING SHOWED.
+
+    It kept ONE boundary - where hero selection ended - and called
+    everything after it "strategy". A real session runs HERO_SELECTION,
+    STRATEGY_TIME, TEAM_SHOWCASE, WAIT_FOR_MAP_TO_LOAD, PRE_GAME, so
+    frames taken with the pick bar long gone were labelled strategy time
+    and compared against frames where it is up.
+    """
     states = [{"at": 1.0, "game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
               {"at": 40.0, "game_state": "DOTA_GAMERULES_STATE_HERO_SELECTION"},
-              {"at": 55.0, "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME"}]
-    assert tool.phase_boundary(states) == 40.0
-    assert tool.phase_boundary([]) is None
+              {"at": 55.0, "game_state": "DOTA_GAMERULES_STATE_STRATEGY_TIME"},
+              {"at": 90.0, "game_state": "DOTA_GAMERULES_STATE_PRE_GAME"}]
+    marks = tool.timeline(states)
+    assert tool.state_at(marks, 10.0) == "HERO_SELECTION"
+    assert tool.state_at(marks, 60.0) == "STRATEGY_TIME"
+    # The one that was wrong: well past strategy time is NOT strategy.
+    assert tool.state_at(marks, 200.0) == "PRE_GAME"
+    assert tool.state_at([], 5.0) == "?"
+    assert tool.state_at(marks, None) == "?"
 
 
 def test_the_five_on_five_case_reports_the_rule_fitting(payload, capsys):
@@ -89,8 +103,40 @@ def test_the_five_on_five_case_reports_the_rule_fitting(payload, capsys):
     ten = tool.say_teams(payload, FakeDataset())
     out = capsys.readouterr().out
     assert "on a lane slot: 5" in out
-    assert "the strategy-slot rule fits" in out
+    assert "the strategy-slot rule" in out and "cannot invert" in out
+    # THE RULE IS READ OFF THE APP, never re-derived here.
+    assert "strategy slots" in out
+    assert "certain about the sides:  YES" in out
     assert len(ten) == 10
+
+
+def test_ten_on_the_slots_is_the_paired_case_and_is_named_as_one(
+        payload, capsys):
+    """THE FAULT THE FIRST REAL RECORDING SHOWED, and the worse of the two.
+
+    The user's own draft put all ten heroes on the five lane slots, two
+    apiece - both teams' lanes predicted. `_split_by_lane_pairs` handles
+    that perfectly well, and this tool told them the app had "fallen
+    through to splitting the ten in list order, which is a coin flip",
+    because it worked the answer out from the slot counts instead of
+    asking. An answer assembled out of our own rules wearing the clothes
+    of a measurement - inside the tool written to stop exactly that.
+    """
+    slots = sorted(minimap_lane_slots())
+    for index, obj in enumerate(sorted(
+            payload["minimap"].items(), key=lambda kv: kv[0])):
+        obj[1]["xpos"], obj[1]["ypos"] = slots[index % len(slots)]
+    tool.say_teams(payload, FakeDataset())
+    out = capsys.readouterr().out
+    assert "ALL TEN stand on the lane slots" in out
+    assert "PAIRED case" in out
+    # And it must NOT claim the app fell through to object order.
+    assert "list order" not in out
+
+
+def minimap_lane_slots():
+    from draft_assist.gsi import minimap
+    return minimap.LANE_SLOTS
 
 
 def test_a_teammate_with_no_lane_is_named_rather_than_lost(payload, capsys):
@@ -109,9 +155,8 @@ def test_a_teammate_with_no_lane_is_named_rather_than_lost(payload, capsys):
     out = capsys.readouterr().out
     assert "on a lane slot: 4" in out
     assert "at the origin: 1" in out
-    assert "IT DECLINES" in out
-    assert "coin flip" in out
-    assert "almost certainly YOURS" in out
+    assert "declines" in out
+    assert "certainly YOURS" in out   # wrapped across two printed lines
 
 
 def test_every_line_it_prints_is_ascii():

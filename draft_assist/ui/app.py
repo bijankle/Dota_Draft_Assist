@@ -4720,7 +4720,10 @@ class MainWindow(QMainWindow):
         title.setProperty("heading", True)
         stack.addWidget(title, 0, 0)
         stack.addWidget(self.suggested_box, 0, 1)
-        stack.setColumnStretch(2, 1)
+        # NO STRETCH COLUMN. This grid is one cell of the row now and is
+        # sized to itself; the spreading happens BETWEEN the cells, in
+        # the row's own layout. A stretch column left in here would let
+        # this cell swallow the slack the other two are being given.
 
         # TWO COUNTS AGAIN, WHICH REVERSES THE ONE THAT REPLACED THEM.
         # They were merged on the argument that the marks answer the
@@ -4738,8 +4741,29 @@ class MainWindow(QMainWindow):
         # are beside the count they are a kind of — how many tiles carry
         # a mark, next to how many tiles there are — and the row below
         # becomes the filter's alone.
-        line.addWidget(self._picks_legend(row), 0,
-                       Qt.AlignmentFlag.AlignVCenter)
+        # AND THE SLACK GOES BETWEEN THE CELLS, so the row spans the
+        # card and the comfort box finishes where the suggestion strip
+        # below it finishes. At the user's request: "shuffle the heart
+        # and shield here to the right so that the number box for the
+        # heart aligns with the right edge of the top picks portraits,
+        # evenly spac.... jsut like how you did for car / nuker / etc".
+        #
+        # IT IS THE ROLE FILTER'S OWN MECHANISM, one row up, which is
+        # what "just like" asks for: the stretch is on the SEPARATORS
+        # ONLY, so with nothing stretching before the first cell or
+        # after the last the block is pinned to both ends and what is
+        # left over is shared equally between the gaps. Everything on
+        # this card then finishes at the same x — the heading row, the
+        # eleven-tile strip, and the filter row under it.
+        #
+        # `LEGEND_GAP` stays as the MINIMUM rather than being replaced
+        # by the stretch: a narrow row can only put the cells further
+        # apart than before, never closer, which is the rule the role
+        # filter's own gap follows.
+        for cell in self._picks_legend(row):
+            line.addSpacing(LEGEND_GAP)
+            line.addStretch(1)
+            line.addWidget(cell, 0, Qt.AlignmentFlag.AlignVCenter)
         # THE ROLE FILTER IS NO LONGER ON THIS ROW. It shared it, taking
         # the spare width to the right of the legend, and has gone BELOW
         # the suggestion strip at the user's request: "top picks will be
@@ -4754,7 +4778,12 @@ class MainWindow(QMainWindow):
         # The chicken-and-egg that made it eight rows tall for ever —
         # narrow because one column deep, one column deep because narrow
         # — cannot happen at full width.
-        line.addStretch(1)
+        #
+        # AND THERE IS NO TRAILING STRETCH. It was the one thing holding
+        # this row in the left half of its own card: every cell took its
+        # own width and a single stretch at the end swallowed the rest,
+        # which is the shape the user was looking at when they asked for
+        # this. The separators carry it now.
         self._picks_head = row
         return row
 
@@ -4812,13 +4841,12 @@ class MainWindow(QMainWindow):
         rows were LABELLED separately, which is what a legend is. One
         value behind two lines each printing a number is two controls for
         one setting.
+
+        RETURNS THE TWO CELLS RATHER THAN ONE WIDGET HOLDING BOTH, so
+        the caller can put stretch between them and pin the row to both
+        edges of the card. See `_picks_controls`.
         """
-        legend = QWidget(parent)
-        legend.setProperty("bare", True)
-        grid = QGridLayout(legend)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(2)
+        cells = []
         # ONE ROW, BOTH MARKS, at the user's request: "all in line on the
         # same right is better", drawn as one green rule through the
         # heading, its count and both rank cells. They were stacked —
@@ -4846,19 +4874,27 @@ class MainWindow(QMainWindow):
                 # stated, so the two cells cannot disagree with it.
                 ((True, "Counter rank", "shield_count"),
                  (False, "Comfort rank", "heart_count"))):
-            at = cell * 5
-            grid.addWidget(MarkLabel(shield, legend), 0, at)
-            grid.addWidget(QLabel("=", legend), 0, at + 1)
-            grid.addWidget(QLabel(word, legend), 0, at + 2)
-            box = self._badge_box(key, legend)
-            grid.addWidget(box, 0, at + 3)
+            # EACH CELL IS ITS OWN WIDGET, which is what lets the row
+            # spread them. They shared one grid, with a fixed minimum
+            # width on the column between them — right while the pair
+            # was a block sitting beside the heading, and wrong once the
+            # two are being pushed apart to span the card, because the
+            # gap inside a single widget cannot stretch with the row
+            # holding it. The caller puts the stretch between them.
+            holder = QWidget(parent)
+            holder.setProperty("bare", True)
+            grid = QGridLayout(holder)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(6)
+            grid.setVerticalSpacing(2)
+            grid.addWidget(MarkLabel(shield, holder), 0, 0)
+            grid.addWidget(QLabel("=", holder), 0, 1)
+            grid.addWidget(QLabel(word, holder), 0, 2)
+            box = self._badge_box(key, holder)
+            grid.addWidget(box, 0, 3)
             setattr(self, f"{'shield' if shield else 'heart'}_box", box)
-            # The gap goes AFTER every cell but the last, or the block
-            # would be held that much off the heading beside it — the
-            # `columns - 1` rule the role filter already follows.
-            if cell == 0:
-                grid.setColumnMinimumWidth(at + 4, LEGEND_GAP)
-        return legend
+            cells.append(holder)
+        return cells
 
     def _role_filter(self, parent) -> QWidget:
         """The eight role floors, beside the strip they cut.

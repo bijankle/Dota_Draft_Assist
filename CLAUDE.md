@@ -3068,21 +3068,69 @@ credentials, and put the account at risk. Do not go there.
   it safe to put in front of somebody mid-patch, the same bar
   `check_crop_boxes` and `locate_portraits` clear.
 
-  **AND IT ALREADY EXPLAINS A REAL WRONG BOARD.** The user's own match
-  put their team on the wrong side, and the cause is legible in their
-  screenshot: **CHOOSE YOUR LANE read 4/5**.
-  `_split_by_strategy_slots` is the one rule here that decides rather
-  than offers, and it requires `len(on_slots) == TEAM_SIZE` — exactly
-  five of your team standing on the canonical lane slots. A team-mate
-  who never chose a lane comes through at the ORIGIN instead, so four
-  stand on slots, the rule declines, `_split_by_lane_pairs` cannot fit
-  either, and the split falls to `ids[:5], ids[5:]` — object order,
-  which is the coin flip this file records as landing INVERTED. The
-  lead the tool prints rather than swallowing: a hero at the origin is
-  almost certainly YOURS, because the strategy screen has nothing to
-  draw the enemy from unless you predicted them. **Not yet acted on** —
-  the rule is not widened until a real payload from that match says so,
-  which is what the button is for.
+  **THE FIRST HYPOTHESIS IT WAS BUILT ON WAS WRONG, AND THE RECORDING
+  SAID SO ON THE FIRST RUN.** The reasoning was: their screenshot read
+  **CHOOSE YOUR LANE 4/5**, `_split_by_strategy_slots` requires exactly
+  five on the canonical slots, a team-mate who chose no lane comes
+  through at the ORIGIN, so four stand on slots and the split falls to
+  object order — the coin flip this file records as landing inverted.
+  Coherent, and NOT what the payload says. Recording
+  `2026-09-17_221231`: **all ten heroes on the five lane slots, two
+  apiece, none at the origin and none out in the world.** That is the
+  PAIRED case — both teams' lanes predicted — which
+  `_split_by_lane_pairs` handles and which this file has always
+  described. The origin case may still exist; nothing has seen one.
+
+  **AND THE TOOL ASSERTED THE WRONG RULE, which is the worse half.**
+  It worked out which rule would take it FROM THE SLOT COUNTS and
+  printed "IT DECLINES, and the app falls through to splitting the ten
+  in list order, which is a coin flip" — about a frame the pairs rule
+  handles. So it told the user the app had flipped a coin when it had
+  not. That is this project's oldest shape of fault, an answer
+  assembled out of our own rules wearing the clothes of a measurement,
+  committed inside the tool written to stop it. It calls
+  `minimap.read_lineups` now and prints `split_rule` and
+  `sides_certain` — the APP's own verdict, with the two line-ups under
+  it, so the reader can check the split against what they remember of
+  the game.
+
+  **AND A FRAME IS LABELLED WITH THE STATE THAT WAS LIVE, not with one
+  boundary.** It kept only the moment hero selection ended and called
+  everything after it "strategy"; a real session runs
+  HERO_SELECTION, STRATEGY_TIME, TEAM_SHOWCASE, WAIT_FOR_MAP_TO_LOAD
+  and PRE_GAME, so frames taken with the pick bar long gone were
+  labelled strategy time. On that run two of the three "strategy"
+  frames were past it — which is why they located nothing and why the
+  phase comparison came back with nought to compare.
+
+  **AND THE BOXES COLUMN ANSWERED THE QUESTION THE FITTED LAYOUTS
+  COULD NOT.** Only two frames fitted a layout at all, both while
+  picking, so the y/slot_h comparison declined — and the count of
+  calibrated crop boxes holding a hero the game named ran
+  **1 → 3 → 6 → 7 → 9 of ten straight through hero selection**. That
+  is the draft filling up under a fixed set of boxes: `read_placed`
+  scores the boxes against the ten named at STRATEGY time, so a box
+  landing on a portrait while PICKING is direct evidence the boxes are
+  on the hero-selection bar. Nine of ten is more than
+  `BOXES_PROVE_THE_GEOMETRY`, and a whole bank's worth is not
+  something a wrong geometry does by accident.
+  **SO THE BAR DOES NOT MOVE BETWEEN THE TWO SCREENS** — the open
+  question this file has carried for months, answered from a real
+  draft, with a calibration measured at strategy time reading the
+  hero-selection bar. Only the BEST count means anything: early in a
+  draft most slots are empty and a box over an empty slot correctly
+  matches nothing, so it is the top of the climb that carries it.
+
+  **AND THAT RUN CONFIRMS THE SHIPPED VERTICAL IS WRONG, FROM A SOURCE
+  THAT HAD NOT VOTED.** The figures it printed as "in use" are that
+  machine's own `calibration_local.json`, written by `autocal` from a
+  real match: **`y` 0.0056 and `slot_h` 0.0611**, against the shipped
+  0.0330 and 0.0930. The screenshot sweep measured 0.0052 and 0.0533
+  by a completely different route. The app's own automatic measurement
+  and the manual sweep agree with each other and neither is near what
+  ships, so a downloader inherits numbers that nothing has ever
+  measured. **Still not changed** — see the horizontal below, which is
+  the same decision.
   **AND THE RAW MINIMAP IS NOT THE TEN** — the first version of this
   tool read `hero_entries(payload, drop_origin=False)` and reported
   FOUR heroes at the origin where one was. The other three are

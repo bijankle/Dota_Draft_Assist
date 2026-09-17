@@ -76,20 +76,37 @@ def read_image(path: Path):
     return cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
 
 
-def phase_boundary(states: list[dict]) -> float | None:
-    """Elapsed seconds at which HERO SELECTION last appeared.
+def timeline(states: list[dict]) -> list[tuple[float, str]]:
+    """(seconds, game state) for every tick, in order.
 
-    The state log carries `at` (seconds since the session started) and the
-    game state for every tick, so the phases are in it. Frames do NOT
-    carry their own tick, which is why this is a boundary in TIME that
-    frame timestamps are then compared against, rather than a label read
-    off each frame.
+    THE PHASE IS LOOKED UP, NOT GUESSED FROM ONE BOUNDARY. The first
+    version kept only the moment hero selection ended and called
+    everything after it "strategy" - so on a real recording the loading
+    screen and PRE_GAME were labelled strategy time too, and the frames
+    where the pick bar has gone were compared against the ones where it
+    is up. A recording runs through five states and the log names all of
+    them.
     """
-    last = None
+    out = []
     for row in states:
-        if "HERO_SELECTION" in str(row.get("game_state") or ""):
-            last = float(row.get("at") or 0.0)
-    return last
+        name = str(row.get("game_state") or "").replace(
+            "DOTA_GAMERULES_STATE_", "")
+        if name:
+            out.append((float(row.get("at") or 0.0), name))
+    out.sort()
+    return out
+
+
+def state_at(marks: list[tuple[float, str]], seconds: float | None) -> str:
+    """The game state that was live this many seconds into the session."""
+    if seconds is None or not marks:
+        return "?"
+    name = marks[0][1]
+    for at, this in marks:
+        if at > seconds:
+            break
+        name = this
+    return name
 
 
 def frame_seconds(frames: list[Path]) -> dict[Path, float]:
@@ -195,21 +212,53 @@ def say_teams(payload, dataset) -> list[int]:
           f"out in the world: {len(in_world)}")
 
     team = minimap_mod.TEAM_SIZE
-    if len(on_slots) == team and len(in_world) + len(at_origin) == team:
-        print("\n  -> the strategy-slot rule fits: five on the slots and "
-              "five off them.")
-        print("     The app can state the teams outright on this one.")
-    else:
-        print(f"\n  -> the strategy-slot rule needs exactly {team} on the "
-              f"slots and {team} off;")
-        print(f"     this frame has {len(on_slots)} on. IT DECLINES, and "
-              "the app falls")
-        print("     through to splitting the ten in list order, which is a "
-              "coin flip.")
-        if at_origin:
-            print(f"     {len(at_origin)} hero(es) stand at the origin - a "
-                  "team-mate who chose")
-            print("     no lane. Those are almost certainly YOURS.")
+    # WHICH RULE TAKES IT IS THE APP'S ANSWER, NOT THIS TOOL'S.
+    # The first version worked it out from the slot counts and printed
+    # "IT DECLINES, and the app falls through to splitting the ten in
+    # list order" - which is true only when the PAIRS rule declines too,
+    # and the very first real recording was the paired case: ten heroes
+    # two to a slot, which `_split_by_lane_pairs` handles perfectly well.
+    # So the tool told the user the app had flipped a coin when it had
+    # not. That is this project's oldest shape of mistake - an answer
+    # assembled out of our own rules wearing the clothes of a
+    # measurement - inside the tool written to stop it.
+    reading = minimap_mod.read_lineups(
+        payload, name_to_id, my_id,
+        game_state="DOTA_GAMERULES_STATE_STRATEGY_TIME")
+    print(f"\n  the rule that decided it: {reading.split_rule or 'none'}")
+    print(f"  certain about the sides:  "
+          f"{'YES' if reading.sides_certain else 'NO - a coin flip'}")
+    if reading.allies:
+        print("\n    yours   " + ", ".join(
+            dataset.name(h) for h in reading.allies))
+        print("    theirs  " + ", ".join(
+            dataset.name(h) for h in reading.enemies))
+    for note in reading.notes:
+        print(f"    note: {note}")
+
+    if len(on_slots) == 2 * team:
+        print(f"\n  -> ALL TEN stand on the lane slots, two to a slot. "
+              "That is the")
+        print("     PAIRED case: your team at the lanes you chose, theirs "
+              "at the")
+        print("     lanes you predicted. The pairing gives a clean 5-5, and "
+              "which")
+        print("     HALF of each pair is yours is the part nothing has ever "
+              "settled.")
+    elif len(on_slots) == team and len(in_world) + len(at_origin) == team:
+        print("\n  -> five on the slots and five off them: the "
+              "strategy-slot rule")
+        print("     fits, and it cannot invert. This one is decided.")
+    elif at_origin:
+        print(f"\n  -> {len(on_slots)} on the slots and {len(at_origin)} at "
+              "the origin - a")
+        print("     team-mate who chose no lane. The strategy-slot rule "
+              "wants exactly")
+        print(f"     {team} on, so it declines. A hero at the origin is "
+              "almost")
+        print("     certainly YOURS: the strategy screen has nothing to "
+              "draw the")
+        print("     enemy from unless you predicted them.")
 
     ten = [hid for _i, hid, _n in
            (on_slots + at_origin + in_world) if hid is not None]
@@ -217,7 +266,7 @@ def say_teams(payload, dataset) -> list[int]:
 
 
 def measure_frames(folder: Path, ten: list[int], count: int,
-                   boundary: float | None) -> list[dict]:
+                   marks: list[tuple[float, str]]) -> list[dict]:
     """Search each sampled frame for the ten, and measure what it finds."""
     frames = sorted((folder / "frames").glob("*.png"))
     if not frames:
@@ -247,9 +296,7 @@ def measure_frames(folder: Path, ten: list[int], count: int,
         fitted = autocal.layout_from(found, width, height)
         placed = lineup_mod.read_placed(frame, ten, current, art)
         age = ages.get(path)
-        phase = "?"
-        if age is not None and boundary is not None:
-            phase = "picking" if age <= boundary else "strategy"
+        phase = state_at(marks, age)
         rows.append({
             "name": path.name, "phase": phase, "age": age,
             "size": (width, height), "found": len(found),
@@ -266,14 +313,14 @@ def say_bar(rows: list[dict]) -> None:
         print("  nothing measured.")
         return
 
-    print(f"  {'frame':<12}{'phase':<10}{'at':>7}{'found':>7}"
+    print(f"  {'frame':<12}{'phase':<18}{'at':>7}{'found':>7}"
           f"{'boxes':>8}   measured y / slot_h")
     for row in rows:
         age = f"{row['age']:.0f}s" if row["age"] is not None else "-"
         layout = row["layout"]
         measured = (f"{layout.y:.4f} / {layout.slot_h:.4f}"
                     if layout is not None else f"-  ({row['note']})")
-        print(f"  {row['name']:<12}{row['phase']:<10}{age:>7}"
+        print(f"  {row['name']:<12}{row['phase']:<18}{age:>7}"
               f"{row['found']:>7}{row['matched']:>5}/10   {measured}")
 
     good = [row for row in rows if row["layout"] is not None]
@@ -292,21 +339,63 @@ def say_bar(rows: list[dict]) -> None:
         print(f"    {name:<11} measured {median:.4f}   "
               f"in use {now:.4f}   spread {spread:.4f}{flag}")
 
-    picking = [r for r in good if r["phase"] == "picking"]
-    strategy = [r for r in good if r["phase"] == "strategy"]
+    picking = [r for r in good if r["phase"] == "HERO_SELECTION"]
+    strategy = [r for r in good if r["phase"] == "STRATEGY_TIME"]
     print("\n  DOES THE BAR MOVE BETWEEN THE TWO SCREENS?\n")
-    if not picking or not strategy:
+    if picking and strategy:
+        for name in ("y", "slot_h"):
+            a = statistics.median(
+                [getattr(r["layout"], name) for r in picking])
+            b = statistics.median(
+                [getattr(r["layout"], name) for r in strategy])
+            verdict = ("the same place" if abs(a - b) <= AGREE_WITHIN
+                       else "DIFFERENT - the bar moves")
+            print(f"    {name:<8} picking {a:.4f}   strategy {b:.4f}   "
+                  f"-> {verdict}")
+    else:
         have = f"{len(picking)} while picking, {len(strategy)} at strategy"
-        print(f"    cannot say - {have}. Both are needed, and only a")
-        print("    recording that ran through hero selection has the first.")
+        print(f"    not from the fitted layouts - {have} located well")
+        print("    enough to measure. The boxes below answer it instead.")
+
+    # THE BOXES ANSWER IT WHERE THE FITTED LAYOUTS CANNOT, and on the
+    # first real recording they are the only half that did.
+    #
+    # `read_placed` scores the ten CALIBRATED crop boxes against the ten
+    # heroes the game named at strategy time - so a box landing on a
+    # portrait during HERO SELECTION is direct evidence that the boxes
+    # are on the hero-selection bar, whatever the search made of that
+    # frame. It needs no second phase to compare against and no fit at
+    # all, which is why it survives frames the search declines.
+    #
+    # ONLY THE BEST COUNT MEANS ANYTHING. Early in the draft most slots
+    # are still empty, so a box over an empty slot correctly matches
+    # nothing: the count RISES as the picks land, and it is the top of
+    # that climb that says whether the geometry is right.
+    picked_rows = [r for r in rows if r["phase"] == "HERO_SELECTION"]
+    print("\n  DO THE CROP BOXES LAND DURING HERO SELECTION?\n")
+    if not picked_rows:
+        print("    no hero-selection frames in this recording.")
         return
-    for name in ("y", "slot_h"):
-        a = statistics.median([getattr(r["layout"], name) for r in picking])
-        b = statistics.median([getattr(r["layout"], name) for r in strategy])
-        verdict = ("the same place" if abs(a - b) <= AGREE_WITHIN
-                   else "DIFFERENT - the bar moves")
-        print(f"    {name:<8} picking {a:.4f}   strategy {b:.4f}   "
-              f"-> {verdict}")
+    climb = " -> ".join(f"{r['matched']}" for r in picked_rows)
+    best = max(r["matched"] for r in picked_rows)
+    print(f"    boxes holding a named hero, over the draft:  {climb}  "
+          "of 10")
+    if best >= lineup_mod.BOXES_PROVE_THE_GEOMETRY:
+        print(f"\n    {best} of the ten boxes landed on a portrait while "
+              "you were still")
+        print("    picking. A whole bank's worth is not something a wrong "
+              "geometry")
+        print("    does by accident - the boxes are one rigid set at one "
+              "pitch - so")
+        print("    THE BAR IS IN THE SAME PLACE ON BOTH SCREENS, and this "
+              "machine's")
+        print("    calibration is right for hero selection as well as for "
+              "strategy.")
+    else:
+        print(f"\n    only {best} of the ten ever landed. Either the boxes "
+              "are wrong for")
+        print("    this screen, or the draft never filled up in the frames "
+              "sampled.")
 
 
 def main() -> None:
@@ -338,14 +427,19 @@ def main() -> None:
     print(f"  frames    {len(frames)}")
     print(f"  payloads  {len(payloads)}")
     print(f"  states    {', '.join(seen) or 'none logged'}")
-    boundary = phase_boundary(states)
-    if boundary is None:
+    marks = timeline(states)
+    if not any(name == "HERO_SELECTION" for _at, name in marks):
         print("  NOTE: no HERO_SELECTION tick in the state log, so frames "
               "cannot be")
         print("        told apart by phase. Record from before the draft "
               "starts.")
     else:
-        print(f"  hero selection ran until {boundary:.0f}s into the session")
+        spans = []
+        for name in ("HERO_SELECTION", "STRATEGY_TIME"):
+            times = [at for at, this in marks if this == name]
+            if times:
+                spans.append(f"{name} {min(times):.0f}-{max(times):.0f}s")
+        print("  phases   " + "   ".join(spans))
 
     dataset = store.load()
     ten = say_teams(strategy_payload(folder), dataset)
@@ -353,7 +447,7 @@ def main() -> None:
         print("\n  without the ten heroes the game named, the pick bar "
               "cannot be measured.")
         return
-    say_bar(measure_frames(folder, ten, args.frames, boundary))
+    say_bar(measure_frames(folder, ten, args.frames, marks))
     print("\nNothing was written. This tool only reads.")
 
 
