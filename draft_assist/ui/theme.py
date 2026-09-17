@@ -27,8 +27,8 @@ BORDER = "#3f4147"
 TEXT = "#dbdee1"
 TEXT_STRONG = "#f2f3f5"
 TEXT_DIM = "#949ba4"
-ACCENT = "#38040e"        # maroon; see the note below
-ACCENT_HOVER = "#540716"
+ACCENT = "#b5342c"        # deep vermilion; see the note below
+ACCENT_HOVER = "#95271f"
 # THE ACCENT WITH THE PRESS TAKEN OUT OF IT, for a control that is there
 # and cannot be used — the down arrow on a count box already at nought.
 # At the user's request: "if i cant go any lower e.e.g im at 0, i sitll
@@ -37,22 +37,28 @@ ACCENT_HOVER = "#540716"
 # twin; a dim red says it is the same control with nothing left to do.
 # Mixed against `BG_INPUT` rather than darkened, so it sits on the
 # surface it is drawn on.
-# TWO MAROONS, AND THE SPLIT IS MEASURED RATHER THAN TASTE. At the
-# user's request every red accent in the chrome is #38040e - but that
-# colour is 0.010 relative luminance, where the red it replaces was
-# 0.125. As a GROUND it is excellent: off-white on it measures 15.9:1,
-# against 5.4:1 before. As a MARK on any surface in this palette it sits
-# between 1.07 and 1.55:1 and effectively disappears, so a caret, a
-# count box arrow or the selected tab's underline drawn in it could be
-# located only by knowing where it was.
-# So ACCENT is the FILL - anything with white text or a tick on top -
-# and ACCENT_MARK is every line, edge and small shape drawn ON dark with
-# nothing over it. It is the same hue lifted to the visibility the old
-# accent had: 2.06-2.69:1 against these surfaces, where #b5342c managed
-# 2.10-2.74:1. Nothing became harder to see than it already was.
+# THE FILL IS THE BRIGHTER RED AGAIN, WHICH REVERSES THE MAROON ONE
+# ROUND AFTER IT SHIPPED. #38040e was asked for and withdrawn on sight:
+# "the old color, it was a brighter conventional red... can you please
+# bring these button appearances back". So ACCENT and ACCENT_HOVER are
+# the values they were before, and every accented button in the app -
+# Update, Export workbook, and the three board buttons, which read
+# ACCENT for their own fill - goes back with them in one change.
+# WHAT THE MAROON MEASURED IS STILL TRUE AND IS WHY ACCENT_MARK STAYS.
+# #38040e is 0.010 relative luminance, so as a GROUND it was excellent
+# (off-white on it measures 15.9:1 against 5.4:1 here) and as a MARK on
+# any surface in this palette it sat between 1.07 and 1.55:1 and
+# effectively disappeared. That is what split the one colour in two.
+# The split survives the reversal because only the FILL was withdrawn:
+# a caret, a count box arrow and the selected tab's underline are marks
+# drawn on dark with nothing over them, nobody asked for those to move,
+# and #c30e31 was chosen to carry exactly the visibility #b5342c has -
+# 2.06-2.69:1 against these surfaces where this accent manages
+# 2.10-2.74:1. Two near-identical reds is the cost, and it is the
+# smaller cost than changing four things nobody mentioned.
 # The signed numbers are NOT in this: GOOD and BAD are the app's one
 # universal convention and the user pointedly left every one of them
-# out of the request.
+# out of both requests.
 ACCENT_MARK = "#c30e31"
 # The spent end of a stepper, at the same share of its own mark colour
 # that the old dim red was of the old accent (0.59).
