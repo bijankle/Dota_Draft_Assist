@@ -153,23 +153,26 @@ def test_the_tiles_never_overrun_their_card(window):
 def test_the_two_blocks_reflow_rather_than_forcing_the_width(window):
     """The two roles cards and the role filter are what caused it.
 
-    The FILTER is checked directly rather than through the window,
-    because it stopped needing to reflow at any size a window can reach:
-    moving it out of the heading's corner and into the card's body (the
-    "Suggested picks" header on its own row) handed it the card's whole
-    width, and two rows of four fit in that even at the window's floor.
-    What still has to hold is that it CAN, since that is what its
-    minimum width rests on.
+    The FILTER reflows through a WIDER range than it used to. It shared
+    its row with the legend and took what was left; with the two rank
+    counts moved up to the heading the row is its own, so it opens out
+    to one row of EIGHT where there is room for it — "spread the carr /
+    support / etc filytters to fill the space left" — and comes back to
+    two rows of four on a narrow window. Both ends are checked, since
+    what its minimum width rests on is that it CAN come back.
     """
     settle(window, 1900)
     for bar in window.role_bar.bars.values():
         assert bar.columns == 4
-    assert window.role_filter.columns == 4     # "two rows of four"
+    assert window.role_filter.columns == 8     # one row of eight
 
-    # The roles cards are half the window each, so they do reflow.
+    # The roles cards are half the window each, so they do reflow — and
+    # so does the filter now, back to the two rows of four it was.
     settle(window, 940)
     for bar in window.role_bar.bars.values():
         assert bar.columns < 4
+    assert window.role_filter.columns == 4, (
+        "the filter did not come back to two rows of four")
 
     box = window.role_filter
     assert box.columns_for(box._cell_width() + 10) == 1
@@ -217,8 +220,13 @@ def test_the_legend_names_each_mark_on_its_own_row(window):
     want 1 row below the header to show the symbols and what they mean"
     - and "Remove the hand symbol its pointless".
 
-    Three rows, each with its own count box on its own line, and the
-    two marks each standing beside the word for what it means.
+    Two rows, each with its own count box, and the two marks each
+    standing beside the word for what it means — "Comfort rank" and
+    "Counter rank" since the pair moved up beside the heading at the
+    user's request: "comfort and coutner fields should be o nthe same
+    row as top heroes jsut to its right".
+    So the STACK is the legend's own two rows; the strip's count is
+    beside them rather than above them, and is no longer in it.
     """
     from PyQt6.QtWidgets import QLabel
 
@@ -231,16 +239,18 @@ def test_the_legend_names_each_mark_on_its_own_row(window):
     def middle(widget):
         return widget.mapTo(window, widget.rect().center()).y()
 
-    rows = [middle(window.suggested_box), middle(window.heart_box),
-            middle(window.shield_box)]
-    assert rows == sorted(rows), "the three counts are not in three rows"
-    assert len(set(rows)) == 3, "two counts share a line"
-    assert abs(middle(hearts[0]) - rows[1]) <= 4
-    assert abs(middle(shields[0]) - rows[2]) <= 4
+    rows = [middle(window.heart_box), middle(window.shield_box)]
+    assert rows == sorted(rows), "comfort does not lead counter"
+    assert len(set(rows)) == 2, "the two counts share a line"
+    assert abs(middle(hearts[0]) - rows[0]) <= 4
+    assert abs(middle(shields[0]) - rows[1]) <= 4
+    # The strip's own count sits BESIDE the pair now, so it is level
+    # with neither row on its own and between the two of them.
+    assert rows[0] <= middle(window.suggested_box) <= rows[1]
 
     # And the words are there to read, which is the whole of a legend.
-    words = {w.text().lower() for w in window._picks_row.findChildren(QLabel)}
-    assert {"comfort", "counter"} <= words, words
+    words = {w.text().lower() for w in window._picks_head.findChildren(QLabel)}
+    assert {"comfort rank", "counter rank"} <= words, words
 
 def test_the_heading_paints_NO_lighter_padding(window, styled):
     """"the suggested picks area has a weird padding background color
@@ -362,14 +372,17 @@ def test_the_top_picks_heading_leads_its_own_grid(window):
     the header 'top picks' and make the required adjustments in the rows
     below so that the input boxes align edges".
 
-    THE LEGEND HAS SINCE GONE BELOW THE PORTRAITS with the role filter —
-    "top picks will be at the top above the sugegsted hero portraits
-    still, but the filters for carry , supprot etc, will be below the
-    portraits", and then "you sohuld be able to have comfort be in line
-    (row-wwise) with carry / nuker / etc". So the heading keeps its own
-    count beside it above the strip, and the two mark counts are below,
-    level with the roles. What survives unchanged is the ORDER — heading
-    first, legend a row lower — and that the two marks still line up
+    THE LEGEND WENT BELOW THE PORTRAITS AND HAS COME BACK UP, which is
+    this card's fourth arrangement. It left with the role filter — "top
+    picks will be at the top above the sugegsted hero portraits still,
+    but the filters for carry , supprot etc, will be below the
+    portraits" — and returned on its own: "comfort and coutner fields
+    should be o nthe same row as top heroes jsut to its right and
+    spread the carr / support / etc filytters to fill the space left".
+    So the heading no longer LEADS the legend; they share a row, the
+    heading's own count beside it and the two rank counts to their
+    right. What survives every one of the four is that the heading is
+    ABOVE THE STRIP with its own count, and that the two marks line up
     with each other.
     """
     from PyQt6.QtWidgets import QLabel
@@ -380,10 +393,24 @@ def test_the_top_picks_heading_leads_its_own_grid(window):
     assert heads, "the heading is gone"
     head = heads[0]
 
-    for box in (window.heart_box, window.shield_box):
-        assert (head.mapTo(window, head.rect().bottomLeft()).y()
-                <= box.mapTo(window, box.rect().topLeft()).y() + 2), (
-            "the legend is still level with the heading")
+    # The heading and the legend share the row: the heading's own middle
+    # falls between the two mark rows rather than above both.
+    def middle(widget):
+        return widget.mapTo(window, widget.rect().center()).y()
+
+    assert (middle(window.heart_box) <= middle(head)
+            <= middle(window.shield_box)), (
+        "the heading is no longer level with the legend beside it")
+    assert head.mapTo(window, head.rect().topLeft()).x() < (
+        window.heart_box.mapTo(window, window.heart_box.rect().topLeft()).x()
+    ), "the rank counts are not to the right of the heading"
+
+    # And the whole row is still above the strip it heads.
+    strip_top = window.suggest_row.mapTo(
+        window, window.suggest_row.rect().topLeft()).y()
+    for box in (window.suggested_box, window.heart_box, window.shield_box):
+        assert box.mapTo(window, box.rect().bottomLeft()).y() <= strip_top + 2
+
     lefts = {b.mapTo(window, b.rect().topLeft()).x()
              for b in (window.heart_box, window.shield_box)}
     assert len(lefts) == 1, f"the mark counts do not line up: {lefts}"
