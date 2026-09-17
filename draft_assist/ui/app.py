@@ -390,19 +390,13 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
-        # WHAT WINDOWS THIS PROCESS ACTUALLY PUTS ON SCREEN, for the
-        # first seconds of a boot. The Qt side is measured clean — the
-        # only top-level Show in a full boot is this window's — so a
-        # small translucent rectangle flashing up at startup is either a
-        # native handle being recreated or a window belonging to a
-        # library, and neither is visible to any check written in Qt's
-        # terms. It samples, records what came and went, stops after
-        # `strays.WATCH_FOR`, and costs nothing off Windows. The answer
-        # lands in Settings > Debug > Copy everything.
-        self.strays = strays.Watcher()
-        self.stray_timer = QTimer(self)
-        self.stray_timer.timeout.connect(self._watch_for_strays)
-        self.stray_timer.start(int(strays.PERIOD * 1000))
+        # WHAT WINDOWS THIS PROCESS ACTUALLY PUT ON SCREEN. Started in
+        # `main` BEFORE the QApplication, on a thread, and merely adopted
+        # here — the first version owned a QTimer created right here, and
+        # a QTimer cannot fire until the event loop runs, so its earliest
+        # sample was 1.91s with the window already long on screen. The
+        # span being asked about is the one before that.
+        self.strays = strays.watcher()
         # AFTER `_build`, because a fixed size has to be at least what the
         # layout can honestly draw and there is no layout to ask before
         # that. The action's own tick is set here rather than when it was
@@ -5566,18 +5560,6 @@ class MainWindow(QMainWindow):
         except Exception:                   # noqa: BLE001 - diagnostic
             return 0
 
-    def _watch_for_strays(self) -> None:
-        """One sample, until the boot window has passed.
-
-        The timer is STOPPED rather than left running at a longer
-        period: the complaint is about boot, and this app measures its
-        own refresh loop precisely so that nothing else runs on a timer
-        over a live draft.
-        """
-        self.strays.sample()
-        if self.strays.expired():
-            self.stray_timer.stop()
-
     def _copy_debug_log(self) -> None:
         """Everything needed to diagnose one game, in one paste.
 
@@ -5936,6 +5918,15 @@ def _main() -> None:
     if not single.claim():
         single.raise_the_one_already_running()
         return
+
+    # BEFORE THE QApplication, and that is the whole point of it being
+    # here rather than in the window. It samples this process's own
+    # visible top-level windows on a thread, so it covers Qt starting up
+    # and the window materialising — the span a QTimer inside the window
+    # can never reach, because the event loop does not run until after
+    # the window is shown. Pure ctypes, nothing Qt, nothing fatal, and
+    # nothing at all off Windows. See `ui/strays.py`.
+    strays.start()
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)

@@ -3520,6 +3520,23 @@ credentials, and put the account at risk. Do not go there.
   **SAMPLED, NOT HOOKED**: a CBT hook catches every creation exactly and
   is a system-wide hook installed from a running app, which is a far
   bigger thing to get wrong than missing a frame.
+  **AND THE FIRST REAL REPORT WATCHED THE WRONG 45 SECONDS.** It came
+  back clean and accounted for all three windows on screen — the app's
+  own, a `Qt6112QWindowPopupDropShadowSaveBits` (a Qt MENU, 2.68s to
+  4.69s, which is somebody opening File) and the Settings window from
+  4.81s, which is where Copy everything lives. The tell is its first
+  line: **the earliest sample was 1.91s**. The watcher owned a QTimer
+  created in `MainWindow.__init__`, and a QTimer cannot fire until the
+  EVENT LOOP runs — which is after the window has been built and shown.
+  Every second the report exists to cover had already passed.
+  So it is a daemon THREAD now, started from `_main` BEFORE the
+  QApplication, which is why `strays` touches nothing Qt: it is ctypes
+  and Win32 only, so sampling off the GUI thread is safe, and `seen` is
+  guarded by a lock because the report is read from the GUI thread while
+  the sampler writes. `report()` states when sampling actually began,
+  since that one number is what showed the first version was blind.
+  `tests/test_stray_windows.py` parses `_main` and requires
+  `strays.start()` to appear before `QApplication`.
   **DO NOT NAME A THIRD CAUSE WITHOUT THAT REPORT.** The two leads it
   has to separate are a native handle being DESTROYED AND RECREATED
   (which `ui/ontop.py` exists to avoid and which `setWindowFlags` does

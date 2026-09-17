@@ -36,10 +36,25 @@ to survive about a twentieth of a second to be seen, and the report says
 how many samples it was in — one sample is "gone before we looked
 again", which is itself the measurement.
 
-**AND IT STOPS.** `WATCH_FOR` seconds of boot and then the timer is
-dropped: the complaint is about boot, and a sampler running all evening
-over a window read at a glance during a draft is the sort of cost this
-app measures its refresh loop to avoid.
+**AND IT STOPS.** `WATCH_FOR` seconds and then the thread ends: the
+complaint is about boot, and a sampler running all evening over a window
+read at a glance during a draft is the sort of cost this app measures its
+refresh loop to avoid.
+
+**IT RUNS ON A THREAD, AND THE FIRST VERSION'S QTimer WATCHED THE WRONG
+45 SECONDS.** A QTimer cannot fire until the event loop runs, which is
+after the window has been built AND shown — so the first real report came
+back with its earliest sample at **1.91s**, by which time the window was
+long since on screen. Everything the report is about happens BEFORE that:
+Qt starting, the native window being created, the window materialising. A
+daemon thread started before the QApplication has no such gap, and
+nothing here touches a Qt object — it is ctypes and Win32 only, which is
+what makes sampling off the GUI thread safe.
+
+That first run was not wasted: it accounted for all three windows on
+screen (the app, a `...PopupDropShadowSaveBits` — a Qt MENU — and the
+Settings window), which is the report doing its job on the span it could
+see.
 
 Never fatal, and nothing at all off Windows.
 """
@@ -47,6 +62,7 @@ Never fatal, and nothing at all off Windows.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 # How often to look, and for how long after the app opens. 40ms catches
@@ -110,6 +126,11 @@ class Watcher:
         self.seen: dict[int, Seen] = {}
         self.samples = 0
         self.note = "not attempted"
+        # The sampler runs on its own thread and the report is read from
+        # the GUI thread, so `seen` is touched under a lock: iterating a
+        # dict another thread is inserting into raises.
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
 
     # -- the one Windows call ------------------------------------------
     def _visible_windows(self) -> list[int]:
@@ -176,25 +197,75 @@ class Watcher:
         self.samples += 1
         self.note = f"{self.samples} samples"
         for hwnd in windows:
-            entry = self.seen.get(hwnd)
-            if entry is None:
-                entry = self.seen[hwnd] = Seen(hwnd, now)
-            else:
-                entry.last = now
-                entry.samples += 1
+            with self._lock:
+                entry = self.seen.get(hwnd)
+                if entry is None:
+                    entry = self.seen[hwnd] = Seen(hwnd, now)
+                else:
+                    entry.last = now
+                    entry.samples += 1
             try:
                 self._describe(entry)
             except Exception:               # noqa: BLE001 - see above
                 pass
+
+    def start(self) -> None:
+        """Sample on a daemon thread from now until `WATCH_FOR`.
+
+        BEFORE the QApplication, which is the whole point: a QTimer
+        cannot fire until the event loop runs, and by then the window
+        has been created and shown — which is the span being asked
+        about. A daemon thread also cannot hold the app open at exit.
+        """
+        if sys.platform != "win32":
+            self.note = "not Windows"
+            return
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._loop, daemon=True,
+                                        name="stray-window-watch")
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while not self.expired():
+            self.sample()
+            time.sleep(PERIOD)
 
     def expired(self) -> bool:
         return time.monotonic() - self.started >= WATCH_FOR
 
     def report(self, ours: int = 0) -> str:
         """What appeared, oldest first. Every window, including ours."""
-        if not self.seen:
+        with self._lock:
+            entries = sorted(self.seen.values(), key=lambda s: s.first)
+        if not entries:
             return self.note
-        lines = [f"{self.note}, {WATCH_FOR:.0f}s from start"]
-        for entry in sorted(self.seen.values(), key=lambda s: s.first):
+        # WHEN SAMPLING BEGAN is part of the answer, not decoration: the
+        # first version's earliest sample was 1.91s and everything it was
+        # written to catch had already happened.
+        first = min(e.first for e in entries) - self.started
+        lines = [f"{self.note} over {WATCH_FOR:.0f}s, "
+                 f"first window seen {first:.2f}s in"]
+        for entry in entries:
             lines.append("  " + entry.line(self.started, ours))
         return "\n".join(lines)
+
+
+# THE ONE WATCHER, started before the QApplication by `ui/app.main`.
+# A module singleton because the thing being watched is the PROCESS, and
+# the window that reports it is built long after sampling has to begin.
+_WATCHER: Watcher | None = None
+
+
+def start() -> Watcher:
+    global _WATCHER
+    if _WATCHER is None:
+        _WATCHER = Watcher()
+        _WATCHER.start()
+    return _WATCHER
+
+
+def watcher() -> Watcher:
+    """Never None: a window built without `start` reports "not
+    attempted" rather than having to be guarded at every call."""
+    return _WATCHER if _WATCHER is not None else Watcher()
