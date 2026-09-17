@@ -24,6 +24,7 @@ from . import theme, tilekit
 from .flowlayout import FlowLayout
 from ..model.items import ONE_TRIGGER, importance, severity_pct
 from .item_icons import icon, why_missing
+from .tilekit import NAME_MAX_PT, NAME_MIN_PT  # noqa: F401 (re-exported)
 
 # The same box the suggested picks use, and the same name band the ten
 # picks use. Three strips that look like three different apps was the

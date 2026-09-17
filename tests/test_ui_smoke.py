@@ -4473,3 +4473,37 @@ def test_every_row_on_the_draft_tab_starts_in_the_same_column(window, qapp,
     assert len(set(edges.values())) == 1, (
         "these should share one left edge: "
         + ", ".join(f"{k}={v}" for k, v in edges.items()))
+
+
+def test_the_tile_constants_are_reachable_from_every_strip():
+    """The three strips share one set of constants, by re-export.
+
+    `teams` and `item_row` import names from `tilekit` that they never
+    use THEMSELVES, so a caller can read them off either module and the
+    ten picks, the suggestions and the items are provably one set rather
+    than two that happen to agree. The lines carry `# noqa: F401`, which
+    is the author saying "imported but unused, on purpose".
+
+    A TIDY-UP DELETED THREE OF THEM. An unused-import scan counted uses
+    inside each file, found none, and removed the very lines annotated to
+    say it would be wrong to. Three tests failed.
+
+    **AND THE OBVIOUS GUARD CANNOT CATCH IT.** Walking each `noqa: F401`
+    import and asserting its names are reachable passes on the broken
+    file, because deleting a name also deletes it from the list being
+    walked - the same shape as the circular pick-bar test that used to
+    place the thing it was checking. The only guard that can fail is one
+    that NAMES what must survive, so this does.
+    """
+    from draft_assist.ui import item_row, teams, textfit, tilekit
+
+    for name in ("BADGE_PAD_X", "BADGE_PAD_Y", "CHROME",
+                 "NAME_MAX_PT", "NAME_MIN_PT", "NUMBER_PX"):
+        assert getattr(teams, name) == getattr(tilekit, name), (
+            f"teams no longer re-exports tilekit.{name}")
+    for name in ("NAME_MAX_PT", "NAME_MIN_PT"):
+        assert getattr(item_row, name) == getattr(tilekit, name), (
+            f"item_row no longer re-exports tilekit.{name}")
+    for name in ("fit", "split_two"):
+        assert getattr(teams, name) is getattr(textfit, name), (
+            f"teams no longer re-exports textfit.{name}")
