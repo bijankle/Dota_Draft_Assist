@@ -31,6 +31,7 @@ import platform
 import random
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -50,9 +51,10 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
                              QStatusBar, QTabWidget,
                              QVBoxLayout, QWidget)
 
-from .. import console, version
+from .. import bugreport, console, version
 from ..gsi.state import DRAFTING_STATES
 from ..config import (APP_NAME, ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
+                      SUPPORT_EMAIL,
                       RECORDINGS_DIR,
                        REPO_ROOT, RULES_FILE, pair_source,
                        save_pair_source, save_target_brackets,
@@ -67,6 +69,7 @@ from ..model import scoring
 from . import settings as ui_settings
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
+from . import mailer
 from . import theme
 from . import accountrow, menusearch, ontop, rolebar, single
 from . import strays
@@ -273,6 +276,13 @@ class MainWindow(QMainWindow):
         # Set when the user stops a session by hand during a draft,
         # so auto does not immediately start another one.
         self._auto_blocked = False
+        # THE LAST DRAFT THAT WENT WRONG, graded after the recording
+        # stops: (folder, verdict, what the repair managed). Written by
+        # a worker and read by the banner on a later tick, so it is
+        # behind a lock for the same reason the portrait search's
+        # result is - the two are the same shape.
+        self._bug: tuple | None = None
+        self._bug_lock = threading.Lock()
         # Per-match hand corrections to the reading, cleared when the match
         # changes: which heroes were moved across, and the order the user
         # dragged each bank into.
@@ -1575,6 +1585,17 @@ class MainWindow(QMainWindow):
             "when the teams were decided — reads only, writes nothing")
         measure.clicked.connect(self._measure_session)
         buttons.addWidget(measure)
+        # AND THE SAME REPORT, BY HAND, FOR ANY RECORDING. The banner
+        # offers it for the draft that just went wrong; this is for the
+        # one three games ago that nobody was looking at the screen for,
+        # and for a report somebody wants to send when the app thought
+        # everything was fine.
+        report = QPushButton("Send bug report")
+        report.setToolTip(
+            "Zip this session's evidence and open your mail program with "
+            "it attached \u2014 you see it before it sends")
+        report.clicked.connect(self._report_session)
+        buttons.addWidget(report)
         # The two that came off the toolbar. They belong beside the
         # recordings they are about, not in the row above the draft.
         buttons.addWidget(self.report_button)
@@ -1673,6 +1694,22 @@ class MainWindow(QMainWindow):
                 "That recording has no game data to measure against", 6000)
             return
         self.run_task("measure_recording", str(folder))
+
+    def _report_session(self) -> None:
+        """Send a report for whichever recording is selected.
+
+        It GRADES the folder rather than reusing the last verdict: the
+        selected session is usually not the one that just finished, and
+        a report about draft A carrying draft B's faults is worse than
+        no report.
+        """
+        folder = self._current_session()
+        if folder is None:
+            self._say("Select a recording first", 6000)
+            return
+        with self._bug_lock:
+            self._bug = (folder, bugreport.grade(folder, self.ds), "")
+        self._send_bug_report()
 
     def _open_session_folder(self) -> None:
         folder = self._current_session()
@@ -2207,6 +2244,26 @@ class MainWindow(QMainWindow):
                 "screen.</b> Picks will be read late or not at all until "
                 "the crop boxes are measured.",
                 "Measure the boxes", self._measure_from_banner)
+            return
+        # THE DRAFT THAT JUST WENT WRONG, and only when the app could
+        # not put it right itself. Third rung: the two above it are
+        # faults that are happening NOW and cost the draft on screen,
+        # where this one is about a draft that has already finished -
+        # so it must never stand in front of them.
+        #
+        # AND IT IS NOT RAISED AT ALL WHEN THE REPAIR WORKED. A
+        # stranger's first bad draft measures their crop boxes off its
+        # own frames and saves them, which fixes every draft after it;
+        # asking them to post a report about a fault the app has just
+        # cured would be the app interrupting somebody to tell them
+        # about something that no longer matters.
+        graded = self._graded()
+        if graded is not None and graded[1].bad and not self._repaired_itself():
+            self._show_banner(
+                f"<b>{graded[1].headline().capitalize()}.</b> Sending the "
+                "report helps get it fixed - you will see exactly what "
+                "goes before it sends.",
+                "Send bug report", self._send_bug_report)
             return
         # STEPS THE USER SKIPPED, named. "allow users to click 'skip
         # this step' and then there is a banner at the main menu for
@@ -3024,6 +3081,14 @@ class MainWindow(QMainWindow):
         the app is either open or it is not.
         """
         drafting = record_mod.is_drafting(getattr(snap, "game_state", ""))
+        if drafting and self._graded() is not None:
+            # A NEW DRAFT ENDS THE LAST VERDICT. A banner about the game
+            # before this one, sitting over a draft happening now, is
+            # the stale-board fault one surface over - and the whole
+            # argument for grading per draft is that a draft is the unit
+            # that means something.
+            with self._bug_lock:
+                self._bug = None
         if not drafting:
             self._auto_blocked = False       # re-arm for the next match
             return
@@ -3069,6 +3134,126 @@ class MainWindow(QMainWindow):
         self._say(
             f"Saved {folder.name}: {payloads} payloads, {frames} frames, "
             f"{states} states" + (f" — {reason}" if reason else ""), 15000)
+        self._grade_recording(folder)
+
+    # ---- did that draft go wrong ---------------------------------------
+    def _grade_recording(self, folder: Path) -> None:
+        """Grade the draft that just ended, and try to fix it.
+
+        ON A WORKER, because the repair runs the portrait search and
+        that is SECONDS - measured at 25.6 inside one tick on a real
+        3440x1440 session, with the window frozen. The draft is over by
+        now, which makes a freeze cheaper than it was mid-draft and does
+        not make it acceptable: this app's rule is that nothing on the
+        loop blocks, and a graded recording is worth nothing if the
+        window stops answering while it happens.
+
+        REPAIR BEFORE REPORTING. For the crop boxes the app knows the
+        cure and this recording holds everything it needs, so a
+        stranger's first bad draft fixes their boxes for every draft
+        after it and they are never asked for anything. The banner is
+        what is left when that could not be done.
+        """
+        def work():
+            try:
+                verdict = bugreport.grade(folder, self.ds)
+                fixed = ""
+                if verdict.repairable:
+                    fixed = bugreport.repair(folder, self.ds)
+            except Exception as exc:        # noqa: BLE001 - see below
+                # A GRADER THAT RAISES MUST NOT COST THE RECORDING, and
+                # it runs on a daemon thread where an exception would
+                # otherwise vanish without trace. It is written down
+                # instead, so a fault in here shows up as a report
+                # saying so rather than as nothing happening.
+                verdict = bugreport.Verdict(
+                    notes=[f"grading failed: {exc!r}"])
+                fixed = ""
+            with self._bug_lock:
+                self._bug = (folder, verdict, fixed)
+
+        threading.Thread(target=work, name="grade-draft", daemon=True).start()
+
+    def _graded(self):
+        with self._bug_lock:
+            return self._bug
+
+    def _repaired_itself(self) -> bool:
+        """True when the repair wrote a calibration, so no banner is due.
+
+        The note is the one place that knows: `bugreport.repair` returns
+        a sentence either way, and the two are told apart by what it
+        says it DID rather than by a second flag nobody would keep in
+        step with it.
+        """
+        graded = self._graded()
+        return bool(graded and "saved them" in (graded[2] or ""))
+
+    def _send_bug_report(self) -> None:
+        """Build the zip and hand it to the user's own mail client."""
+        graded = self._graded()
+        if graded is None:
+            folder = self._current_session()
+            if folder is None:
+                self._say("No recording to report on", 6000)
+                return
+            verdict, fixed = bugreport.grade(folder, self.ds), ""
+        else:
+            folder, verdict, fixed = graded
+        try:
+            zipped, packed = bugreport.write_zip(
+                folder, verdict, DEBUG_OUT,
+                extra_text=self._diagnostic_text(fixed), dataset=self.ds)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(
+                self, "Problem report",
+                f"The report could not be written:\n\n{exc}")
+            return
+        size = zipped.stat().st_size
+        body = "\n".join([
+            "The app says this draft went wrong:",
+            "",
+            *(f"  * {fault.title}" for fault in verdict.faults),
+            "",
+            "The attached zip holds what it measured, the session log "
+            "and a few pictures of the Dota window.",
+            "",
+            "Anything you can add about what you saw on screen is worth "
+            "more than any of it.",
+        ])
+        sent = mailer.send(
+            SUPPORT_EMAIL, f"{APP_NAME}: {verdict.headline()}", body, zipped)
+        QMessageBox.information(
+            self, "Problem report",
+            f"{sent.detail}\n\n{zipped.name} — {size // 1024} KB\n"
+            + "\n".join(f"  {name}" for name in packed))
+
+    def _diagnostic_text(self, repair_note: str = "") -> str:
+        """The same facts Debug > Copy everything prints, for the zip."""
+        snap = self.snapshot
+        layout = self.layout_spec
+        lines = [
+            version.described(),
+            f"screen layout in use: y={layout.y:.4f} "
+            f"slot_h={layout.slot_h:.4f} radiant_x={layout.radiant_x:.4f} "
+            f"dire_x={layout.dire_x:.4f} slot_w={layout.slot_w:.4f} "
+            f"pitch={layout.pitch:.4f}",
+            f"calibration file: "
+            f"{'yes' if CALIBRATION_FILE.exists() else 'no (shipped values)'}",
+        ]
+        if snap is not None:
+            frame = getattr(snap, "frame", None)
+            shape = getattr(frame, "shape", None)
+            lines += [
+                f"capture: {getattr(snap, 'source', '')}",
+                f"frame: {shape[1]}x{shape[0]}" if shape is not None
+                else "frame: none",
+                f"game state: {getattr(snap, 'game_state', '')}",
+                f"line-up source: {getattr(snap, 'lineup_source', '')}",
+            ]
+        if repair_note:
+            lines.append(f"repair attempted: {repair_note}")
+        return "\n".join(lines)
 
     def _update_record_button(self) -> None:
         recording = self.recorder.active

@@ -19,6 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # It lives HERE rather than in `ui/` because `ui/single.py` runs before
 # the QApplication and must not import anything that reaches Qt.
 APP_NAME = "Dota Draft Assist"
+# WHERE A PROBLEM REPORT GOES. A dedicated address for this app rather
+# than the owner's own, which is the standing rule in CLAUDE.md
+# ("NOTHING IN THIS REPOSITORY IDENTIFIES ITS OWNER") and also the
+# practical answer: this string ships in everybody's copy, so a personal
+# address here is one a spam harvester reads off the first public clone.
+SUPPORT_EMAIL = "dotadraftassist@outlook.com"
 DATA_CACHE = REPO_ROOT / "data_cache"
 RAW_DUMP_DIR = DATA_CACHE / "raw"
 # One folder per recording session: payloads, frames and the app's

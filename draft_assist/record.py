@@ -322,6 +322,19 @@ def snapshot_record(snap, allies, enemies, dataset) -> dict:
         "ran_recognition": getattr(snap, "read", None) is not None,
         "read_heroes": _heroes_in(getattr(snap, "read", None)),
         "game_state": getattr(snap, "game_state", ""),
+        # THE TWO VERDICTS THE APP ALREADY REACHED. Both were computed
+        # every tick and neither was written down, so `bugreport.grade`
+        # - which reads this file back to decide whether a stranger's
+        # draft went wrong - had to infer what the app already knew.
+        # `crop_boxes_wrong` is the strongest signal there is here: at
+        # strategy time the game NAMES the ten heroes on screen, so
+        # boxes matching too few of them is a verdict rather than
+        # recognition being unlucky.
+        "crop_boxes_wrong": bool(getattr(snap, "crop_boxes_wrong", False)),
+        # And this one says the teams were split by a rule known to
+        # invert, which is a different complaint from a hero being
+        # misread and wants a different answer.
+        "sides_certain": bool(getattr(snap, "sides_certain", True)),
         "source": getattr(snap, "lineup_source", "") or "none",
         "mode": getattr(snap, "mode", ""),
         "player": getattr(snap, "player_name", ""),

@@ -3138,6 +3138,91 @@ credentials, and put the account at risk. Do not go there.
   `hero_entries` already drops, drawing origin entries back in only
   when fewer than ten were placed. A diagnostic reading past the app's
   own filter measures something the app never sees.
+- **A STRANGER'S BAD DRAFT FIXES ITSELF, AND REPORTS ITSELF WHEN IT
+  CANNOT** (`draft_assist/bugreport.py`, `ui/mailer.py`,
+  `config.SUPPORT_EMAIL`), at the user's request: "if anotjher user is
+  using the app and the portraits fail to recognise, that the software
+  can realize this and sent a bug report notification".
+  **THE DETECTION ALREADY EXISTED AND NOTHING WAS LISTENING.** Three
+  things in this app already knew when the screen reading had failed
+  and all three said so where only the owner would look:
+  `Snapshot.crop_boxes_wrong` (a VERDICT rather than a guess — at
+  strategy time the game NAMES the ten heroes on screen, so boxes
+  matching too few of them is proof about the geometry),
+  `record.compare_sources` (which has graded the screen against the
+  minimap since the recorder was written, and already separates a WRONG
+  hero from a MISSED one from SWAPPED sides), and `sides_certain`. So
+  this is a reader rather than a new pipeline.
+  **THE RECORDER HAD TO START WRITING TWO OF THEM DOWN.**
+  `snapshot_record` logged sixteen fields and neither
+  `crop_boxes_wrong` nor `sides_certain` was among them, so the grader
+  reading `state.jsonl` back had to infer what the app already knew.
+  **GRADED ONCE PER DRAFT, NEVER PER TICK.** A single tick reading
+  nothing is the app between frames; the same tick eighty times is the
+  fault this exists to catch. A new draft CLEARS the last verdict, or a
+  banner about the game before this one sits over the one happening now
+  — the stale-board fault one surface over.
+  **REPAIR BEFORE REPORTING**, which is the half worth more than the
+  report (`bugreport.repair`). The app already knew the cure for the
+  commonest fault and could only apply it DURING a draft, from the
+  banner, off a live frame — and by the time a draft is graded the pick
+  bar is gone. The recording holds the answer: the minimap named all
+  ten at strategy time and those are the ten that were on the bar, so
+  the search runs against its own frames and saves the calibration. A
+  stranger's FIRST bad draft fixes their boxes for every draft after
+  it, with nobody pressing anything, and the banner is only what is
+  left when that could not be done. **ALL TEN OR NOTHING**, the same
+  rule `_remember_measured_layout` follows: a miss at the start of a
+  bank shifts that whole bank one pitch, and this writes a calibration
+  a fresh install inherits.
+  **ON A WORKER.** The repair runs the portrait search, measured at
+  25.6 seconds inside one tick on a real session. The draft being over
+  makes a freeze cheaper and not acceptable.
+  **AND `repairable` IS `all`, NOT `any`** — fixing the boxes and then
+  going quiet about a second fault nothing addresses would lose exactly
+  the reports worth having.
+
+  **`mailto:` CANNOT ATTACH A FILE, and that is a platform limit rather
+  than a preference.** The scheme has an `attach=` parameter and no
+  mainstream client honours it: Outlook removed it around 2002 as a
+  security hole, Thunderbird and Windows Mail never took it. A link
+  that quietly drops the file is worse than one that admits it cannot
+  carry it, because somebody hits send on an empty report and nobody
+  learns anything. So it is **Simple MAPI** (`MAPISendMail` in
+  `mapi32.dll`), the documented Windows call that opens the default
+  client with the message filled in AND the file attached, with
+  `MAPI_DIALOG` so the person SEES it first — which matters more than
+  convenience here, because the zip carries pictures of their own
+  screen.
+  **AND IT IS BEST-EFFORT, SAID OUT LOUD.** The NEW Outlook that ships
+  as the Windows 11 default is a web app and registers no MAPI provider
+  at all, so on many machines this will not take. The fallback is not a
+  formality: a `mailto:` carries the subject and body and the zip is
+  REVEALED IN EXPLORER already selected, so attaching it is one drag.
+  `Sent.how` says which happened, because "it opened an empty email"
+  and "it opened one with your file on it" must not look the same from
+  here. **A USER WHO CLOSED THE DRAFT IS NOT A FAILURE**
+  (`MAPI_E_USER_ABORT`): they saw the message and decided not to send
+  it, which is the point of showing it, and falling through would open
+  a second empty email at somebody who just said no.
+  **`restype` IS NOT OPTIONAL**, the trap `appicon` already paid for,
+  and nothing in the module may be fatal — a mail client that will not
+  open is a nuisance, an app that dies because it could not is worse.
+  **THE ADDRESS IS THE PROJECT'S, NOT A PERSON'S**
+  (`config.SUPPORT_EMAIL`, `dotadraftassist@outlook.com`, made for this).
+  It ships in everybody's copy, so a personal address here is one a
+  spam harvester reads off the first public clone — and it would fail
+  `test_no_personal_data` besides.
+  **THE ZIP IS BUILT TO A CEILING RATHER THAN CHECKED AFTERWARDS**
+  (`SIZE_CAP` 18MB against a mail server's usual 25). A report that
+  cannot be sent is a report nobody sends, so each picture is added
+  only while the budget holds and the manifest says what was left out.
+  Frames are the expensive part — a 3440x1440 PNG is about five
+  megabytes — so `FRAMES_SENT` of them are taken SPREAD across the
+  draft (the first frames of a session are the queue and the loading
+  screen, which answer nothing) and shrunk. ONE payload goes rather
+  than the hundreds a session holds: the fullest, which is the only one
+  that answers anything.
 - **One site supplies the pairwise numbers, never two** (`config.pair_source`,
   `data/build.py`). OpenDota supplies hero constants and bracket-indexed
   baselines either way; the SETTING chooses who supplies the matchup and
