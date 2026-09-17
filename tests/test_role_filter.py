@@ -193,8 +193,14 @@ def test_the_cells_span_the_row_with_the_slack_shared_between_them(win,
         # last.
         assert left(first) == left(row), (
             f"at {width} the filter does not start at the row's left edge")
+        why = (f"at {width}: row {left(row)}..{right(row)} w={row.width()} "
+               f"filter w={filt.width()} cols={filt.columns} "
+               f"cell={filt._cell_width()} box w={last.width()} "
+               f"last {left(last)}..{right(last)} "
+               f"grid margins={filt.layout().contentsMargins().left()},"
+               f"{filt.layout().contentsMargins().right()}")
         assert right(last) == right(row), (
-            f"at {width} the filter does not reach the row's right edge")
+            f"the filter does not reach the row's right edge — {why}")
         # And that row is the strip's own span, to within the pixel
         # `STEADY` can leave on the tiles — see the docstring.
         assert abs(left(first) - left(strip)) <= 2, (
