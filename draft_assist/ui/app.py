@@ -52,7 +52,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
 
 from .. import console
 from ..gsi.state import DRAFTING_STATES
-from ..config import (ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
+from ..config import (APP_NAME, ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
                       RECORDINGS_DIR,
                        REPO_ROOT, RULES_FILE, pair_source,
                        save_pair_source, save_target_brackets,
@@ -337,7 +337,11 @@ class MainWindow(QMainWindow):
         self._last_advice: list = []
         self._reason_popup = None
         self.settings = ui_settings.load()
-        self.setWindowTitle("Dota Draft Assist")
+        # THE NAME A SECOND LAUNCH SEARCHES FOR, so it is the one
+        # constant rather than a string that matches it today —
+        # `single.raise_the_one_already_running` does an EXACT
+        # title match to put this window in front.
+        self.setWindowTitle(APP_NAME)
         self.setWindowIcon(appicon.icon())
         # Frameless: Windows' own title bar is a white strip above a dark
         # app and reads as a different program bolted on top. The cost is
@@ -5897,7 +5901,7 @@ def _main() -> None:
         return
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Dota Draft Assist")
+    app.setApplicationName(APP_NAME)
     # NO MENU IN THIS APP CARRIES AN ICON, AND THE ONES WE DID NOT BUILD
     # WERE CARRYING THEM. Right-click any text in here — the debug log,
     # a selectable label, a task's output — and Qt supplies its own

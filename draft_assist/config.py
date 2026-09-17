@@ -7,6 +7,18 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# THE APP'S NAME, SPELLED ONCE. It is the WINDOW TITLE, the application
+# name, the Start-menu shortcut's name and the string a second launch
+# searches for with `FindWindowW` to bring the first copy to the front —
+# and that last one is why it may not be spelled twice: the search is an
+# EXACT title match, so a rename in one place and not the other finds
+# nothing and the second launch quietly does nothing at all, which is
+# the one outcome the raise exists to prevent. The same rule the font
+# family and the shortcut name already follow.
+# It lives HERE rather than in `ui/` because `ui/single.py` runs before
+# the QApplication and must not import anything that reaches Qt.
+APP_NAME = "Dota Draft Assist"
 DATA_CACHE = REPO_ROOT / "data_cache"
 RAW_DUMP_DIR = DATA_CACHE / "raw"
 # One folder per recording session: payloads, frames and the app's

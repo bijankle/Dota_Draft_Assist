@@ -44,7 +44,7 @@ from PyQt6.QtGui import (QColor, QIcon, QImage, QImageReader,
                          QLinearGradient, QPainter, QPen, QPixmap,
                          QPolygonF)
 
-from ..config import ASSETS_DIR, REPO_ROOT
+from ..config import APP_NAME as _APP_NAME, ASSETS_DIR, REPO_ROOT
 from . import theme
 
 # Anything here wins over everything below, in this order. THESE ARE THE
@@ -73,7 +73,11 @@ FALLBACK_HERO = 4
 APP_ID = "DotaDraftAssist.App"
 # What the taskbar and the jump list call it. Without it the
 # window's jump list is headed "Python".
-APP_NAME = "Dota Draft Assist"
+# Read from `config` rather than spelled again: the window title,
+# the shortcut and the second launch's `FindWindowW` search are
+# all this one string, and a rename that reaches only some of
+# them breaks the raise silently.
+APP_NAME = _APP_NAME
 
 _icon: QIcon | None = None
 # What the last attempt at the taskbar identity did. A pin that
@@ -628,7 +632,7 @@ def push_native_icon(hwnd: int) -> bool:
         return False
 
 
-SHORTCUT_NAME = "Dota Draft Assist"
+SHORTCUT_NAME = APP_NAME
 # What `ensure_start_menu_shortcut` last did, for the paste.
 shortcut_note = "not attempted"
 _shortcut_done = False

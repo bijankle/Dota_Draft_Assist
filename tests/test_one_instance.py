@@ -183,3 +183,92 @@ def test_our_own_pid_is_alive_and_a_made_up_one_is_not():
     assert single._alive(os.getpid()) is True
     assert single._alive(4_000_000) is False
     assert single._alive(0) is False
+
+
+# ---- and a second launch focuses the first ----------------------------
+
+def test_a_second_launch_raises_the_window_rather_than_doing_nothing():
+    """"if the user tries to open a second version of the app it should
+    just focus on the window of the app that is already open."
+
+    No message — that was the earlier request and it stands. But a
+    launcher that appears to ignore a double-click is indistinguishable
+    from one that has crashed, so the raise IS the acknowledgement, and
+    `_main` has to reach it on the one path where the claim fails.
+    """
+    import ast
+    import inspect
+
+    from draft_assist.ui import app as ui_app
+
+    body = inspect.getsource(ui_app._main)
+    tree = ast.parse(body.strip())
+    called = {ast.unparse(node.func) for node in ast.walk(tree)
+              if isinstance(node, ast.Call)}
+    assert "single.claim" in called, "nothing takes the lock"
+    assert "single.raise_the_one_already_running" in called, (
+        "a refused second launch does nothing at all")
+    # And it STOPS there: a second copy that went on to build a window
+    # is the thing the lock exists to prevent.
+    refused = [node for node in ast.walk(tree)
+               if isinstance(node, ast.If)
+               and "single.claim" in ast.unparse(node.test)]
+    assert refused, "the claim is not what decides"
+    assert any(isinstance(step, ast.Return) for step in refused[0].body), (
+        "the second copy carries on after being refused")
+
+
+def test_it_searches_for_the_title_the_window_actually_has():
+    """`FindWindowW` is an EXACT title match, so the name the window is
+    GIVEN and the name the raise LOOKS FOR are one constant.
+
+    Spelled twice, a rename reaches one of them, the search finds
+    nothing, and the second launch quietly does nothing — which is
+    precisely the failure the raise exists to prevent, wearing the
+    appearance of the bug it fixed.
+    """
+    import inspect
+
+    from draft_assist.config import APP_NAME
+    from draft_assist.ui import app as ui_app, appicon
+
+    assert "FindWindowW(None, APP_NAME)" in inspect.getsource(
+        single.raise_the_one_already_running), "it searches for a literal"
+    # The window takes its title from the same place...
+    assert "self.setWindowTitle(APP_NAME)" in inspect.getsource(
+        ui_app.MainWindow.__init__)
+    # ...and so does everything else that names this app to Windows.
+    assert appicon.APP_NAME == appicon.SHORTCUT_NAME == APP_NAME
+
+
+def test_it_restores_only_a_MINIMISED_window():
+    """`SW_RESTORE` on a MAXIMISED window un-maximises it.
+
+    So the unconditional call this used to make would have shrunk a
+    full-screen app as the price of focusing it — a second launch
+    REARRANGING the first copy is worse than one that does nothing.
+    `IsIconic` separates the case the restore is for from the case it
+    damages.
+    """
+    import inspect
+
+    body = inspect.getsource(single.raise_the_one_already_running)
+    assert "if user32.IsIconic(window):" in body, (
+        "it restores unconditionally and will un-maximise the window")
+    assert single._SW_RESTORE == 9
+    # BringWindowToTop goes with SetForegroundWindow, which Windows
+    # refuses to a process without the foreground right: the pair is
+    # what makes a refusal degrade to "raised but not focused".
+    assert "BringWindowToTop(window)" in body
+    assert "SetForegroundWindow(window)" in body
+
+
+def test_the_raise_says_whether_it_found_anything():
+    """It answered None, so "no window by that name" and "brought it to
+    the front" were the same result — and this module's own rule is that
+    doing nothing silently is indistinguishable from being broken.
+
+    Off Windows there is nothing to find, which is the branch the test
+    machines take.
+    """
+    assert single.raise_the_one_already_running() is False

@@ -3486,12 +3486,42 @@ credentials, and put the account at risk. Do not go there.
   docstring first, because this module's own docstring has to NAME
   `TerminateProcess` to explain the trap — and a scan over raw text
   would fail on the sentence describing the bug it is guarding against.
-  **AND IT RAISES THE ONE ALREADY RUNNING** instead of doing nothing: no
-  popup was asked for, but a launcher that appears to do nothing at all
-  is indistinguishable from a broken one, so the existing window is
-  brought to the front through `FindWindowW`/`ShowWindow`/
-  `SetForegroundWindow` — never fatal, like every other ctypes call here.
-  `running.lock` is gitignored beside `ui_settings.json`.
+  **AND IT RAISES THE ONE ALREADY RUNNING** instead of doing nothing —
+  "if the user tries to open a second version of the app it should just
+  focus on the window of the app that is already open". No popup was
+  asked for, but a launcher that appears to do nothing at all is
+  indistinguishable from a broken one, so the existing window is brought
+  to the front through `FindWindowW`/`IsIconic`/`ShowWindow`/
+  `BringWindowToTop`/`SetForegroundWindow` — never fatal, like every
+  other ctypes call here. `running.lock` is gitignored beside
+  `ui_settings.json`.
+  **THE NAME IT SEARCHES FOR IS `config.APP_NAME`, AND THAT IS WHY THAT
+  CONSTANT EXISTS.** `FindWindowW` is an EXACT title match, so the
+  string the window is GIVEN and the string the raise LOOKS FOR must be
+  one constant: spelled twice, a rename reaches one of them, the search
+  finds nothing, and the second launch quietly does nothing — the exact
+  failure the raise exists to prevent, wearing the appearance of the bug
+  it fixed. It was spelled twice (`setWindowTitle` and the search) with
+  a third and fourth in `appicon.APP_NAME` / `SHORTCUT_NAME`; all four
+  read `config.APP_NAME` now, which lives in `config` rather than `ui/`
+  because `single` runs BEFORE the QApplication and must not import
+  anything reaching Qt.
+  **AND IT RESTORES ONLY A MINIMISED WINDOW.** `SW_RESTORE` on a
+  MAXIMISED window UN-MAXIMISES it, so the unconditional call this used
+  to make would have shrunk a full-screen app as the price of focusing
+  it — a second launch REARRANGING the first copy is worse than one that
+  does nothing. `IsIconic` separates the case the restore is for from
+  the case it damages.
+  **`BringWindowToTop` GOES WITH `SetForegroundWindow`**, which Windows
+  REFUSES to a process that does not hold the foreground right — that
+  process gets a flashing taskbar button instead of a raise. A launch
+  the user just double-clicked normally has the right, which is why this
+  works at all; the pair is what makes a refusal degrade to "raised but
+  not focused" rather than to nothing.
+  **AND IT ANSWERS TRUE OR FALSE** rather than None, because "no window
+  by that name" and "brought it to the front" were otherwise the same
+  result — inside the module whose own rule is that doing nothing
+  silently is indistinguishable from being broken.
 
 - **THE UPDATE'S BAR COUNTS UP, RATHER THAN GOING ROUND**
   (`tools/update_app.step`, `DOWNLOAD_FROM` / `DOWNLOAD_TO`,

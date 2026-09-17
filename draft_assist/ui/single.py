@@ -37,9 +37,12 @@ import os
 import sys
 from pathlib import Path
 
-from ..config import REPO_ROOT
+from ..config import APP_NAME, REPO_ROOT
 
 LOCK_FILE = REPO_ROOT / "running.lock"
+
+# Windows constants for the raise below.
+_SW_RESTORE = 9
 
 
 # Windows constants, spelled here so the ctypes call below reads.
@@ -175,24 +178,44 @@ def release(path: Path | None = None) -> None:
         pass
 
 
-def raise_the_one_already_running() -> None:
-    """Bring the copy that IS running to the front, if that can be done.
+def raise_the_one_already_running() -> bool:
+    """Bring the copy that IS running to the front. True if it was.
 
-    The second launch shows no message — that was the request — but it
-    must not simply vanish either: an app that appears to ignore a
-    double-click is indistinguishable from one that has crashed. Putting
-    the existing window in front IS the acknowledgement, in the only form
-    allowed here.
+    **THIS IS WHAT A SECOND LAUNCH DOES**, at the user's request: "if the
+    user tries to open a second version of the app it should just focus
+    on the window of the app that is already open." No message — that
+    was the earlier request and it stands — but it must not simply
+    vanish either: an app that appears to ignore a double-click is
+    indistinguishable from one that has crashed. The window you asked
+    for, in front of you, IS the acknowledgement.
 
-    WINDOWS ONLY, and never fatal. It is pure ctypes against the window
-    title, so there is nothing to import that is not already there and
-    nothing that can raise out of here: the worst case is the second
-    launch quietly doing nothing, which is what it was going to do
-    anyway.
+    WINDOWS ONLY, and never fatal. Pure ctypes against the window title,
+    so there is nothing to import that is not already there and nothing
+    that can raise out of here: the worst case is the second launch
+    quietly doing nothing, which is what it was going to do anyway.
+
+    **IT SEARCHES FOR `config.APP_NAME`, WHICH IS ALSO WHAT SETS THE
+    TITLE.** `FindWindowW` is an EXACT match on the title, so the name
+    spelled here and the name given to `setWindowTitle` are one constant
+    or this silently finds nothing — see the note in `config`.
+
+    **AND IT ONLY RESTORES A MINIMISED WINDOW.** `SW_RESTORE` on a
+    window that is MAXIMISED un-maximises it, so the unconditional call
+    this used to make would have shrunk a full-screen app as the price
+    of focusing it — a second launch REARRANGING the first copy is worse
+    than one that does nothing. `IsIconic` is the question that
+    separates the case the restore is for from the case it damages.
+
+    `BringWindowToTop` goes with `SetForegroundWindow` because the
+    second is refused under Windows' foreground lock — a process without
+    the foreground right gets a flashing taskbar button instead of a
+    raise. A launch the user just double-clicked normally HAS that
+    right, which is why this works at all; the pair is what makes a
+    refusal degrade to "raised but not focused" rather than to nothing.
     """
     import sys
     if not sys.platform.startswith("win"):
-        return
+        return False
     try:
         import ctypes
         user32 = ctypes.windll.user32
@@ -201,12 +224,17 @@ def raise_the_one_already_running() -> None:
         # on nothing. The same trap `appicon` carries two notes about.
         user32.FindWindowW.restype = ctypes.c_void_p
         user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
-        window = user32.FindWindowW(None, "Dota Draft Assist")
+        window = user32.FindWindowW(None, APP_NAME)
         if not window:
-            return
+            return False
+        user32.IsIconic.argtypes = [ctypes.c_void_p]
         user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.BringWindowToTop.argtypes = [ctypes.c_void_p]
         user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
-        user32.ShowWindow(window, 9)          # SW_RESTORE
+        if user32.IsIconic(window):
+            user32.ShowWindow(window, _SW_RESTORE)
+        user32.BringWindowToTop(window)
         user32.SetForegroundWindow(window)
+        return True
     except Exception:       # noqa: BLE001 - a nuisance, never a failure
-        pass
+        return False
