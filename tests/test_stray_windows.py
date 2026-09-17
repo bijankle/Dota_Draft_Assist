@@ -254,3 +254,58 @@ def test_the_window_runs_it_and_puts_it_in_the_paste(window):
     paste = QApplication.clipboard().text()
     assert "windows this process opened" in paste
     assert "on top:" in paste, "which route always-on-top took"
+
+
+def test_nothing_is_realised_without_a_parent_while_the_window_builds(qapp):
+    """The eight flashing windows, held shut at the root.
+
+    A parentless QWidget is a TOP-LEVEL WINDOW, and polishing one
+    realises it — so on Windows it is briefly a real window on screen.
+    `CountBox.__init__` polishes itself to measure its own width (it has
+    to: the font comes from the stylesheet), and every one of its five
+    call sites built it parentless and re-parented it a line later. The
+    role filter alone does that EIGHT times in a loop, once per role,
+    which is what a real boot recorded: eight `Qt6112QWindowIcon`
+    windows between 0.86s and 1.57s, all `during 'building the window'`,
+    confirmed by eye as "a bunch of small windowws opening and closign
+    over about a second, approx 8 of them".
+
+    This holds the PROPERTY rather than the five call sites, because the
+    fault is one anybody adding a widget can reintroduce — and it is
+    measured at the moment it happens, during construction, since the
+    widget is parented a moment later and nothing afterwards can see it.
+
+    A QMenu is exempt: a menu IS a popup window by design, Qt never puts
+    one on screen until it is popped up, and on Windows it carries the
+    popup window class rather than the ordinary one the report named.
+    """
+    from PyQt6.QtCore import QEvent, QObject
+    from PyQt6.QtWidgets import QMenu, QWidget
+    from draft_assist.ui.app import MainWindow
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.providers import DemoProvider
+
+    loose = []
+
+    class Watch(QObject):
+        def eventFilter(self, obj, event):
+            if (event.type() == QEvent.Type.Polish
+                    and isinstance(obj, QWidget)
+                    and not isinstance(obj, QMenu)
+                    and obj.parentWidget() is None):
+                loose.append(type(obj).__name__)
+            return False
+
+    watcher = Watch()                   # a temporary is collected at once
+    qapp.installEventFilter(watcher)
+    try:
+        ds = demo_dataset()
+        rules, meta = items_mod.load_rules(RULES_FILE)
+        win = MainWindow(ds, DemoProvider(ds), rules, meta)
+        win.timer.stop()
+    finally:
+        qapp.removeEventFilter(watcher)
+    win.close()
+    assert loose == [], (
+        "these were realised with no parent, so each is a top-level "
+        f"window flashing up while the app starts: {loose}")

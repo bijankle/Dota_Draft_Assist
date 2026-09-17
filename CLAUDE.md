@@ -3460,135 +3460,79 @@ credentials, and put the account at risk. Do not go there.
   it with `**` and needs no branch of its own. One spelling, because a
   fourth subprocess added tomorrow is the one somebody forgets.
 
-- **THE SMALL TRANSLUCENT WINDOW THAT FLASHES AT BOOT IS NOT IDENTIFIED
-  YET, AND TWO CONFIDENT ANSWERS HAVE ALREADY BEEN WRONG**
-  (`ui/strays.py`, `tests/test_stray_windows.py`). Reported as "still
-  get these small windows flashign up on the screen frequently jsut on
-  boot - they have the app logo top left and are small blank windowwws
-  flickering on / off", and then, with a screenshot, the two lines that
-  actually describe it: **"the blue is my desktiop background"** and
-  **"treansulscent when transitioning into materialsiing thje window"**.
-  So it is a rectangle with the DESKTOP showing THROUGH it and a thin
-  frame round it, seen while a window is coming into being — not a widget
-  with a grey client area.
-  **WHAT IS MEASURED AND STANDS.** The Qt side is clean: across a full
-  boot with the timer running, the provider started and the window
-  resized through six widths, the only top-level Show in the whole
-  application was `MainWindow`'s, and afterwards `allWidgets()` held
-  exactly ONE parentless widget. `test_ui_smoke.
-  test_the_app_owns_exactly_one_window_and_nothing_else` keeps it that
-  way and is the stronger guard —
-  `test_no_widget_is_left_without_a_parent` walks `vars(window)`, so a
-  widget held in a list, in another module or in a closure was always
-  invisible to it.
-  **THAT TEST DIFFS RATHER THAN COUNTING, and its first version did
-  not.** It asserted the measurement literally — exactly one parentless
-  widget in `allWidgets()` — which is true of a BOOT and false of a
-  SUITE, since a QApplication is shared by every test in a run and every
-  dialog any other file has opened is still in that list. It passed
-  alone and failed in the full suite, which is the order-dependence this
-  file already records for the stylesheet, one list over. What is
-  actually worth holding is that OPENING THE APP adds no parentless
-  widget but its own window, so the baseline is taken first and only
-  what is new is judged — and the baseline list is kept alive
-  deliberately, because comparing by `id` against freed objects would
-  let a reused address read as "was there before". Every `subprocess` call in `draft_assist/` and
-  `tools/` already passes `CREATE_NO_WINDOW`, and
-  `tests/test_no_console_flashes.py` holds that per CALL SITE rather
-  than per fix (exempting `open`, `xdg-open` and `explorer` — branches
-  Windows never takes, or the shell itself).
-  **WHAT WAS GUESSED AND WAS WRONG.** On that evidence the answer was
-  declared to be the launcher's own cmd console — blank on the installed
-  path, titled by `title Dota Draft Assist`, unavoidable because a batch
-  file is given a console before its first line runs. It fits every word
-  of the FIRST report and none of the second: a console is opaque black,
-  not see-through, and no desktop shows through one. **"nope, still
-  flickering this window".** Recorded because the shape of the mistake is
-  this file's own recurring one — an answer assembled out of our own
-  reasoning wearing the clothes of a measurement.
+- **THE EIGHT WINDOWS THAT FLASHED AT BOOT WERE COUNT BOXES BEING
+  POLISHED WITH NO PARENT** (`chrome.CountBox`, `rolebar.RoleFilter`,
+  `app._count_box` / `_badge_box`, `ui/strays.py`). Reported as "small
+  blank windowwws flickering on / off" with "the app logo top left", and
+  then, which is what actually named it: **"the blue is my desktiop
+  background"** and **"treansulscent when transitioning into
+  materialsiing thje window"** — a rectangle with the DESKTOP showing
+  through it, seen while a window comes into being.
+  **THE CAUSE IS THIS FILE'S OLDEST TRAP, ONE STEP ON.** A parentless
+  QWidget is a top-level window — and POLISHING one realises it, which
+  on Windows puts it on screen until it is re-parented.
+  `CountBox.__init__` polishes itself to measure its own width, and it
+  has to: the font comes from the stylesheet, which is the whole reason
+  `_fit_width` calls `ensurePolished`. Every one of its five call sites
+  built it PARENTLESS and parented it a line later — `rolebar` literally
+  `box.setParent(self)` on the next line. The role filter does that
+  **eight times in a loop, once per role**, which is the eight.
+  The menu bar and the status bar were the same shape and are parented
+  now too. `tests/test_stray_windows.py` holds the PROPERTY — nothing is
+  polished without a parent while the window builds — because five call
+  sites fixed is five call sites, and anybody adding a widget tomorrow
+  can do it again. A QMenu is exempt: it IS a popup by design, Qt never
+  shows one until it is popped up, and on Windows it carries the popup
+  window class rather than the ordinary one the report named.
+  **AND THIS WAS FOUND BY MEASURING, AFTER THREE WRONG ANSWERS.** Worth
+  the space, because every one of them was reasoning that fitted the
+  words:
+  1. **A forgotten parentless widget left lying about.** Ruled out by
+     measurement — across a full boot the only top-level Show is
+     `MainWindow`'s, and `allWidgets()` afterwards holds exactly one
+     parentless widget. True, and it missed this because the widget here
+     is parented a moment later: nothing that looks AFTER construction
+     can see it.
+  2. **The launcher's own cmd console.** Fitted the first report
+     perfectly and none of the second: a console is opaque black and no
+     desktop shows through one. "nope, still flickering this window".
+  3. **Rendering the app icon** — "1024px image, rebuilt at every size",
+     `SIZES` has nine entries, eight windows caught at one per sample.
+     Arithmetic that FITS. It was written down as a lead and deliberately
+     not acted on, and the stage marker then said `during 'building the
+     window'` on all eight, which killed it outright.
   **THE CONSOLE-FREE FRONT DOOR STAYS** (`appicon.folder_link` /
-  `ensure_folder_shortcut`). It was not the fault, and it is still a real
-  improvement: the same `write_shortcut` writes `Start Dota Draft
-  Assist.lnk` beside the launcher, pointing straight at `pythonw.exe`,
-  which has no console at all. Named that rather than the app's own name
-  because Explorer hides a `.lnk`'s extension and the folder would
-  otherwise hold two items reading the same and behaving differently;
-  gitignored (`*.lnk`), rewritten every start (an unzipped newer copy is
-  a SECOND folder), reported separately in Debug ▸ Copy everything. The
-  launcher stays: it BUILDS the environment the shortcut points into.
-  **SO THE APP ASKS WINDOWS, BECAUSE NOTHING HERE CAN SEE IT**
-  (`strays.Watcher`). `EnumWindows` filtered to our own process id,
-  sampled every `PERIOD` (40ms — a flash has to survive a twentieth of a
-  second to be caught) for `WATCH_FOR` seconds of boot and then STOPPED,
-  since the complaint is about boot and this app measures its refresh
-  loop precisely so nothing else runs on a timer over a draft. It
-  records what the eye cannot: the window CLASS (which names whoever
-  created it — Qt, a capture library, a console host), whether it has a
-  native CAPTION (what draws an icon in a corner) and whether it is
-  LAYERED (what lets the desktop through), its size, where it was, and
-  how many samples held it — **one sample is "gone before we looked
-  again", which is itself the measurement**. A window that has come and
-  gone is still in the report, and the report names OUR OWN window so it
-  can be told from the rest. Never fatal, nothing at all off Windows.
-  **SAMPLED, NOT HOOKED**: a CBT hook catches every creation exactly and
-  is a system-wide hook installed from a running app, which is a far
-  bigger thing to get wrong than missing a frame.
-  **AND THE FIRST REAL REPORT WATCHED THE WRONG 45 SECONDS.** It came
-  back clean and accounted for all three windows on screen — the app's
-  own, a `Qt6112QWindowPopupDropShadowSaveBits` (a Qt MENU, 2.68s to
-  4.69s, which is somebody opening File) and the Settings window from
-  4.81s, which is where Copy everything lives. The tell is its first
-  line: **the earliest sample was 1.91s**. The watcher owned a QTimer
-  created in `MainWindow.__init__`, and a QTimer cannot fire until the
-  EVENT LOOP runs — which is after the window has been built and shown.
-  Every second the report exists to cover had already passed.
-  So it is a daemon THREAD now, started from `_main` BEFORE the
-  QApplication, which is why `strays` touches nothing Qt: it is ctypes
-  and Win32 only, so sampling off the GUI thread is safe, and `seen` is
-  guarded by a lock because the report is read from the GUI thread while
-  the sampler writes. `report()` states when sampling actually began,
-  since that one number is what showed the first version was blind.
-  `tests/test_stray_windows.py` parses `_main` and requires
-  `strays.start()` to appear before `QApplication`.
-  **AND THE SECOND REPORT FOUND THEM.** Sampling from before the
-  QApplication, a real boot shows **EIGHT short-lived
-  `Qt6112QWindowIcon` top-level windows between 0.86s and 1.57s**, one
-  per sample, every one of them gone by the next look — while the app's
-  own window does not appear until 3.94s. Confirmed against the eye in
-  the same breath: "looks liek a bunch of small windowws opening and
-  closign over about a second, approx 8 of them seems right". So the
-  thing being reported is real, it is Qt's own window class, and it
-  happens BEFORE the main window exists — which is why every check
-  written against `MainWindow` came back clean and said nothing.
-  **WHAT IS STILL NOT KNOWN IS WHICH STEP MAKES THEM**, and that is the
-  one thing left to measure rather than guess. They came back as `0x0 at
-  (0,0)`, which was the WATCHER's fault and not a reading: it collected
-  handles and read their geometry after the enumeration had finished,
-  and a window that dies in between leaves `GetWindowRect` failing and
-  the RECT zeroed. Each window is measured INSIDE the callback now,
-  while it is still there, and `Seen.biggest` keeps the largest reading
-  rather than the last — a window caught mid-teardown measures nothing,
-  and nought would overwrite a real reading of the same window a moment
-  earlier.
-  **AND EVERY WINDOW NOW SAYS WHAT THE APP WAS DOING** (`strays.stage`,
-  called through `_main`). A class name says who CREATED a window and
-  nothing about why: eight nameless Qt windows in a row is a mystery,
-  and eight during "rendering the app icon" is a lead. The steps are
-  named from starting Qt through the fonts, the stylesheet, the icon,
-  each shortcut, the provider, building and showing the window, and
-  first-run setup. The strongest candidate on the timings is the ICON:
-  the report says "1024px image, rebuilt at every size", `SIZES` has
-  nine entries, and eight windows were caught at one per sample — but
-  that is arithmetic that FITS rather than a measurement, which is the
-  exact kind of reasoning that has already been wrong twice here.
-  **DO NOT NAME A THIRD CAUSE WITHOUT THAT REPORT.** The two leads it
-  has to separate are a native handle being DESTROYED AND RECREATED
-  (which `ui/ontop.py` exists to avoid and which `setWindowFlags` does
-  on Windows — a recreated frameless, `setWindowOpacity`-layered window
-  is see-through and unpainted, which is exactly what was described) and
-  a window belonging to a LIBRARY, `windows-capture` above all. The
-  paste now also carries `ontop.note`, which says which route
-  always-on-top actually took.
+  `ensure_folder_shortcut`). It was not the fault and is still a real
+  improvement: `write_shortcut` writes `Start Dota Draft Assist.lnk`
+  beside the launcher, pointing at `pythonw.exe`, which has no console at
+  all. Named that rather than the app's own name because Explorer hides a
+  `.lnk`'s extension; gitignored (`*.lnk`), rewritten every start.
+  **AND `ui/strays.py` IS WHAT ANSWERED IT, so it stays.** `EnumWindows`
+  filtered to our own process id, sampled every `PERIOD` (40ms — a flash
+  has to survive a twentieth of a second to be caught) for `WATCH_FOR`
+  seconds and then stopped. It records what the eye cannot: the window
+  CLASS (which names whoever created it), whether it has a native CAPTION
+  (what draws an icon in a corner), whether it is LAYERED (what lets the
+  desktop through), its size, how many samples held it — **one sample is
+  "gone before we looked again"** — and, decisively, `strays.stage`, the
+  step of the boot that was running. A class name says who CREATED a
+  window and nothing about why; eight nameless Qt windows is a mystery,
+  and eight `during 'building the window'` is an answer.
+  **THREE THINGS ABOUT IT WERE WRONG FIRST, and each is a lesson.** It
+  owned a QTimer in `MainWindow.__init__`, and a QTimer cannot fire until
+  the event loop runs — which is after the window is shown — so its
+  earliest sample was **1.91s** and everything it existed to catch had
+  already happened. It is a daemon THREAD started from `_main` before the
+  QApplication now, which is why the module touches nothing Qt: ctypes
+  and Win32 only, with a lock on `seen` because the report is read from
+  the GUI thread. It read each window's geometry AFTER the enumeration
+  finished, so a window that died in between left `GetWindowRect` failing
+  and the RECT zeroed — which is how eight real windows came back as `0x0
+  at (0,0)`; each is measured inside the callback now, and `Seen.biggest`
+  keeps the largest reading rather than the last. And the first attempt
+  at the event filter passed a TEMPORARY `QObject()` to
+  `installEventFilter`, which Python collected immediately: it reported
+  zero events and read as proof of innocence.
 
 - **ONLY ONE COPY OF THE APP RUNS** (`ui/single.py`, `claim`, `release`,
   `raise_the_one_already_running`), at the user's request: "i dont want

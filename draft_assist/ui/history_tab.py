@@ -143,7 +143,7 @@ class TableControls(QWidget):
         row.addWidget(QLabel("Top"))
         # The app's own count box, with the painted arrows every other
         # number-with-arrows in this window uses.
-        self.count = CountBox(SHOW_ALL, SHOW_ALL, MAX_ROWS)
+        self.count = CountBox(SHOW_ALL, SHOW_ALL, MAX_ROWS, self)
         # NOUGHT READS AS "all", not as "0". The strips' count boxes use
         # the same convention and can leave it implicit because a row is
         # visibly full; a table cut to nothing looks the same as a table

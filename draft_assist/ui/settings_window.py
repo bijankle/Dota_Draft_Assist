@@ -131,7 +131,7 @@ class GeneralPage(QWidget):
         self.reminder_days = CountBox(
             int(settings.get("data_reminder_days",
                              ui_settings.DATA_REMINDER_DAYS)),
-            0, ui_settings.MAX_REMINDER_DAYS)
+            0, ui_settings.MAX_REMINDER_DAYS, self)
         self.reminder_days.setSuffix(" days")
         self.reminder_days.valueChanged.connect(self.changed)
         remind.addWidget(self.reminder_days)

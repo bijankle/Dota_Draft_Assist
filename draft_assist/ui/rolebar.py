@@ -611,9 +611,14 @@ class RoleFilter(ReflowGrid):
             name.setProperty("dim", True)
             name.setAlignment(Qt.AlignmentFlag.AlignRight
                               | Qt.AlignmentFlag.AlignVCenter)
+            # THE PARENT IS GIVEN AT CONSTRUCTION, never a line later.
+            # `CountBox.__init__` polishes itself to measure its own
+            # width, and polishing a PARENTLESS widget realises it — on
+            # Windows that is a real top-level window, briefly on screen.
+            # Eight roles made eight of them, which is the flicker at
+            # boot the user reported. See `ui/strays.py`.
             box = chrome.CountBox(int(wanted.get(role, 0)), 0,
-                                  roles_mod.MAX_LEVEL)
-            box.setParent(self)
+                                  roles_mod.MAX_LEVEL, self)
             box.setToolTip(
                 f"Only suggest heroes Dota scores at least this highly in "
                 f"{role}, on its own 1-to-3 scale.\n"

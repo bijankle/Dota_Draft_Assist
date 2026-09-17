@@ -487,7 +487,11 @@ class MainWindow(QMainWindow):
         # NOT self.menuBar(): QMainWindow puts that above the central
         # widget, which would leave a menu strip sitting on top of our own
         # title bar. It goes inside the bar instead, the way Steam does it.
-        bar = chrome.RuledMenuBar()
+        # PARENTED AT CONSTRUCTION, like every widget here: a
+        # parentless QWidget is a top-level window, and anything
+        # that polishes it before it is re-parented puts that
+        # window on screen. See `ui/strays.py`.
+        bar = chrome.RuledMenuBar(self)
         self.menu_bar = bar
 
         file_menu = bar.addMenu("&File")
@@ -1140,7 +1144,7 @@ class MainWindow(QMainWindow):
         # the heading in the same QGridLayout as the legend puts all
         # three boxes in one COLUMN, which aligns them by construction
         # rather than by a measurement somebody has to keep right.
-        self.suggested_box = self._count_box("suggested_picks")
+        self.suggested_box = self._count_box("suggested_picks", self)
         picks_card, playy = card()
         self.suggest_row = SuggestRow()
         self.suggest_row.clicked_hero.connect(
@@ -1162,7 +1166,7 @@ class MainWindow(QMainWindow):
         outer.addWidget(picks_card)
 
         items_card, ilay = card(
-            "Top Items", self._count_box("suggested_items"))
+            "Top Items", self._count_box("suggested_items", self))
         self.item_row = ItemRow()
         self.item_row.asked_why.connect(self._why_this_item)
         ilay.addWidget(self.item_row)
@@ -1487,7 +1491,7 @@ class MainWindow(QMainWindow):
         # ornate frame is drawn round the shell, and a status bar hung off
         # the window sits outside it — a border round everything except
         # the bottom strip is a border that has been forgotten about.
-        self.status = QStatusBar()
+        self.status = QStatusBar(self)
         self.status.setSizeGripEnabled(False)
         # The grip goes INSIDE the status bar, at its right end. It used to
         # have a row of its own below, which left a strip of window under
@@ -4622,14 +4626,16 @@ class MainWindow(QMainWindow):
         self._reason_popup = popup          # kept alive while it is up
         popup.pop_at(near.mapToGlobal(near.rect().bottomLeft()))
 
-    def _count_box(self, key: str):
+    def _count_box(self, key: str, parent=None):
         """The little number beside a strip's heading.
 
         It used to be in Settings, two menus away from the strip whose
         length it sets — which is the wrong place for a number you tune by
         looking at the result.
         """
-        box = chrome.CountBox(self._how_many(key), 1, ui_settings.MAX_SHOWN)
+        # PARENTED AT CONSTRUCTION — see `_badge_box`.
+        box = chrome.CountBox(self._how_many(key), 1,
+                              ui_settings.MAX_SHOWN, parent)
         box.setToolTip(
             "How many to show. They wrap onto another row rather than "
             "scrolling, and the default is however many fit on one row.\n"
@@ -4845,8 +4851,7 @@ class MainWindow(QMainWindow):
             grid.addWidget(MarkLabel(shield, legend), 0, at)
             grid.addWidget(QLabel("=", legend), 0, at + 1)
             grid.addWidget(QLabel(word, legend), 0, at + 2)
-            box = self._badge_box(key)
-            box.setParent(legend)
+            box = self._badge_box(key, legend)
             grid.addWidget(box, 0, at + 3)
             setattr(self, f"{'shield' if shield else 'heart'}_box", box)
             # The gap goes AFTER every cell but the last, or the block
@@ -4884,7 +4889,7 @@ class MainWindow(QMainWindow):
         # picked — the same trap the count boxes carry a note about.
         self._refresh_views()
 
-    def _badge_box(self, key: str):
+    def _badge_box(self, key: str, parent=None):
         """The count beside a mark. Nought is none.
 
         NO CEILING TIED TO THE SUGGESTION COUNT, at the user's request -
@@ -4896,9 +4901,14 @@ class MainWindow(QMainWindow):
         be used. The strip still caps what it DRAWS - it cannot mark a
         tile that is not there - so a big number is harmless.
         """
+        # AND ITS PARENT IS GIVEN HERE, not after the fact.
+        # `CountBox.__init__` polishes itself to measure its width, and
+        # polishing a PARENTLESS widget realises it — which on Windows
+        # is a real top-level window, on screen until it is reparented.
+        # That is the flicker at boot; see `ui/strays.py`.
         box = chrome.CountBox(
             ui_settings.clamp_marks(self.settings.get(key, 3), 3),
-            0, ui_settings.MAX_SHOWN)
+            0, ui_settings.MAX_SHOWN, parent)
         box.setToolTip(
             "How many of the suggestions carry this mark. The number "
             "inside each one is its rank, so 1 is the best of them.\n"
