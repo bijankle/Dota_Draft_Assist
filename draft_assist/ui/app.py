@@ -69,6 +69,7 @@ from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import theme
 from . import accountrow, menusearch, ontop, rolebar, single
+from . import strays
 from . import chrome
 from . import ornate
 from . import reasons
@@ -389,6 +390,19 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(300)
+        # WHAT WINDOWS THIS PROCESS ACTUALLY PUTS ON SCREEN, for the
+        # first seconds of a boot. The Qt side is measured clean — the
+        # only top-level Show in a full boot is this window's — so a
+        # small translucent rectangle flashing up at startup is either a
+        # native handle being recreated or a window belonging to a
+        # library, and neither is visible to any check written in Qt's
+        # terms. It samples, records what came and went, stops after
+        # `strays.WATCH_FOR`, and costs nothing off Windows. The answer
+        # lands in Settings > Debug > Copy everything.
+        self.strays = strays.Watcher()
+        self.stray_timer = QTimer(self)
+        self.stray_timer.timeout.connect(self._watch_for_strays)
+        self.stray_timer.start(int(strays.PERIOD * 1000))
         # AFTER `_build`, because a fixed size has to be at least what the
         # layout can honestly draw and there is no layout to ask before
         # that. The action's own tick is set here rather than when it was
@@ -5545,6 +5559,25 @@ class MainWindow(QMainWindow):
                 Qt.TransformationMode.SmoothTransformation),
             width, height)
 
+    def _own_hwnd(self) -> int:
+        """This window's handle, so the report can name it as ours."""
+        try:
+            return int(self.winId())
+        except Exception:                   # noqa: BLE001 - diagnostic
+            return 0
+
+    def _watch_for_strays(self) -> None:
+        """One sample, until the boot window has passed.
+
+        The timer is STOPPED rather than left running at a longer
+        period: the complaint is about boot, and this app measures its
+        own refresh loop precisely so that nothing else runs on a timer
+        over a live draft.
+        """
+        self.strays.sample()
+        if self.strays.expired():
+            self.stray_timer.stop()
+
     def _copy_debug_log(self) -> None:
         """Everything needed to diagnose one game, in one paste.
 
@@ -5565,6 +5598,9 @@ class MainWindow(QMainWindow):
             f"window icon: {appicon.window_icon_note}",
             f"start menu: {appicon.shortcut_note}",
             f"folder shortcut: {appicon.folder_shortcut_note}",
+            f"on top: {ontop.note}",
+            "--- windows this process opened ---",
+            self.strays.report(self._own_hwnd()),
             "",
             "--- what the app is reading ---",
             self.unknown_label.text(),

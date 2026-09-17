@@ -3447,58 +3447,75 @@ credentials, and put the account at risk. Do not go there.
   it with `**` and needs no branch of its own. One spelling, because a
   fourth subprocess added tomorrow is the one somebody forgets.
 
-- **THE SMALL BLANK WINDOW THAT FLASHES AT BOOT IS THE LAUNCHER'S OWN
-  CONSOLE, AND THE APP'S SIDE WAS RULED OUT BY MEASUREMENT**
-  (`appicon.folder_link` / `ensure_folder_shortcut`,
-  `tests/test_no_console_flashes.py`). Reported as "still get these
-  small windows flashign up on the screen frequently jsut on boot -
-  they have the app logo top left and are small blank windowwws
-  flickering on / off".
-  The obvious suspect was this file's own favourite trap — a parentless
-  QWidget is a top-level window, and one carrying the application icon
-  over an empty client area is EXACTLY what was described. It is not
-  that, and the ruling-out is the useful half: across a full boot with
-  the timer running, the provider started and the window resized
-  through six widths, **the only top-level Show in the whole
-  application was `MainWindow`'s**, and after boot **`allWidgets()`
-  holds exactly one parentless widget**. `test_ui_smoke.
+- **THE SMALL TRANSLUCENT WINDOW THAT FLASHES AT BOOT IS NOT IDENTIFIED
+  YET, AND TWO CONFIDENT ANSWERS HAVE ALREADY BEEN WRONG**
+  (`ui/strays.py`, `tests/test_stray_windows.py`). Reported as "still
+  get these small windows flashign up on the screen frequently jsut on
+  boot - they have the app logo top left and are small blank windowwws
+  flickering on / off", and then, with a screenshot, the two lines that
+  actually describe it: **"the blue is my desktiop background"** and
+  **"treansulscent when transitioning into materialsiing thje window"**.
+  So it is a rectangle with the DESKTOP showing THROUGH it and a thin
+  frame round it, seen while a window is coming into being — not a widget
+  with a grey client area.
+  **WHAT IS MEASURED AND STANDS.** The Qt side is clean: across a full
+  boot with the timer running, the provider started and the window
+  resized through six widths, the only top-level Show in the whole
+  application was `MainWindow`'s, and afterwards `allWidgets()` holds
+  exactly ONE parentless widget. `test_ui_smoke.
   test_the_app_owns_exactly_one_window_and_nothing_else` keeps it that
-  way, and it is the stronger guard:
+  way and is the stronger guard —
   `test_no_widget_is_left_without_a_parent` walks `vars(window)`, so a
   widget held in a list, in another module or in a closure was always
-  invisible to it.
-  Every `subprocess` call in `draft_assist/` and `tools/` was already
-  passing `CREATE_NO_WINDOW`, and a test now holds that per call site
-  rather than per fix — the exemptions are `open`, `xdg-open` and
-  `explorer`, which are branches Windows never takes or the shell
-  itself.
-  **WHAT IS LEFT IS cmd.exe, AND NOTHING IN THE SCRIPT CAN REACH IT.**
-  A batch file is given a console BEFORE its first line runs, so by the
-  time any line could hide it, it is on screen. On the installed path
-  `Dota Draft Assist.bat` echoes NOTHING — `@echo off`, two `if exist`
-  tests, `start`, `exit` — which is why it reads as an empty box rather
-  than as a script working, it carries the app's NAME because the
-  script sets `title Dota Draft Assist`, and it carries the app's ICON
-  when it is started from a shortcut that has one.
-  **SO THE FIX IS A SECOND FRONT DOOR, NOT AN EDIT TO THE SCRIPT.** A
-  shortcut straight to `pythonw.exe` has no console to show — which is
-  what the Start-menu one has always done — so the same
-  `write_shortcut` now also writes one BESIDE the launcher, where
-  somebody actually double-clicks. Sending a person to a Start-menu
-  entry instead of the file they have been opening for months is not a
-  fix.
-  **NAMED `Start Dota Draft Assist.lnk`, NOT THE APP'S OWN NAME.**
-  Explorer hides a `.lnk`'s extension, so a shortcut named exactly what
-  the app is named leaves the folder holding two items that read the
-  same and behave differently. Gitignored (`*.lnk`) and rewritten at
-  every start, for the Start-menu one's reason: an unzipped newer copy
-  is a SECOND folder, and a shortcut into the old one is worse than
-  none.
-  **THE LAUNCHER STAYS.** It is what BUILDS and repairs the environment
-  this shortcut points into, and a first run has no `.venv` to target
-  yet. It reports separately in Debug ▸ Copy everything
-  (`folder_shortcut_note`), because one shortcut failing must not be
-  readable as the other having failed.
+  invisible to it. Every `subprocess` call in `draft_assist/` and
+  `tools/` already passes `CREATE_NO_WINDOW`, and
+  `tests/test_no_console_flashes.py` holds that per CALL SITE rather
+  than per fix (exempting `open`, `xdg-open` and `explorer` — branches
+  Windows never takes, or the shell itself).
+  **WHAT WAS GUESSED AND WAS WRONG.** On that evidence the answer was
+  declared to be the launcher's own cmd console — blank on the installed
+  path, titled by `title Dota Draft Assist`, unavoidable because a batch
+  file is given a console before its first line runs. It fits every word
+  of the FIRST report and none of the second: a console is opaque black,
+  not see-through, and no desktop shows through one. **"nope, still
+  flickering this window".** Recorded because the shape of the mistake is
+  this file's own recurring one — an answer assembled out of our own
+  reasoning wearing the clothes of a measurement.
+  **THE CONSOLE-FREE FRONT DOOR STAYS** (`appicon.folder_link` /
+  `ensure_folder_shortcut`). It was not the fault, and it is still a real
+  improvement: the same `write_shortcut` writes `Start Dota Draft
+  Assist.lnk` beside the launcher, pointing straight at `pythonw.exe`,
+  which has no console at all. Named that rather than the app's own name
+  because Explorer hides a `.lnk`'s extension and the folder would
+  otherwise hold two items reading the same and behaving differently;
+  gitignored (`*.lnk`), rewritten every start (an unzipped newer copy is
+  a SECOND folder), reported separately in Debug ▸ Copy everything. The
+  launcher stays: it BUILDS the environment the shortcut points into.
+  **SO THE APP ASKS WINDOWS, BECAUSE NOTHING HERE CAN SEE IT**
+  (`strays.Watcher`). `EnumWindows` filtered to our own process id,
+  sampled every `PERIOD` (40ms — a flash has to survive a twentieth of a
+  second to be caught) for `WATCH_FOR` seconds of boot and then STOPPED,
+  since the complaint is about boot and this app measures its refresh
+  loop precisely so nothing else runs on a timer over a draft. It
+  records what the eye cannot: the window CLASS (which names whoever
+  created it — Qt, a capture library, a console host), whether it has a
+  native CAPTION (what draws an icon in a corner) and whether it is
+  LAYERED (what lets the desktop through), its size, where it was, and
+  how many samples held it — **one sample is "gone before we looked
+  again", which is itself the measurement**. A window that has come and
+  gone is still in the report, and the report names OUR OWN window so it
+  can be told from the rest. Never fatal, nothing at all off Windows.
+  **SAMPLED, NOT HOOKED**: a CBT hook catches every creation exactly and
+  is a system-wide hook installed from a running app, which is a far
+  bigger thing to get wrong than missing a frame.
+  **DO NOT NAME A THIRD CAUSE WITHOUT THAT REPORT.** The two leads it
+  has to separate are a native handle being DESTROYED AND RECREATED
+  (which `ui/ontop.py` exists to avoid and which `setWindowFlags` does
+  on Windows — a recreated frameless, `setWindowOpacity`-layered window
+  is see-through and unpainted, which is exactly what was described) and
+  a window belonging to a LIBRARY, `windows-capture` above all. The
+  paste now also carries `ontop.note`, which says which route
+  always-on-top actually took.
 
 - **ONLY ONE COPY OF THE APP RUNS** (`ui/single.py`, `claim`, `release`,
   `raise_the_one_already_running`), at the user's request: "i dont want
