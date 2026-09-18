@@ -283,6 +283,10 @@ class MainWindow(QMainWindow):
         # result is - the two are the same shape.
         self._bug: tuple | None = None
         self._bug_lock = threading.Lock()
+        # What the last send actually did, read back by the guided page.
+        # "It attached the zip" and "it opened an empty email" must not
+        # look the same from the outside — see `mailer.Sent.how`.
+        self._last_report_note = ""
         # Per-match hand corrections to the reading, cleared when the match
         # changes: which heroes were moved across, and the order the user
         # dragged each bank into.
@@ -2243,7 +2247,7 @@ class MainWindow(QMainWindow):
                 "<b>The app cannot find the pick portraits on your "
                 "screen.</b> Picks will be read late or not at all until "
                 "the crop boxes are measured.",
-                "Measure the boxes", self._measure_from_banner)
+                "Fix this", self._guide_the_boxes)
             return
         # THE DRAFT THAT JUST WENT WRONG, and only when the app could
         # not put it right itself. Third rung: the two above it are
@@ -3195,6 +3199,9 @@ class MainWindow(QMainWindow):
         if graded is None:
             folder = self._current_session()
             if folder is None:
+                self._last_report_note = (
+                    "No recording to report on — play one draft with Auto "
+                    "on and the app will have something to send.")
                 self._say("No recording to report on", 6000)
                 return
             verdict, fixed = bugreport.grade(folder, self.ds), ""
@@ -3205,6 +3212,7 @@ class MainWindow(QMainWindow):
                 folder, verdict, DEBUG_OUT,
                 extra_text=self._diagnostic_text(fixed), dataset=self.ds)
         except (OSError, ValueError) as exc:
+            self._last_report_note = f"The report could not be written: {exc}"
             QMessageBox.warning(
                 self, "Problem report",
                 f"The report could not be written:\n\n{exc}")
@@ -3221,12 +3229,32 @@ class MainWindow(QMainWindow):
             "Anything you can add about what you saw on screen is worth "
             "more than any of it.",
         ])
+        # THE RESOLUTION IS IN THE SUBJECT, because that is what these
+        # reports are FILED by: a measured pick bar is only useful as a
+        # row in `vision/measured.py`, and that table is keyed by frame
+        # size. A subject naming only the fault would make every report
+        # about a display need opening before it could be sorted.
         sent = mailer.send(
-            SUPPORT_EMAIL, f"{APP_NAME}: {verdict.headline()}", body, zipped)
+            SUPPORT_EMAIL,
+            f"{APP_NAME}: {verdict.headline()}{self._report_display()}",
+            body, zipped)
+        self._last_report_note = sent.detail
         QMessageBox.information(
             self, "Problem report",
             f"{sent.detail}\n\n{zipped.name} — {size // 1024} KB\n"
             + "\n".join(f"  {name}" for name in packed))
+
+    def _report_display(self) -> str:
+        """" (1920x1080)" for the subject line, or nothing.
+
+        Empty rather than "unknown" when no frame was captured: a subject
+        claiming a resolution nobody read is worse than one that is
+        silent, and the zip carries the same fact either way.
+        """
+        snap = self.snapshot
+        frame = getattr(snap, "frame", None) if snap else None
+        shape = getattr(frame, "shape", None)
+        return f" ({shape[1]}x{shape[0]})" if shape is not None else ""
 
     def _diagnostic_text(self, repair_note: str = "") -> str:
         """The same facts Debug > Copy everything prints, for the zip."""
@@ -3244,6 +3272,14 @@ class MainWindow(QMainWindow):
         if snap is not None:
             frame = getattr(snap, "frame", None)
             shape = getattr(frame, "shape", None)
+            # WHICH of the three answers the boxes came from. Invisible in
+            # the six numbers above, and the first thing worth knowing
+            # when they are wrong: a resolution measured directly being
+            # wrong is a bad bot draft, a whole shape being wrong is a
+            # display nobody has measured yet.
+            if shape is not None and not CALIBRATION_FILE.exists():
+                from ..vision import measured as measured_mod
+                lines.append(measured_mod.describe(shape[1], shape[0]))
             lines += [
                 f"capture: {getattr(snap, 'source', '')}",
                 f"frame: {shape[1]}x{shape[0]}" if shape is not None
@@ -3572,6 +3608,87 @@ class MainWindow(QMainWindow):
         self.cal_label.setText(text)
         self._say(text, seconds)
 
+    def _sync_layout_spec(self) -> None:
+        """Follow the session's own layout, and move the spin boxes with it.
+
+        Cheap and idempotent: an identity check per tick, and the spin
+        boxes are only touched when the numbers actually changed. Signals
+        are blocked while they are set, since a control being brought
+        into line with what the app already decided is not the user
+        turning it — unblocked, `_set_calibration` would fire and latch
+        the fitted layout as though somebody had hand-set it, which would
+        stop it ever re-fitting again.
+        """
+        session = getattr(self.provider, "session", None)
+        live = getattr(session, "layout", None)
+        if live is None or live is self.layout_spec:
+            return
+        self.layout_spec = live
+        for field, spin in getattr(self, "cal_spins", {}).items():
+            value = getattr(live, field)
+            if spin.value() != value:
+                spin.blockSignals(True)
+                spin.setValue(value)
+                spin.blockSignals(False)
+
+    def _guide_the_boxes(self, *_ignored) -> None:
+        """The banner's button: the three things that fix this, in order.
+
+        It used to run the measurement OUTRIGHT, which is right when
+        there is a pick bar on screen and is the commonest way this is
+        pressed a moment too late — the draft ends, the bar goes, and
+        what the person gets is a sentence explaining why nothing
+        happened. The measurement is still the first thing the page
+        offers and is still one press; what is new is that a refusal now
+        has a step 2 and a step 3 under it instead of being the end.
+        """
+        from .fixboxes import FixBoxesDialog
+
+        dialog = FixBoxesDialog(self._where_the_boxes_came_from(),
+                                self._measure_and_say,
+                                self._report_and_say, self)
+        dialog.exec()
+        self._update_first_run_banner(self.snapshot)
+
+    def _where_the_boxes_came_from(self) -> str:
+        """Which of the three answers is in use, named for this display."""
+        if CALIBRATION_FILE.exists():
+            return ("These boxes were measured on this machine and saved. "
+                    "Measuring again replaces them.")
+        snap = self.snapshot
+        frame = getattr(snap, "frame", None) if snap else None
+        shape = getattr(frame, "shape", None)
+        if shape is None:
+            return ("No Dota window captured yet, so the boxes are the "
+                    "shipped starting values.")
+        from ..vision import measured as measured_mod
+        return measured_mod.describe(shape[1], shape[0])
+
+    def _measure_and_say(self) -> str:
+        """Measure, and answer with the note rather than a bare bool.
+
+        `_measure_calibration` writes its own outcome into `cal_label`,
+        which lives two menus deep in Settings — so the guided page reads
+        it back rather than the two of them spelling the same sentence
+        twice and drifting.
+        """
+        worked = self._measure_calibration()
+        if worked:
+            snap = self.snapshot
+            if snap is not None:
+                snap.crop_boxes_wrong = False
+        note = self.cal_label.text() if hasattr(self, "cal_label") else ""
+        if worked:
+            return note or "Measured and saved."
+        return (note or "") + ("\n\nNothing to measure from right now — "
+                               "there has to be a draft on screen. Step 2 "
+                               "does it without you.")
+
+    def _report_and_say(self) -> str:
+        """Send, and say which of the two routes the mail client allowed."""
+        self._send_bug_report()
+        return getattr(self, "_last_report_note", "")
+
     def _measure_from_banner(self, *_ignored) -> None:
         """The banner's button: measure the boxes off the frame in hand.
 
@@ -3742,7 +3859,15 @@ class MainWindow(QMainWindow):
         self.layout_spec = result.layout
         session = getattr(self.provider, "session", None)
         if session is not None:
-            session.layout = result.layout
+            # `adopt_measured`, never a bare assignment: the session
+            # re-fits its boxes from the shipped table whenever the frame
+            # size changes, and a measurement taken off THIS match has to
+            # outrank that or the next tick would throw it away.
+            adopt = getattr(session, "adopt_measured", None)
+            if adopt is not None:
+                adopt(result.layout)
+            else:
+                session.layout = result.layout
         for field, spin in getattr(self, "cal_spins", {}).items():
             spin.blockSignals(True)
             spin.setValue(getattr(result.layout, field))
@@ -3774,7 +3899,11 @@ class MainWindow(QMainWindow):
         setattr(self.layout_spec, field, float(value))
         session = getattr(self.provider, "session", None)
         if session is not None:
-            session.layout = self.layout_spec
+            adopt = getattr(session, "adopt_measured", None)
+            if adopt is not None:
+                adopt(self.layout_spec)
+            else:
+                session.layout = self.layout_spec
         self.cal_label.setText("changed — not saved")
         self._force_redraw()
 
@@ -4065,6 +4194,14 @@ class MainWindow(QMainWindow):
         started = time.perf_counter()
         with LOOP.stage("poll (capture + recognition)"):
             snap = self.provider.poll()
+        # THE SIX NUMBERS ON SCREEN MUST BE THE SIX BEING USED. The
+        # session re-fits its boxes to the captured frame's shape
+        # (`fit_to_frame`), and `layout_spec` is what the debug spin
+        # boxes, the diagnostic paste and `autocal.calibrate`'s starting
+        # point all read — so left unsynced this window would report a
+        # layout the recogniser had stopped using, which is the one thing
+        # a diagnostic may never do.
+        self._sync_layout_spec()
         self.snapshot = snap
         # The blanking lifts here, ONCE a tick, rather than as a side
         # effect of whoever asks about it first.
@@ -6048,7 +6185,13 @@ def _capture_session():
         lib = library.load(expected_hash_size=params.hash_size)
     except FileNotFoundError:
         return None
-    return CaptureSession(load_layout(), lib, params)
+    session = CaptureSession(load_layout(), lib, params)
+    # A calibration file is this machine's own measurement and outranks
+    # the shipped table, so the session must not re-fit over it on the
+    # first frame. Without this the whole point of `calibration_local.json`
+    # would be undone one tick after startup.
+    session.layout_is_measured = CALIBRATION_FILE.exists()
+    return session
 
 
 CRASH_LOG = DEBUG_OUT / "crash.log"

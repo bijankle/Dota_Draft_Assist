@@ -298,6 +298,7 @@ def measure_frames(folder: Path, ten: list[int], count: int,
         age = ages.get(path)
         phase = state_at(marks, age)
         rows.append({
+            "size": (width, height),
             "name": path.name, "phase": phase, "age": age,
             "size": (width, height), "found": len(found),
             "layout": fitted.layout, "note": fitted.note,
@@ -305,6 +306,93 @@ def measure_frames(folder: Path, ten: list[int], count: int,
             "boxes_ok": bool(getattr(placed, "ok", False)),
         })
     return rows
+
+
+# How far the frames of ONE recording may disagree before a table row is
+# refused. Much tighter than `AGREE_WITHIN`, and deliberately: that one
+# compares readings taken on DIFFERENT displays, where the notes already
+# record a real 0.005-0.007 step between aspect groups. Every frame here
+# is the same display in the same match, so anything past a few
+# ten-thousandths is a bad fit rather than a difference.
+ROW_AGREE = 0.004
+
+
+def say_row(rows: list[dict]) -> None:
+    """Print the line to paste into `vision/measured.py`'s `EXACT`.
+
+    **ALL TEN OR THE FRAME DOES NOT VOTE**, the same rule
+    `_remember_measured_layout` and `bugreport.repair` already follow:
+    `autocal.layout_from` reads a bank's origin off the FIRST portrait it
+    finds in that bank, so a single missed leading portrait shifts that
+    whole bank by one pitch and every box after it. Nine located is
+    enough to answer whose five is whose; it takes ten to answer where
+    the boxes go, and this row is a number every install of this app
+    inherits.
+
+    `radiant_x` is not emitted. The bar is centred on the HUD span, and
+    the mirror of the right bank lands within 1 to 4 pixels of the
+    measured left origin on every frame that has ever located ten -
+    while measuring it directly is the one reading with that missed-
+    portrait failure in it. `measured.Reading` derives it.
+    """
+    print("\n\n=== A ROW FOR THE SHIPPED TABLE ===\n")
+    ten = [row for row in rows
+           if row["layout"] is not None and row["found"] == 10]
+    if not ten:
+        located = max((row["found"] for row in rows), default=0)
+        print(f"  NO ROW. The best frame located {located} of 10 portraits, "
+              "and a row")
+        print("  needs all ten - a missed portrait at the start of a bank "
+              "moves that")
+        print("  whole bank by one pitch and nothing says which.")
+        return
+
+    sizes = {row["size"] for row in ten}
+    if len(sizes) != 1:
+        named = ", ".join(f"{w}x{h}" for w, h in sorted(sizes))
+        print(f"  NO ROW. These frames are {named} - one recording has to "
+              "be one")
+        print("  display, or the row would name a resolution it did not "
+              "measure.")
+        return
+    width, height = sizes.pop()
+
+    values = {name: [getattr(row["layout"], name) for row in ten]
+              for name in FRACTIONS}
+    apart = {name: max(vals) - min(vals) for name, vals in values.items()
+             if name != "radiant_x"}
+    loose = {name: gap for name, gap in apart.items() if gap > ROW_AGREE}
+    if loose:
+        print(f"  NO ROW. {len(ten)} frame(s) of {width}x{height}, and "
+              "they disagree:")
+        for name, gap in sorted(loose.items()):
+            print(f"    {name:<11} spread {gap:.4f}   "
+                  f"(at most {ROW_AGREE:.4f})")
+        print("  That is a bad fit on at least one frame, not a property "
+              "of the")
+        print("  display. Re-run with more frames, or record another draft.")
+        return
+
+    median = {name: statistics.median(vals) for name, vals in values.items()}
+    print(f"  {len(ten)} frame(s) of {width}x{height} located all ten and "
+          f"agree to")
+    print(f"  {max(apart.values()):.4f}. Paste this into EXACT in "
+          "draft_assist/vision/measured.py:\n")
+    print(f"    ({width}, {height}): Reading(")
+    for name in ("dire_x", "y", "slot_w", "slot_h", "pitch"):
+        print(f"        {name}={median[name]:.4f},")
+    print(f'        source="bot draft at {width}x{height}",')
+    print(f"        frames={len(ten)},")
+    print("    ),")
+    mirrored = 1.0 - (median["dire_x"] + 4 * median["pitch"]
+                      + median["slot_w"])
+    print(f"\n  (radiant_x is derived as {mirrored:.4f}; this recording "
+          f"measured it")
+    print(f"  at {statistics.median(values['radiant_x']):.4f}, and the two "
+          "should be within a")
+    print("  few pixels of each other. A big gap means a bank's leading "
+          "portrait")
+    print("  was missed on some frame.)")
 
 
 def say_bar(rows: list[dict]) -> None:
@@ -407,6 +495,10 @@ def main() -> None:
     parser.add_argument("--frames", type=int, default=DEFAULT_FRAMES,
                         help=f"how many frames to measure "
                              f"(default {DEFAULT_FRAMES}; seconds each)")
+    parser.add_argument(
+        "--row", action="store_true",
+        help="also print a line to paste into vision/measured.py's EXACT, "
+             "so this resolution is right on a fresh install's FIRST draft")
     args = parser.parse_args()
 
     folder = Path(args.folder)
@@ -447,7 +539,10 @@ def main() -> None:
         print("\n  without the ten heroes the game named, the pick bar "
               "cannot be measured.")
         return
-    say_bar(measure_frames(folder, ten, args.frames, marks))
+    rows = measure_frames(folder, ten, args.frames, marks)
+    say_bar(rows)
+    if args.row:
+        say_row(rows)
     print("\nNothing was written. This tool only reads.")
 
 

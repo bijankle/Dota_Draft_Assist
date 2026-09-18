@@ -129,6 +129,107 @@ credentials, and put the account at risk. Do not go there.
    said in its own words ("a synthetic bar cannot be evidence about
    Dota's real artwork") one paragraph after citing it as the evidence.
 
+   **AND THE BOXES ARE NOW CHOSEN BY THE DISPLAY'S SHAPE, WHICH IS THE
+   OWNER'S OWN PLAN** (`vision/measured.py`, `load_layout(width, height)`,
+   `CaptureSession.fit_to_frame`): "i just run every resolution of dota 2
+   - draft against bots - record via the dota draft assist app - send back
+   reports - refine the protrait recognition for each resolution... and
+   then the user of this app has their current rresdolution sensed by this
+   app and it knows exactly where to look fort the portraits ... o nthe
+   first try".
+   **WHAT IT BUYS IS DRAFT NUMBER ONE, AND ONLY THAT.** `autocal` has
+   measured this app's own geometry at strategy time for a long while and
+   `bugreport.repair` now does it off a finished recording, so a fresh
+   install has been self-correcting from the SECOND draft onwards. The one
+   thing neither could ever do is be right during the FIRST hero
+   selection, which is the screen the app exists for.
+   **A TABLE KEYED BY RESOLUTION WOULD HAVE A HUNDRED ROWS AND TWO
+   ANSWERS.** `hud_box` already computes every resolution from `scale =
+   min(w/16, h/9)` centred, so 1920x1080, 2560x1440 and 3840x2160 are the
+   same fractions EXACTLY and measuring each is measuring one thing three
+   times. What varies is the display's SHAPE, and the sweep says it varies
+   in ONE STEP: bar width / span is 0.780-0.791 on 16:9 and wider against
+   0.889-0.898 narrower. `GROUPS` records that step and claims no
+   mechanism for it, because nobody has one.
+   **SO THERE ARE TWO LEVELS AND THE SPECIFIC ONE WINS.** `EXACT` is keyed
+   by frame size and is where a bot-game measurement goes — one row per
+   display actually played on, printed ready to paste by
+   `tools/measure_recording.py <folder> --row`. `GROUPS` is what an
+   untried resolution falls back to. A table alone could say nothing about
+   a display nobody owns; a group alone would ignore a real reading
+   somebody took. With both, adding a row can only make one resolution
+   better and can never make another worse — and `EXACT` ships EMPTY,
+   because a row repeating its own group's numbers claims a measurement
+   nobody made (a test refuses one).
+   **AND `radiant_x` IS DERIVED, NOT MEASURED, WHICH IS THE STRONGER
+   NUMBER.** The bar is centred on the HUD span, so the left bank's origin
+   is the mirror of the right — within 1 to 4 PIXELS on all seven frames
+   that located ten. Measuring it directly is the one reading with a known
+   failure in it: `banks_from` reads a bank's origin off the FIRST
+   portrait it finds there, so one missed leading portrait moves it a
+   whole pitch and moves nothing else. That is exactly why `radiant_x` was
+   the fraction that never settled while the other five did. A `Reading`
+   therefore states four fractions and `mirrored_x` fills the fifth.
+   **THE SIZE IS THE FRAME'S, NOT THE MONITOR'S** — Dota windowed at
+   1280x720 on a 4K panel draws a 16:9 HUD, and what the app captures is
+   the window. `load_layout()` with no size keeps the old behaviour
+   exactly, which is what every tool and test with no frame in hand wants.
+   **AND A MEASUREMENT IS NEVER OVERWRITTEN BY THE TABLE**
+   (`CaptureSession.layout_is_measured`, `adopt_measured`). The session is
+   built at startup, long before Dota is bound, so the shape is resolved
+   on the first frame and again whenever it changes — one dict lookup per
+   tick. Without the latch, the tick after a successful `autocal` would
+   throw its answer away, and a `calibration_local.json` would be undone
+   one tick after the app opened. Order: the local file, then `EXACT`,
+   then `GROUPS`, then `DraftLayout()`'s defaults. Re-fitting also RESETS
+   the stabiliser and drops `last_read`, because a reading taken through
+   the old boxes is about different pixels and would otherwise outvote the
+   first frames read through the right ones.
+   **THE SHIPPED SIX ARE STILL UNTOUCHED**, deliberately. They are what
+   `DraftLayout()` answers when there is no frame to measure against, and
+   every path that HAS a frame now goes through the table — so nothing
+   about them had to be argued to get the display-shaped answer in.
+
+   **AND A DISPLAY THE TABLE GETS WRONG IS A GUIDED PAGE, NOT A DEAD END**
+   (`ui/fixboxes.py`), at the owner's request: "if the portraits dont
+   align on the first go the user should be guided through the process of
+   portrait recognition improvements for their specific case (+ bug
+   reports sendng)". The crop-boxes banner has had ONE action on it —
+   measure off the frame in hand — which needs a pick bar on screen with
+   all ten heroes named by the game. Press it in the menus, or ten seconds
+   after the draft ended, and it correctly refuses; what is left is a
+   sentence about why and nothing to do next. Which is this project's own
+   recurring fault: an honest answer that is not an answer.
+   So the three things that actually fix it are on one page in the order
+   to try them: **measure it now** if there is a bar to measure, else
+   **play one draft with Auto on** and `bugreport.repair` does it off that
+   recording's own frames with nobody pressing anything, else **send the
+   measurement back** so the next person with this display is right on
+   their first draft. Step 3 is the one that is not about this user at
+   all, and it is why this is a page rather than a better error message: a
+   report carrying a measured pick bar for a resolution nobody here owns
+   is the only way `EXACT` ever grows a row.
+   **IT NAMES THE RESOLUTION AND WHICH LEVEL THE BOXES CAME FROM**
+   (`measured.describe`, `_where_the_boxes_came_from`, and the same line
+   in the diagnostic paste). "The boxes are wrong" is one sentence for a
+   display measured directly and for one that fell back to its aspect
+   group, and those are different faults — an exact row being wrong is a
+   bad bot draft, a whole group being wrong is a shape nobody has
+   measured. The six numbers do not say which.
+   **AND THE RESOLUTION IS IN THE EMAIL'S SUBJECT** (`_report_display`),
+   because that is what these reports are FILED by: a measured bar is only
+   useful as a row in a table keyed by frame size, so a subject naming
+   only the fault would make every report need opening before it could be
+   sorted. Empty rather than "unknown" when no frame was captured — a
+   subject claiming a resolution nobody read is worse than a silent one,
+   and the zip carries the fact either way.
+   **HUD SCALE IS NOT A REASON TO HEDGE**, settled by the owner: "this who
+   HUD scale being different for each user is bs.... 99% of people just
+   use the defaults". It was carried here for a round as an argument
+   against shipping any table at all, and it is worth recording as a shape
+   rather than a fact: a hazard nobody has seen, used to withhold a fix
+   for a fault somebody was looking at.
+
    **AND THE MEASUREMENT SAID LESS THAN WAS DONE WITH IT.** It is still
    a real finding and it is still deliberately NOT acted on: across the
    user's screenshots the portrait HEIGHT spread 0.0137 against the

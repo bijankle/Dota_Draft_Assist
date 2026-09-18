@@ -174,10 +174,31 @@ class DraftLayout:
                         slot.y + self.role_dy, slot.w, self.role_h)
 
 
-def load_layout(calibration_file: Path | None = None) -> DraftLayout:
-    """Same rule as `save_calibration`: resolved at call time."""
+def load_layout(width: int = 0, height: int = 0,
+                calibration_file: Path | None = None) -> DraftLayout:
+    """Where to look for the portraits, most specific answer first.
+
+    Same rule as `save_calibration`: the path is resolved at CALL time,
+    never bound as a default argument.
+
+    THREE LEVELS, AND THE MACHINE'S OWN MEASUREMENT WINS. A
+    `calibration_local.json` was measured by this app, on this display,
+    off a real match — it is an ANSWER, where a shipped number is a good
+    starting guess, so it is taken whole and nothing else is consulted.
+    Failing that, `measured.layout_for` answers for the SHAPE of the
+    display (see that module: a resolution measured on a bot draft first,
+    then the aspect group it belongs to). Failing even a frame to measure,
+    `DraftLayout()`'s own defaults stand.
+
+    **THE SIZE IS THE FRAME'S, NOT THE MONITOR'S.** Dota windowed at
+    1280x720 on a 4K panel draws a 16:9 HUD, and what the app captures is
+    the window. Passing nothing keeps the old behaviour exactly, which is
+    what every tool and test that has no frame in hand wants.
+    """
+    from .measured import layout_for
+
     calibration_file = calibration_file or CALIBRATION_FILE
-    layout = DraftLayout()
+    layout = layout_for(width, height) if (width and height) else DraftLayout()
     if calibration_file.exists():
         overrides = json.loads(calibration_file.read_text(encoding="utf-8"))
         known = set(asdict(layout))

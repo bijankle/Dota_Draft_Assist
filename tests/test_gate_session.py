@@ -39,8 +39,22 @@ def make_session():
     portraits = procedural_portrait_set(126)
     lib = build_library_from_images(
         portraits, 8, extra={EMPTY_SLOT: [empty_slot_image()]})
-    return CaptureSession(DraftLayout(),
-                          lib, RecognitionParams(8, 0.30, 0.04))
+    session = CaptureSession(DraftLayout(),
+                             lib, RecognitionParams(8, 0.30, 0.04))
+    # `generate_case` DRAWS its pick bar from this very layout, so the
+    # frames these tests feed in have their portraits exactly where
+    # `DraftLayout()` says. A live session re-fits its boxes to the frame
+    # size from the shipped per-display table (`fit_to_frame`), which
+    # would move them off artwork this file placed — so the layout here
+    # is declared measured, which is what it is.
+    #
+    # Note what this is NOT: these tests are about the GATE, and the
+    # synthetic bar is only there to be a draft screen rather than a
+    # menu. A test of where the boxes GO may never place its artwork from
+    # a layout and then ask the app to find it — that is the circularity
+    # `tests/test_the_crop_boxes.py` scans the suite for.
+    session.layout_is_measured = True
+    return session
 
 
 def tick_now(session):

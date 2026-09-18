@@ -4152,7 +4152,48 @@ def test_bad_crop_boxes_are_a_banner_not_a_note_in_a_recording(qapp,
         win._update_first_run_banner(snap)
         said = win.banner_label.text()
         assert "pick portraits" in said, said
-        assert win.banner_button.text() == "Measure the boxes"
+        # "Fix this" rather than "Measure the boxes", because the button
+        # no longer runs the measurement outright. Measuring needs a pick
+        # bar on screen with all ten heroes named, so pressed a moment
+        # after the draft ended it correctly refused and left nothing to
+        # do next — the guided page (`ui/fixboxes.py`) offers that
+        # measurement first and then the two things that work when it
+        # cannot run.
+        assert win.banner_button.text() == "Fix this"
+        # bound methods are not identical objects, so compare the function
+        assert win._banner_action.__func__ is win._guide_the_boxes.__func__
+    finally:
+        win.close()
+
+
+def test_the_crop_box_banner_opens_the_guided_page(qapp, monkeypatch):
+    """Pressing it must not silently do nothing when there is no frame.
+
+    This is the case the old button was worst at: no picture to measure,
+    so it refused, and a refusal was the end of the road.
+    """
+    win = make_window(qapp, demo_dataset())
+    try:
+        opened = {}
+        from draft_assist.ui import fixboxes
+
+        class _Fake:
+            def __init__(self, where, measure, report, parent=None):
+                opened["where"] = where
+                opened["measure"] = measure
+                opened["report"] = report
+
+            def exec(self):
+                opened["shown"] = True
+
+        monkeypatch.setattr(fixboxes, "FixBoxesDialog", _Fake)
+        win.snapshot = None
+        win._guide_the_boxes()
+        assert opened.get("shown") is True
+        # and it is told which display and which of the three levels the
+        # boxes in use came from, since those are different faults
+        assert opened["where"]
+        assert callable(opened["measure"]) and callable(opened["report"])
     finally:
         win.close()
 

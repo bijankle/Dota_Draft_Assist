@@ -120,6 +120,16 @@ class CaptureSession:
     def __init__(self, layout: DraftLayout, lib: Library,
                  params: RecognitionParams):
         self.layout, self.lib, self.params = layout, lib, params
+        # The size the layout in hand was chosen for, so a display that
+        # changes shape mid-session (a windowed Dota being dragged onto a
+        # second monitor, or the resolution changed between matches) is
+        # re-answered rather than read through the last screen's boxes.
+        # See `fit_to_frame`.
+        self._sized_for: tuple[int, int] = (0, 0)
+        # A layout somebody MEASURED — this machine's own calibration file,
+        # or an `autocal` reading adopted mid-match — outranks the shipped
+        # table and must never be silently replaced by it.
+        self.layout_is_measured = False
         self.state = SessionState()
         self._lock = threading.Lock()
         self._latest: np.ndarray | None = None
@@ -220,6 +230,56 @@ class CaptureSession:
 
     def set_forced(self, forced: bool) -> None:
         self.state.forced = forced
+
+    def fit_to_frame(self, frame) -> bool:
+        """Point the crop boxes at a display of THIS shape. True if moved.
+
+        The shipped table is keyed by the captured frame's size (see
+        `vision/measured.py`), and nothing knows that size until a frame
+        arrives — the session is built at startup, long before Dota is
+        bound. So the answer is resolved on the first frame and again
+        whenever the size changes, which costs one dict lookup per tick
+        and is what makes a fresh install right during its FIRST hero
+        selection rather than after `autocal` has seen a strategy screen.
+
+        **A MEASURED LAYOUT IS NEVER OVERWRITTEN BY A GUESS.** This
+        machine's own `calibration_local.json`, and an `autocal` reading
+        adopted from the match in progress, are answers; everything in
+        the table is a good starting guess. `layout_is_measured` is what
+        separates them, and without it the first tick after a successful
+        measurement would throw it away.
+        """
+        if self.layout_is_measured or frame is None:
+            return False
+        shape = getattr(frame, "shape", None)
+        if not shape or len(shape) < 2:
+            return False
+        height, width = int(shape[0]), int(shape[1])
+        if not width or not height or (width, height) == self._sized_for:
+            return False
+        from ..vision.measured import layout_for
+
+        self._sized_for = (width, height)
+        fitted = layout_for(width, height)
+        if fitted == self.layout:
+            return False
+        self.layout = fitted
+        # The boxes have moved, so every reading taken through the old
+        # ones is about a different set of pixels. Keeping them would let
+        # the stabiliser outvote the first frames read through the right
+        # geometry, which is the fault `detect_now` exists to clear.
+        self._stabilizer.reset()
+        self.state.last_read = None
+        self.state.last_read_raw = None
+        return True
+
+    def adopt_measured(self, layout: DraftLayout) -> None:
+        """Take a layout something MEASURED, and stop fitting from the table."""
+        self.layout = layout
+        self.layout_is_measured = True
+        self._stabilizer.reset()
+        self.state.last_read = None
+        self.state.last_read_raw = None
 
     def detect_now(self) -> None:
         """Read the screen on the NEXT tick, whatever the gate thinks.
@@ -348,6 +408,7 @@ class CaptureSession:
         asked = self._consume_detect_now()
         if (self.state.mode == "active" or self.state.forced
                 or self.state.required or probing or asked):
+            self.fit_to_frame(frame)
             with LOOP.stage("  recognise (10 crops vs the library)"):
                 raw = read_draft(frame, self.layout, self.lib, self.params)
             self.state.last_read_raw = raw
