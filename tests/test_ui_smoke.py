@@ -1404,7 +1404,7 @@ def test_the_draft_tab_carries_the_teams_and_both_matrices(window):
     """The matrices moved onto the draft screen: the grid explaining the
     ten picks belongs beside the ten picks, not behind a tab."""
     titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert titles == ["Draft", "History"]
+    assert titles == ["Draft", "History", "Debug"]
     draft_tab = window.tabs.widget(0)
     for widget in (window.matchup_matrix, window.synergy_matrix,
                    window.team_panels["ally"], window.team_panels["enemy"]):
@@ -1857,15 +1857,67 @@ def test_a_tall_tab_does_not_set_the_windows_floor(window, qapp):
     entire desktop height and would not shrink."""
     window.show()
     qapp.processEvents()
-    # Debug is a tab of the SETTINGS window now, so it can no longer set
-    # the main window's floor at all — but the rule it taught still has to
-    # hold there, or the settings window opens taller than the screen.
-    window._open_settings("Debug")
-    qapp.processEvents()
+    # Debug is a tab of THIS window again, at the user's request, so the
+    # fault this test was written for is live once more: both its pages
+    # are `_scrolling`, so the tab asks for nothing and the floor stays
+    # where the Draft tab puts it. The next long panel added to Debug
+    # fails here rather than taking the whole desktop height silently.
+    assert window.tabs.indexOf(window.debug_tabs) >= 0, \
+        "Debug is not a tab of the main window"
     assert window.debug_tabs.minimumSizeHint().height() < 400, \
         "the Debug pages are not scrolling; they dictate a window height"
     assert window.minimumSizeHint().height() < 900, \
         f"the window cannot be made short: {window.minimumSizeHint()}"
+
+
+def test_debug_is_the_tab_right_of_history(window, qapp):
+    """At the user's request: "make debug a view again, right of
+    history... i use it too often not to".
+
+    A settings window is for what you do ONCE — install the game config,
+    fetch the artwork, pick your ranks. This is a live picture looked at
+    over and over while a draft runs, and two menus deep is a live view
+    nobody watches.
+    """
+    window.show()
+    qapp.processEvents()
+    names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    assert names == ["Draft", "History", "Debug"], names
+
+
+def test_every_route_to_debug_asks_for_its_index(window, qapp):
+    """It was hard-coded to 1 once, which is the History tab.
+
+    Four ways in — the Help item, the search, the latest-report button
+    and the tab itself — so the index is ASKED FOR in one place. A number
+    that is right until somebody adds a tab is a number that will be
+    wrong, and this is the fault that already shipped.
+    """
+    window.show()
+    qapp.processEvents()
+    window.tabs.setCurrentIndex(0)
+    window.show_debug()
+    assert window.tabs.currentWidget() is window.debug_tabs
+    assert window.debug_tabs.currentIndex() == 0
+    window.show_debug(1)
+    assert window.debug_tabs.currentIndex() == 1
+
+
+def test_the_settings_window_no_longer_holds_the_debug_pages(window, qapp):
+    """One parent, for the life of the app.
+
+    Handing a live widget back and forth between two parents is the
+    trap that has produced a second taskbar window three times here, so
+    the settings window does not borrow it and does not offer the tab.
+    """
+    window.show()
+    qapp.processEvents()
+    window._open_settings("General")
+    qapp.processEvents()
+    tabs = window.settings_window.tabs
+    names = [tabs.tabText(i) for i in range(tabs.count())]
+    assert "Debug" not in names, names
+    assert window.debug_tabs.parent() is not window.settings_window
 
 
 def test_no_widget_is_left_without_a_parent(window):
@@ -2386,7 +2438,9 @@ def test_the_recognition_log_says_when_the_pick_bar_is_not_up(window, qapp):
         for r in DraftLayout().slots()])
     snap.game_state = gsi_state.STATE_IN_PROGRESS
     window.show()
-    window._open_settings("Debug")
+    # Debug is a tab of THIS window again, so the way to it is the tab
+    # rather than the settings window.
+    window.show_debug()
     _settle(qapp)
     assert window.debug_image.isVisible(), "the Debug tab is not on screen"
     window._update_debug(snap)
@@ -4090,22 +4144,23 @@ def test_the_picks_fill_their_card_and_the_grids_line_up_with_them(window,
         assert grid._portrait_want() == tiles[0].width()
 
 
-def test_settings_is_one_tabbed_window_that_owns_the_debug_pages(window,
-                                                                 qapp):
-    """Everything out of Setup and Game is a tab in here, the Debug pages
-    among them, at the user's request.
+def test_settings_is_one_tabbed_window(window, qapp):
+    """Everything out of Setup and Game is a tab in here, at the user's
+    request — which is right for what you do ONCE.
 
-    It is MODELESS and it owns the debug pages outright: they are a live
-    view of what the app is reading, which a modal dialog could not be
-    watched through, and borrowing the widget per opening would mean
-    handing a live widget between two parents — how this app has ended up
-    with a second taskbar window before.
+    DEBUG IS NOT AMONG THEM any more, also at their request: it is a
+    live picture looked at over and over during a draft, and it is a tab
+    of the main window again.
+
+    Still MODELESS: every action here does its thing immediately, so
+    there is nothing to apply and nothing to cancel, and a modal window
+    in front of a draft is a modal window in front of a draft.
     """
     window._open_settings()
     settings = window.settings_window
     titles = [settings.tabs.tabText(i) for i in range(settings.tabs.count())]
     assert titles == ["General", "Downloads", "Game data", "Appearance",
-                      "Advanced", "Debug"]
+                      "Advanced"]
     assert settings.isModal() is False
     assert window.debug_tabs.parent() is not None
     # Opening it again is the SAME window, or the debug pages would be
@@ -4278,7 +4333,7 @@ def test_there_is_no_calibrate_by_hand_left_to_reach(qapp):
         assert not hasattr(win, "drag_button")
         labels = [c.label for c in win._all_commands()]
         assert "Calibrate pick boxes…" not in labels
-        assert "Measure the crop boxes" in labels
+        assert "Fix the crop boxes" in labels
     finally:
         win.close()
     with pytest.raises(ModuleNotFoundError):

@@ -4732,6 +4732,39 @@ credentials, and put the account at risk. Do not go there.
   blank tile's own tooltip - and `tools/check_item_icons.py` has since
   been deleted as well) and *Game data status…* (Diagnose answers the
   same question by naming the ONE broken link).
+  **BUT DEBUG IS A TAB OF THE MAIN WINDOW AGAIN, RIGHT OF HISTORY**
+  (`tabs.addTab(debug_tabs, "Debug")`, `MainWindow.show_debug`), at the
+  user's request: "make debug a view again, right of history... i use
+  it too often not to". The argument that moved everything else in here
+  is sound and does not cover this one: install the game config, fetch
+  the artwork, pick your ranks are each done ONCE, which is what a
+  settings window is for, and Debug is the opposite — a live picture
+  looked at over and over while a draft runs. Two menus deep is a live
+  view nobody watches.
+  **AND THE HEIGHT FLOOR IS LIVE AGAIN, which is what made it leave.**
+  A QTabWidget's minimum is its TALLEST PAGE whether or not anybody is
+  looking at it, and this one holds a full-resolution picture, a log, a
+  timing table and the calibration row — 1200px between them against a
+  Draft tab needing 656, so the window took the whole desktop height
+  and would not shrink with nothing on screen pointing at the tab that
+  was not. Both its pages are already `_scrolling`, so it asks for
+  nothing; `test_a_tall_tab_does_not_set_the_windows_floor` holds it,
+  so the next long panel added to Debug fails a test rather than eating
+  the desktop silently.
+  **ONE ROUTE IN, AND ITS INDEX IS ASKED FOR RATHER THAN TYPED**
+  (`show_debug(inner)`). There are four ways to it — Help ▸ Debug view,
+  the search, the latest-report button and the tab — and the
+  latest-report one was `setCurrentIndex(1)` against the MAIN tabs when
+  Debug was index 1, which became the History tab the moment it moved.
+  A number that is right until somebody adds a tab is a number that
+  will be wrong, and this one already was.
+  **AND THE SETTINGS WINDOW NO LONGER TOUCHES IT.** Its `debug`
+  parameter is gone rather than left unused: one parent for the life of
+  the app is the rule, and a dead parameter is read as documentation
+  later. What survives of the old note is the plainer reason that
+  window is still modeless — every action in it does its thing
+  immediately, so there is nothing to apply and nothing to cancel.
+
   **THE SETTINGS WINDOW IS MODELESS AND APPLIES AS YOU GO**, and the
   second half of that is what decides it. A preferences window with OK
   and Cancel is fine for a page of tick boxes — but this one holds the

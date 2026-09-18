@@ -574,13 +574,11 @@ class MainWindow(QMainWindow):
                   "How every part of the app works")
         self._act(help_menu, "Update &application…", self._update_app)
         help_menu.addSeparator()
-        # DEBUGGING LIVES UNDER HELP, at the user's request. It is still a
-        # tab of the settings window - that window owns the live view and
-        # handing a live widget between two parents is the parentless-
-        # QWidget trap this app has hit three times - but nobody looks for
-        # "debug" under Settings, and this opens it directly on that tab.
-        self._act(help_menu, "&Debug view…",
-                  lambda: self._open_settings("Debug"))
+        # DEBUGGING IS ALSO UNDER HELP, at the user's request, and it
+        # stays there now that Debug is a tab of this window again: the
+        # tab is the obvious route and this is the one somebody reaches
+        # for when they are looking for the WORD rather than the tab.
+        self._act(help_menu, "&Debug view…", lambda: self.show_debug())
         # RECOGNITION CHECKS IS GONE, submenu and all four items, at the
         # user's request: "all of those were used to refine the software
         # - once its done i dont nteed them". They were instruments, and
@@ -771,18 +769,17 @@ class MainWindow(QMainWindow):
                     "How big the portraits and the numbers are.",
                     ("scale", "bigger", "smaller", "zoom", "font"),
                     lambda: self._show_view_menu()),
-            Command("Debug", "Settings",
+            Command("Debug", "Tab",
                     "What the app is reading right now, and what past "
                     "sessions recorded.",
                     ("log", "live", "recordings", "frame", "timings"),
-                    lambda: self._open_settings("Debug")),
-            Command("Measure the crop boxes", "Settings ▸ Debug",
-                    "Read the pick bar's geometry off a frame the game has "
-                    "named the heroes in. It happens by itself; this is "
-                    "how to ask for it now.",
+                    lambda: self.show_debug()),
+            Command("Fix the crop boxes", "Debug",
+                    "When the app cannot find the pick portraits on your "
+                    "screen: measure them now, or let one draft do it.",
                     ("calibrate", "boxes", "crop", "portraits", "picks",
                      "recognition", "setup", "align", "measure"),
-                    self._measure_from_banner),
+                    self._guide_the_boxes),
             Command("User manual", "Help",
                     "How every part of the app works, in one place.",
                     ("manual", "help", "guide", "docs", "instructions",
@@ -1491,15 +1488,27 @@ class MainWindow(QMainWindow):
         debug_tabs.addTab(_scrolling(dbg), "Live")
         debug_tabs.addTab(_scrolling(self._build_sessions_tab()),
                           "Recordings")
-        # NOT a tab of the main window any more, at the user's request: it
-        # is handed to the settings window as its Debug tab the first time
-        # that is opened (`_open_settings`). It keeps THIS window as its
-        # parent until then, because a parentless QWidget in this app is a
-        # second window in the taskbar — a bug that has already happened
-        # three times — and `_update_debug` goes on asking whether it is
-        # VISIBLE, which it is not while it is parked here unshown.
-        debug_tabs.setParent(self)
-        debug_tabs.hide()
+        # A TAB OF THE MAIN WINDOW AGAIN, right of History, at the
+        # user's request: "make debug a view again, right of history...
+        # i use it too often not to". It spent a while as a tab of the
+        # settings window, which was right for everything else that
+        # moved there — install the game config, fetch the artwork, pick
+        # your ranks are each done ONCE — and wrong for this one, which
+        # is looked at over and over while a draft runs. A live view two
+        # menus deep is a live view nobody watches.
+        #
+        # **AND IT MUST NOT SET THE WINDOW'S HEIGHT FLOOR**, which is
+        # what it did the last time it was a tab here: a QTabWidget's
+        # minimum is its TALLEST PAGE whether or not you are looking at
+        # it, and this one holds a full-resolution picture, a log, a
+        # timing table and the calibration row — 1200px between them,
+        # against a Draft tab needing 656. The window took the whole
+        # desktop height and would not shrink, with nothing about the
+        # tab on screen pointing at the tab that was not. Both pages
+        # here are already `_scrolling`, so they ask for nothing; a test
+        # holds the floor so the next long panel added to Debug cannot
+        # do it again silently.
+        tabs.addTab(debug_tabs, "Debug")
 
         # Our own, INSIDE the shell, rather than QMainWindow's: the
         # ornate frame is drawn round the shell, and a status bar hung off
@@ -1619,16 +1628,33 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
         return page
 
+    def show_debug(self, inner: int = 0) -> None:
+        """Bring the Debug tab up, on one of its two pages.
+
+        ONE route, because there are four ways in — Help ▸ Debug
+        view, the search, the latest-report button and the tab itself —
+        and four copies of "find the index of the tab called Debug"
+        is three of them going stale the next time a tab is added.
+        `inner` is 0 for Live and 1 for Recordings.
+        """
+        page = getattr(self, "debug_tabs", None)
+        if page is None:
+            return
+        index = self.tabs.indexOf(page)
+        if index >= 0:
+            self.tabs.setCurrentIndex(index)
+        page.setCurrentIndex(inner)
+
     def _show_latest_report(self) -> None:
         """Jump to the newest session's report. One button, one document —
         the screen's reading and the game's payloads were never two
         separate questions."""
         self._refresh_sessions()
-        # Debug is a tab of the SETTINGS window now, so the way to it is
-        # to open that on Debug rather than to index into the main tabs —
-        # where index 1 is the History tab and used to be this.
-        self._open_settings("Debug")
-        self.debug_tabs.setCurrentIndex(1)
+        # Debug is a main-window tab again, and its index is ASKED FOR
+        # rather than typed: it was hard-coded to 1 once, which is the
+        # History tab, and a number that is right until somebody adds a
+        # tab is a number that will be wrong.
+        self.show_debug(1)
         if not self.sessions:
             self._say(
                 "No recordings yet — press Record before a game", 8000)
@@ -4058,8 +4084,7 @@ class MainWindow(QMainWindow):
         fresh = getattr(self, "settings_window", None) is None
         if fresh:
             self.settings_window = SettingsWindow(
-                self.settings, self._command_groups(),
-                debug=getattr(self, "debug_tabs", None), parent=self)
+                self.settings, self._command_groups(), parent=self)
             self.settings_window.applied.connect(self._apply_settings)
             # A window built just now has missed every recompute that ever
             # happened, so it would open with a blank line under the bar

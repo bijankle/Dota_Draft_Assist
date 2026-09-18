@@ -5,20 +5,25 @@ do ONCE — install the game config, fetch the artwork, pick your ranks —
 sitting permanently across the top of a window read at a glance during a
 draft. At the user's request the bar is File | View | Help and everything
 out of Setup and Game is a TAB in here, "like any typical application",
-with the Debug tab and the downloads among them.
+with the downloads among them.
 
-**IT IS MODELESS AND IT APPLIES AS YOU GO.** Two reasons, and the second
-is the one that decides it. A preferences window with OK and Cancel is
-the older convention and it is fine for a page of tick boxes — but this
-one holds the DEBUG VIEW, which is a live picture of what the app is
-reading right now, and a live view inside a modal dialog is a live view
-you cannot look at while using the thing it is showing you. And a modal
-dialog would have to borrow that widget from the main window and give it
-back, which is exactly the parentless-widget trap this app has been bitten
-by before. So the window owns the debug pages outright, for the life of
-the app, and `MainWindow._update_debug` goes on asking whether they are
-VISIBLE — which they are not while this window is shut, so it costs
-nothing when it is.
+**DEBUG IS NOT ONE OF THEM ANY MORE**, at the user's request: "make
+debug a view again, right of history... i use it too often not to". It
+was a tab here for a while and the argument that put it here was sound
+for everything else that moved — install the game config, fetch the
+artwork, pick your ranks are each done ONCE, which is exactly what a
+settings window is for. Debug is the opposite: a live picture looked at
+over and over while a draft runs, and two menus deep is a live view
+nobody watches. It is a tab of the main window again, and this window
+never touches it.
+
+**IT IS STILL MODELESS AND IT STILL APPLIES AS YOU GO.** That outlived
+the reason it was first written for — which was the live view, and a
+live view inside a modal dialog is one you cannot watch while using the
+thing it shows. What is left is the plainer half: every action here does
+its thing immediately, so there is nothing to apply and nothing to
+cancel, and a modal window in front of a draft is a modal window in
+front of a draft.
 
 Actions — download this, diagnose that — are buttons that do the thing
 immediately. There is nothing to apply and nothing to cancel about
@@ -221,7 +226,7 @@ class SettingsWindow(QDialog):
             label.setText(text or "")
             label.setVisible(bool(text))
 
-    def __init__(self, settings: dict, pages, debug=None, parent=None):
+    def __init__(self, settings: dict, pages, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumSize(560, 480)
@@ -235,13 +240,6 @@ class SettingsWindow(QDialog):
         self.tabs.addTab(_scrolling(self.general), "General")
         for title, intro, commands in pages:
             self.tabs.addTab(_scrolling(ActionPage(intro, commands)), title)
-        # LAST, and OWNED: the debug pages are handed over for the life of
-        # the app rather than borrowed per opening. Borrowing would mean
-        # handing a live widget back and forth between two parents, and a
-        # widget that loses its parent in this app becomes a second window
-        # in the taskbar.
-        if debug is not None:
-            self.tabs.addTab(debug, "Debug")
 
     def _apply(self) -> None:
         self.applied.emit(self.general.values())
