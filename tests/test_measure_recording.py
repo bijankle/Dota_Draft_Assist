@@ -173,3 +173,20 @@ def test_it_writes_nothing(tmp_path, payload):
     tool.strategy_payload(folder)
     tool.say_teams(payload, FakeDataset())
     assert sorted(path.name for path in folder.rglob("*")) == before
+
+
+def test_the_button_asks_for_the_table_row():
+    """The in-app button is the whole route a measurement takes back.
+
+    `--row` prints the line that goes into `vision/measured.py`'s EXACT,
+    and that table is the only reason somebody plays a bot draft at a
+    resolution they do not use. A button that printed everything except
+    that line would leave the measurement taken and unreachable — the
+    "produced where nobody is looking" fault this project has already
+    paid for with the proof sheet nothing ever opened.
+    """
+    from draft_assist.ui.tasks import TASKS
+
+    steps = TASKS["measure_recording"].steps
+    assert len(steps) == 1
+    assert "--row" in steps[0], steps[0]

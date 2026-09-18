@@ -159,10 +159,16 @@ TASKS = {
     "measure_recording": Task(
         key="measure_recording",
         title="Measure this recording",
-        steps=[[PY, "tools/measure_recording.py", "{arg}"]],
-        blurb=("Reads one recording and measures it: where each hero "
-               "stood when the teams were decided, and where the pick "
-               "bar really was. Seconds per frame; writes nothing."),
+        # --row ALWAYS, because this button is the whole route a
+        # measurement takes back to `vision/measured.py`. The flag stays
+        # on the tool for a command line, but a row nobody can reach
+        # from the app is a row nobody sends — and the section refuses
+        # cleanly when the frames cannot produce one, so there is
+        # nothing to switch off.
+        steps=[[PY, "tools/measure_recording.py", "{arg}", "--row"]],
+        blurb=("Measures one recording: where each hero stood when the "
+               "teams were decided, where the pick bar really was, and "
+               "a line to send back so this screen size ships correct."),
     ),
     "replay_gsi": Task(
         key="replay_gsi",
