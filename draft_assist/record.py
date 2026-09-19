@@ -19,7 +19,9 @@ the source that produced it rather than guessed at.
 
 Frames are the expensive part, so they are rate-limited and capped, and
 only taken while the game says a draft is happening — the rest of a match
-is thousands of images that answer nothing.
+is thousands of images that answer nothing. That last clause was written
+here at the beginning and was not true of the code for a long while; see
+`wants_frame`.
 """
 
 import json
@@ -32,9 +34,7 @@ from pathlib import Path
 
 # One frame every couple of seconds is plenty to see what recognition was
 # looking at, and the cap is a hard stop so a session left running cannot
-# fill the disk. Frames start at the button press, not at the draft: the
-# queue and the loading screen are where a capture-binding fault shows up,
-# and by the time hero selection starts it is too late to notice.
+# fill the disk. WHICH frames are kept is `wants_frame`.
 FRAME_INTERVAL = 2.0
 MAX_FRAMES = 600
 # HOW MANY FRAMES MAY BE WAITING TO BE WRITTEN. Small on purpose: a
@@ -49,6 +49,13 @@ def is_drafting(game_state: str) -> bool:
 # Stop by itself a minute after the draft ends. Nothing after that answers
 # a question, and the alternative is remembering to press Stop mid-game.
 POST_DRAFT_GRACE = 60.0
+# A BLANK STATE IS NOT THE DRAFT ENDING - but a blank state that STAYS
+# blank once a draft has been seen is Dota closed, and that is a different
+# thing. Longer than the grace above, and by a lot, because a momentary
+# gap in the feed must never end a session mid-draft; short enough that
+# quitting the game does not leave the app recording the desktop, which
+# is what ran one real session on for thirteen minutes past the draft.
+SILENT_GRACE = 180.0
 # And stop regardless after this long, so a press with no game behind it
 # does not run until the disk fills.
 MAX_SESSION = 1800.0
@@ -63,6 +70,9 @@ class Recorder:
     states: int = 0
     saw_draft: bool = False
     left_draft_at: float = 0.0
+    # Which grace the countdown is running against: the game said the
+    # draft is over, or the game stopped saying anything at all.
+    grace: float = 0.0
     stop_reason: str = ""
     _last_frame: float = 0.0
     _errors: list[str] = field(default_factory=list)
@@ -104,6 +114,7 @@ class Recorder:
         self._dropped = 0
         self.saw_draft = False
         self.left_draft_at = 0.0
+        self.grace = 0.0
         self._last_frame = 0.0
         self._errors = []
         self._write_meta(finished=False)
@@ -144,11 +155,39 @@ class Recorder:
 
     # -- per-tick capture ------------------------------------------------
 
-    def wants_frame(self) -> bool:
-        """From the button press onward, no faster than the interval."""
+    def wants_frame(self, game_state: str = "") -> bool:
+        """Only while the pick bar could be on the screen, and no faster
+        than the interval."""
         if not self.active or self.frames >= MAX_FRAMES:
             return False
+        if not self.on_the_bar(game_state):
+            return False
         return time.monotonic() - self._last_frame >= FRAME_INTERVAL
+
+    def on_the_bar(self, game_state: str) -> bool:
+        """Could this frame hold the pick bar?
+
+        THREE-VALUED, and silence is not a no - the same shape as
+        `required` in the capture session, for the same reason. The game
+        saying a draft is on is a yes; the game naming any other phase is
+        a no, which is what keeps the menu, the loading screen and the
+        whole of the match itself off the disk. The game saying NOTHING is
+        neither: with the feed down, `game_state` is blank for an entire
+        session, so reading that as a no would silently record no frames
+        at all for exactly the person whose setup is broken - who is the
+        one most likely to be sending the recording in.
+
+        So silence keeps saving until a draft has been seen, and stops
+        afterwards. That is the case the user was looking at: they quit
+        Dota ten seconds into strategy time, the feed went quiet, and the
+        recorder went on saving the main menu every two seconds.
+        """
+        state = str(game_state or "")
+        if is_drafting(state):
+            return True
+        if state:
+            return False
+        return not self.saw_draft
 
     def observe(self, game_state: str) -> str:
         """Watch the phase and say when the session should end itself.
@@ -167,19 +206,27 @@ class Recorder:
         if is_drafting(state):
             self.saw_draft = True
             self.left_draft_at = 0.0
+            self.grace = 0.0
             return ""
-        if not state or not self.saw_draft:
-            # A blank state is Dota going quiet for a moment, not the draft
-            # ending; and before a draft has been seen there is nothing to
-            # have left.
+        if not self.saw_draft:
+            # Before a draft has been seen there is nothing to have left.
             return ""
         now = time.monotonic()
         if not self.left_draft_at:
             self.left_draft_at = now
+            self.grace = POST_DRAFT_GRACE if state else SILENT_GRACE
             return ""
-        if now - self.left_draft_at >= POST_DRAFT_GRACE:
-            return (f"stopped automatically {POST_DRAFT_GRACE:.0f}s after "
-                    "the draft ended")
+        # Re-asked every tick, so a feed that goes quiet and then comes
+        # back naming a phase shortens the wait rather than keeping the
+        # long one: the game positively saying the draft is over outranks
+        # it having said nothing.
+        self.grace = POST_DRAFT_GRACE if state else SILENT_GRACE
+        if now - self.left_draft_at >= self.grace:
+            if state:
+                return (f"stopped automatically {POST_DRAFT_GRACE:.0f}s "
+                        "after the draft ended")
+            return (f"stopped automatically {SILENT_GRACE / 60:.0f} minutes "
+                    "after the game went quiet")
         return ""
 
     @property
@@ -187,7 +234,7 @@ class Recorder:
         """Seconds until the session ends itself, or 0 when not counting."""
         if not self.active or not self.left_draft_at:
             return 0.0
-        return max(0.0, POST_DRAFT_GRACE
+        return max(0.0, (self.grace or POST_DRAFT_GRACE)
                    - (time.monotonic() - self.left_draft_at))
 
     # -- the frame writer, on its own thread -----------------------------

@@ -3341,8 +3341,9 @@ class MainWindow(QMainWindow):
 
     def _capture_recording(self, snap, allies, enemies) -> None:
         """Called every tick while recording, and does the whole job on its
-        own: the state log, a frame every couple of seconds, and ending the
-        session once the draft is over. Nothing here needs a keypress.
+        own: the state log, a frame every couple of seconds WHILE THE PICK
+        BAR COULD BE UP, and ending the session once the draft is over.
+        Nothing here needs a keypress.
 
         A failed write must never interrupt a draft, so the recorder
         swallows them and reports them in the session's meta.json.
@@ -3351,7 +3352,7 @@ class MainWindow(QMainWindow):
             return
         self.recorder.log_state(
             record_mod.snapshot_record(snap, allies, enemies, self.ds))
-        if self.recorder.wants_frame():
+        if self.recorder.wants_frame(snap.game_state):
             frame = snap.frame
             if frame is None:
                 try:

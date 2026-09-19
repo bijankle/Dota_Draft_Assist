@@ -748,6 +748,28 @@ credentials, and put the account at risk. Do not go there.
   that session held two games and the one being asked about was never the
   one shown.
 
+  **GROUND TRUTH, a third time, and it CORROBORATES the pairs rule
+  without settling the tie-break.** Recording `2026-09-19_071106` was the
+  paired case - all ten heroes two to a lane slot - so
+  `_split_by_lane_pairs` ran and its object-index tie-break decided the
+  halves. The owner confirmed the five: **"correct, but the order was
+  veng, jug, zeus, dk, me (tusk) ... from right to left"**. So the SPLIT
+  was right on this recording and the ORDER was not, which is the two
+  halves of what this file already says: the pairing produces a clean
+  5-5, and "object order is not reliably team order" is why the
+  drag-within-a-team correction exists.
+  **THE TIE-BREAK IS STILL A COIN FLIP AND THIS DOES NOT CHANGE THAT.**
+  One more head is not a rule when the same tie-break has already come
+  out inverted on a recording with ground truth behind it, and when the
+  screen disagreed with it on four of five pairs in another. What the
+  confirmation is worth is that the PAIRS half is now right on every
+  recording anybody has checked.
+  **THE ORDER WAS ONE TRANSPOSITION OFF THE BAR READ RIGHT TO LEFT** -
+  the app had veng, jug, dk, zeus, tusk against the bar's veng, jug,
+  zeus, dk, tusk. A lead and nothing more: one recording cannot say
+  whether the feed's order is the bar reversed with a swap in it or
+  coincidence, and the drag already fixes the tile order per match.
+
   **Open lead:** in `PRE_GAME` the minimap carries exactly five hero
   objects (`o86`–`o90` in one recording, 163 payloads). Five, not ten, is
   what vision-limited data looks like — so those five are plausibly the
@@ -3125,11 +3147,42 @@ credentials, and put the account at risk. Do not go there.
   `recordings/<timestamp>/`). With `auto_record` on (the default),
   `_consider_auto_record` starts a session the moment `game_state` reaches a
   drafting state, and `Recorder.observe()` ends it `POST_DRAFT_GRACE` after
-  the game leaves one, with `MAX_SESSION` as a backstop. Frames run from the
-  start of the session, not from the draft: the queue and loading screen are
-  where a capture-binding fault shows up, and by hero selection it is too
-  late to notice. Three cases that look like edges and are not: a blank
-  `game_state` is Dota going quiet rather than the draft ending; re-entering
+  the game leaves one, with `MAX_SESSION` as a backstop.
+  **A FRAME IS KEPT ONLY WHILE THE PICK BAR COULD BE ON IT**
+  (`Recorder.wants_frame(game_state)`, `on_the_bar`), at the user's
+  request: "a lot of the frames that are saved are showing the main
+  menu... can you keep it to just the drafting / strategy phase - the
+  stuff relevant to the 5/5 portrait recognition". This REVERSES "frames
+  run from the start of the session, not from the draft", whose argument
+  was that the queue and the loading screen are where a capture-binding
+  fault shows up and that by hero selection it is too late to notice.
+  **THAT ARGUMENT IS ABOUT NOTICING LIVE, AND A RECORDING IS READ
+  AFTERWARDS.** A session bound to a File Explorer window produces DRAFT
+  frames that are pictures of File Explorer, which says the same thing;
+  and the live tell is elsewhere anyway, in `LiveProvider` re-looking for
+  the window every few seconds and the status line naming whatever it
+  bound instead. Note also that the module's own docstring has claimed
+  "only taken while the game says a draft is happening" since it was
+  written, four lines above a comment saying the opposite: the file has
+  disagreed with itself about this from the beginning.
+  **THREE-VALUED, AND SILENCE IS NOT A NO** - the same shape as
+  `required` in the capture session. Drafting is a yes, any other named
+  phase is a no, and a blank `game_state` keeps saving until a draft has
+  been seen and stops afterwards. Collapsing silence into "not drafting"
+  would record NOTHING AT ALL for a session with the feed down, which is
+  exactly the person most likely to be sending the recording in.
+  **AND THE THIRTEEN MINUTES WERE A SECOND FAULT, in `observe`**
+  (`SILENT_GRACE`, 180s). The countdown only ran while `game_state` was
+  non-blank, so quitting Dota - which is what the owner was asked to do,
+  ten seconds into strategy time - left `left_draft_at` unset for ever
+  and the session ran to `MAX_SESSION` recording the desktop. A blank
+  state is still not the draft ending and still cannot stop a session
+  mid-draft; a blank state that STAYS blank once a draft has been seen is
+  Dota closed, which is a different thing and gets a grace three times as
+  long. A payload naming any phase takes it back to `POST_DRAFT_GRACE`,
+  because the game positively saying the draft is over outranks it having
+  said nothing, and `auto_stop_in` counts against whichever is running.
+  Two more cases that look like edges and are not: re-entering
   a drafting state cancels the countdown; and stopping by hand mid-draft sets
   `_auto_blocked` so Auto does not immediately start another, cleared when
   the match ends. One folder per session, never pooled. Contents: payloads, draft frames, and `state.jsonl` — one

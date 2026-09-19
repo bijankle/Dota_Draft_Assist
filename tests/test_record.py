@@ -127,24 +127,50 @@ def test_the_timeline_collapses_ticks_that_changed_nothing(tmp_path):
 
 # ---- the recorder itself ------------------------------------------------
 
-def test_frames_start_at_the_button_press_not_at_the_draft(tmp_path):
-    """The queue and the loading screen are where a capture-binding fault
-    shows up; by hero selection it is too late to notice."""
+DRAFT = "DOTA_GAMERULES_STATE_HERO_SELECTION"
+STRATEGY = "DOTA_GAMERULES_STATE_STRATEGY_TIME"
+PLAYING = "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS"
+
+
+def test_a_frame_is_kept_only_while_the_pick_bar_could_be_up(tmp_path):
+    """REVERSES "frames start at the button press, not at the draft".
+
+    A real session quit Dota ten seconds into strategy time and went on
+    saving the main menu every two seconds for another thirteen minutes;
+    the frames folder was mostly pictures of nothing. The old rule was
+    written so a capture-binding fault - a session that bound to File
+    Explorer - would show up before hero selection, and the draft frames
+    show that just as well, because a recording is read afterwards.
+    """
     recorder = record.Recorder(tmp_path)
     recorder.start()
-    assert recorder.wants_frame()
+    assert recorder.wants_frame(DRAFT)
+    assert recorder.wants_frame(STRATEGY)
+    assert not recorder.wants_frame(PLAYING)
+
+
+def test_silence_keeps_saving_until_a_draft_has_happened(tmp_path):
+    """With the game feed down `game_state` is blank for a whole session,
+    so reading silence as "not drafting" would record nothing at all for
+    the person whose setup is broken."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    assert recorder.wants_frame("")
+    recorder.observe(DRAFT)
+    recorder._last_frame = 0.0
+    assert not recorder.wants_frame(""), "Dota has gone, not gone quiet"
 
 
 def test_frames_are_rate_limited_and_capped(tmp_path, monkeypatch):
     recorder = record.Recorder(tmp_path)
     recorder.start()
-    assert recorder.wants_frame()
+    assert recorder.wants_frame(DRAFT)
     recorder._last_frame = time.monotonic()
-    assert not recorder.wants_frame()
+    assert not recorder.wants_frame(DRAFT)
     recorder._last_frame = time.monotonic() - record.FRAME_INTERVAL - 0.1
-    assert recorder.wants_frame()
+    assert recorder.wants_frame(DRAFT)
     recorder.frames = record.MAX_FRAMES
-    assert not recorder.wants_frame()
+    assert not recorder.wants_frame(DRAFT)
 
 
 def test_two_sessions_in_the_same_second_do_not_collide(tmp_path,
@@ -326,13 +352,20 @@ def test_it_does_not_stop_before_a_draft_has_happened(tmp_path):
 
 def test_a_moment_of_silence_is_not_the_draft_ending(tmp_path):
     """The real session logged a tick with no game state at all mid-match;
-    a blank state is Dota going quiet, not a phase change."""
+    a blank state is Dota going quiet, not a phase change.
+
+    It DOES now start a countdown, against the much longer `SILENT_GRACE`
+    - a game that has closed has to end the session somehow - so what is
+    held here is the property rather than the old proxy for it: silence
+    never stops the session on its own, and a payload cancels it.
+    """
     recorder = record.Recorder(tmp_path)
     recorder.start()
     drafting(recorder)
     assert recorder.observe("") == ""
-    assert recorder.auto_stop_in == 0
+    assert recorder.auto_stop_in > record.POST_DRAFT_GRACE
     drafting(recorder)
+    assert recorder.auto_stop_in == 0
 
 
 def test_going_back_into_the_draft_cancels_the_countdown(tmp_path):
@@ -355,8 +388,8 @@ def test_a_press_with_no_game_behind_it_still_ends(tmp_path):
 
 def test_a_stopped_recorder_asks_for_nothing(tmp_path):
     recorder = record.Recorder(tmp_path)
-    assert recorder.observe("DOTA_GAMERULES_STATE_HERO_SELECTION") == ""
-    assert not recorder.wants_frame()
+    assert recorder.observe(DRAFT) == ""
+    assert not recorder.wants_frame(DRAFT)
 
 
 def test_why_it_stopped_is_recorded(tmp_path):
@@ -371,3 +404,41 @@ def test_why_it_stopped_is_recorded(tmp_path):
     recorder.stop()
     assert json.loads((folder / "meta.json").read_text())["stopped"] == \
         "stopped by hand"
+
+
+def test_a_game_that_goes_quiet_after_a_draft_ends_the_session(tmp_path):
+    """The thirteen minutes. A blank state is Dota going quiet for a
+    moment and must never end a session mid-draft - but a blank state
+    that stays blank once a draft has been seen is Dota closed."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    recorder.observe(STRATEGY)
+    assert recorder.observe("") == "", "the first blank tick only starts it"
+    assert recorder.observe("") == "", "a wobble is not the game closing"
+    assert recorder.auto_stop_in > record.POST_DRAFT_GRACE
+    recorder.left_draft_at -= record.SILENT_GRACE + 1
+    assert "quiet" in recorder.observe("")
+
+
+def test_a_blank_tick_in_the_middle_of_a_draft_changes_nothing(tmp_path):
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    recorder.observe(DRAFT)
+    recorder.observe("")
+    recorder.observe(DRAFT)
+    assert recorder.left_draft_at == 0.0
+    assert recorder.auto_stop_in == 0.0
+
+
+def test_the_game_naming_a_phase_outranks_it_having_gone_quiet(tmp_path):
+    """Silence buys the long grace; the game then saying the draft is
+    over takes it back to the short one."""
+    recorder = record.Recorder(tmp_path)
+    recorder.start()
+    recorder.observe(STRATEGY)
+    recorder.observe("")
+    assert recorder.grace == record.SILENT_GRACE
+    recorder.observe(PLAYING)
+    assert recorder.grace == record.POST_DRAFT_GRACE
+    recorder.left_draft_at -= record.POST_DRAFT_GRACE + 1
+    assert "after the draft ended" in recorder.observe(PLAYING)

@@ -212,9 +212,13 @@ def grade(folder: Path, dataset=None) -> Verdict:
 def _frames_worth_sending(folder: Path) -> list[Path]:
     """A spread across the draft rather than the first few.
 
-    The first frames of a session are the queue and the loading screen,
-    which answer nothing about recognition; what is worth having is the
-    bar filling up, so they are taken evenly across whatever was saved.
+    What is worth having is the bar FILLING UP - one hero, then four,
+    then ten - so they are taken evenly across whatever was saved rather
+    than off the top. That used to be load-bearing against a session
+    whose first frames were the queue and the loading screen; the
+    recorder keeps only frames the pick bar could be on now
+    (`Recorder.on_the_bar`), so the spread is simply the right sample of
+    a folder that is all draft.
     """
     frames = sorted((folder / "frames").glob("*.png"))
     if len(frames) <= FRAMES_SENT:
