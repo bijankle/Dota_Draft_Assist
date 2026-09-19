@@ -7091,6 +7091,113 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   send it. Updating their own copy, and everybody else's, is still
   Help > Update application and still about 4 MB.
 
+- **EVERYTHING WORTH SENDING IS UNDER `debug/`** (`draft_assist/
+  debugdir.py`, `crashlog.py`, `tools/setup_log.py`), at the owner's
+  request: "i want you to make sure that all error debugging, etc is
+  all part of 1 parent folder and easy to find within the folder
+  structure... make it organized intuitively but all bundled in a
+  common error or debugging folder".
+
+      debug/
+          startup/     one folder per launcher run - the transcript
+          crashes/     one folder per unhandled error - the traceback
+          reports/     one folder per problem report - the mailed zip
+          recordings/  one folder per recorded session
+          scratch/     pictures the diagnostic tools draw
+
+  `recordings/` and `debug_out/` MOVED IN, once, by `migrate()` - so
+  "send me what went wrong" is one sentence instead of a paragraph
+  naming three places with three conventions. One date stamp
+  throughout, and it is the one `recordings/` already used, so a folder
+  that moves keeps its name.
+  **WHAT CAUSED IT: THE CONSOLE CLOSES ON THE SUCCESS PATH.** A user
+  answered Y to the pip prompt, a step failed, and the message was gone
+  before it could be read. The guards were not at fault - `:failed`
+  pauses correctly - and neither was a missing one. The launcher's last
+  act is `start` followed by `exit`, so cmd.exe destroys the console
+  the moment the app appears; the failure was RECOVERABLE, `:pipfailed`
+  offered to carry on, it worked, and the evidence went with the
+  window. A recoverable failure is exactly the category that needs a
+  record, because the app then starts and nothing looks wrong.
+  **SO IT TEES, IT DOES NOT REDIRECT.** `>nul` is what hid the original
+  pip fault and made minutes of downloading read as a frozen window;
+  `>file` would fix the record and bring the frozen window back.
+  `setup_log.py run` writes every byte to both, in BINARY - a Windows
+  console is cp1252 and pip prints what it likes, so decoding here
+  would raise inside the thing that exists to record a failure.
+  **AND A PROGRESS BAR IS ONE LINE IN THE LOG.** pip returns the
+  carriage and overwrites, so the console gets the bytes exactly as pip
+  wrote them and the bar animates, while the log keeps only what each
+  line said when it ENDED. Straight through, a captured bar is several
+  hundred lines of junk around the one that matters.
+  **THE LOG IS PUT ON THE CLIPBOARD** (`to_clipboard`, `clip.exe`,
+  which ships with Windows). Reading an error off a console was never
+  the problem; getting it OUT of one is - cmd.exe wants QuickEdit, a
+  drag and a right-click, and the window had gone anyway.
+  **THREE STARTUP LOGS, AND THE FOURTH DELETES THE FIRST**, the owner's
+  own rule. Pruned BEFORE the new folder is made, so the count is what
+  was asked for rather than one more than it. `recordings` and
+  `reports` are never pruned: a recording is the user's own evidence
+  and a report is what they sent, so neither is ours to delete - only
+  the two that write on EVERY run have a ceiling.
+  **AND WHICH FOLDER IS IN A POINTER FILE**, not a cmd.exe variable.
+  This app's own folder is called "Dota Draft Assist", so every path it
+  hands about has spaces in it, and `for /f` round one of those is the
+  kind of quoting that works until somebody unzips it elsewhere.
+  **THE PROMPTS AND THEIR ANSWERS ARE RECORDED TOO** (`note`). "he said
+  yes but then something failed" is precisely the report this has to
+  answer, and a list of commands cannot.
+  **AND `if errorlevel 2 <command>` RESETS THE ANSWER IT IS TESTING.**
+  Logging the refusal on the same line as the test read `setup_log`'s
+  exit code instead of the keypress, so a user who chose STOP carried
+  on regardless - written, found and fixed inside this change. The jump
+  comes first and the note lives at the label.
+  **AND A BUNDLED COPY IS NO LONGER PUSHED ONTO THE NETWORK FOR PIP.**
+  The prompt exists because the upgrade is a DOWNLOAD - and a release
+  zip already carries pip in `wheels\`, so asking about it, and on a
+  miss sending them to pypi.org, made this the one step reaching for
+  the internet inside a bundle whose whole point is that it need not.
+  Offline it is instant and cannot fail for any reason worth a
+  question, so it just happens. The `2>nul` that hid that attempt is
+  gone with it.
+
+  **A CRASH GETS A DATED FOLDER, AND THE HARD ONES ARE FILED A LAUNCH
+  LATE** (`crashlog.arm` / `save` / `file_away_last_crash`). There are
+  two kinds of ending and only one is catchable. A Python exception
+  reaches `sys.excepthook` and is written immediately. **Qt ABORTS the
+  process** on an unbounded layout - this file keeps a list of the
+  times it has - and no `except` anywhere sees one, so `faulthandler`
+  is the only thing that leaves a stack. It has to be armed BEFORE the
+  crash with a file already open, because by then the interpreter
+  cannot allocate one; nothing of ours runs afterwards, so the NEXT
+  start finds that file non-empty and moves it into its own folder.
+  That is why a hard crash is reported one launch late and a soft one
+  at once. A clean run leaves the file empty and nothing is filed.
+  It used to be ONE `crash.log`, overwritten - so a crash loop kept
+  only its last go round, which is the one least likely to say what
+  started it.
+  **AND NOTHING IN EITHER MODULE MAY IMPORT Qt**: the hook is armed
+  ahead of the QApplication and the launcher's steps run before the app
+  is installed at all. The guard PARSES rather than searching text,
+  because `crashlog`'s own docstring has to name the QApplication to
+  explain the rule - the same trap `single.py`'s guard carries.
+
+  **THERE IS NO BANNER**, at the owner's request - so the way in is the
+  **Open debug folder** command (Ctrl+K finds it under log, crash,
+  error, report or send) and the Debug tab's button beside it. Both
+  name the whole tree rather than one corner of it, which is the change:
+  they used to open `debug_out/`, which held the scratch pictures and
+  nothing anybody would send. The newest setup log and the newest
+  traceback also ride along in the emailed zip (`_latest_logs`), since
+  the alternative is telling somebody to attach two more files by hand
+  - which is the instruction this folder exists to replace. NEWEST
+  only: three logs and ten tracebacks is a folder to browse rather than
+  a report to read.
+  **AND `tests/conftest.py` REPOINTS `debugdir.ROOT` FOR EVERY TEST**,
+  one line covering all five kinds - without it a test that renders a
+  crash box leaves a dated folder in the repository, which is the rule
+  the recordings and the settings file already followed.
+
 - **CLOSING THE APP CLOSES THE SETTINGS WINDOW** (`MainWindow.
   closeEvent`). It is built once and kept, and it is modeless because it
   holds the LIVE debug pages - a live view inside a modal dialog cannot

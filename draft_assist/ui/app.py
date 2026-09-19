@@ -53,6 +53,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox,
 
 from .. import bugreport, console, version
 from ..gsi.state import DRAFTING_STATES
+from .. import crashlog, debugdir
 from ..config import (APP_NAME, ASSETS_DIR, CALIBRATION_FILE, DEBUG_OUT,
                       SUPPORT_EMAIL,
                       RECORDINGS_DIR,
@@ -743,10 +744,18 @@ class MainWindow(QMainWindow):
                 "Where the downloaded statistics live.",
                 ("folder", "cache", "files"),
                 lambda: open_folder(REPO_ROOT / "data_cache")),
+            # WITHOUT A BANNER THIS IS THE WAY IN, so it names the
+            # whole folder rather than one corner of it: the setup
+            # log, the crash tracebacks, the recordings and the zips
+            # that were mailed are all under `debug/` now, and "send
+            # me what is in that folder" is the whole instruction.
             act("Open debug folder",
-                "Where snapshots and recordings are written.",
-                ("folder", "files", "recordings"),
-                lambda: open_folder(DEBUG_OUT)),
+                "Everything worth sending: setup logs, crashes, "
+                "recordings and problem reports.",
+                ("folder", "files", "recordings", "log", "logs", "crash",
+                 "error", "errors", "report", "reports", "problem",
+                 "send", "diagnostics"),
+                lambda: open_folder(debugdir.root())),
         ]
         return [
             ("Downloads",
@@ -1485,7 +1494,7 @@ class MainWindow(QMainWindow):
         self.snapshot_button.clicked.connect(self._save_snapshot)
         snap_row.addWidget(self.snapshot_button)
         open_debug = QPushButton("Open debug folder")
-        open_debug.clicked.connect(lambda: open_folder(DEBUG_OUT))
+        open_debug.clicked.connect(lambda: open_folder(debugdir.root()))
         snap_row.addWidget(open_debug)
         self.snapshot_label = QLabel("")
         self.snapshot_label.setProperty("dim", True)
@@ -3326,7 +3335,7 @@ class MainWindow(QMainWindow):
             folder, verdict, fixed = graded
         try:
             zipped, packed = bugreport.write_zip(
-                folder, verdict, DEBUG_OUT,
+                folder, verdict, debugdir.new_run("reports"),
                 extra_text=self._diagnostic_text(fixed), dataset=self.ds)
         except (OSError, ValueError) as exc:
             self._last_report_note = f"The report could not be written: {exc}"
@@ -6342,7 +6351,12 @@ def _capture_session():
     return session
 
 
-CRASH_LOG = DEBUG_OUT / "crash.log"
+# WHERE A TRACEBACK GOES. One dated folder per crash under
+# `debug/crashes/`, rather than a single file overwritten each time -
+# a crash loop used to leave only its last go round, which is the one
+# least likely to say what started it. `crashlog` also arms
+# `faulthandler`, which is the only thing that survives Qt ABORTING the
+# process; see its docstring.
 
 
 def _windowless(executable: str) -> str:
@@ -6373,18 +6387,19 @@ def _report_crash(exc: BaseException) -> None:
     import traceback
     text = "".join(traceback.format_exception(type(exc), exc,
                                               exc.__traceback__))
-    try:
-        CRASH_LOG.parent.mkdir(parents=True, exist_ok=True)
-        CRASH_LOG.write_text(text, encoding="utf-8")
-    except OSError:
-        pass
+    saved = crashlog.save(exc)
     try:
         app = QApplication.instance() or QApplication([])
         box = QMessageBox(QMessageBox.Icon.Critical, "Dota Draft Assist",
                           "The application hit an unexpected error and has "
                           "to close.")
-        box.setInformativeText(f"A copy of the details was saved to\n"
-                               f"{CRASH_LOG}")
+        # NAME THE FOLDER, NOT JUST THE FILE. Everything worth sending
+        # is under `debug/` now, so the one sentence somebody needs is
+        # the one that points at it.
+        where = (f"The details were saved to\n{saved}\n\n"
+                 if saved else "The details could not be saved.\n\n")
+        box.setInformativeText(
+            where + f"Everything worth sending is in\n{debugdir.root()}")
         box.setDetailedText(text)
         box.exec()
     except Exception:
@@ -6396,6 +6411,11 @@ def main() -> None:
     # here, ahead of the QApplication. Nothing else about the icon may:
     # see `appicon.gui_ready`.
     appicon.claim_taskbar_identity()
+    # Before anything else of ours: files away a hard crash from the
+    # LAST run and arms faulthandler for this one. Qt aborts rather
+    # than raising, so this is the only thing that leaves a stack.
+    crashlog.arm()
+    debugdir.migrate()
     try:
         _main()
     except SystemExit:

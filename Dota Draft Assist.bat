@@ -45,8 +45,18 @@ call :findpython
 if not defined PYCMD call :offerpython
 if not defined PYCMD goto :nopython
 
+rem EVERY STEP FROM HERE IS WRITTEN DOWN. A user answered Y to the pip
+rem prompt, a step failed, and the message was gone before it could be
+rem read - because the last act of this file is `start` followed by
+rem `exit`, so cmd.exe closes the console the moment the app appears.
+rem On the path where everything WORKED. The guards were fine; there
+rem was simply no record. `setup_log.py` tees each step to the console
+rem AND to debug\startup\<date>\, keeps the last three runs, and on a
+rem failure puts the whole log on the clipboard.
+%PYCMD% "tools\setup_log.py" start
+
 echo Creating the Python environment...
-%PYCMD% -m venv .venv || goto :failed
+%PYCMD% "tools\setup_log.py" run "create the environment" -- %PYCMD% -m venv .venv || goto :failed
 echo.
 
 rem PIP IS A PREREQUISITE TOO, AND IT TURNED A REAL USER AROUND. This was
@@ -64,6 +74,21 @@ rem package files today's releases ship as, so it falls back to BUILDING
 rem them from source, which then wants a C++ compiler nobody has -- and
 rem the error that reaches the screen is about Visual C++ rather than
 rem about pip.
+rem IF PIP IS IN THE FOLDER THERE IS NOTHING TO ASK. This prompt exists
+rem because the upgrade is a DOWNLOAD - and a copy unzipped from a
+rem release already has pip in `wheels\`, so asking about it, and on a
+rem miss pushing the user onto pypi.org, made this the one step that
+rem reached for the internet inside a bundle whose whole point is that
+rem it does not have to. Offline it is instant and cannot fail for any
+rem reason worth a question, so it just happens.
+set "PIPDONE="
+if exist "wheels\pip-*.whl" (
+    echo Updating pip from this folder - no download needed...
+    %PYCMD% "tools\setup_log.py" run "update pip from the folder" -- ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels --upgrade pip && set "PIPDONE=1"
+)
+if defined PIPDONE echo.
+if defined PIPDONE goto :deps
+
 echo Setup needs an up-to-date pip. That is the installer Python uses to
 echo fetch the packages this app needs, and an old one cannot read the
 echo files today's packages ship as - it is the commonest reason setup
@@ -75,16 +100,16 @@ echo.
 choice /c YN /n /m "Update pip now? [Y]es or [N]o: "
 echo.
 if errorlevel 2 goto :pipkept
+%PYCMD% "tools\setup_log.py" note "offered to update pip: answered YES"
 echo Updating pip...
-rem FROM THE FOLDER FIRST. With a stocked `wheels\` this is instant and
-rem needs no connection at all - which is the whole point of the cache,
-rem and pip is in it deliberately because an old pip is the commonest
-rem way a first run fails.
-".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels --upgrade pip 2>nul && goto :deps
-".venv\Scripts\python.exe" -m pip install --upgrade pip || goto :pipfailed
+rem AND NOT `2>nul`. Hiding this one line is what left the last failure
+rem unexplained: the offline attempt failed silently, the online one
+rem took over, and nothing anywhere said the first had been tried.
+%PYCMD% "tools\setup_log.py" run "update pip from pypi.org" -- ".venv\Scripts\python.exe" -m pip install --upgrade pip || goto :pipfailed
 goto :deps
 
 :pipkept
+%PYCMD% "tools\setup_log.py" note "offered to update pip: answered NO"
 echo Leaving pip as it is. If the next step fails, run this file again
 echo and answer Y.
 echo.
@@ -99,7 +124,16 @@ echo Setup can carry on with the pip you have, and it may well work.
 echo.
 choice /c YN /n /m "Carry on anyway? [Y]es or [N]o: "
 echo.
-if errorlevel 2 goto :failed
+rem THE JUMP COMES FIRST, because a command between `choice` and its
+rem own `if errorlevel` overwrites the answer being tested - so
+rem logging the refusal here would have read setup_log's exit code
+rem instead of the keypress, and a user who said STOP would have
+rem carried on regardless.
+if errorlevel 2 goto :pipstop
+rem THIS IS THE PATH THAT LOST THE LAST REPORT. Carrying on is usually
+rem right and the app then starts, which closes the console - so the
+rem failure leaves no trace at all unless it is written down here.
+%PYCMD% "tools\setup_log.py" note "pip upgrade failed: chose to CARRY ON"
 
 :deps
 rem THE PACKAGES LIVE IN THIS FOLDER IF THEY CAN. About 190 MB of them,
@@ -114,7 +148,7 @@ set "FROMFOLDER="
 if exist "wheels\*.whl" (
     echo Installing the app's packages from this folder - no download...
     echo.
-    ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels -r requirements.txt -r requirements-windows.txt && set "FROMFOLDER=1"
+    %PYCMD% "tools\setup_log.py" run "install the packages from the folder" -- ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels -r requirements.txt -r requirements-windows.txt && set "FROMFOLDER=1"
 )
 if defined FROMFOLDER goto :installed
 
@@ -125,8 +159,8 @@ rem `pip download` FIRST, so the cache is stocked by the same bytes that
 rem get installed rather than by a second trip. If it fails the install
 rem below still reaches pypi.org, because `--find-links` without
 rem `--no-index` means "prefer the folder", not "refuse the network".
-".venv\Scripts\python.exe" -m pip download -r requirements.txt -r requirements-windows.txt --dest wheels
-".venv\Scripts\python.exe" -m pip install --find-links wheels -r requirements.txt -r requirements-windows.txt || goto :failed
+%PYCMD% "tools\setup_log.py" run "download the packages" -- ".venv\Scripts\python.exe" -m pip download -r requirements.txt -r requirements-windows.txt --dest wheels
+%PYCMD% "tools\setup_log.py" run "install the packages" -- ".venv\Scripts\python.exe" -m pip install --find-links wheels -r requirements.txt -r requirements-windows.txt || goto :failed
 
 :installed
 
@@ -139,6 +173,7 @@ rem before accepting it, and takes the rank brackets in the same pass --
 rem so this script now does nothing but build the environment and start
 rem the app. The wizard writes .env itself when it needs to.
 
+%PYCMD% "tools\setup_log.py" finish
 echo.
 echo Setup complete. Starting the application...
 echo It will ask for a free Stratz API key and which ranks to use.
@@ -245,7 +280,12 @@ exit /b 1
 start "" ".venv\Scripts\pythonw.exe" -m draft_assist.ui.app %*
 exit /b 0
 
+:pipstop
+%PYCMD% "tools\setup_log.py" note "pip upgrade failed: chose to STOP"
+goto :failed
+
 :failed
+if defined PYCMD %PYCMD% "tools\setup_log.py" finish --failed "setup"
 rem THE LAST THING PRINTED IS THE THING TO DO. A user hit this, read
 rem none of it, pressed a key and reported that the window had closed on
 rem him -- so the advice sits directly above the prompt rather than at
@@ -260,6 +300,9 @@ echo   * No internet, or a network blocking pypi.org - everything is
 echo     downloaded from there and there is no offline route.
 echo   * An old pip, which cannot read today's package files. Run this
 echo     file again and answer Y when it offers to update pip.
+echo.
+echo The whole log is saved, and on your clipboard - paste it straight
+echo into a message if you are reporting this.
 echo.
 echo Nothing outside this folder has been changed. RUN THIS FILE AGAIN
 echo once the above is sorted - it picks up where it left off.

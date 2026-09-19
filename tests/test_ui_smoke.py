@@ -315,16 +315,24 @@ def test_reload_backend_picks_up_new_data(window, monkeypatch):
 
 
 def test_crash_reporter_writes_a_log(tmp_path, monkeypatch, qapp):
-    """A windowless launch has no console, so crashes must leave a trace."""
+    """A windowless launch has no console, so crashes must leave a trace.
+
+    One DATED FOLDER per crash rather than one file overwritten each
+    time: a crash loop used to leave only its last go round, which is
+    the one least likely to say what started it.
+    """
+    from draft_assist import debugdir
     from draft_assist.ui import app as app_mod
 
-    monkeypatch.setattr(app_mod, "CRASH_LOG", tmp_path / "crash.log")
+    monkeypatch.setattr(debugdir, "ROOT", tmp_path)
     monkeypatch.setattr(app_mod.QMessageBox, "exec", lambda self: 0)
     try:
         raise ValueError("boom in startup")
     except ValueError as exc:
         app_mod._report_crash(exc)
-    text = (tmp_path / "crash.log").read_text()
+    written = list((tmp_path / "debug" / "crashes").glob("*/traceback.txt"))
+    assert len(written) == 1, written
+    text = written[0].read_text()
     assert "boom in startup" in text and "ValueError" in text
 
 

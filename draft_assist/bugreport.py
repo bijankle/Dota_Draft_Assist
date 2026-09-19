@@ -38,6 +38,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import debugdir
 from . import record as record_mod
 
 # A HERO-SELECTION TICK WITH A FRAME AND NO HERO IS ORDINARY; a run of
@@ -253,6 +254,24 @@ def _shrunk(path: Path, into: Path) -> Path | None:
     return out
 
 
+def _latest_logs() -> dict[str, Path]:
+    """The newest setup transcript and crash traceback, if there are any.
+
+    Newest ONLY. Three startup logs and ten tracebacks is a folder to
+    browse rather than a report to read, and the older ones are still
+    on the sender's disk if anybody asks for them.
+    """
+    out: dict[str, Path] = {}
+    for kind, wanted in (("startup", "setup-log.txt"),
+                         ("crashes", "traceback.txt")):
+        for run in reversed(debugdir.runs(kind)):
+            found = run / wanted
+            if found.is_file():
+                out[f"{kind}/{run.name}-{wanted}"] = found
+                break
+    return out
+
+
 def write_zip(folder: Path, verdict: Verdict, out_dir: Path,
               extra_text: str = "", dataset=None) -> tuple[Path, list[str]]:
     """Build the file the user posts. Returns (zip path, what went in).
@@ -297,6 +316,18 @@ def write_zip(folder: Path, verdict: Verdict, out_dir: Path,
         if fullest is not None:
             zipped.writestr("payload.json", json.dumps(fullest, indent=1))
             packed.append("payload.json")
+        # AND WHATEVER ELSE IS UNDER `debug/`. A few kilobytes against
+        # an 18MB budget, and they answer the two questions a recording
+        # cannot: how the install went, and how the last run ended. The
+        # alternative is telling somebody to attach two more files by
+        # hand, which is the instruction this whole folder exists to
+        # replace.
+        for name, found in _latest_logs().items():
+            try:
+                zipped.write(found, name)
+                packed.append(name)
+            except OSError:
+                pass
 
         scratch = out_dir / "_frames"
         scratch.mkdir(parents=True, exist_ok=True)

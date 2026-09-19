@@ -12,8 +12,14 @@ import pytest
 @pytest.fixture(autouse=True)
 def _recordings_go_to_tmp(tmp_path, monkeypatch):
     import draft_assist.ui.app as app_mod
+    from draft_assist import debugdir
     from draft_assist.ui import settings as ui_settings
 
+    # THE WHOLE `debug/` TREE, not just the recordings under it. A crash
+    # reporter, a setup log and a problem report all write there now, so
+    # one redirect covers every one of them - and without it a test that
+    # renders a crash box would leave a dated folder in the repository.
+    monkeypatch.setattr(debugdir, "ROOT", tmp_path)
     monkeypatch.setattr(app_mod, "RECORDINGS_DIR", tmp_path / "recordings")
     monkeypatch.setattr(ui_settings, "SETTINGS_FILE",
                         tmp_path / "ui_settings.json")

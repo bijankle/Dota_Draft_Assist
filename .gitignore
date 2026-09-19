@@ -50,6 +50,13 @@ history_accounts.json
 history_reports/
 
 # Recording sessions: payloads, frames and state logs from real games.
+# EVERYTHING WORTH SENDING, under one folder: the setup transcript,
+# crash tracebacks, recorded sessions and the zips that were mailed.
+# See `draft_assist/debugdir.py`.
+debug/
+# Where the recordings and the scratch pictures lived before they moved
+# in. Kept ignored so an install that has not been opened since the
+# change does not suddenly offer them up.
 recordings/
 
 # Which release this install is on, written by tools/update_app.py when a

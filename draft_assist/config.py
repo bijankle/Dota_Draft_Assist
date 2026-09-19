@@ -6,6 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from . import debugdir
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # THE APP'S NAME, SPELLED ONCE. It is the WINDOW TITLE, the application
@@ -27,12 +29,22 @@ APP_NAME = "Dota Draft Assist"
 SUPPORT_EMAIL = "dotadraftassist@outlook.com"
 DATA_CACHE = REPO_ROOT / "data_cache"
 RAW_DUMP_DIR = DATA_CACHE / "raw"
+# EVERYTHING YOU WOULD SEND SOMEBODY LIVES UNDER `debug/`, and the
+# layout is `draft_assist/debugdir.py` rather than four constants here:
+# the recordings, the crash tracebacks, the launcher's own transcript
+# and the zip that gets mailed were in three places with three naming
+# conventions, so "send me what went wrong" took a paragraph to explain.
+# These names stay because the whole app already reads them; what moved
+# is where they point.
+#
 # One folder per recording session: payloads, frames and the app's
 # own reading of both, kept together so one game is one piece of
 # evidence rather than three scattered ones.
-RECORDINGS_DIR = REPO_ROOT / "recordings"
+RECORDINGS_DIR = debugdir.folder("recordings")
 CAPTURES_DIR = REPO_ROOT / "captures"
-DEBUG_OUT = REPO_ROOT / "debug_out"
+# Pictures the diagnostic tools draw. Named `debug_out` until it moved
+# in; `debugdir.migrate` carries an existing one across.
+DEBUG_OUT = debugdir.folder("scratch")
 ASSETS_DIR = REPO_ROOT / "assets"
 PORTRAITS_DIR = ASSETS_DIR / "portraits"
 ITEMS_DIR = ASSETS_DIR / "items"
