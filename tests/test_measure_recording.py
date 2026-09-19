@@ -362,3 +362,35 @@ def test_frames_that_all_agree_still_get_their_row(capsys):
     mr.say_row(frames_of((1920, 1200), [good] * 5))
     out = capsys.readouterr().out
     assert "(1920, 1200)" in out and "slot_h=0.0617" in out
+
+
+def test_the_tools_compare_against_the_boxes_the_app_would_use():
+    """`load_layout()` with no size is `DraftLayout()`'s shipped
+    defaults, which is NOT what the app uses on any display the table
+    has an answer for - `CaptureSession.fit_to_frame` keys it on the
+    captured frame.
+
+    Both recording tools called it that way, so `measure_recording`
+    scored its `boxes n/10` column through rectangles that machine never
+    used and flagged fractions as differing that the app had agreed with
+    all along, while `score_recording` printed "using the app's own
+    calibrated crop boxes" over somebody else's. A measurement has to be
+    compared against the thing it is a measurement OF.
+    """
+    import ast
+    root = Path(__file__).resolve().parent.parent
+    for name in ("measure_recording.py", "score_recording.py"):
+        tree = ast.parse((root / "tools" / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = (func.attr if isinstance(func, ast.Attribute)
+                      else getattr(func, "id", ""))
+            if called != "load_layout":
+                continue
+            sized = len(node.args) >= 2 or any(
+                kw.arg in ("width", "height") for kw in node.keywords)
+            assert sized, (
+                f"{name} line {node.lineno}: load_layout() with no frame "
+                "size reports the shipped defaults, not what the app uses")

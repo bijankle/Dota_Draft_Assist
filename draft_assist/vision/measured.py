@@ -28,6 +28,46 @@ which is 16:9-and-wider against narrower-than-16:9. Nobody has explained
 the mechanism and nothing here claims one; `GROUPS` records the step as
 measured and stops there.
 
+**AND THE NARROW SIDE IS TWO SHAPES, NOT ONE — MEASURED, AFTER A 16:10
+LAPTOP READ ONE HERO OF TEN.** That step above was read off screenshots
+of which four were 4:3 or 5:4 and the one 16:10 frame was the known-bad
+one (it fitted the CHOOSE YOUR HERO grid, and its `y` was thrown out as
+an outlier). So `TALL` was a 4:3/5:4 average wearing a band that reached
+up to 16:9 — and 16:10 is the commonest laptop shape there is. Two bot
+drafts, two machines, two resolutions, one shape:
+
+    display           dire_x       y   slot_w   slot_h    pitch
+    1920x1200 16:10   0.5938  0.0058   0.0682   0.0617   0.0719
+    2560x1600 16:10   0.5938  0.0056   0.0676   0.0612   0.0719
+    TALL (4:3, 5:4)   0.5926  0.0052   0.0692   0.0525   0.0709
+
+The two drafts agree with EACH OTHER to 0.0006 on every fraction —
+`dire_x` and `pitch` to four decimal places — and with `TALL` to within
+4 PIXELS on everything except `slot_h`, where they miss it by **11 and
+14 pixels**. On a matcher that reads 0.99 at the true size and 0.12 four
+pixels out, that one fraction is the whole difference between reading a
+draft and reading nothing: the 2560x1600 machine cropped 84px boxes over
+98px portraits, resolved not one hero from the screen, and showed only
+the hero GSI names for you.
+
+That is a SHAPE with two independent measurements behind it, which is
+what `GROUPS` is for, so `SIXTEEN_TEN` carries it and neither display
+needs a row. 3:2 has never been measured and falls in this band rather
+than `TALL` on arithmetic alone — see the band's own note.
+
+**THE MECHANISM IS VISIBLE HERE AND IS STILL NOT ACTED ON.** `slot_h` is
+the only fraction stored against a denominator that does not track the
+bar. Against the HUD SPAN the three narrow readings collapse: 0.0390 at
+5:4, 0.0386 at 1920x1200, 0.0382 at 2560x1600 — one number, where
+against the window they run 0.0488 to 0.0617. So `slot_h ~ 0.0386 *
+aspect` predicts all three to within 1%, and would predict 3:2 outright
+instead of leaving it to a band edge. It is NOT shipped: this project
+has moved the vertical convention once already and reverted it against
+the owner's own screenshots, the change would also move 4:3, and two
+distinct narrow aspects is not enough to re-cut a convention on. A
+measured band costs nothing and cannot be wrong about the displays it
+was measured on.
+
 **SO THERE ARE TWO LEVELS AND THE SPECIFIC ONE WINS.** `EXACT` is keyed by
 resolution and is where a bot-game measurement goes — one row per display
 actually played on, pasted from `tools/measure_recording.py --row`. `GROUPS`
@@ -111,10 +151,12 @@ class Reading:
 class Group:
     """One display SHAPE, and the band of aspects it answers for.
 
-    Half-open on the low side (`low <= aspect < high`) so the two groups
+    Half-open on the low side (`low <= aspect < high`) so the groups
     partition every aspect there can be and no display falls between
     them — a gap here would be a fresh install with no answer at all,
-    which is the state this file exists to end.
+    which is the state this file exists to end. There are three of
+    them now, and a 16:10 laptop reading one hero of ten is what the
+    third one cost.
     """
 
     label: str
@@ -131,9 +173,21 @@ class Group:
 # 16:9-and-wider vertical, which is the app's OWN `autocal` measurement
 # off a real 3440x1440 match — two independent routes agreeing that the
 # shipped y=0.0330 / slot_h=0.0930 were never measured by anything.
+
+# **"16:9" PANELS THAT ARE NOT 16:9.** 1360x768 is 1.77083 against
+# HUD_ASPECT's 1.77778, so an exact boundary put it BELOW the step - and
+# it is one of the two screenshots `WIDE` itself was measured from, which
+# means the group did not cover its own evidence. It was landing on the
+# narrow numbers and taking `dire_x` 0.5926 against its measured 0.5708,
+# a 31-pixel miss, for as long as this table has existed. The tolerance
+# is a hundredth of an aspect: enough for every panel sold as 16:9
+# (1360x768 is the worst offender at 0.007) and nowhere near 16:10 at
+# 1.6, which is 0.18 away.
+NEARLY_WIDE = HUD_ASPECT - 0.01
+
 WIDE = Group(
     label="16:9 and wider",
-    low=HUD_ASPECT,
+    low=NEARLY_WIDE,
     high=float("inf"),
     reading=Reading(
         dire_x=0.5710,      # 0.5708, 0.5713
@@ -146,10 +200,33 @@ WIDE = Group(
         frames=3,
     ),
 )
+SIXTEEN_TEN = Group(
+    label="16:10 and 3:2",
+    low=1.5,
+    high=NEARLY_WIDE,
+    reading=Reading(
+        dire_x=0.5938,      # 0.5938 and 0.5938
+        y=0.0057,           # 0.0058, 0.0056
+        slot_w=0.0679,      # 0.0682, 0.0676
+        slot_h=0.0615,      # 0.0617, 0.0612 - the fraction TALL got wrong
+        pitch=0.0719,       # 0.0719 and 0.0719
+        source="bot drafts at 1920x1200 and 2560x1600, five strategy "
+               "frames each, all ten calibrated boxes landing",
+        frames=10,
+    ),
+)
+# **THE LOW EDGE IS 3:2, AND IT IS A BET RATHER THAN A READING.** Both
+# measurements above are at 1.6 exactly; the only other display shape
+# between 4:3 and 16:9 that anybody sells is 3:2 (1.5 — Surface and
+# friends), and nothing has ever drafted on one. Which band should hold
+# it is therefore arithmetic: under the span reading in the module note
+# a 3:2 display wants slot_h 0.0579, which is 0.0036 from this group and
+# 0.0054 from `TALL` — so it is nearer here, and here it goes. Said out
+# loud because it is the one number in this file no frame produced.
 TALL = Group(
-    label="narrower than 16:9",
+    label="4:3 and 5:4",
     low=0.0,
-    high=HUD_ASPECT,
+    high=1.5,
     reading=Reading(
         dire_x=0.5926,      # 0.5914 - 0.5938
         y=0.0052,           # worst miss 0.0008 across the sweep
@@ -157,12 +234,13 @@ TALL = Group(
         slot_h=0.0525,
         pitch=0.0709,       # 0.0703 - 0.0715
         source="800x600, 1024x768, 1280x1024, 1440x900 and 1600x1200 "
-               "screenshots",
+               "screenshots (the 1440x900 one is 16:10 and was the bad "
+               "fit of that sweep, so this is a 4:3/5:4 reading)",
         frames=5,
     ),
 )
 
-GROUPS: tuple[Group, ...] = (WIDE, TALL)
+GROUPS: tuple[Group, ...] = (WIDE, SIXTEEN_TEN, TALL)
 
 # One row per resolution somebody has actually drafted on, keyed by the
 # frame size the app captures. A row is produced by playing a bot draft at
@@ -172,14 +250,21 @@ GROUPS: tuple[Group, ...] = (WIDE, TALL)
 # group says a measurement was taken when none was, and the fallback below
 # already covers every resolution.
 EXACT: dict[tuple[int, int], Reading] = {
-    # **BOTH ROWS ARE HERE FOR ONE FRACTION: `slot_h`.** Six bot drafts
-    # measured every resolution the owner plays on, and the three at 16:9
-    # and wider came back within 0.0012 of `WIDE` on all five fractions -
-    # so they get no row, which is the table working as designed. The two
-    # NARROWER displays match `TALL` on `dire_x`, `y`, `slot_w` and
-    # `pitch` just as closely, and disagree with it on `slot_h` in
-    # OPPOSITE DIRECTIONS: 0.0488 here against the group's 0.0525, and
-    # 0.0617 at 1920x1200. One constant cannot be both.
+    # **ONE ROW, FOR ONE FRACTION: `slot_h`.** There were two, and the
+    # other one is gone rather than lost — 1920x1200 was here because it
+    # missed `TALL`'s `slot_h` by 0.0092, and a second 16:10 bot draft
+    # (2560x1600) then measured the same thing to within 0.0005. Two
+    # machines agreeing about a SHAPE is a group, not a pair of rows, so
+    # both readings went into `SIXTEEN_TEN` and now serve every 16:10 and
+    # 3:2 display instead of the two that were played on. That is the
+    # table working as designed, and it is why no row was added for the
+    # display that prompted all this.
+    #
+    # 5:4 stays a row: it matches `TALL` on `dire_x`, `y`, `slot_w` and
+    # `pitch` within 0.0019 and reads `slot_h` 0.0488 against the group's
+    # 0.0525 — the same fraction again, in the other direction, which is
+    # what the module note's span reading predicts and nothing else here
+    # explains.
     (1280, 1024): Reading(
         dire_x=0.5922,
         y=0.0059,
@@ -189,16 +274,6 @@ EXACT: dict[tuple[int, int], Reading] = {
         source="bot draft at 1280x1024, six strategy frames, all ten "
                "calibrated boxes landing",
         frames=6,
-    ),
-    (1920, 1200): Reading(
-        dire_x=0.5938,
-        y=0.0058,
-        slot_w=0.0682,
-        slot_h=0.0617,      # TALL says 0.0525 - out by 0.0092
-        pitch=0.0719,
-        source="bot draft at 1920x1200, five strategy frames, all ten "
-               "calibrated boxes landing",
-        frames=5,
     ),
 }
 
@@ -246,6 +321,6 @@ def describe(width: int, height: int) -> str:
         return (f"crop boxes: {width}x{height} measured directly "
                 f"({exact.frames} frame(s), {exact.source})")
     group = group_for(width, height)
-    return (f"crop boxes: no reading for {width}x{height}, using "
+    return (f"crop boxes: no row for {width}x{height}, using "
             f"\"{group.label}\" ({group.reading.frames} frame(s), "
             f"{group.reading.source})")

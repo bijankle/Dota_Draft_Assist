@@ -51,6 +51,7 @@ from draft_assist.gsi import state as gsi_state          # noqa: E402
 from draft_assist.vision import autocal                  # noqa: E402
 from draft_assist.vision import layout as layout_mod     # noqa: E402
 from draft_assist.vision import lineup as lineup_mod     # noqa: E402
+from draft_assist.vision import measured as measured_mod  # noqa: E402
 
 # How many frames to measure. Each one is a full portrait search - the
 # scale grid plus ten passes - so this is seconds apiece, not milliseconds.
@@ -353,7 +354,17 @@ def measure_frames(folder: Path, ten: list[int], count: int,
               "run the artwork download first.")
         return []
 
-    current = layout_mod.load_layout()
+    # THE BOXES THE APP WOULD HAVE USED ON THIS DISPLAY, which means the
+    # FRAME'S OWN SIZE. This was `load_layout()` with no size for a
+    # while, and that is `DraftLayout()`'s shipped defaults - a layout no
+    # machine with a frame in hand has used since `CaptureSession.
+    # fit_to_frame` landed. So the `boxes n/10` column scored the wrong
+    # rectangles and every `<-- differs` flag below compared a real
+    # measurement against numbers that display never saw: on a 2560x1600
+    # report it flagged four fractions as differing, three of which the
+    # app had agreed with all along. An answer assembled out of our own
+    # bookkeeping and printed in the column where a measurement goes,
+    # inside the tool written to stop exactly that.
     rows = []
     for number, path in enumerate(chosen, start=1):
         console.progress(number / len(chosen), "measuring frames")
@@ -361,13 +372,13 @@ def measure_frames(folder: Path, ten: list[int], count: int,
         if frame is None:
             continue
         height, width = frame.shape[:2]
+        current = layout_mod.load_layout(width, height)
         found = autocal.locate(frame, art)
         fitted = autocal.layout_from(found, width, height)
         placed = lineup_mod.read_placed(frame, ten, current, art)
         age = ages.get(path)
         phase = state_at(marks, age)
         rows.append({
-            "size": (width, height),
             "name": path.name, "phase": phase, "age": age,
             "size": (width, height), "found": len(found),
             "layout": fitted.layout, "note": fitted.note,
@@ -629,7 +640,12 @@ def say_bar(rows: list[dict]) -> None:
         return
 
     print("\n  the six fractions, median over the frames that located:\n")
-    current = layout_mod.load_layout()
+    # Keyed on the frame's own size, for the reason `measure_frames`
+    # gives: anything else compares this display's measurement against a
+    # layout this display never used.
+    width, height = good[0]["size"]
+    current = layout_mod.load_layout(width, height)
+    print(f"    ({measured_mod.describe(width, height)})\n")
     for name in FRACTIONS:
         values = [getattr(row["layout"], name) for row in good]
         median = statistics.median(values)

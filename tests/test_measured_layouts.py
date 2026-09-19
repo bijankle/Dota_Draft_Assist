@@ -41,10 +41,15 @@ def test_the_groups_do_not_overlap():
 
 
 def test_the_step_is_at_sixteen_by_nine():
-    """The measured split, and the reason there are two groups at all."""
+    """The measured split, and the reason there is more than one group.
+
+    16:10 has since been measured apart from 4:3/5:4 and has a band of
+    its own, so the assertion here is that 16:9 is still where the WIDE
+    step falls - not that everything below it is one shape.
+    """
     assert measured.group_for(1920, 1080) is measured.WIDE
     assert measured.group_for(3440, 1440) is measured.WIDE
-    assert measured.group_for(1920, 1200) is measured.TALL
+    assert measured.group_for(1920, 1200) is not measured.WIDE
     assert measured.group_for(1024, 768) is measured.TALL
 
 
@@ -56,7 +61,11 @@ def test_the_bar_widths_match_what_was_measured():
     typed in — retuning a fraction is fine, retuning it out of its own
     measurement is the bug.
     """
-    bands = {measured.WIDE: (0.780, 0.791), measured.TALL: (0.889, 0.898)}
+    bands = {measured.WIDE: (0.780, 0.791), measured.TALL: (0.889, 0.898),
+             # 16:10 belongs to the NARROW family by its bar width - it
+             # was split out of `TALL` on `slot_h` alone, and this is the
+             # corroboration: the horizontal step is still at 16:9.
+             measured.SIXTEEN_TEN: (0.889, 0.900)}
     for group, (low, high) in bands.items():
         layout = group.reading.layout()
         span = layout.dire_x + layout.bank_span() - layout.radiant_x
@@ -121,7 +130,7 @@ def test_no_shipped_row_merely_repeats_its_group():
 
 
 def test_describe_says_which_of_the_answers_was_used():
-    assert "no reading for" in measured.describe(1920, 1080)
+    assert "no row for" in measured.describe(1920, 1080)
     assert "no frame yet" in measured.describe(0, 0)
 
 
@@ -258,3 +267,91 @@ def test_syncing_an_unchanged_layout_touches_nothing():
     window._sync_layout_spec()
     assert spins["y"].sets == 0
     assert spins["y"].blocked == []
+
+
+def test_sixteen_ten_is_its_own_shape():
+    """A 16:10 laptop read ONE hero of ten, and `slot_h` was the whole of
+    it: 84px boxes over 98px portraits, on a matcher that reads 0.99 at
+    the true size and 0.12 four pixels out."""
+    for width, height in [(1920, 1200), (2560, 1600), (2880, 1800)]:
+        assert measured.group_for(width, height) is measured.SIXTEEN_TEN
+    # and the shapes either side of it are untouched
+    assert measured.group_for(1920, 1080) is measured.WIDE
+    assert measured.group_for(3440, 1440) is measured.WIDE
+    assert measured.group_for(1280, 1024) is measured.TALL
+    assert measured.group_for(1024, 768) is measured.TALL
+
+
+def test_the_two_bot_drafts_behind_the_16_10_group_land_in_it():
+    """What each machine actually measured, against what it is now
+    served. The worst miss was 13.9px on `slot_h` and has to be under a
+    pixel, or this group is not worth the risk of a third band."""
+    from draft_assist.vision.layout import hud_box
+    drafts = {
+        (1920, 1200): dict(dire_x=0.5938, y=0.0058, slot_w=0.0682,
+                           slot_h=0.0617, pitch=0.0719),
+        (2560, 1600): dict(dire_x=0.5938, y=0.0056, slot_w=0.0676,
+                           slot_h=0.0612, pitch=0.0719),
+    }
+    for (width, height), got in drafts.items():
+        _, span = hud_box(width, height)
+        served = measured.layout_for(width, height)
+        for name, value in got.items():
+            # the horizontal fractions are of the HUD span, the vertical
+            # of the window - the one asymmetry this file carries
+            denominator = span if name in ("dire_x", "slot_w",
+                                           "pitch") else height
+            out_by = abs(getattr(served, name) - value) * denominator
+            assert out_by < 1.0, (
+                f"{width}x{height} {name} is {out_by:.2f}px out")
+
+
+def test_no_group_leaves_a_shape_without_an_answer():
+    """Half-open bands, so every aspect there can be falls in exactly
+    one - a gap is a fresh install with no answer at all, which is the
+    state this file exists to end."""
+    aspect = 0.5
+    while aspect < 4.0:
+        covering = [g for g in measured.GROUPS if g.covers(aspect)]
+        assert len(covering) == 1, f"aspect {aspect:.3f}: {covering}"
+        aspect += 0.01
+
+
+def test_the_narrow_groups_do_not_move_what_was_already_measured():
+    """Splitting 16:10 out of `TALL` must not touch 4:3, 5:4, or 16:9 and
+    wider - adding a level may only ever make one shape better."""
+    assert measured.TALL.reading.slot_h == 0.0525
+    assert measured.WIDE.reading.slot_h == 0.0611
+    assert measured.layout_for(1280, 1024).slot_h == 0.0488   # its own row
+    assert measured.layout_for(1024, 768).slot_h == 0.0525
+    assert measured.layout_for(1920, 1080).slot_h == 0.0611
+
+
+def test_every_group_covers_the_frames_it_was_measured_from():
+    """A group that does not answer for its own evidence is a group
+    serving somebody else's numbers.
+
+    1360x768 is 1.77083 against 16:9's 1.77778, so an exact boundary put
+    one of `WIDE`'s own two screenshots on the NARROW side - taking
+    `dire_x` 0.5926 against its measured 0.5708, a 31-pixel miss, for as
+    long as this table has existed.
+    """
+    evidence = {
+        measured.WIDE: [(1360, 768), (1920, 1080), (3440, 1440)],
+        measured.SIXTEEN_TEN: [(1920, 1200), (2560, 1600)],
+        measured.TALL: [(800, 600), (1024, 768), (1280, 1024),
+                        (1600, 1200)],
+    }
+    for group, sizes in evidence.items():
+        for width, height in sizes:
+            assert measured.group_for(width, height) is group, (
+                f"{width}x{height} is named in \"{group.label}\"'s source "
+                f"but falls in \"{measured.group_for(width, height).label}\"")
+
+
+def test_the_wide_tolerance_cannot_swallow_sixteen_ten():
+    """The slack is for panels sold as 16:9, not a licence to widen the
+    measured step - 16:10 sits 0.18 away and must stay its own shape."""
+    assert measured.HUD_ASPECT - measured.NEARLY_WIDE == pytest.approx(0.01)
+    assert measured.group_for(1920, 1200) is measured.SIXTEEN_TEN
+    assert measured.SIXTEEN_TEN.high == measured.NEARLY_WIDE

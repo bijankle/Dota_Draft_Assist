@@ -3413,6 +3413,93 @@ credentials, and put the account at risk. Do not go there.
   entirely: both displays are right now, and the convention can be
   settled later by somebody with more tall resolutions than two.
 
+  **AND SIDESTEPPING IT COST A STRANGER A WHOLE DRAFT, WHICH IS WHY
+  `TALL` IS NOW TWO GROUPS** (`measured.SIXTEEN_TEN`). A 16:10 laptop -
+  2560x1600, the zip build, a bot match - read **ONE hero of ten**, and
+  the one it read was the one GSI names for you. `TALL` covered every
+  aspect below 16:9 while four of the five screenshots behind it were
+  4:3 or 5:4 and the one 16:10 frame was that sweep's known-bad fit (the
+  CHOOSE YOUR HERO grid, whose `y` was thrown out as an outlier). So the
+  commonest laptop shape there is was being served a 4:3 average:
+
+      fraction   measured 2560x1600   TALL said   out by
+      dire_x     0.5938               0.5926       3.1 px
+      y          0.0056               0.0052       0.6 px
+      slot_w     0.0676               0.0692       4.1 px
+      pitch      0.0719               0.0709       2.6 px
+      slot_h     0.0612               0.0525      13.9 px
+
+  **`slot_h` IS THE WHOLE OF IT** - 84px boxes cropped over 98px
+  portraits, on a matcher that reads 0.99 at the true size and 0.12 four
+  pixels out. Every box missed, the screen resolved nothing, and
+  `_resolve_sides_by_sight` had no reading to split the teams with, so
+  the minimap's coin flip decided them as well.
+  **THE SECOND MEASUREMENT IS WHAT MADE IT A GROUP RATHER THAN A ROW.**
+  1920x1200 and 2560x1600 are two machines, two resolutions and one
+  shape, and they agree with EACH OTHER to **0.0006 on every fraction**
+  - `dire_x` and `pitch` to four decimal places. That is a SHAPE, which
+  is what `GROUPS` is for, so both readings went in and the 1920x1200
+  row was DELETED: it now repeats its own group, which the table's own
+  test refuses. Served by the group, both displays are within **0.8 of a
+  pixel** on every fraction. No row was added for the display that
+  prompted this, and that is the table working as designed rather than a
+  gap in it - every 16:10 and 3:2 panel is now right on draft one, not
+  just the two that were played on.
+  **THE BAR WIDTH CORROBORATES THE SPLIT BEING `slot_h` ALONE.** 16:10
+  spans 0.8986 of the HUD against 4:3/5:4's 0.8908 and 16:9's 0.7854, so
+  it is squarely in the NARROW family horizontally and the 16:9 step is
+  exactly where it was measured. Only the vertical separates it.
+  **AND THE SPAN READING NOW FITS ALL THREE NARROW MEASUREMENTS AND IS
+  STILL NOT SHIPPED.** Against the HUD span `slot_h` reads 0.0390 at
+  5:4, 0.0386 at 1920x1200 and 0.0382 at 2560x1600 - one number - so
+  `slot_h ~ 0.0386 * aspect` predicts every one of them to within 1% and
+  would answer 3:2 outright instead of leaving it to a band edge. It
+  stays unshipped for three reasons and the first is the strongest: this
+  project has moved the vertical convention once and reverted it against
+  the owner's own screenshots. It would also move 4:3, which nothing has
+  re-measured, and two distinct narrow aspects is not a population to
+  re-cut a convention on. A measured band cannot be wrong about the
+  displays it was measured on.
+  **3:2 IS THE ONE NUMBER IN THAT FILE NO FRAME PRODUCED**, and it is
+  labelled as such. Nobody has drafted on one; under the span reading it
+  wants `slot_h` 0.0579, which is 0.0036 from `SIXTEEN_TEN` and 0.0054
+  from `TALL`, so it is banded with 16:10 on arithmetic alone.
+
+  **AND THE TOOL THAT REPORTED ALL THIS COMPARED AGAINST BOXES THE APP
+  NEVER USED** (`measure_recording.measure_frames` / `say_bar`,
+  `score_recording`). Both called `load_layout()` with NO SIZE, which is
+  `DraftLayout()`'s shipped defaults - and no machine with a frame in
+  hand has used those since `CaptureSession.fit_to_frame` landed, since
+  that keys the table on the captured frame. So the 2560x1600 report
+  flagged **four fractions as differing when the app had agreed with
+  three of them all along** (it printed `y ... in use 0.0330` where the
+  app was using 0.0052), and its `boxes n/10` column scored rectangles
+  that display never saw. `score_recording` was worse in one respect: it
+  printed "using the app's own calibrated crop boxes" over somebody
+  else's. This project's oldest fault wearing its best disguise, for the
+  third time and again inside the tool written to stop it - an answer
+  assembled out of our own bookkeeping, printed in the column where a
+  measurement goes. Both are keyed on the frame's own size now, the
+  fraction table names which of the three levels it is comparing
+  against, and `test_the_tools_compare_against_the_boxes_the_app_would_
+  use` parses both tools for a sizeless call.
+  **`describe` SAYS "no ROW for" RATHER THAN "no reading for"**, because
+  with the group carrying two bot drafts at that very resolution the old
+  wording contradicted the source it printed on the same line.
+
+  **AND A GROUP THAT DID NOT COVER ITS OWN EVIDENCE** (`NEARLY_WIDE`).
+  Found on the way past and the same fault a third time: **1360x768 is
+  1.77083 against 16:9's 1.77778**, so an exact boundary put one of the
+  two screenshots `WIDE` WAS MEASURED FROM on the narrow side of the
+  step. It had been taking `dire_x` 0.5926 against its own measured
+  0.5708 - a **31-pixel** miss - for as long as this table has existed,
+  invisible because nobody drafts at 1360x768. The band is a hundredth
+  of an aspect wide now: every panel sold as 16:9 clears it (1360x768 is
+  the worst at 0.007) and 16:10 is 0.18 away, so it cannot reach. A test
+  holds every group to answering for the frames named in its own
+  `source`, which is the general form of the bug and would have caught
+  it the day the table was written.
+
   **AND THE RE-RUN FOUND THREE DEFECTS IN `say_row`, ALL THE SAME
   SHAPE** (`MIN_ROW_FRAMES`, `agreeing`, `MIRROR_AGREE`). Each let a
   frame that had not fitted the pick bar reach a row offered for

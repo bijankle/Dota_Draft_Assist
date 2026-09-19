@@ -370,10 +370,16 @@ def score(folder: Path, every: int, proofs: int, out: Path,
     rects = None
     probes, geometries, agreed = [], [], []
     probe_shapes = None
-    if not sweep:
-        layout = load_layout()
-        print("using the app's own calibrated crop boxes "
-              f"({CALIBRATION_FILE.name if CALIBRATION_FILE.exists() else 'built-in defaults'})")
+    # THE FRAME'S OWN SIZE, resolved in the loop below. `load_layout()`
+    # with no size is `DraftLayout()`'s shipped defaults, which is not
+    # what the app uses on any display the table has an answer for - so
+    # this printed "using the app's own calibrated crop boxes" while
+    # using somebody else's.
+    from_the_table = not sweep
+    if from_the_table:
+        print("using the app's own crop boxes for this recording's "
+              "resolution "
+              f"({CALIBRATION_FILE.name if CALIBRATION_FILE.exists() else 'the shipped table'})")
     else:
         # LOCATE ONCE, IDENTIFY MANY. The pick bar does not move during a
         # match, and locating it is the whole cost - a full sweep of 126
@@ -518,11 +524,12 @@ def score(folder: Path, every: int, proofs: int, out: Path,
         if frame is None:
             tally["unreadable"] += 1
             continue
-        if layout is not None:
+        if from_the_table:
             # SlotRect is a fraction of the 16:9 HUD BOX, so the pixels
             # are worked out per frame rather than once - which is also
             # what makes a recording at a different resolution readable.
             height, width = frame.shape[:2]
+            layout = load_layout(width, height)
             rects = [rect.to_pixels(width, height) for rect in layout.slots()]
         elif probe_shapes and frame.shape[:2] != probe_shapes:
             # A swept geometry describes one window size only.
