@@ -79,14 +79,14 @@ from . import reasons
 from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
-from .chrome import Dropdown, ResizeGrip, TitleBar, card
+from .chrome import Dropdown, GrowingLog, ResizeGrip, TitleBar, card
 from . import hero_picker
 from .hero_picker import HeroPickerDialog
 from . import item_icons
 from . import portraits
 from .framebox import FrameView
 from .item_row import ItemRow
-from .flowlayout import fits_in_one_row
+from .flowlayout import FlowLayout, fits_in_one_row
 from .suggest_row import STRIP_GAP, SuggestRow
 from .manual import ManualDraft
 from .tables import MatrixTable, minimum_grid_width
@@ -1376,7 +1376,15 @@ class MainWindow(QMainWindow):
         self.debug_image.setProperty("card", True)
         dlay.addWidget(self.debug_image, 3)
 
-        log_card, loglay = card("Recognition log")
+        # ONE BOX, TWO HEADED SECTIONS, at the user's request: "i think
+        # you can combine recognition and loop text boxes... you could
+        # just have headers within that same text box.... remove the
+        # scroll from within the text box... i dont want a scroll within
+        # a scroll". Two panels answering one question — what is this
+        # tick doing — and the whole of Debug ▸ Copy everything was
+        # already pasting them one after the other, which is what this
+        # box now is on screen.
+        log_card, loglay = card("What this tick did")
         log_row = QHBoxLayout()
         log_row.addStretch(1)
         self.copy_log_button = QPushButton("Copy everything")
@@ -1388,26 +1396,9 @@ class MainWindow(QMainWindow):
         self.copy_log_button.clicked.connect(self._copy_debug_log)
         log_row.addWidget(self.copy_log_button)
         loglay.addLayout(log_row)
-        self.debug_text = QPlainTextEdit()
-        self.debug_text.setReadOnly(True)
-        self.debug_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        loglay.addWidget(self.debug_text, 1)
-        dlay.addWidget(log_card, 1)
-
-        # Where the refresh loop's time actually goes. Always measured;
-        # only drawn when this tab is open.
-        timing_card, tlay = card("Loop timings · milliseconds")
-        self.timing_text = QPlainTextEdit()
-        self.timing_text.setReadOnly(True)
-        self.timing_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.timing_text.setMinimumHeight(160)
-        self.timing_text.setMaximumHeight(220)
-        font = self.timing_text.font()
-        font.setFamily("Consolas")
-        font.setStyleHint(font.StyleHint.Monospace)
-        self.timing_text.setFont(font)
-        tlay.addWidget(self.timing_text)
-        dlay.addWidget(timing_card)
+        self.debug_text = GrowingLog()
+        loglay.addWidget(self.debug_text)
+        dlay.addWidget(log_card)
 
         # Calibration lives beside the picture because it is only usable
         # with the picture: the boxes move as the numbers change, so being
@@ -1581,7 +1572,28 @@ class MainWindow(QMainWindow):
         self.session_report.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.NoWrap)
         right.addWidget(self.session_report, 1)
-        buttons = QHBoxLayout()
+        # THE ROW WRAPS, at the user's request: "make these buttons
+        # scale to fit the window". Seven fixed-width buttons in a
+        # QHBoxLayout is ~900px of layout MINIMUM, and a widget's
+        # minimum is the WINDOW's — so at any ordinary size the row ran
+        # off the right edge under a horizontal scrollbar and the last
+        # two could not be reached at all. Same fault and same answer as
+        # the suggestion strips and the History tab's options row: the
+        # block reflows, and `FlowLayout` is the one implementation so
+        # there is not a second chance to get it wrong.
+        buttons_box = QWidget()
+        buttons_box.setProperty("bare", True)
+        buttons = FlowLayout(buttons_box, spacing=8)
+        # A WRAPPING BLOCK HAS TO DECLARE THAT IT WRAPS. Qt consults a
+        # child's `heightForWidth` only when its SIZE POLICY says it has
+        # one, and the default does not — without this the row reports
+        # no height for its second line and the buttons that wrapped are
+        # laid out below the widget's own bottom edge, where nothing
+        # draws them.
+        policy = buttons_box.sizePolicy()
+        policy.setHeightForWidth(True)
+        policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+        buttons_box.setSizePolicy(policy)
         self.copy_report_button = QPushButton("Copy report")
         self.copy_report_button.setProperty("accent", True)
         self.copy_report_button.clicked.connect(self._copy_session_report)
@@ -1621,8 +1633,10 @@ class MainWindow(QMainWindow):
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
         buttons.addWidget(open_session)
-        buttons.addStretch(1)
-        right.addLayout(buttons)
+        # No trailing stretch: a FlowLayout packs from the left and
+        # wraps, so there is no slack to push anything against — and it
+        # has no `addStretch` to call, which is how this was found.
+        right.addWidget(buttons_box)
         layout.addLayout(right, 1)
 
         self._refresh_sessions()
@@ -5866,19 +5880,23 @@ class MainWindow(QMainWindow):
         # widget nobody is looking at. That was most of the stutter.
         if not self.debug_image.isVisible():
             return
-        set_log(self.timing_text, LOOP.report())
+        # The timings are written with the log rather than on their own,
+        # so a tick that recognised nothing and a tick that took 300ms
+        # are read off one box in one glance.
+        self._timings = LOOP.report()
         if snap is None:
+            self._write_debug([])
             return
         # Debug shows the RAW per-frame read (live confidences, flicker and
         # all); the draft panels show the stabilised one.
         read = snap.read_raw or snap.read
         if snap.frame is None or read is None:
-            set_log(self.debug_text, 
+            self._write_debug([
                 f"mode={snap.mode}  gate score={snap.gate_score:.3f}  "
                 f"frames arrived={snap.frames_arrived}\n"
                 "No recognised frame yet. In demo mode there is no frame at "
                 "all; live and replay show the captured frame with crop "
-                "boxes here as soon as recognition runs.")
+                "boxes here as soon as recognition runs."])
             return
         from ..vision.debug import draw_overlay
         overlay = draw_overlay(snap.frame, read, self._hero_names())
@@ -5916,7 +5934,22 @@ class MainWindow(QMainWindow):
                         "EMPTY" if s.hero_id == -1 else self.ds.name(s.hero_id))
             lines.append(f"{s.rect.team}{s.rect.slot}: {resolved:20s} "
                          f"nearest={s.best_label} d={s.distance} m={s.margin}")
-        set_log(self.debug_text, "\n".join(lines))
+        self._write_debug(lines)
+
+    def _write_debug(self, lines: list[str]) -> None:
+        """Both sections, headed, in the one box.
+
+        The headings are what a merged box needs and what two cards used
+        to carry: without them the timings read as more recognition log.
+        """
+        text = "\n".join([
+            "RECOGNITION LOG",
+            *(lines or ["(nothing read yet)"]),
+            "",
+            "LOOP TIMINGS \u00b7 milliseconds",
+            getattr(self, "_timings", "") or "(not measured yet)",
+        ])
+        set_log(self.debug_text, text)
 
     def _capture_target(self) -> str:
         """The window the frames are coming from, by name.
@@ -6003,7 +6036,9 @@ class MainWindow(QMainWindow):
             ]
             for note in getattr(snap, "gsi_notes", []) or []:
                 parts.append(f"note: {note}")
-        parts += ["", "--- recognition log ---", self.debug_text.toPlainText(),
+        # ONE box now, and it already carries both headed sections — so
+        # this appends it whole rather than naming the two halves again.
+        parts += ["", self.debug_text.toPlainText(),
                   "", "--- loop timings (ms) ---", LOOP.report()]
         QApplication.clipboard().setText("\n".join(parts))
         self._say("Copied — paste it wherever you are reporting this.", 6000)

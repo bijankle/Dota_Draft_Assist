@@ -14,9 +14,9 @@ press, a move, a release.
 
 from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
                           QSize, QTimer, Qt, pyqtSignal)
-from PyQt6.QtGui import (QColor, QFontMetrics, QPainter, QPainterPath, QPen,
+from PyQt6.QtGui import (QTextOption, QColor, QFontMetrics, QPainter, QPainterPath, QPen,
                          QPolygonF)
-from PyQt6.QtWidgets import (QAbstractButton, QCheckBox, QComboBox, QFrame,
+from PyQt6.QtWidgets import (QPlainTextEdit, QAbstractButton, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QLabel, QMenuBar,
                              QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
                              QTabWidget, QVBoxLayout, QWidget)
@@ -1573,3 +1573,90 @@ class BandedTabs(QTabWidget):
     def _page_changed(self, index: int) -> None:
         if index != self.bar.currentIndex():
             self.bar.setCurrentIndex(index)
+
+
+class GrowingLog(QPlainTextEdit):
+    """A read-only log that is exactly as tall as what it holds.
+
+    At the user's request: "remove the scroll from ... within the text
+    box... i dont want a sctoll within a scrolll". The Debug page is
+    already inside a QScrollArea (`app._scrolling`, which exists so a
+    long tab cannot set the whole window's height floor), so a box with
+    its own scrollbar is two nested scrolls answering one gesture — the
+    wheel goes to whichever one the pointer happens to be over, which is
+    the same trap `BucketTable.wheelEvent` and `chrome.Dropdown` were
+    written for one tab across.
+
+    **IT WRAPS RATHER THAN SCROLLING SIDEWAYS**, and that is the trade.
+    These lines are columns — `radiant4: UNKNOWN  nearest=... d=94 m=6`
+    — so wrapping can break one across two rows and spoil the alignment.
+    The alternative is a horizontal scrollbar, which HIDES the end of a
+    line with nothing on screen saying so, and a diagnostic that quietly
+    drops the half of a line carrying the distance and the margin is
+    worse than one that is briefly ragged.
+
+    **THE HEIGHT IS MEASURED, NOT COUNTED.** Multiplying a line count by
+    a line height is wrong the moment anything wraps, and wrapping is
+    exactly what this box does; `document().size()` is Qt's own answer
+    at the width the box actually has, which is why the height is
+    re-taken on every resize as well as on every write.
+    """
+
+    # What the box asks for before it holds anything. Small, because a
+    # minimum is what a scroll area is being asked to absorb and an
+    # empty log should not reserve a screen.
+    EMPTY_H = 48
+    # The document's own top and bottom margin, which the line count
+    # does not include; without it the last line sits on the edge and a
+    # descender is clipped.
+    PAD = 10
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        font = self.font()
+        font.setFamily("Consolas")
+        font.setStyleHint(font.StyleHint.Monospace)
+        self.setFont(font)
+        self.document().documentLayout().documentSizeChanged.connect(
+            lambda *_: self._fit())
+        self._fit()
+
+    def resizeEvent(self, event):                    # noqa: N802
+        super().resizeEvent(event)
+        self._fit()
+
+    def wheelEvent(self, event):                     # noqa: N802
+        """Never take the wheel — the PAGE scrolls.
+
+        Belt and braces beside the two scrollbars being off: a
+        QPlainTextEdit still answers the wheel by moving its (invisible)
+        scroll position, so the page under the pointer would stand still
+        while the text crept.
+        """
+        event.ignore()
+
+    def _fit(self) -> None:
+        """**`document().size().height()` IS A LINE COUNT HERE, NOT
+        PIXELS.** A QPlainTextEdit uses QPlainTextDocumentLayout, whose
+        `documentSize` reports the height in LINES — so the obvious
+        reading gave a box 30 pixels tall for thirty lines of text and
+        the fit silently never moved off its floor. It is the wrapped
+        line count, which is what this needs: multiply by the font's own
+        line spacing.
+        """
+        lines = max(1.0, self.document().size().height())
+        frame = self.frameWidth() * 2
+        margins = self.contentsMargins()
+        height = int(lines * self.fontMetrics().lineSpacing()) + frame \
+            + margins.top() + margins.bottom() + self.PAD
+        height = max(self.EMPTY_H, height)
+        if height != self.minimumHeight() or height != self.maximumHeight():
+            self.setFixedHeight(height)

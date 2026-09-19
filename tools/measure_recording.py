@@ -97,10 +97,52 @@ def timeline(states: list[dict]) -> list[tuple[float, str]]:
     return out
 
 
+# How long a state may be carried forward past the last tick that named
+# it. The log is written every tick while the app is running, so a gap
+# means the app stopped hearing from Dota - the match ended, the user
+# quit, Dota closed. A few seconds is the feed stuttering; past that,
+# nothing knows what is on the screen.
+STATE_EXPIRES = 20.0
+
+# The states with a pick bar on the screen, DERIVED from the app's own
+# set rather than typed out again - `timeline` strips the
+# `DOTA_GAMERULES_STATE_` prefix, so the comparison has to be against
+# the short spelling and two hand-written lists would be one of them
+# going stale the next time Valve renames a state.
+BAR_IS_UP = {name.replace("DOTA_GAMERULES_STATE_", "")
+             for name in gsi_state.DRAFTING_STATES}
+
+# What a frame past the end is called. Not a state, on purpose: it is
+# the absence of one.
+PAST_THE_END = "after the log"
+
+
 def state_at(marks: list[tuple[float, str]], seconds: float | None) -> str:
-    """The game state that was live this many seconds into the session."""
+    """The game state that was live this many seconds into the session.
+
+    **A STATE EXPIRES, AND NOT HAVING ONE IS WHY A REAL RUN MEASURED
+    RUBBISH.** This carried the last named state forward for ever, so a
+    recording whose state log stopped at 32 seconds - the user closed
+    Dota a few seconds into strategy time, exactly as asked - labelled
+    frames taken at 164s, 328s and on to 1149s as STRATEGY_TIME. Seven
+    of the eight frames measured were of the Dota menu with no pick bar
+    on the screen at all, the search found small bright rectangles in
+    them, and the run printed six fractions and a verdict that "the bar
+    moves between the two screens".
+
+    Which is this project's oldest fault wearing its best disguise: an
+    answer assembled out of our own bookkeeping, printed in the column
+    where a measurement goes. The frames were never the problem and
+    neither was the recording; the tool asserted a phase it had no
+    evidence for.
+
+    So a frame more than `STATE_EXPIRES` past the last tick that named a
+    state is `PAST_THE_END`, and `measure_frames` does not measure it.
+    """
     if seconds is None or not marks:
         return "?"
+    if seconds > marks[-1][0] + STATE_EXPIRES:
+        return PAST_THE_END
     name = marks[0][1]
     for at, this in marks:
         if at > seconds:
@@ -273,6 +315,33 @@ def measure_frames(folder: Path, ten: list[int], count: int,
         print("\n  no frames in this recording - nothing to measure.")
         return []
     ages = frame_seconds(frames)
+    # **ONLY FRAMES WITH A PICK BAR ON THEM.** This used to spread its
+    # sample across the WHOLE recording, and a recording is a session
+    # rather than a draft: 600 frames over twenty minutes, of which the
+    # draft is the first dozen. Seven of eight frames in a real run were
+    # of the menu, the search found something in each, and the tool
+    # printed six fractions measured off them.
+    #
+    # `BAR_IS_UP` is the app's own answer to "is the pick bar up",
+    # so it is the one asked here too - spelled once, in `gsi.state`,
+    # rather than as a list of names this tool keeps in step by hand.
+    on_the_bar = [f for f in frames
+                  if state_at(marks, ages.get(f)) in BAR_IS_UP]
+    if not on_the_bar:
+        seen = sorted({state_at(marks, ages.get(f)) for f in frames})
+        print("\n  NOT ONE FRAME was taken while the pick bar was up.")
+        print(f"  The frames here are: {', '.join(seen)}.")
+        print("  A recording is a SESSION, not a draft - if the app kept")
+        print("  running after the game ended, most of its frames are of")
+        print("  the menu. Record again and stop it once the draft is")
+        print("  over, or check that the game feed was live while you")
+        print("  were picking.")
+        return []
+    if len(on_the_bar) < len(frames):
+        print(f"\n  {len(on_the_bar)} of {len(frames)} frames were taken "
+              "while the pick bar was up;")
+        print("  the rest are menu or post-game and are not measured.")
+    frames = on_the_bar
     step = max(1, len(frames) // max(1, count))
     chosen = frames[::step][:count]
 

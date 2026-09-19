@@ -93,7 +93,11 @@ def test_a_frame_is_labelled_with_the_state_that_was_live(capsys):
     assert tool.state_at(marks, 10.0) == "HERO_SELECTION"
     assert tool.state_at(marks, 60.0) == "STRATEGY_TIME"
     # The one that was wrong: well past strategy time is NOT strategy.
-    assert tool.state_at(marks, 200.0) == "PRE_GAME"
+    assert tool.state_at(marks, 100.0) == "PRE_GAME"
+    # And past the END of the log it is not PRE_GAME either — the log
+    # stops when the app stops hearing from Dota, and nothing after that
+    # has any evidence behind it. See `test_a_state_expires...`.
+    assert tool.state_at(marks, 200.0) == tool.PAST_THE_END
     assert tool.state_at([], 5.0) == "?"
     assert tool.state_at(marks, None) == "?"
 
@@ -190,3 +194,38 @@ def test_the_button_asks_for_the_table_row():
     steps = TASKS["measure_recording"].steps
     assert len(steps) == 1
     assert "--row" in steps[0], steps[0]
+
+
+def test_a_state_expires_rather_than_running_for_ever():
+    """A real run measured seven frames of the Dota MENU and printed
+    six fractions off them.
+
+    The user closed Dota a few seconds into strategy time, exactly as
+    asked. The state log therefore stopped at 32s — and the recorder
+    kept saving frames for another twenty minutes, all of which this
+    labelled STRATEGY_TIME because the last named state was carried
+    forward with no end. The tool then reported that "the bar moves
+    between the two screens", which is an answer assembled out of our
+    own bookkeeping standing where a measurement goes.
+    """
+    from tools.measure_recording import PAST_THE_END, state_at
+
+    marks = [(0.0, "HERO_SELECTION"), (3.0, "STRATEGY_TIME"),
+             (32.0, "STRATEGY_TIME")]
+    assert state_at(marks, 0) == "HERO_SELECTION"
+    assert state_at(marks, 10) == "STRATEGY_TIME"
+    # a short gap is the feed stuttering, not the session ending
+    assert state_at(marks, 40) == "STRATEGY_TIME"
+    # twenty minutes later there is no evidence of anything
+    assert state_at(marks, 164) == PAST_THE_END
+    assert state_at(marks, 1149) == PAST_THE_END
+
+
+def test_the_drafting_states_are_derived_from_the_app():
+    """Two hand-written lists is one of them going stale."""
+    from draft_assist.gsi import state as gsi_state
+    from tools.measure_recording import BAR_IS_UP
+
+    assert BAR_IS_UP == {n.replace("DOTA_GAMERULES_STATE_", "")
+                         for n in gsi_state.DRAFTING_STATES}
+    assert "HERO_SELECTION" in BAR_IS_UP

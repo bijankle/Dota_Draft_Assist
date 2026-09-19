@@ -3232,6 +3232,46 @@ credentials, and put the account at risk. Do not go there.
   ships, so a downloader inherits numbers that nothing has ever
   measured. **Still not changed** — see the horizontal below, which is
   the same decision.
+  **AND A STATE EXPIRES, WHICH IS WHY A REAL RUN MEASURED THE MENU**
+  (`state_at`, `STATE_EXPIRES` 20s, `PAST_THE_END`, `BAR_IS_UP`).
+  `state_at` carried the last named state forward FOR EVER, and
+  `measure_frames` sampled across the WHOLE recording. A recording is a
+  SESSION rather than a draft: the owner closed Dota a few seconds into
+  strategy time, exactly as asked, so the state log stopped at 32s while
+  the recorder kept saving frames for another twenty minutes. Seven of
+  the eight frames measured were taken at 164s to 1149s, labelled
+  STRATEGY_TIME because nothing said otherwise, and were pictures of the
+  Dota MENU with no pick bar on them at all.
+  The search found small bright rectangles in each, and the run printed
+  six fractions measured off them - `slot_w` 0.0353 against the 0.0613
+  in use, `pitch` 0.0314 against 0.0645, roughly half size, which is the
+  26x20 blob-row family this file already records - and a verdict that
+  **"the bar moves between the two screens"**. Which is this project's
+  oldest fault wearing its best disguise: an answer assembled out of our
+  own bookkeeping, printed in the column where a measurement goes, by
+  the tool written to stop exactly that. The frames were not the
+  problem and neither was the recording.
+  So a frame more than `STATE_EXPIRES` past the last tick that named a
+  state is `PAST_THE_END` - not a state, on purpose, because it is the
+  ABSENCE of one - and `measure_frames` keeps only frames whose state is
+  in `BAR_IS_UP`, saying how many it set aside. No frame with a bar on
+  it at all is REFUSED with what the frames actually were, rather than
+  measuring them.
+  `BAR_IS_UP` is DERIVED from `gsi.state.DRAFTING_STATES` rather than
+  typed out: `timeline` strips the `DOTA_GAMERULES_STATE_` prefix, so
+  the comparison needs the short spelling, and two hand-written lists is
+  one of them going stale.
+  **AND THAT RUN CARRIES AN UNEXPLAINED FRAME SIZE: 1929x1112**, which
+  is not a Dota resolution and whose aspect (1.735) is NARROWER than
+  16:9. 1920+9 by 1080+32 is what a WINDOWED client plus its border and
+  title bar measures, and `capture.window.client_size` exists, is tested
+  and **is called by nothing in the app** - so a frame may be the whole
+  WINDOW while every fraction is a share of the CLIENT. That would put
+  the crop boxes a title bar too low and, now, in the wrong aspect group
+  as well. Not established, not acted on: it needs a frame beside that
+  window's own client rect to say. What is certain is that every box
+  missed on every frame of that recording (`boxes 0/10`).
+
   **AND THE RAW MINIMAP IS NOT THE TEN** — the first version of this
   tool read `hero_entries(payload, drop_origin=False)` and reported
   FOUR heroes at the origin where one was. The other three are
