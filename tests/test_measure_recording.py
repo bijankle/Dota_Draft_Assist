@@ -229,3 +229,62 @@ def test_the_drafting_states_are_derived_from_the_app():
     assert BAR_IS_UP == {n.replace("DOTA_GAMERULES_STATE_", "")
                          for n in gsi_state.DRAFTING_STATES}
     assert "HERO_SELECTION" in BAR_IS_UP
+
+
+# ---- the frame is the client, not the window ---------------------------
+
+def test_an_odd_frame_size_is_not_a_display_resolution():
+    """Every mode a monitor has ever offered is even in both axes, and
+    all four padded recordings came back odd: 1375, 1929, 3449."""
+    from tools import measure_recording as mr
+
+    for size in [(1375, 800), (1929, 1112), (3449, 1472), (1929, 1232)]:
+        assert mr.looks_padded(*size), f"{size} is a window, not a client"
+    for size in [(1366, 768), (1920, 1080), (3440, 1440), (1920, 1200)]:
+        assert not mr.looks_padded(*size), f"{size} is a real resolution"
+
+
+def test_the_chrome_is_what_three_displays_measured():
+    from tools import measure_recording as mr
+
+    for client, captured in [((1366, 768), (1375, 800)),
+                             ((1920, 1080), (1929, 1112)),
+                             ((1920, 1200), (1929, 1232)),
+                             ((3440, 1440), (3449, 1472))]:
+        assert (captured[0] - client[0],
+                captured[1] - client[1]) == mr.CHROME
+
+
+def test_a_padded_frame_is_refused_a_row(capsys):
+    """It would bake a buffer size into a table keyed by display size,
+    for every install of this app, permanently."""
+    from tools import measure_recording as mr
+
+    class Fit:
+        radiant_x = dire_x = y = slot_w = slot_h = pitch = 0.05
+
+    rows = [{"layout": Fit(), "found": 10, "size": (1929, 1232)}
+            for _ in range(3)]
+    mr.say_row(rows)
+    out = capsys.readouterr().out
+    assert "NO ROW" in out
+    assert "1920x1200" in out, "it should name what the frame really was"
+    assert "Reading(" not in out
+
+
+def test_a_clean_frame_still_gets_its_row(capsys):
+    from tools import measure_recording as mr
+
+    class Fit:
+        radiant_x = 0.05
+        dire_x = 0.5926
+        y = 0.0052
+        slot_w = 0.0692
+        slot_h = 0.0525
+        pitch = 0.0709
+
+    rows = [{"layout": Fit(), "found": 10, "size": (1920, 1200)}
+            for _ in range(3)]
+    mr.say_row(rows)
+    out = capsys.readouterr().out
+    assert "Reading(" in out and "(1920, 1200)" in out

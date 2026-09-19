@@ -126,6 +126,13 @@ class CaptureSession:
         # re-answered rather than read through the last screen's boxes.
         # See `fit_to_frame`.
         self._sized_for: tuple[int, int] = (0, 0)
+        # THE CAPTURED BUFFER IS NOT ALWAYS THE CLIENT AREA - see
+        # `_crop_to_client`. Measured once when the window is bound and
+        # again whenever the raw frame size changes; None means "never
+        # measured", which is not the same as "no padding" and is why
+        # this is three-valued rather than a (0, 0).
+        self._client: tuple[int, int] | None = None
+        self._raw_size: tuple[int, int] = (0, 0)
         # A layout somebody MEASURED — this machine's own calibration file,
         # or an `autocal` reading adopted mid-match — outranks the shipped
         # table and must never be silently replaced by it.
@@ -230,6 +237,83 @@ class CaptureSession:
 
     def set_forced(self, forced: bool) -> None:
         self.state.forced = forced
+
+    # How far the captured buffer may exceed the client area before the
+    # difference stops looking like window chrome and starts looking like
+    # the wrong window. Windows' own frame is a few pixels of invisible
+    # resize border plus a title bar, so the gap measured on three real
+    # displays was (9, 32) every time; a hundred is room for a scaled
+    # display without being room for a mistake.
+    CHROME_MAX = 100
+
+    def _crop_to_client(self, frame):
+        """The client area of the Dota window, out of the captured buffer.
+
+        **THE BUFFER IS THE WINDOW, NOT THE CLIENT, AND EVERY FRACTION IN
+        THIS APP IS A SHARE OF THE CLIENT.** Measured on three displays
+        from three real recordings, the captured frame came back exactly
+        NINE pixels wider and THIRTY-TWO taller than the resolution Dota
+        was running at:
+
+            1366x768   captured 1375x800
+            1920x1080  captured 1929x1112
+            3440x1440  captured 3449x1472
+
+        The content sits at the TOP-LEFT of that buffer - the pick bar
+        measured 4 to 8 pixels down in every one, so there is no title
+        bar above it - and the extra rows and columns are padding on the
+        right and bottom.
+
+        Two things go wrong when they are counted. Every fraction is
+        divided by a number 2% too big, so `slot_h` read 0.0587 on one
+        display and 0.0598 on another where both are really 0.0611. And
+        worse, the PADDING CHANGES THE ASPECT: 1366x768 is 1.779 and
+        lands in the 16:9 group, while 1375x800 is 1.719 and lands in
+        the narrower one, so the crop boxes came from the wrong row of
+        the table entirely. That is a wrong geometry on a fresh install,
+        which is the fault the table exists to prevent.
+
+        `capture.window.client_size` has existed, been tested and been
+        called by nothing this whole time; this is its caller.
+
+        Cropping is REFUSED rather than guessed at when the client size
+        is unknown (not Windows, window gone), not smaller than the
+        buffer, or smaller by more than `CHROME_MAX` - the last because a
+        client far smaller than the frame means we are not looking at
+        what we think we are, and cropping to it would throw away most of
+        the picture.
+        """
+        shape = getattr(frame, "shape", None)
+        if not shape or len(shape) < 2:
+            return frame
+        height, width = int(shape[0]), int(shape[1])
+        if (width, height) != self._raw_size:
+            # The window was resized, or this is the first frame. Asking
+            # Windows is two calls and happens about once a session.
+            self._raw_size = (width, height)
+            self._client = self._measure_client()
+        if not self._client:
+            return frame
+        want_w, want_h = self._client
+        if not (0 < want_w <= width and 0 < want_h <= height):
+            return frame
+        if width - want_w > self.CHROME_MAX or height - want_h > self.CHROME_MAX:
+            return frame
+        if (want_w, want_h) == (width, height):
+            return frame
+        return frame[:want_h, :want_w]
+
+    def _measure_client(self) -> tuple[int, int] | None:
+        """The bound window's client size, or None. Never fatal: a frame
+        we cannot measure is better than no frame at all."""
+        title = self.capture_title
+        if not title:
+            return None
+        try:
+            from .window import client_size
+            return client_size(title)
+        except Exception:
+            return None
 
     def fit_to_frame(self, frame) -> bool:
         """Point the crop boxes at a display of THIS shape. True if moved.
@@ -355,6 +439,11 @@ class CaptureSession:
 
         if frame.ndim == 3 and frame.shape[2] == 4:
             frame = frame[:, :, :3]
+        # BEFORE anything reads its size. `fit_to_frame` keys the shipped
+        # table on it, `autocal` measures fractions against it and the
+        # recorder saves it - so a padded buffer reaching any of them is
+        # the wrong denominator everywhere at once.
+        frame = self._crop_to_client(frame)
 
         # Always publish the frame, even while idle. It used to be set only
         # when recognition ran, so a session that never tripped the gate

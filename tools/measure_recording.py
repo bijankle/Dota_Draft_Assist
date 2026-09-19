@@ -383,7 +383,58 @@ def measure_frames(folder: Path, ten: list[int], count: int,
 # record a real 0.005-0.007 step between aspect groups. Every frame here
 # is the same display in the same match, so anything past a few
 # ten-thousandths is a bad fit rather than a difference.
+# The fewest hero-selection frames that may name a verdict. A median of
+# one is that one frame, which is how `find_portraits._vertical` came to
+# refuse a ranking below its own floor.
+MIN_PICKING = 2
+
 ROW_AGREE = 0.004
+
+
+# What the window chrome added to the captured buffer, measured on three
+# displays from three real recordings: 1366x768 came back 1375x800,
+# 1920x1080 came back 1929x1112, 3440x1440 came back 3449x1472.
+CHROME = (9, 32)
+
+
+def looks_padded(width: int, height: int) -> bool:
+    """Was this frame the WINDOW rather than the client area?
+
+    **AN ODD WIDTH IS NOT A DISPLAY RESOLUTION.** Every mode a monitor
+    has ever offered is even in both axes, so an odd one is arithmetic
+    that happened to something - and all three padded recordings came
+    back odd (1375, 1929, 3449) while every clean one is even. That is a
+    fact about the number rather than a guess about the cause, which is
+    what makes it safe to refuse a row on.
+
+    The app crops to the client area now (`CaptureSession._crop_to_
+    client`), so this only ever fires on a recording made before that.
+    """
+    return bool(width % 2 or height % 2)
+
+
+def say_padded(width: int, height: int) -> None:
+    """Refuse the row, and say what the frame really was."""
+    guess = (width - CHROME[0], height - CHROME[1])
+    print(f"  NO ROW. {width}x{height} is not a display resolution - an "
+          "odd width or")
+    print("  height is arithmetic that happened to the frame, and what "
+          "happened")
+    print("  is that the capture handed back the WINDOW rather than its "
+          "client")
+    print("  area. Every fraction above is therefore divided by a number "
+          "that is")
+    print("  a couple of per cent too big, and the aspect is wrong too, "
+          "which on")
+    print("  some displays picks the wrong row of the shipped table "
+          "outright.")
+    if guess[0] % 2 == 0 and guess[1] % 2 == 0:
+        print(f"\n  Less the {CHROME[0]}x{CHROME[1]} of window chrome "
+              f"measured on three real")
+        print(f"  displays, this was probably {guess[0]}x{guess[1]}.")
+    print("\n  The app crops to the client area now. Record this draft "
+          "again and")
+    print("  the frame size will be the one Dota is running at.")
 
 
 def say_row(rows: list[dict]) -> None:
@@ -425,6 +476,9 @@ def say_row(rows: list[dict]) -> None:
               "measure.")
         return
     width, height = sizes.pop()
+    if looks_padded(width, height):
+        say_padded(width, height)
+        return
 
     values = {name: [getattr(row["layout"], name) for row in ten]
               for name in FRACTIONS}
@@ -500,15 +554,71 @@ def say_bar(rows: list[dict]) -> None:
     strategy = [r for r in good if r["phase"] == "STRATEGY_TIME"]
     print("\n  DOES THE BAR MOVE BETWEEN THE TWO SCREENS?\n")
     if picking and strategy:
+        fits = {}
         for name in ("y", "slot_h"):
             a = statistics.median(
                 [getattr(r["layout"], name) for r in picking])
             b = statistics.median(
                 [getattr(r["layout"], name) for r in strategy])
+            fits[name] = (a, b)
             verdict = ("the same place" if abs(a - b) <= AGREE_WITHIN
                        else "DIFFERENT - the bar moves")
             print(f"    {name:<8} picking {a:.4f}   strategy {b:.4f}   "
                   f"-> {verdict}")
+        # **A SMALLER PORTRAIT IS A DIFFERENT ROW OF ARTWORK, NOT A BAR
+        # THAT HAS MOVED**, and without this the tool told a real user
+        # "the bar moves" off a single frame taken at second zero.
+        #
+        # The CHOOSE YOUR HERO grid is on screen throughout hero
+        # selection and is full of hero portraits, so a frame whose own
+        # pick bar is still empty has something else for the search to
+        # lock onto - which is the failure `bar_shape` exists to refuse
+        # and has let through before. Both real cases read `slot_h`
+        # around 0.0435 against 0.0611 at strategy time: a THIRD smaller.
+        #
+        # A bar that had genuinely moved would still be the pick bar, so
+        # its portraits would still be the same size. `y` alone differing
+        # is evidence; `slot_h` differing with it says the two frames did
+        # not fit the same artwork, and then nothing here is comparable.
+        # **AND FRAMES THAT DISAGREE WITH EACH OTHER HAVE NO MEDIAN.**
+        # A 1280x1024 recording read `y` at 0.1023, 0.1023, 0.1065 and
+        # 0.0743 across its four hero-selection frames - a spread of
+        # 0.032 against a tolerance of 0.01 - and the tool took the
+        # middle of them and announced that the bar had moved. Four
+        # frames of one screen a few seconds apart cannot legitimately
+        # disagree by that much, so what they fitted was not one thing,
+        # and a median over them is not a measurement of anything.
+        spread = max(getattr(r["layout"], "y") for r in picking) - min(
+            getattr(r["layout"], "y") for r in picking)
+        y_apart = abs(fits["y"][0] - fits["y"][1]) > AGREE_WITHIN
+        size_apart = abs(fits["slot_h"][0] - fits["slot_h"][1]) > AGREE_WITHIN
+        if y_apart and spread > AGREE_WITHIN:
+            print(f"\n    IGNORE BOTH LINES. The {len(picking)} "
+                  "hero-selection frames do not agree")
+            print(f"    with EACH OTHER - `y` spreads {spread:.4f} across "
+                  f"them against a")
+            print(f"    tolerance of {AGREE_WITHIN:.4f} - so they did not "
+                  "all fit the same")
+            print("    thing and their median measures nothing. The boxes "
+                  "below are the")
+            print("    half of this that does not need a fit at all.")
+        elif y_apart and size_apart:
+            print("\n    IGNORE BOTH LINES. The portraits are a different "
+                  "SIZE on the two")
+            print("    screens, and a bar that had merely moved would "
+                  "still be the pick")
+            print("    bar - so these frames did not fit the same artwork. "
+                  "A pick bar")
+            print("    that is still empty leaves the search the CHOOSE "
+                  "YOUR HERO grid")
+            print("    to lock onto, which is smaller and lower. The boxes "
+                  "below are")
+            print("    the half of this that does not need a fit at all.")
+        elif len(picking) < MIN_PICKING:
+            print(f"\n    Read with care: {len(picking)} hero-selection "
+                  "frame(s) located, and a")
+            print(f"    median of fewer than {MIN_PICKING} is that frame "
+                  "rather than a measurement.")
     else:
         have = f"{len(picking)} while picking, {len(strategy)} at strategy"
         print(f"    not from the fitted layouts - {have} located well")

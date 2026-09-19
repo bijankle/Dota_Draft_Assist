@@ -3314,16 +3314,98 @@ credentials, and put the account at risk. Do not go there.
   typed out: `timeline` strips the `DOTA_GAMERULES_STATE_` prefix, so
   the comparison needs the short spelling, and two hand-written lists is
   one of them going stale.
-  **AND THAT RUN CARRIES AN UNEXPLAINED FRAME SIZE: 1929x1112**, which
-  is not a Dota resolution and whose aspect (1.735) is NARROWER than
-  16:9. 1920+9 by 1080+32 is what a WINDOWED client plus its border and
-  title bar measures, and `capture.window.client_size` exists, is tested
-  and **is called by nothing in the app** - so a frame may be the whole
-  WINDOW while every fraction is a share of the CLIENT. That would put
-  the crop boxes a title bar too low and, now, in the wrong aspect group
-  as well. Not established, not acted on: it needs a frame beside that
-  window's own client rect to say. What is certain is that every box
-  missed on every frame of that recording (`boxes 0/10`).
+  **THE FRAME WAS THE WINDOW AND NOT THE CLIENT, AND THAT IS NOW
+  SETTLED AND FIXED** (`CaptureSession._crop_to_client`,
+  `_measure_client`, `CHROME_MAX`, `tests/test_frame_is_the_client.py`).
+  It was carried here as an open lead off one recording's unexplained
+  1929x1112, with `capture.window.client_size` existing, tested and
+  **called by nothing in the app**. Four recordings on four displays in
+  one sitting settled it - every one of them came back EXACTLY nine
+  pixels wider and thirty-two taller than the resolution Dota was
+  running at:
+
+      1366x768    captured 1375x800
+      1920x1080   captured 1929x1112
+      1920x1200   captured 1929x1232
+      3440x1440   captured 3449x1472
+
+  **AND THE CONTENT IS AT THE TOP-LEFT, WHICH RULES OUT THE OBVIOUS
+  READING.** 1920+9 by 1080+32 looks exactly like a title bar and a
+  border, and if it were one the pick bar would sit a title bar's height
+  down the frame. It measured `y` at 0.0050 to 0.0057 on all four - four
+  to eight PIXELS down - so there is nothing above the content and the
+  extra rows and columns are padding on the right and the bottom.
+  **THE ARITHMETIC IS WHAT PROVES IT, on numbers nobody tuned.** Correct
+  each padded reading by the true size and they all land on one answer:
+  `slot_h` read 0.0587 at 1375x800 and 0.0598 at 3449x1472, and
+  0.0587 x 800/768 = 0.0611 while 0.0598 x 1472/1440 = 0.0611 - which is
+  exactly what the one CLEAN 1920x1080 recording in the set measured.
+  Four displays, four different wrong numbers, one right one.
+  **THE REAL DAMAGE IS THE ASPECT, NOT THE TWO PER CENT.** 1366x768 is
+  1.779 and belongs in the 16:9 group; 1375x800 is 1.719 and lands in
+  the narrower one. 1920x1080 flips the same way. So on two of the four
+  the app was reading the wrong ROW of the shipped table outright, which
+  is a wrong geometry on a fresh install - the exact fault `measured.py`
+  exists to prevent, caused by the frame it is keyed on. A test holds
+  that flip, so the reason this matters cannot quietly stop being true.
+  16:10 and ultrawide keep their group and only take the two per cent.
+  **THE CROP IS REFUSED RATHER THAN GUESSED AT** when the client size is
+  unknown (not Windows, window gone), not smaller than the buffer, or
+  smaller by more than `CHROME_MAX` - a client far smaller than the
+  frame means this is not the window we think it is, and cropping to it
+  would throw away most of the picture. It sits in `tick` BEFORE
+  anything reads the frame's size, because `fit_to_frame` keys the table
+  on it, `autocal` measures every fraction against it and the recorder
+  saves it: a padded buffer reaching any one of them is the wrong
+  denominator everywhere at once. The client is re-measured only when
+  the raw frame size changes, which is two Win32 calls about once a
+  session.
+  **AND THE TOOL REFUSES A ROW MEASURED OFF ONE** (`measure_recording.
+  looks_padded`, `say_padded`, `CHROME`). It was offering
+  `(3449, 1472)`, `(1375, 800)` and `(1929, 1232)` as rows to paste into
+  `EXACT` - which would have baked the bug into a table every install
+  inherits, permanently, keyed on buffer sizes that stop existing the
+  moment the crop lands. **AN ODD WIDTH IS NOT A DISPLAY RESOLUTION**:
+  every mode a monitor has ever offered is even in both axes, so an odd
+  one is arithmetic that happened to the frame. All four padded
+  recordings came back odd and every clean one is even, which is a fact
+  about the number rather than a guess about the cause - and that is
+  what makes it safe to refuse a row on.
+
+  **AND THE OPEN QUESTION ABOUT HERO SELECTION IS ANSWERED, FROM A REAL
+  DRAFT.** Whether a FILLED hero-selection bar sits where the
+  strategy-time bar does has been open in these notes for months. The
+  1920x1200 recording read **`boxes 3 -> 3 -> 3 -> 3 -> 0 -> 10` of
+  ten**, with the ten landing while the user was still PICKING, and its
+  fitted `y` and `slot_h` came out identical on the hero-selection frame
+  and the strategy frames. A whole bank's worth of calibrated boxes
+  holding heroes the game named is not something a wrong geometry does
+  by accident. **THE BAR DOES NOT MOVE BETWEEN THE TWO SCREENS.**
+  **AND THE CLIMB IS THE POINT, NOT THE FIRST FIGURE.** Those early 3s
+  are three heroes picked so far, not seven boxes missing: a box over an
+  empty slot correctly matches nothing. Only the TOP of the climb means
+  anything, which the tool already says and which the app's own
+  `crop_boxes_wrong` banner may not - the user saw that banner during
+  this draft, on a machine whose boxes then read 10 of 10. Not chased
+  yet; it looks like a false positive fired early in hero selection.
+
+  **AND "THE BAR MOVES" WAS PRINTED OFF A ROSTER ROW, TWICE**
+  (`MIN_PICKING`, and the size test beside it). Two recordings had
+  exactly one hero-selection frame that located anything, both taken at
+  second zero with nothing picked yet, and both fitted something reading
+  `slot_h` around 0.0435 against 0.0611 at strategy time - a third
+  smaller. That is the CHOOSE YOUR HERO grid, which is on screen
+  throughout hero selection and is full of hero portraits, and it is the
+  same failure `bar_shape` exists to refuse and has let through before.
+  The tool called it "DIFFERENT - the bar moves", which is an
+  instruction to make the one change this project has already made and
+  REVERTED against the user's own screenshots.
+  **A BAR THAT HAD MOVED WOULD STILL BE THE PICK BAR**, so its
+  portraits would still be the same size. `y` differing alone is
+  evidence; `y` and `slot_h` differing together says the two frames did
+  not fit the same artwork, and then neither line is comparable - so
+  both are struck out rather than ranked. A median over one frame is
+  that frame, so fewer than `MIN_PICKING` is flagged as well.
 
   **AND THE RAW MINIMAP IS NOT THE TEN** — the first version of this
   tool read `hero_entries(payload, drop_origin=False)` and reported
