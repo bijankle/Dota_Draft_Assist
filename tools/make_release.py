@@ -59,17 +59,58 @@ NEVER_SHIP = (".env", "ui_settings.json", "preferences.json",
               "history_accounts.json", "calibration_local.json")
 
 
-def tracked() -> list[str]:
-    """Exactly the files git tracks - the same manifest the ZIP updater
-    installs, so what a stranger unzips is what an update would give
-    them, plus the packages."""
-    result = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
-                            capture_output=True, text=True,
-                            **console.no_window())
+def from_git() -> list[str]:
+    """The files git tracks, or [] when there is no git and no clone."""
+    try:
+        result = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
+                                capture_output=True, text=True,
+                                **console.no_window())
+    except OSError:
+        return []                            # git is not installed
     if result.returncode:
-        raise SystemExit("git could not list this repository's files. "
-                         "A release is built from a clone.")
+        return []                            # not a clone
     return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def from_install() -> list[str]:
+    """What the ZIP updater last wrote, out of `installed_version.json`.
+
+    THE SAME MANIFEST BY A DIFFERENT ROUTE. `update_app` records every
+    file it installed so it can delete the ones that go away, and those
+    files ARE the repository's tracked list - it built them from the
+    branch archive, which carries exactly that. So a copy that was
+    unzipped rather than cloned can still say what belongs in a
+    release, with no git and no network.
+    """
+    try:
+        import json
+        data = json.loads(
+            (ROOT / "installed_version.json").read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    files = data.get("files")
+    return [str(name) for name in files] if isinstance(files, list) else []
+
+
+def tracked() -> list[str]:
+    """The files that belong in a release.
+
+    TWO ROUTES, because there are two kinds of install and the owner
+    may be on either. A CLONE asks git. A copy UNZIPPED from GitHub has
+    no `.git` at all and may have no git installed - and telling
+    somebody to install git to build a zip whose whole purpose is that
+    nobody has to install anything is the joke this tool exists to
+    avoid. It reads what the updater wrote instead.
+    """
+    names = from_git() or from_install()
+    if not names:
+        raise SystemExit(
+            "Cannot tell which files belong in a release.\n\n"
+            "This folder is neither a git clone nor a copy that has "
+            "been updated at least once (there is no "
+            "installed_version.json). Press Help > Update application "
+            "first, then try again.")
+    return names
 
 
 def wanted(name: str) -> bool:

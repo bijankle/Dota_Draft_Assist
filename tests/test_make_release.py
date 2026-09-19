@@ -113,3 +113,32 @@ def test_every_line_it_prints_is_ascii():
     text = (ROOT / "tools" / "make_release.py").read_text(encoding="utf-8")
     bad = [c for c in text if ord(c) > 127]
     assert not bad, f"non-ASCII in the tool: {sorted(set(bad))}"
+
+
+def test_a_copy_that_was_unzipped_can_still_build_one(tmp_path,
+                                                      monkeypatch):
+    """There are two kinds of install and the owner may be on either.
+
+    A clone asks git; a copy unzipped from GitHub has no .git and may
+    have no git installed - and telling somebody to install git to
+    build a zip whose whole point is that nobody installs anything is
+    the joke this tool exists to avoid.
+    """
+    monkeypatch.setattr(make_release, "ROOT", tmp_path)
+    monkeypatch.setattr(make_release, "from_git", list)
+    (tmp_path / "installed_version.json").write_text(
+        '{"branch": "main", "sha": "abc", '
+        '"files": ["Dota Draft Assist.bat", "draft_assist/ui/app.py"]}',
+        encoding="utf-8")
+    assert make_release.tracked() == ["Dota Draft Assist.bat",
+                                      "draft_assist/ui/app.py"]
+
+
+def test_neither_route_says_what_to_do(tmp_path, monkeypatch):
+    """Doing nothing silently is indistinguishable from being broken."""
+    import pytest
+    monkeypatch.setattr(make_release, "ROOT", tmp_path)
+    monkeypatch.setattr(make_release, "from_git", list)
+    with pytest.raises(SystemExit) as stop:
+        make_release.tracked()
+    assert "Update application" in str(stop.value)

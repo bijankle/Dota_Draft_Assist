@@ -7075,6 +7075,21 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   carry the packages and does not is the worst of the three outcomes,
   because it fails on somebody else's machine rather than on the
   builder's.
+  **AND IT BUILDS FROM EITHER KIND OF INSTALL** (`from_git`,
+  `from_install`). A CLONE asks `git ls-files`; a copy UNZIPPED from
+  GitHub has no `.git` at all and may have no git installed, and
+  telling somebody to install git to build a zip whose whole purpose is
+  that nobody has to install anything is the joke this tool exists to
+  avoid. So the fallback reads `installed_version.json`, which the ZIP
+  updater writes - it lists every file it installed, and those files
+  ARE the tracked list, since it built them from the branch archive.
+  The same manifest by a different route. Neither available says what
+  to do (press Update once) rather than failing at the word "git".
+  **IT IS NOT A GITHUB ACTION AND NOTHING RUNS ON GITHUB.** It is a
+  button in the owner's own app on their own PC, pressed only when they
+  want to HAND the app to somebody: the zip lands in `dist/` and they
+  send it. Updating their own copy, and everybody else's, is still
+  Help > Update application and still about 4 MB.
 
 - **CLOSING THE APP CLOSES THE SETTINGS WINDOW** (`MainWindow.
   closeEvent`). It is built once and kept, and it is modeless because it
