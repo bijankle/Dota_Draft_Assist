@@ -288,3 +288,77 @@ def test_a_clean_frame_still_gets_its_row(capsys):
     mr.say_row(rows)
     out = capsys.readouterr().out
     assert "Reading(" in out and "(1920, 1200)" in out
+
+
+# ---- a row is written from frames that agree, and never from one ------
+
+class Fit:
+    """A fitted layout with every fraction settable."""
+
+    def __init__(self, **kw):
+        self.radiant_x = kw.get("radiant_x", 0.1052)
+        self.dire_x = kw.get("dire_x", 0.5710)
+        self.y = kw.get("y", 0.0056)
+        self.slot_w = kw.get("slot_w", 0.0615)
+        self.slot_h = kw.get("slot_h", 0.0611)
+        self.pitch = kw.get("pitch", 0.0652)
+
+
+def frames_of(size, fits):
+    return [{"layout": f, "found": 10, "size": size} for f in fits]
+
+
+def test_one_frame_is_never_a_row(capsys):
+    """A single frame agrees with itself to 0.0000 whatever it fitted, so
+    every spread check passes vacuously. A real 1024x768 run printed a
+    paste-ready row off one hero-selection frame whose own left origin
+    was out by a factor of thirty."""
+    from tools import measure_recording as mr
+
+    mr.say_row(frames_of((1024, 768), [Fit(y=0.0697, slot_w=0.0264,
+                                           pitch=0.0669, radiant_x=0.0068,
+                                           dire_x=0.5039, slot_h=0.0456)]))
+    out = capsys.readouterr().out
+    assert "NO ROW" in out and "Reading(" not in out
+
+
+def test_a_bad_fit_is_dropped_rather_than_vetoing_the_rest(capsys):
+    """1280x1024: six strategy frames identical to four decimal places
+    with all ten boxes landing, refused because two hero-selection frames
+    in the same recording had fitted the CHOOSE YOUR HERO grid."""
+    from tools import measure_recording as mr
+
+    good = Fit(dire_x=0.5922, y=0.0059, slot_w=0.0695, slot_h=0.0488,
+               pitch=0.0703, radiant_x=0.0555)
+    roster = Fit(dire_x=0.40, y=0.1670, slot_w=0.030, slot_h=0.0469,
+                 pitch=0.031, radiant_x=0.02)
+    mr.say_row(frames_of((1280, 1024), [roster] + [good] * 6))
+    out = capsys.readouterr().out
+    assert "Reading(" in out, out
+    assert "(1280, 1024)" in out
+    assert "slot_h=0.0488" in out
+    assert "1 frame(s) set aside" in out
+
+
+def test_a_left_origin_that_cannot_be_the_mirror_is_refused(capsys):
+    """The bar is centred on the HUD span, so the mirror of the right
+    bank IS the left one - within a few pixels on every frame that has
+    located ten. A big gap is a missed leading portrait."""
+    from tools import measure_recording as mr
+
+    broken = Fit(radiant_x=0.0068, dire_x=0.5039, slot_w=0.0264,
+                 pitch=0.0669)
+    mr.say_row(frames_of((1024, 768), [broken] * 4))
+    out = capsys.readouterr().out
+    assert "NO ROW" in out and "Reading(" not in out
+    assert "leading portrait was missed" in out or "missed" in out
+
+
+def test_frames_that_all_agree_still_get_their_row(capsys):
+    from tools import measure_recording as mr
+
+    good = Fit(dire_x=0.5938, y=0.0058, slot_w=0.0682, slot_h=0.0617,
+               pitch=0.0719, radiant_x=0.0500)
+    mr.say_row(frames_of((1920, 1200), [good] * 5))
+    out = capsys.readouterr().out
+    assert "(1920, 1200)" in out and "slot_h=0.0617" in out

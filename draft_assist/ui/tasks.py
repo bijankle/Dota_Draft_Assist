@@ -119,6 +119,40 @@ TASKS = {
         needs_network=True,
         reload_after=True,
     ),
+    "stock_wheels": Task(
+        key="stock_wheels",
+        title="Keep the app's packages in this folder",
+        steps=[[PY, "tools/stock_wheels.py"]],
+        blurb=("Downloads the Python packages this app runs on into its "
+               "own folder, so repairing it needs no connection and a "
+               "copy of the folder works on another PC."),
+        needs_network=True,
+    ),
+    # A DELETE, so the CALLER asks first. Every other task here either
+    # downloads or reads; this one removes files, and a progress dialog
+    # that has already started is the wrong place to find that out.
+    # ONE PRESS FOR THE WHOLE SHAREABLE COPY: fetch the Windows wheels
+    # for every Python version a bundle covers, then zip the app around
+    # them. What comes out is the thing a stranger unzips and runs with
+    # no connection at all.
+    "make_release": Task(
+        key="make_release",
+        title="Build a shareable copy",
+        steps=[[PY, "tools/stock_wheels.py", "--windows"],
+               [PY, "tools/make_release.py"]],
+        blurb=("Builds one zip holding this app and every Python package "
+               "it runs on, so whoever you send it to installs nothing. "
+               "About 240 MB, written to dist/."),
+        needs_network=True,
+    ),
+    "trim_recordings": Task(
+        key="trim_recordings",
+        title="Delete frames outside the draft",
+        steps=[[PY, "tools/trim_recordings.py"]],
+        blurb=("Deletes the saved pictures taken outside hero selection "
+               "and strategy time. Payloads and state logs are kept."),
+        cancellable=False,
+    ),
     "fetch_custom_portraits": Task(
         key="fetch_custom_portraits",
         title="Fetch alternative hero portraits",

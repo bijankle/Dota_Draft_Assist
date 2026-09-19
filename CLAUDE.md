@@ -3372,6 +3372,72 @@ credentials, and put the account at risk. Do not go there.
   about the number rather than a guess about the cause - and that is
   what makes it safe to refuse a row on.
 
+  **AND THE RE-RUN AFTER THE CROP CONFIRMS THE WHOLE TABLE, WHICH IS
+  WHAT `EXACT` SHIPPING EMPTY WAS BETTING ON.** Six bot drafts, one per
+  resolution the owner plays, every frame size now a real display size:
+  1024x768, 1280x1024, 1366x768, 1920x1080, 1920x1200, 3440x1440. The
+  three at 16:9 AND WIDER came back within **0.0012 of `WIDE` on all
+  five fractions** - dire_x 0.5708/0.5710/0.5711 against 0.5710, slot_h
+  0.0611/0.0611/0.0612 against 0.0611 - so they get NO ROW, which is the
+  table working exactly as designed rather than a gap in it.
+
+  **AND THE TWO NARROWER DISPLAYS DISAGREE WITH THEIR GROUP ON ONE
+  FRACTION, IN OPPOSITE DIRECTIONS** (`EXACT[(1280, 1024)]`,
+  `EXACT[(1920, 1200)]`). They match `TALL` on `dire_x`, `y`, `slot_w`
+  and `pitch` within 0.0012, and read `slot_h` **0.0488 and 0.0617
+  against the group's 0.0525**. One constant cannot be both, so both get
+  a row - which is precisely what `EXACT` is for, and the first time
+  anything has earned one.
+  **THE CAUSE IS MEASURED AND IS DELIBERATELY NOT ACTED ON.** `slot_h`
+  is the only fraction stored against a denominator that does not track
+  the BAR. Against the HUD SPAN every reading falls into the two groups
+  this file already records:
+
+      display      slot_h px   /window   /span    bar width/span
+      1366x768          47.0    0.0612   0.0344       0.322
+      1920x1080         66.0    0.0611   0.0344       0.322
+      3440x1440         88.0    0.0611   0.0344       0.319
+      1280x1024         50.0    0.0488   0.0390       0.351
+      1920x1200         74.0    0.0617   0.0386       0.356
+
+  `/window` unifies 16:9 and splits the tall pair; `/span` unifies both
+  groups, and the step between them (0.0344 to 0.0388, +13%) is the SAME
+  step the bar's own width takes (0.322 to 0.354, +11%). So the pick bar
+  is one uniformly scaled object and `slot_h` is the one fraction
+  measured against something else - invisible at 16:9, where the window
+  height and the span are locked together, and visible the moment they
+  are not.
+  **THAT IS TWO TALL DATA POINTS AND A CONVENTION THIS PROJECT HAS
+  ALREADY MOVED AND REVERTED**, so nothing was changed on the strength
+  of it. `EXACT` is keyed by frame size and sidesteps the question
+  entirely: both displays are right now, and the convention can be
+  settled later by somebody with more tall resolutions than two.
+
+  **AND THE RE-RUN FOUND THREE DEFECTS IN `say_row`, ALL THE SAME
+  SHAPE** (`MIN_ROW_FRAMES`, `agreeing`, `MIRROR_AGREE`). Each let a
+  frame that had not fitted the pick bar reach a row offered for
+  pasting into a table every install inherits.
+  **ONE FRAME IS NOT A MEASUREMENT.** The 1024x768 run sampled eight
+  frames across a 105-second hero selection, never reached strategy
+  time, and printed a paste-ready row from the ONE frame that located
+  ten - `slot_w=0.0264` against a real 0.0615, and a left origin of
+  0.0068 against a derived 0.2021. A single frame agrees with itself to
+  0.0000 by construction, so every spread check passed vacuously.
+  **A BAD FIT IS DROPPED RATHER THAN ALLOWED TO VETO THE REST.** Both
+  1280x1024 and 1920x1080 had six and three strategy frames identical to
+  four decimal places with all ten calibrated boxes landing, and were
+  REFUSED a row because one hero-selection frame in the same recording
+  had fitted the CHOOSE YOUR HERO grid. The median already survives a
+  minority; the SPREAD does not, and the spread is what decides whether
+  a row is written. `agreeing` drops a frame apart from the majority on
+  more than half the fractions, which is `find_portraits.bad_frames`.
+  **AND THE MIRROR REFUSES RATHER THAN NOTING.** `radiant_x` derived as
+  the mirror of the right bank lands within 1 to 4 PIXELS of the
+  measured origin on every frame that has ever located ten - so 0.0068
+  against 0.2021 is a missed leading portrait and the whole bank is out
+  by a pitch. It was printed in BRACKETS under the row, as a thing for
+  the reader to notice.
+
   **AND THE OPEN QUESTION ABOUT HERO SELECTION IS ANSWERED, FROM A REAL
   DRAFT.** Whether a FILLED hero-selection bar sits where the
   strategy-time bar does has been open in these notes for months. The
@@ -6828,6 +6894,72 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   rather than reported: `python -m venv` on an existing directory
   repairs it in place, so nothing of the user's is deleted to fix it
   and the launcher does the thing instead of naming it.
+  **EVERY PREREQUISITE IS INSTALLED BY THE SETUP, NOT LINKED TO**, at
+  the owner's request: "make sure that if the user doesnt have pyton and
+  things liek that, that it autoamtically downloads / installs wwith the
+  users permission, or as a minimum has a step to downlaod it and
+  givcfes the website link", and then "check for any other applciations
+  that may be prerequisistes - make sure its all part of the setup".
+  **PYTHON, AND "IS IT ON PATH" WAS NEVER THE QUESTION**
+  (`:findpython`, `:trypython`, `:offerpython`, `:nopython`). The probe
+  was a bare `where py` / `where python`, and TWO things that are on
+  PATH are not a usable Python: the Microsoft Store APP EXECUTION ALIAS,
+  which ships enabled on Windows and is a stub that opens the Store
+  rather than running anything, and an older Python somebody installed
+  years ago. Both got past `where`, and both then failed inside
+  `python -m venv` or half way through pip, where the error names
+  neither cause. The file PRINTED "Python 3.11 or newer is required" and
+  tested nothing. Every candidate is now made to RUN and report its own
+  version, so the floor is checked here rather than left to a wheel to
+  complain about later.
+  **WINGET FIRST, THE LINK AS THE FALLBACK.** `winget` is Microsoft's
+  own and is already on Windows 10 and 11, so on most machines that is
+  the whole install - and nothing is installed without a `choice`
+  prompt, with N falling through to the download link rather than to
+  nothing. A test holds both halves and holds the ORDER, since a link
+  offered first is the manual route winning by default.
+  **AND AN INSTALL THAT HAPPENS NOW IS INVISIBLE TO THIS WINDOW.** A
+  process is given its PATH when it starts, so winget can install
+  Python perfectly and the running script still cannot see it - and
+  telling somebody to run the thing again, seconds after it said it had
+  installed Python for them, reads as the install having failed. So
+  `:findpython` also looks where the official installers actually put
+  it, and only when that fails does it say to close the window, with
+  WHY.
+  **PIP IS A PREREQUISITE TOO, AND IT TURNED A REAL USER AROUND.** It
+  was one line - `pip install --upgrade pip >nul` - with three faults in
+  it. The redirect HID it, so minutes of downloading read as a frozen
+  window. There was no `|| goto :failed`, so an upgrade that failed
+  carried on SILENTLY with the old pip and died on the NEXT line, where
+  the message names neither pip nor the upgrade. And nobody was ever
+  asked. What that user saw was an error he did not read, "Press any key
+  to continue", and the window shutting: "it said press any key to
+  continue and then closed his window".
+  **AN OLD PIP IS THE COMMONEST WAY THIS STEP FAILS**, and it fails
+  wearing somebody else's name: it cannot read the package files today's
+  releases ship as, so it falls back to BUILDING them from source, which
+  wants a C++ compiler nobody has - and the error that reaches the
+  screen is about Visual C++. It is offered, visible, guarded, and a
+  refusal to upgrade still offers to carry on, because the old pip may
+  well work and stopping outright would be worse than trying.
+  **AND THE THING TO DO GOES LAST, NEXT TO THE PROMPT** (`:failed`). The
+  advice sat at the TOP of a page of text, above the error, which is
+  above the "Press any key" - so it was the first thing scrolled past
+  and the last thing read. Same rule as the GSI launch-option steps:
+  reading order and doing order are the same order.
+  **THE OTHER PREREQUISITES WERE AUDITED AND ARE EACH ALREADY PLACED.**
+  Dota itself and the `-gamestateintegration` launch option are wizard
+  steps with `gsi/diagnose` behind them; the Stratz key is a wizard step
+  that verifies it; the Visual C++ Build Tools are named in `:failed`
+  because that is the one place they ever surface. **GIT IS THE ONE
+  THAT MOVED** (`update_app._git`): it is needed only to update a CLONE,
+  and its message opened with "install Git for Windows from <link>" -
+  the single answer here that requires installing a program, and not
+  even a necessary one, since deleting `.git` puts that copy on the ZIP
+  path which needs nothing at all. Leading with the link made the easy
+  answer read as the footnote. The zero-install route leads now, with
+  `winget install --id Git.Git -e` after it and the download last.
+
   **THE KEY IS THE APP'S JOB, NOT THE LAUNCHER'S.** The script used to
   copy `.env.example` over and open it in Notepad, so a new user was
   asked for a Stratz key TWICE — once by a text editor before the app had
@@ -6838,6 +6970,141 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   `save_stratz_key` writes `.env` when it needs to. `.env.example` stays
   in the repository as documentation for anyone who would rather do it by
   hand.
+
+  **THE PACKAGES LIVE IN THE APP'S OWN FOLDER** (`wheels/`,
+  `tools/stock_wheels.py`, the `:deps` / `:installed` rungs of the
+  launcher, Settings > Downloads > App's own packages), at the owner's
+  request: "i also want you to store as much on the application as
+  possible in the program folder itself to save setup hassle / time, for
+  example any python packages that it relies on", and "right now when
+  the user starts they need to download and update a bunch of python
+  packages and stuff liek that... pip".
+  **OFFLINE FIRST, NETWORK SECOND, AND NEVER `--no-index` ON THE
+  FALLBACK.** The launcher tries `pip install --no-index --find-links
+  wheels` and only reaches pypi.org when that cannot serve — where it
+  passes `--find-links wheels` WITHOUT `--no-index`, which means "prefer
+  the folder, the network is still allowed". A half-stocked folder is
+  the normal state (a Linux machine cannot resolve
+  `requirements-windows.txt` at all), so `--no-index` on the fallback
+  would turn a partial cache into a setup that cannot finish. Both are
+  held by tests, including the ORDER.
+  **PIP ITSELF IS IN THE CACHE**, which is the rung that actually turned
+  a user around: the upgrade that fixes the Visual C++ error is itself a
+  download, so on a machine with no connection the fix for the failure
+  was unreachable. Cached, it is offline too.
+  **WHAT IT BUYS, in the order it matters.** A REPAIRED `.venv` costs
+  nothing and needs no connection — rebuilding the environment is this
+  app's own advice whenever anything goes wrong with it, so the
+  expensive path is the one taken most. COPYING THE FOLDER to another PC
+  carries the packages with it, which is the only way a stranger gets
+  this working with no download and needs no build pipeline, only a
+  folder copy. And a second install on the same machine is instant.
+  **THE WHEELS ARE NOT COMMITTED, AND THAT IS THE HALF THAT WAS ASKED
+  FOR AND NOT DONE.** Measured from PyPI they are **181 MB for ONE
+  Python version** (PyQt6-Qt6 86 MB, opencv-python-headless 61 MB, numpy
+  17 MB) against the app's own ~2 MB. `tools/update_app.py` updates a
+  downloaded copy by fetching the branch's ZIP, which carries every
+  TRACKED file — so committing them makes every press of Update a 181 MB
+  download, against this file's own standing rule that the update is the
+  code and nothing else, because minutes of network behind a progress
+  box reads as a frozen application. Git also keeps every version of
+  every file for ever, so each refresh would add another 181 MB to every
+  clone, permanently. `wheels/` is gitignored for the same reason
+  `data_cache/` and the downloaded artwork are, and
+  `test_the_wheels_folder_is_never_committed` asks `git ls-files` rather
+  than trusting the ignore rule.
+  **A PARTIAL FETCH IS KEPT, NEVER DISCARDED**, and each requirement
+  file is downloaded in its own `pip download` so a failure NAMES which
+  set could not be resolved. Off Windows the second file failing is the
+  correct answer rather than a fault, and what did come down still
+  installs.
+  **AND THE REFRESH IS A BUTTON, NOT A SCHEDULE.** "id want this to be
+  updated every so often (as recommended)" is answered by the Settings
+  entry and by `describe()` in the diagnostic paste saying what is
+  there; nothing runs on a timer, because the app's live loop makes no
+  network calls and a 180 MB download starting by itself is the
+  opposite of what this cache exists for.
+
+  **AND THE ZIP A STRANGER GETS CARRIES THEM** (`tools/make_release.py`,
+  `stock_wheels --windows`, `dist/`, Settings > Downloads > Shareable
+  copy), at the owner's request: "can you package all of the
+  requirements within the app itself? the app requirements num py open
+  cv etc they can jsut be kept static forever... so the user never needs
+  to preinstall them".
+  **THE TWO JOBS ARE SEPARATED BY WHAT THEY ARE FOR, and that is the
+  whole design.** The REPOSITORY is how an existing copy UPDATES and
+  stays about 4 MB; the ZIP is how a new copy is INSTALLED and carries
+  everything. Committing the wheels would have made both one thing at
+  the update's expense, permanently.
+  **THE FIRST INSTALL IS THE SAME BYTES EITHER WAY**, which is the
+  argument that had to be measured rather than assumed. A stranger
+  downloads ~190 MB of packages whether they come from pypi.org during
+  setup or from inside the zip - bundling does not save them a single
+  byte. What it buys is that the bytes arrive in ONE step that cannot
+  half-fail: no pip upgrade, no missing Visual C++ compiler, no network
+  blocking PyPI, and no connection needed at all after the download.
+  That is the step that turned a real user around, and it is the reason
+  to do it. What it COSTS, if the wheels were tracked, is 240 MB on
+  every press of Update instead of 4, for ever, plus another 240 MB
+  added to every clone on every refresh.
+  **THREE PYTHON VERSIONS, FOR ABOUT 50 MB** (`PY_VERSIONS` 3.11, 3.12,
+  3.13). Measured: one version is 187 MB and three are 238, because
+  almost everything here is `py3-none-any` or abi3 - PyQt6 is
+  cp310-abi3, opencv is cp37-abi3, Qt itself is pure - and only numpy
+  and pywin32 are built per version. A bundle pinned to one Python is
+  one that fails on the next machine, and the margin for not pinning it
+  is small enough that there is no argument.
+  **AND IT IS BUILT FROM ANY MACHINE.** `pip download
+  --only-binary=:all: --platform win_amd64 --python-version 312`
+  resolves against PyPI's metadata rather than against the interpreter
+  running it, so the Windows bundle is built on Linux - which is the
+  only way this project can build one at all. `--only-binary=:all:` is
+  REQUIRED rather than tidy: pip refuses to cross-compile a source
+  distribution, and without it one package with no wheel for that
+  combination fails the whole call.
+  **THE MANIFEST IS GIT'S OWN TRACKED LIST**, the same one the ZIP
+  updater installs, so what a stranger unzips is exactly what an update
+  would give them plus the packages - and the key, the settings and the
+  calibration are excluded BY CONSTRUCTION rather than by a list
+  somebody maintains. `NEVER_SHIP` is belt and braces over that, for the
+  day somebody commits a `.env` by accident.
+  **AND THE WHEELS GO IN STORED, NOT DEFLATED.** A wheel is already a
+  zip; re-compressing 240 MB of them costs minutes and saves nothing.
+  The source is text and is deflated as usual.
+  **AN EMPTY CACHE SAYS SO AND NAMES THE COMMAND.** A zip that claims to
+  carry the packages and does not is the worst of the three outcomes,
+  because it fails on somebody else's machine rather than on the
+  builder's.
+
+- **CLOSING THE APP CLOSES THE SETTINGS WINDOW** (`MainWindow.
+  closeEvent`). It is built once and kept, and it is modeless because it
+  holds the LIVE debug pages - a live view inside a modal dialog cannot
+  be watched while using the thing it is showing. The cost of that was
+  never paid: nothing closed it when the app closed, so it stood there
+  as an orphan holding the process open, configuring an app that was no
+  longer on screen.
+  **FOUND THROUGH A TEST THREE FILES AWAY.** `test_frame_view` opens
+  Settings and calls `win.close()`; the settings window survived, stayed
+  visible, and `test_ui_smoke.
+  test_capture_controls_do_not_open_windows_of_their_own` - which asks
+  whether any second window is showing - failed on it. Passing alone,
+  failing in the suite, and moving whenever a test FILE was added
+  between the two: the same shape as the palette leak and the stylesheet
+  leak this file already records, and the third time a cross-test
+  failure has turned out to be a real bug in the app rather than in the
+  tests.
+
+- **A DIAGNOSTIC TOOL MUST NOT IMPORT cv2 AT MODULE SCOPE**
+  (`trim_recordings.reader`). cv2 ships its own copy of Qt's platform
+  plugins, so importing a tool that reaches `autocal` or `lineup` into a
+  process also running this app's Qt changes which plugin Qt resolves -
+  which is what "This plugin does not support propagateSizeHints()" in
+  the test output means. The whole suite shares one QApplication, so a
+  module-scope import at the top of one test file was enough to change
+  the behaviour of an unrelated window test several files later. The
+  helpers are still SHARED rather than copied, because two ways of
+  answering "what was on screen in this picture" is one of them going
+  stale; only the import moved.
 
 ## Out of scope for the prototype
 

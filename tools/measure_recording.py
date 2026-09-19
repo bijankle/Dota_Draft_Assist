@@ -397,6 +397,49 @@ ROW_AGREE = 0.004
 CHROME = (9, 32)
 
 
+# The fewest frames a row may be written from. One frame agrees with
+# itself to 0.0000 whatever it fitted, so every spread check below passes
+# vacuously - which is how a real run printed a paste-ready row off a
+# single hero-selection frame. Three is `find_portraits.MIN_VOTERS`.
+MIN_ROW_FRAMES = 3
+
+# How far the mirrored left origin may sit from the measured one before
+# the fit is refused rather than noted. The bar is centred on the HUD
+# span, so on every frame that has ever located ten the two land within
+# 1 to 4 PIXELS - about 0.002 of the span. A run that printed 0.0068
+# against a derived 0.2021 was a missed leading portrait, and it was
+# reported in brackets under a row offered for pasting.
+MIRROR_AGREE = 0.02
+
+
+def agreeing(ten: list[dict]) -> tuple[list[dict], int]:
+    """The frames that fitted the same thing, and how many were dropped.
+
+    A frame apart from the MAJORITY on more than half the fractions did
+    not fit the pick bar - the CHOOSE YOUR HERO grid is the usual
+    culprit, and it is on screen throughout hero selection. Dropping it
+    is not the same as outvoting it: the median already survives a
+    minority, but the SPREAD does not, and the spread is what decides
+    whether a row is written.
+    """
+    if len(ten) < MIN_ROW_FRAMES:
+        return ten, 0
+    judged = [n for n in FRACTIONS if n != "radiant_x"]
+    middle = {n: statistics.median([getattr(r["layout"], n) for r in ten])
+              for n in judged}
+    kept, dropped = [], 0
+    for row in ten:
+        apart = sum(1 for n in judged
+                    if abs(getattr(row["layout"], n) - middle[n]) > ROW_AGREE)
+        if apart > len(judged) // 2:
+            dropped += 1
+        else:
+            kept.append(row)
+    # Never hand back fewer than the floor: if the "majority" is itself
+    # thin, saying so beats writing a row from what is left.
+    return (kept, dropped) if kept else (ten, 0)
+
+
 def looks_padded(width: int, height: int) -> bool:
     """Was this frame the WINDOW rather than the client area?
 
@@ -480,6 +523,37 @@ def say_row(rows: list[dict]) -> None:
         say_padded(width, height)
         return
 
+    # **A BAD FIT IS DROPPED RATHER THAN ALLOWED TO VETO THE REST**, the
+    # rule `find_portraits.bad_frames` already follows. Two real runs had
+    # six and three frames reading the SAME six fractions to four decimal
+    # places with all ten calibrated boxes landing, and were refused a row
+    # because one hero-selection frame in the same recording had fitted
+    # the CHOOSE YOUR HERO grid. A frame apart from the others on more
+    # than half the fractions did not fit the pick bar at all, so its
+    # numbers are not evidence about this display.
+    ten, dropped = agreeing(ten)
+    if dropped:
+        print(f"  {dropped} frame(s) set aside - each was apart from the "
+              "rest on more")
+        print("  than half the fractions, which is a fit of something that "
+              "is not")
+        print("  the pick bar rather than a reading of this display.\n")
+
+    # **AND ONE FRAME IS NOT A MEASUREMENT.** A single frame agrees with
+    # itself to 0.0000 by construction, so every check below passes
+    # vacuously - which is how a real run printed a paste-ready row off
+    # ONE hero-selection frame whose own `radiant_x` was out by a factor
+    # of thirty. The floor is `MIN_ROW_FRAMES`.
+    if len(ten) < MIN_ROW_FRAMES:
+        print(f"  NO ROW. {len(ten)} frame(s) of {width}x{height} located "
+              f"all ten, and {MIN_ROW_FRAMES} is")
+        print("  the fewest this will write a row from - one frame agrees "
+              "with itself")
+        print("  whatever it fitted. Record another draft and let strategy "
+              "time run")
+        print("  a few seconds longer.")
+        return
+
     values = {name: [getattr(row["layout"], name) for row in ten]
               for name in FRACTIONS}
     apart = {name: max(vals) - min(vals) for name, vals in values.items()
@@ -497,6 +571,23 @@ def say_row(rows: list[dict]) -> None:
         return
 
     median = {name: statistics.median(vals) for name, vals in values.items()}
+    mirrored = 1.0 - (median["dire_x"] + 4 * median["pitch"]
+                      + median["slot_w"])
+    gap = abs(mirrored - median["radiant_x"])
+    if gap > MIRROR_AGREE:
+        print(f"  NO ROW. The left bank's origin measured "
+              f"{median['radiant_x']:.4f} against a")
+        print(f"  derived {mirrored:.4f} - a gap of {gap:.4f} where the two "
+              "agree to a few")
+        print("  PIXELS on every frame that has ever located ten. The bar "
+              "is centred")
+        print("  on the HUD span, so the mirror of the right bank IS the "
+              "left one;")
+        print("  a gap this size means a leading portrait was missed and "
+              "the whole")
+        print("  bank is out by a pitch. Record another draft.")
+        return
+
     print(f"  {len(ten)} frame(s) of {width}x{height} located all ten and "
           f"agree to")
     print(f"  {max(apart.values()):.4f}. Paste this into EXACT in "
@@ -507,8 +598,6 @@ def say_row(rows: list[dict]) -> None:
     print(f'        source="bot draft at {width}x{height}",')
     print(f"        frames={len(ten)},")
     print("    ),")
-    mirrored = 1.0 - (median["dire_x"] + 4 * median["pitch"]
-                      + median["slot_w"])
     print(f"\n  (radiant_x is derived as {mirrored:.4f}; this recording "
           f"measured it")
     print(f"  at {statistics.median(values['radiant_x']):.4f}, and the two "

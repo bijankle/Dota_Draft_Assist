@@ -70,3 +70,14 @@ running.lock
 # every start (see appicon.folder_link). Local, per machine, never ours
 # to commit.
 *.lnk
+
+# The app's own Python packages, kept beside it so a repair or a
+# copied folder installs with no download. Never committed: the ZIP
+# updater fetches every tracked file, and these are 181 MB against the
+# app's own ~2 MB. See tools/stock_wheels.py.
+wheels/
+
+# The shareable zip `tools/make_release.py` builds: the app plus every
+# package it runs on, about 240 MB. A build output, and the one thing
+# that must never be committed for the same reason `wheels/` is not.
+dist/

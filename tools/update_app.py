@@ -146,11 +146,22 @@ def git(*args, check=True) -> str:
         # a .git directory exists, which means git put it there) — but a
         # folder copied WITH its .git and no git installed is exactly that
         # state, so it still has to answer in a sentence.
+        # **THE ZERO-INSTALL ROUTE LEADS.** This used to open with
+        # "install Git for Windows from <link>", which is the one answer
+        # here that needs somebody to go and install a program - and it
+        # is not even necessary: deleting the `.git` folder puts this
+        # copy on the ZIP path, which needs nothing at all. Leading with
+        # the link made the easy answer read as the footnote.
         raise Refused(
-            "This folder is a git clone, but git is not installed on this "
-            "machine so it cannot be updated. Install Git for Windows from "
-            "https://git-scm.com/download/win, or delete the .git folder "
-            "and Update will download the new version instead.")
+            "This folder is a git clone, but git is not installed on "
+            "this machine, so Update cannot use it.\n\n"
+            "EASIEST FIX, needs nothing installed: delete the '.git' "
+            "folder in the app's own directory. Update then downloads "
+            "the new version directly, exactly as it does for everybody "
+            "who unzipped the app rather than cloning it.\n\n"
+            "Or install git and keep the clone. In a Command Prompt:\n"
+            "    winget install --id Git.Git -e\n"
+            "or download it from https://git-scm.com/download/win")
     if check and result.returncode != 0:
         raise Refused((result.stderr or result.stdout).strip()
                       or f"git {' '.join(args)} failed")

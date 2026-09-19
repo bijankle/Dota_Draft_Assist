@@ -283,7 +283,11 @@ def test_a_machine_without_git_is_told_in_one_sentence(tmp_path, monkeypatch):
     assert "git-scm.com" in message
     # And it names the way out that needs nothing installed: without .git
     # this same button downloads the new version instead.
-    assert "delete the .git folder" in message
+    assert "delete the '.git' folder" in message
+    # AND IT LEADS. The zero-install answer used to be the footnote
+    # under "install Git for Windows from <link>", which made the
+    # easy route read as the afterthought.
+    assert message.index(".git' folder") < message.index("git-scm.com")
 
 
 # ------------------------------------------------ a downloaded copy ----

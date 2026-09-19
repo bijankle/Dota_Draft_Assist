@@ -4603,3 +4603,25 @@ def test_the_tile_constants_are_reachable_from_every_strip():
     for name in ("fit", "split_two"):
         assert getattr(teams, name) is getattr(textfit, name), (
             f"teams no longer re-exports textfit.{name}")
+
+
+def test_closing_the_app_closes_the_settings_window(qapp):
+    """It is modeless and kept for the life of the app, because it holds
+    the live debug pages - so nothing closed it when the app closed.
+
+    An orphan window on screen holding the process open, configuring an
+    app that is no longer there. Found through a test three files away
+    failing on a leftover from this one.
+    """
+    ds = demo_dataset()
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    win = MainWindow(ds, DemoProvider(ds), rules, meta)
+    win.timer.stop()
+    win.show()
+    win._open_settings("Debug")
+    qapp.processEvents()
+    assert win.settings_window.isVisible()
+    win.close()
+    qapp.processEvents()
+    assert not win.settings_window.isVisible(), (
+        "the settings window outlived the app it configures")

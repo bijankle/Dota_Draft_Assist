@@ -669,6 +669,26 @@ class MainWindow(QMainWindow):
                 "Just the item pictures, with the reason if it fails.",
                 ("items", "pictures", "icons"),
                 lambda: self.run_task("fetch_item_icons")),
+            # LAST of the downloads, because it is the only one that
+            # makes the app no better than it already is on THIS machine:
+            # it is insurance for repairing it, and for carrying the
+            # folder to another PC.
+            act("App's own packages…",
+                "Keeps the Python packages this app runs on in its own "
+                "folder, so repairing it needs no connection.",
+                ("python", "packages", "pip", "wheels", "offline",
+                 "dependencies", "install"),
+                lambda: self.run_task("stock_wheels")),
+            # AND THE ONE THAT PUTS THEM INSIDE A COPY SOMEBODY ELSE
+            # GETS. The packages are the step that turns a stranger
+            # around - not the app, which is a few megabytes - so a zip
+            # carrying both is the only handover that cannot half-fail.
+            act("Shareable copy…",
+                "One zip holding this app and every package it runs on, "
+                "so whoever you send it to installs nothing.",
+                ("share", "send", "zip", "bundle", "release", "copy",
+                 "give", "friend", "offline", "installer"),
+                lambda: self.run_task("make_release")),
             act("Statistics bracket…",
                 "Which ranks the statistics are drawn from. Changing it "
                 "means re-pulling: the matrices are built for the ranks "
@@ -1633,6 +1653,15 @@ class MainWindow(QMainWindow):
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
         buttons.addWidget(open_session)
+        # ACROSS EVERY RECORDING, not the selected one. The pictures
+        # that are worth deleting are the ones nobody has looked at,
+        # which is precisely the sessions nobody is going to select.
+        tidy = QPushButton("Delete old frames")
+        tidy.setToolTip(
+            "Delete the saved pictures taken outside the draft, in every "
+            "recording \u2014 the payloads and state logs are kept")
+        tidy.clicked.connect(self._trim_recordings)
+        buttons.addWidget(tidy)
         # No trailing stretch: a FlowLayout packs from the left and
         # wraps, so there is no slack to push anything against — and it
         # has no `addStretch` to call, which is how this was found.
@@ -1754,6 +1783,54 @@ class MainWindow(QMainWindow):
         with self._bug_lock:
             self._bug = (folder, bugreport.grade(folder, self.ds), "")
         self._send_bug_report()
+
+    def _trim_recordings(self) -> None:
+        """Delete the frames taken outside the draft, in every recording.
+
+        A recording used to save a frame every second from the moment
+        the session started - the queue, the loading screen, the menu
+        and, once Dota was closed with a session still running, the
+        desktop. `Recorder.wants_frame` now saves one only while the
+        pick bar could be on the screen, so this is the one-off tidy of
+        what was taken before that: a 3440x1440 PNG is about five
+        megabytes and a session of them is most of a gigabyte.
+
+        **IT ASKS FIRST, AND THE QUESTION SAYS THE NUMBER.** Every other
+        task in this app downloads or reads; this one removes files, and
+        a progress dialog that has already started is the wrong place to
+        discover that. The count is worked out by the same code that
+        does the deleting, so the number in the question cannot disagree
+        with what happens.
+        """
+        try:
+            from tools import trim_recordings as trim
+        except Exception:                         # pragma: no cover
+            self._say("Could not load the tidy-up tool", 6000)
+            return
+        doomed, freed = 0, 0.0
+        for folder in record_mod.sessions(RECORDINGS_DIR):
+            _, drop = trim.sort_frames(folder)
+            doomed += len(drop)
+            freed += trim.megabytes(drop)
+        if not doomed:
+            # Doing nothing silently is indistinguishable from being
+            # broken, which is why this says so rather than opening a
+            # dialog that would report zero.
+            self._say(
+                "Nothing to delete \u2014 every saved frame is a draft "
+                "frame", 8000)
+            return
+        answer = QMessageBox.question(
+            self, "Delete old frames",
+            f"Delete {doomed} saved picture(s) taken outside the draft, "
+            f"freeing about {freed:.0f} MB?\n\n"
+            "The pick bar frames stay, and every payload and state log "
+            "is untouched.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.run_task("trim_recordings")
 
     def _open_session_folder(self) -> None:
         folder = self._current_session()
@@ -6117,6 +6194,16 @@ class MainWindow(QMainWindow):
         # And a match-history run owns a thread. A QThread destroyed while
         # it is still running takes the process down with it.
         self.history_tab.shutdown()
+        # AND THE SETTINGS WINDOW IS A WINDOW OF ITS OWN. It is built
+        # once and kept - modeless, because it holds the live debug
+        # pages and a live view inside a modal dialog cannot be watched
+        # while using the thing it is showing. The cost of that is that
+        # closing the main window left it standing: an orphan on screen,
+        # holding the process open, with the app it configures gone and
+        # no way back to it.
+        settings = getattr(self, "settings_window", None)
+        if settings is not None:
+            settings.close()
         super().closeEvent(event)
 
     def _save_snapshot(self) -> None:

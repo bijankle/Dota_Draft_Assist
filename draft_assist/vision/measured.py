@@ -171,7 +171,36 @@ GROUPS: tuple[Group, ...] = (WIDE, TALL)
 # pre-filled with the group's own numbers: a row that merely repeats its
 # group says a measurement was taken when none was, and the fallback below
 # already covers every resolution.
-EXACT: dict[tuple[int, int], Reading] = {}
+EXACT: dict[tuple[int, int], Reading] = {
+    # **BOTH ROWS ARE HERE FOR ONE FRACTION: `slot_h`.** Six bot drafts
+    # measured every resolution the owner plays on, and the three at 16:9
+    # and wider came back within 0.0012 of `WIDE` on all five fractions -
+    # so they get no row, which is the table working as designed. The two
+    # NARROWER displays match `TALL` on `dire_x`, `y`, `slot_w` and
+    # `pitch` just as closely, and disagree with it on `slot_h` in
+    # OPPOSITE DIRECTIONS: 0.0488 here against the group's 0.0525, and
+    # 0.0617 at 1920x1200. One constant cannot be both.
+    (1280, 1024): Reading(
+        dire_x=0.5922,
+        y=0.0059,
+        slot_w=0.0695,
+        slot_h=0.0488,      # TALL says 0.0525; six frames say this
+        pitch=0.0703,
+        source="bot draft at 1280x1024, six strategy frames, all ten "
+               "calibrated boxes landing",
+        frames=6,
+    ),
+    (1920, 1200): Reading(
+        dire_x=0.5938,
+        y=0.0058,
+        slot_w=0.0682,
+        slot_h=0.0617,      # TALL says 0.0525 - out by 0.0092
+        pitch=0.0719,
+        source="bot draft at 1920x1200, five strategy frames, all ten "
+               "calibrated boxes landing",
+        frames=5,
+    ),
+}
 
 
 def group_for(width: int, height: int) -> Group:

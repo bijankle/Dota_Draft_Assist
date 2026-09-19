@@ -30,31 +30,105 @@ echo First run - setting up. This takes a few minutes and happens once.
 echo.
 
 :setup
+rem PYTHON IS THE ONE PREREQUISITE, AND "IS IT ON PATH" IS NOT THE
+rem QUESTION. Two things that ARE on PATH are not a usable Python: the
+rem Microsoft Store APP EXECUTION ALIAS, which ships enabled on Windows
+rem and is a stub that opens the Store rather than running anything, and
+rem an older Python somebody installed years ago. Both got past a bare
+rem `where`, and both then failed inside `python -m venv` or half way
+rem through pip, where the error names neither cause. So every candidate
+rem is made to RUN and report its own version, and the floor is checked
+rem here rather than left to a wheel to complain about later.
 set "PYCMD="
-rem Redirect the Windows way, to nul. The Unix null device is not a path
-rem cmd.exe knows, so it printed "The system cannot find the path
-rem specified." before the setup had done anything -- which made a first
-rem run look broken on exactly the machines this launcher exists for.
-rem Everything else in this file already redirected correctly; these two
-rem lines were the only exceptions.
-where py >nul 2>&1 && set "PYCMD=py -3"
-if not defined PYCMD (
-    where python >nul 2>&1 && set "PYCMD=python"
-)
-if not defined PYCMD (
-    echo Python 3.11 or newer is required but was not found.
-    echo Install it from https://www.python.org/downloads/ and be sure to
-    echo tick "Add python.exe to PATH", then run this again.
-    echo.
-    pause
-    exit /b 1
-)
+set "PYTRIED="
+call :findpython
+if not defined PYCMD call :offerpython
+if not defined PYCMD goto :nopython
 
 echo Creating the Python environment...
 %PYCMD% -m venv .venv || goto :failed
-echo Installing dependencies...
-".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
-".venv\Scripts\python.exe" -m pip install -r requirements.txt -r requirements-windows.txt || goto :failed
+echo.
+
+rem PIP IS A PREREQUISITE TOO, AND IT TURNED A REAL USER AROUND. This was
+rem one line -- `pip install --upgrade pip >nul` -- with three faults in
+rem it. The redirect hid it, so minutes of downloading read as a frozen
+rem window. There was no `|| goto :failed`, so an upgrade that failed
+rem carried on SILENTLY with the old pip and died on the NEXT line, where
+rem the message names neither pip nor the upgrade. And nobody was ever
+rem asked. What that user saw was an error they did not read, "Press any
+rem key to continue", and the window shutting: "it said press any key to
+rem continue and then closed his window".
+rem
+rem AN OLD PIP IS THE COMMONEST WAY THIS STEP FAILS. It cannot read the
+rem package files today's releases ship as, so it falls back to BUILDING
+rem them from source, which then wants a C++ compiler nobody has -- and
+rem the error that reaches the screen is about Visual C++ rather than
+rem about pip.
+echo Setup needs an up-to-date pip. That is the installer Python uses to
+echo fetch the packages this app needs, and an old one cannot read the
+echo files today's packages ship as - it is the commonest reason setup
+echo fails here.
+echo.
+echo This only changes the copy of pip inside this app's own folder.
+echo Nothing else on your PC is touched.
+echo.
+choice /c YN /n /m "Update pip now? [Y]es or [N]o: "
+echo.
+if errorlevel 2 goto :pipkept
+echo Updating pip...
+rem FROM THE FOLDER FIRST. With a stocked `wheels\` this is instant and
+rem needs no connection at all - which is the whole point of the cache,
+rem and pip is in it deliberately because an old pip is the commonest
+rem way a first run fails.
+".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels --upgrade pip 2>nul && goto :deps
+".venv\Scripts\python.exe" -m pip install --upgrade pip || goto :pipfailed
+goto :deps
+
+:pipkept
+echo Leaving pip as it is. If the next step fails, run this file again
+echo and answer Y.
+echo.
+goto :deps
+
+:pipfailed
+echo.
+echo pip could not be updated. That is almost always no internet, or a
+echo network blocking pypi.org - the update is downloaded from there.
+echo.
+echo Setup can carry on with the pip you have, and it may well work.
+echo.
+choice /c YN /n /m "Carry on anyway? [Y]es or [N]o: "
+echo.
+if errorlevel 2 goto :failed
+
+:deps
+rem THE PACKAGES LIVE IN THIS FOLDER IF THEY CAN. About 190 MB of them,
+rem downloaded once and kept in `wheels\` - so a repaired .venv costs
+rem nothing, a second install is instant, and a copy of this folder
+rem carries them to another PC with no download at all. A copy
+rem unzipped from a release built by `tools/make_release.py` has
+rem them ALREADY, for three Python versions, so this line is the
+rem whole install. See
+rem `tools/stock_wheels.py` for why they are NOT in the repository.
+set "FROMFOLDER="
+if exist "wheels\*.whl" (
+    echo Installing the app's packages from this folder - no download...
+    echo.
+    ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels -r requirements.txt -r requirements-windows.txt && set "FROMFOLDER=1"
+)
+if defined FROMFOLDER goto :installed
+
+echo Downloading the app's packages - this takes a few minutes, and only
+echo happens once: they are kept in this folder afterwards.
+echo.
+rem `pip download` FIRST, so the cache is stocked by the same bytes that
+rem get installed rather than by a second trip. If it fails the install
+rem below still reaches pypi.org, because `--find-links` without
+rem `--no-index` means "prefer the folder", not "refuse the network".
+".venv\Scripts\python.exe" -m pip download -r requirements.txt -r requirements-windows.txt --dest wheels
+".venv\Scripts\python.exe" -m pip install --find-links wheels -r requirements.txt -r requirements-windows.txt || goto :failed
+
+:installed
 
 rem THE KEY IS THE APP'S JOB, not this script's. This used to copy
 rem .env.example over and open it in Notepad, which meant a new user was
@@ -81,12 +155,115 @@ rem The app writes "Start Dota Draft Assist.lnk" beside this file at every
 rem start; that one runs pythonw.exe directly and has no console to show.
 rem See `appicon.folder_link`. This launcher stays because it is what
 rem BUILDS the environment that shortcut points into.
+goto :launch
+
+:findpython
+rem Try the PY LAUNCHER first. It is a real program rather than an alias,
+rem so it can never be the Store stub, and `-3` asks it for the newest
+rem Python 3 it knows about whatever else is on PATH.
+rem Redirect the Windows way, to nul. The Unix null device is not a path
+rem cmd.exe knows, so it printed "The system cannot find the path
+rem specified." before the setup had done anything -- which made a first
+rem run look broken on exactly the machines this launcher exists for.
+where py >nul 2>&1 && call :trypython py -3
+if defined PYCMD exit /b 0
+where python >nul 2>&1 && call :trypython python
+if defined PYCMD exit /b 0
+rem AN INSTALL THAT HAPPENS NOW IS INVISIBLE TO THIS WINDOW. A process is
+rem given its PATH when it starts, so winget can install Python perfectly
+rem and this script still cannot see it -- and telling somebody to run
+rem the thing again, seconds after it said it had installed Python for
+rem them, reads as the install having failed. These are where the
+rem official installers put it, so the same run can carry on.
+for %%D in ("%LOCALAPPDATA%\Programs\Python\Launcher\py.exe"
+            "%ProgramFiles%\Python313\python.exe"
+            "%ProgramFiles%\Python312\python.exe"
+            "%ProgramFiles%\Python311\python.exe"
+            "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+            "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+            "%LOCALAPPDATA%\Programs\Python\Python311\python.exe") do (
+    if not defined PYCMD if exist %%D call :trypython %%D
+)
+exit /b 0
+
+:trypython
+rem A CANDIDATE HAS TO RUN AND SAY WHAT IT IS. The Store alias answers
+rem nothing useful and exits non-zero; an old Python answers and fails
+rem the floor. Either way PYCMD is left unset and the next one is tried.
+%* -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
+if errorlevel 1 exit /b 0
+set "PYCMD=%*"
+exit /b 0
+
+:offerpython
+rem WINGET IS MICROSOFT'S OWN AND IS ALREADY ON WINDOWS 10 AND 11, so on
+rem most machines this is the whole install. NOTHING IS INSTALLED WITHOUT
+rem BEING ASKED: the answer is one keypress, and N falls through to the
+rem download link below rather than to nothing.
+where winget >nul 2>&1 || exit /b 0
+echo Python 3.11 or newer is required and was not found on this PC.
+echo.
+echo It can be installed for you now using winget, which is Microsoft's
+echo own installer and is already part of Windows. Nothing outside the
+echo Python install itself is changed.
+echo.
+choice /c YN /n /m "Install Python now? [Y]es or [N]o: "
+if errorlevel 2 exit /b 0
+set "PYTRIED=1"
+echo.
+echo Installing Python - this takes a couple of minutes...
+winget install --id Python.Python.3.12 --exact --source winget --accept-package-agreements --accept-source-agreements
+echo.
+call :findpython
+exit /b 0
+
+:nopython
+echo.
+echo Python 3.11 or newer is required and this PC has not got it.
+echo.
+if defined PYTRIED (
+    echo Python was just installed, but THIS WINDOW cannot see it yet: a
+    echo program is given its PATH when it starts, so it never picks up
+    echo something installed while it is already running.
+    echo.
+    echo CLOSE THIS WINDOW AND RUN THIS FILE AGAIN. That is all that is
+    echo left to do.
+) else (
+    echo Install it from:
+    echo.
+    echo     https://www.python.org/downloads/
+    echo.
+    echo On the installer's FIRST page tick "Add python.exe to PATH" --
+    echo without it this window cannot find Python afterwards. Then run
+    echo this file again.
+)
+echo.
+pause
+exit /b 1
+
 :launch
 start "" ".venv\Scripts\pythonw.exe" -m draft_assist.ui.app %*
 exit /b 0
 
 :failed
+rem THE LAST THING PRINTED IS THE THING TO DO. A user hit this, read
+rem none of it, pressed a key and reported that the window had closed on
+rem him -- so the advice sits directly above the prompt rather than at
+rem the top of a page of text he has already scrolled past.
 echo.
-echo Setup failed - the error above says why.
+echo ------------------------------------------------------------------
+echo Setup did not finish. The error is in the text above this line.
+echo.
+echo Two causes cover nearly all of it:
+echo.
+echo   * No internet, or a network blocking pypi.org - everything is
+echo     downloaded from there and there is no offline route.
+echo   * An old pip, which cannot read today's package files. Run this
+echo     file again and answer Y when it offers to update pip.
+echo.
+echo Nothing outside this folder has been changed. RUN THIS FILE AGAIN
+echo once the above is sorted - it picks up where it left off.
+echo ------------------------------------------------------------------
+echo.
 pause
 exit /b 1
