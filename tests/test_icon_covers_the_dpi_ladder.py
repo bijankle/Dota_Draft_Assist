@@ -236,8 +236,14 @@ def test_measuring_an_icon_never_leaks_its_bitmaps():
 
 
 def test_the_window_puts_its_icon_back_after_qt():
-    """Qt sets the window icon on the way up, at the un-scaled metric.
-    Ours ran at the end of __init__, which is before that."""
+    """Qt sets the window icon on the way up, at SM_CXSMICON - the
+    metric that is two thirds of the taskbar's slot. Ours ran at the
+    end of __init__, which is before that.
+
+    AND INSIDE showEvent IS NOT YET "AFTER THE SHOW": Qt is part way
+    through bringing the window up there and is free to run after us,
+    so the push is QUEUED onto the event loop rather than made from
+    inside the handler."""
     import ast
     from pathlib import Path
     from draft_assist.ui import app as app_mod
@@ -245,7 +251,14 @@ def test_the_window_puts_its_icon_back_after_qt():
     shown = [n for n in ast.walk(tree)
              if isinstance(n, ast.FunctionDef) and n.name == "showEvent"]
     assert shown, "MainWindow.showEvent has gone"
-    assert any("push_native_icon" in ast.dump(n) for n in shown)
+    body = "".join(ast.dump(n) for n in shown)
+    assert "singleShot" in body, (
+        "pushing from inside showEvent leaves Qt free to run after us")
+    assert "_push_window_icon" in body
+    pushers = [n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef)
+               and n.name == "_push_window_icon"]
+    assert pushers and "push_native_icon" in ast.dump(pushers[0])
 
 
 # ---- the size the taskbar actually draws at --------------------------

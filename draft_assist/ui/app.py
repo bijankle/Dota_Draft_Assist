@@ -4311,6 +4311,24 @@ class MainWindow(QMainWindow):
         if self._icon_pushed:
             return
         self._icon_pushed = True
+        # INSIDE showEvent IS NOT YET "AFTER THE SHOW". Qt is part way
+        # through bringing the window up here, and it sets the window
+        # icon itself from the QIcon - at SM_CXSMICON, the metric that
+        # is two thirds of the taskbar's slot at every scaling. Pushing
+        # from inside this handler still leaves Qt free to run after
+        # us, and the button stayed at exactly 0.667 across six
+        # measurements while every size we asked for was provably
+        # right. So the push is queued instead: singleShot(0) lands on
+        # the next turn of the event loop, when the show is finished,
+        # and the later one covers a re-apply that arrives with the
+        # first paint or a DPI change.
+        for delay in (0, 2000):
+            QTimer.singleShot(delay, self._push_window_icon)
+
+    def _push_window_icon(self) -> None:
+        """Hand the window's native icon over again. Never fatal, and
+        safe to repeat: it loads from the same .ico and replaces the
+        handles the window already holds."""
         try:
             appicon.push_native_icon(int(self.winId()))
         except Exception:               # noqa: BLE001 - never worth a crash
