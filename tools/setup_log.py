@@ -22,6 +22,14 @@ exactly as pip wrote them - the bar animates - while the log keeps only
 what the line said when it ended. Straight through, a captured bar is
 several hundred lines of junk around the one line that matters.
 
+AND A CARRIAGE RETURN BEFORE A NEWLINE IS NOT A REDRAW. Windows ends
+every line "\r\n", so clearing the line on sight of "\r" threw each one
+away a byte before the "\n" wrote it: every setup log ever written on
+Windows came out as the right NUMBER of lines, all of them blank. The
+module that exists to keep the record was keeping none of it, and it
+could not be seen from here - on Linux a line ends with a bare "\n",
+so the tests were reading the one case that worked.
+
 WHICH FOLDER IS IN A POINTER FILE rather than a cmd.exe variable. This
 app's own folder is called "Dota Draft Assist", so every path it hands
 about has spaces in it, and `for /f` round a path with spaces is the
@@ -89,6 +97,11 @@ def start() -> int:
     note(f"Dota Draft Assist setup - {time.strftime('%Y-%m-%d %H:%M:%S')}")
     note(f"folder   {ROOT}")
     note(f"platform {sys.platform}")
+    # WHICH PYTHON, because that is what decides whether `wheels\` can
+    # serve this machine: the bundle carries one wheel per version for
+    # numpy and pywin32, so an interpreter newer than the bundle sends
+    # the offline install straight to "from versions: none".
+    note(f"python   {sys.version.split()[0]}")
     note("")
     print(f"A log of this setup is being kept in {where}")
     print()
@@ -118,6 +131,7 @@ def tee(command: list[str], out) -> int:
         out.write(message + "\n")
         return 127
     line = bytearray()
+    returned = False
     assert running.stdout is not None
     while True:
         chunk = running.stdout.read(1)
@@ -128,13 +142,26 @@ def tee(command: list[str], out) -> int:
             sys.stdout.buffer.flush()
         except (OSError, ValueError, AttributeError):
             pass                       # no console: the log still gets it
+        if chunk == b"\r":
+            # NOT A REDRAW YET, and assuming it was is what emptied
+            # every line this module has ever written. WINDOWS ENDS
+            # EVERY LINE "\r\n", so clearing here threw the line away
+            # before the "\n" could write it - and every setup log came
+            # out as the right number of BLANK lines. Invisible on
+            # Linux, where a line ends with a bare "\n", which is why
+            # the tests never saw it. A carriage return only means "the
+            # bar is being redrawn" when what follows it is not "\n".
+            returned = True
+            continue
         if chunk == b"\n":
             out.write(line.decode("utf-8", "replace") + "\n")
             line.clear()
-        elif chunk == b"\r":
+        elif returned:
             line.clear()               # a redrawn progress bar
+            line += chunk
         else:
             line += chunk
+        returned = False
     if line:
         out.write(line.decode("utf-8", "replace") + "\n")
     return running.wait()
@@ -150,6 +177,34 @@ def run(label: str, command: list[str]) -> int:
         out.write("    " + " ".join(command) + "\n")
         code = tee(command, out)
         out.write(f"--- {label}: exit {code} ---\n\n")
+    return code
+
+
+FELL_BACK = """
+That did not work, and it is NOT a fault - the step after it is the
+fallback and setup carries straight on.
+
+This folder carries the app's packages for some versions of Python, and
+yours ({version}) is usually not one of them. Setup will get what it
+needs another way. The detail above is kept in the setup log.
+"""
+
+
+def attempt(label: str, command: list[str]) -> int:
+    """A step that is ALLOWED to fail, because a fallback follows it.
+
+    The offline install is tried first and cannot serve a Python the
+    bundle was not built for, so `pip` prints "No matching distribution
+    found" and the user reads the app as broken - on a run that then
+    succeeds and reports SETUP OK. It is still TEED rather than
+    buffered: hiding the attempt is the fault `>nul` caused once
+    already, and minutes of silence read as a frozen window. What is
+    added is a sentence AFTER it saying what was just seen.
+    """
+    code = run(label, command)
+    if code:
+        note("    (this step is allowed to fail - a fallback follows it)")
+        print(FELL_BACK.format(version=sys.version.split()[0]))
     return code
 
 
@@ -213,6 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     step = subs.add_parser("run")
     step.add_argument("label")
     step.add_argument("command", nargs=argparse.REMAINDER)
+    tried = subs.add_parser("try")
+    tried.add_argument("label")
+    tried.add_argument("command", nargs=argparse.REMAINDER)
     done = subs.add_parser("finish")
     done.add_argument("--failed", default="", metavar="STEP")
     args = parser.parse_args(argv)
@@ -226,13 +284,14 @@ def main(argv: list[str] | None = None) -> int:
         # this has to be able to answer.
         note(" ".join(args.text))
         return 0
-    if args.action == "run":
+    if args.action in ("run", "try"):
         command = args.command
         if command and command[0] == "--":
             command = command[1:]
         if not command:
             return 2
-        return run(args.label, command)
+        doing = run if args.action == "run" else attempt
+        return doing(args.label, command)
     return finish(not args.failed, args.failed)
 
 

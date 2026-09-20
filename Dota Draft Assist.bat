@@ -144,11 +144,20 @@ rem unzipped from a release built by `tools/make_release.py` has
 rem them ALREADY, for three Python versions, so this line is the
 rem whole install. See
 rem `tools/stock_wheels.py` for why they are NOT in the repository.
+rem
+rem `try`, NOT `run`, BECAUSE THIS ONE IS ALLOWED TO FAIL. The bundle
+rem carries one numpy and one pywin32 per Python version, so an
+rem interpreter newer than the bundle gets "No matching distribution
+rem found" from --no-index and the download below takes over. That is
+rem the design working, and it read as the app being broken: "ERROR:
+rem Could not find a version that satisfies the requirement numpy"
+rem on startup, on a run that finished SETUP OK. `try` tees it exactly
+rem as `run` does and adds a sentence afterwards saying so.
 set "FROMFOLDER="
 if exist "wheels\*.whl" (
     echo Installing the app's packages from this folder - no download...
     echo.
-    %PYCMD% "tools\setup_log.py" run "install the packages from the folder" -- ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels -r requirements.txt -r requirements-windows.txt && set "FROMFOLDER=1"
+    %PYCMD% "tools\setup_log.py" try "install the packages from the folder" -- ".venv\Scripts\python.exe" -m pip install --no-index --find-links wheels -r requirements.txt -r requirements-windows.txt && set "FROMFOLDER=1"
 )
 if defined FROMFOLDER goto :installed
 

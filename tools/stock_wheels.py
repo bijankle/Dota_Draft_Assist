@@ -64,7 +64,13 @@ ALSO = ("pip", "setuptools", "wheel")
 #
 # Named here rather than guessed from the host, because a bundle built
 # on one machine has to install on somebody else's.
-PY_VERSIONS = ("311", "312", "313")
+# EVERY VERSION SOMEBODY CAN REASONABLY INSTALL, because the one it
+# misses is the one that fails. `py -3` fetches the newest Python on
+# the machine, so a bundle that stops at 3.13 sends a fresh install
+# on 3.14 straight to "from versions: none" - which is what happened.
+# Cheap to widen: almost everything here is py3-none-any or abi3, so
+# a version adds only its own numpy and pywin32, about 25 MB.
+PY_VERSIONS = ("311", "312", "313", "314")
 PLATFORM = "win_amd64"
 
 
