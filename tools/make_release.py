@@ -38,6 +38,7 @@ about 40 MB rather than three times the whole set.
 """
 
 import argparse
+import json
 import subprocess
 import sys
 import zipfile
@@ -47,7 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from draft_assist import console                              # noqa: E402
+from draft_assist import config, console                      # noqa: E402
 from draft_assist.version import VERSION                      # noqa: E402
 from tools import stock_wheels                                # noqa: E402
 
@@ -117,6 +118,50 @@ def wanted(name: str) -> bool:
     return Path(name).name not in NEVER_SHIP
 
 
+def built_from() -> str:
+    """The commit this zip is being cut at, or "" if it cannot be had.
+
+    A clone knows it from git. A copy that was itself unzipped and then
+    updated knows it from the record the updater wrote. Neither is fatal:
+    an unstamped zip behaves exactly as every zip did before this, which
+    is to say it cannot tell whether it is current.
+    """
+    try:
+        result = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                                capture_output=True, text=True,
+                                **console.no_window())
+        if not result.returncode:
+            return result.stdout.strip()[:40]
+    except OSError:
+        pass
+    try:
+        data = json.loads(
+            (ROOT / config.INSTALL_RECORD).read_text(encoding="utf-8"))
+        return str(data.get("sha") or "")[:40]
+    except Exception:           # noqa: BLE001 - a stamp, not the release
+        return ""
+
+
+def stamp(files: list[str]) -> str:
+    """The `installed_version.json` a fresh unzip should start life with.
+
+    **A ZIP THAT DOES NOT KNOW WHICH BUILD IT IS CANNOT BE TOLD IT IS
+    OUT OF DATE**, and that is what sent a real user round the houses:
+    they unzipped a shareable copy, the core of the app did not work,
+    and the fix was to press Help > Update application - which nothing
+    on screen had any way of suggesting, because the app could not tell
+    a current copy from one cut months ago. Stamping it closes that:
+    the app compares this sha against the release branch and can say so.
+
+    It carries the FILE LIST as well as the sha, which is the same shape
+    `update_app` writes, so the first update from a shareable zip can
+    also remove files that went away rather than leaving them importable.
+    """
+    return json.dumps({"branch": config.RELEASE_BRANCH,
+                       "sha": built_from(),
+                       "files": sorted(files)}, indent=1)
+
+
 def build(out: Path, wheels: bool = True) -> tuple[int, float]:
     """Write the zip. Returns (files, megabytes)."""
     files = [name for name in tracked() if wanted(name)]
@@ -146,6 +191,11 @@ def build(out: Path, wheels: bool = True) -> tuple[int, float]:
                      compress_type=zipfile.ZIP_STORED)
             done += 1
             console.progress(done / (total + 1), "packing the packages")
+        # LAST, and never from `files`: it is gitignored, so it is not in
+        # the tracked list and cannot be, and it is written here rather
+        # than copied from this machine's own record - which describes
+        # this install and nobody else's.
+        zf.writestr(config.INSTALL_RECORD, stamp(files))
     console.progress(1.0, "done")
     return done, out.stat().st_size / 1e6
 

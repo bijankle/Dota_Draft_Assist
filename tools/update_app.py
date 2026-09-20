@@ -54,21 +54,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from draft_assist import config  # noqa: E402
 from draft_assist import console  # noqa: E402
 from draft_assist.config import REPO_ROOT  # noqa: E402
 
-OWNER = "bijankle"
-REPO = "Dota_Draft_Assist"
-# What a downloaded copy follows. Development happens elsewhere and is
-# merged here when it is fit to hand to somebody.
-RELEASE_BRANCH = "main"
+# READ FROM `config`, NOT SPELLED AGAIN. The app's own update CHECK (the
+# banner, and the automatic one on a fresh unzip) has to look at the same
+# repository and the same branch this tool downloads from — two spellings
+# is the app checking one thing and updating from another, which is the
+# fault `config.APP_NAME` already exists to prevent one window-title over.
+OWNER = config.GITHUB_OWNER
+REPO = config.GITHUB_REPO
+RELEASE_BRANCH = config.RELEASE_BRANCH
 
 # The app's own repository, lower-cased for comparison. A fork or a rename
 # is a legitimate reason for this to fail; the message names what it found
 # so that is obvious rather than mysterious.
 THIS_REPO = REPO.lower()
 
-INSTALL_NAME = "installed_version.json"
+INSTALL_NAME = config.INSTALL_RECORD
 
 # Where the DOWNLOAD's own share of the bar starts and ends. Everything
 # else in an update is a handful of steps that either have happened or

@@ -399,6 +399,12 @@ class MainWindow(QMainWindow):
         self._build()
         self._refresh_sources()
         self._sync_source_controls()
+        # ONCE PER LAUNCH, on a worker, and "" for a clone. See
+        # `_start_update_check` — the banner reads the answer, the check
+        # never runs on the refresh loop.
+        self._newer_build = ""
+        self._relaunching = False
+        self._start_update_check()
         self._update_first_run_banner()
         self.setWindowOpacity(
             float(self.settings.get("overlay_opacity", 0.7)))
@@ -2025,6 +2031,32 @@ class MainWindow(QMainWindow):
             return ("+".join(cached), "+".join(wanted))
         return None
 
+    def _start_update_check(self) -> None:
+        """Ask GitHub ONCE per launch whether the release branch moved on.
+
+        ON A WORKER, because it is an HTTP request made while the window
+        is opening, and a copy behind a dead connection must still start.
+
+        **IT TOUCHES NO Qt AND THERE IS NO SIGNAL**, which is the whole
+        reason a plain daemon thread is safe here: it sets one string,
+        and `_update_first_run_banner` — which the refresh loop already
+        rebuilds four times a second — picks it up on its next tick. A
+        QThread and a cross-thread signal would buy nothing and would put
+        this in the family of Qt traps this file keeps a list of.
+
+        The check itself is in `version.newer_release`, which answers ""
+        for a clone, for no network, for a rate limit and for
+        already-current alike: none of those is a fault and none of them
+        should put anything on screen.
+        """
+        def ask() -> None:
+            try:
+                self._newer_build = version.newer_release()
+            except Exception:       # noqa: BLE001 - never worth a crash
+                self._newer_build = ""
+        threading.Thread(target=ask, daemon=True,
+                         name="update-check").start()
+
     def _show_banner(self, message: str, button: str, action) -> None:
         set_label(self.banner_label, message)
         if self.banner_button.text() != button:
@@ -2037,6 +2069,31 @@ class MainWindow(QMainWindow):
         says "update" should mean. One task, so there is one thing to
         watch and one thing that can fail."""
         self.run_task("update_data")
+
+    def _update_before_setup(self) -> bool:
+        """Bring a fresh unzip up to date. True if the app is relaunching.
+
+        **THE CHECK IS SYNCHRONOUS HERE AND NOWHERE ELSE.** The banner's
+        copy runs on a worker because it must not hold up a window that
+        is opening; this one has to answer before the next thing happens,
+        and it is bounded by `version.CHECK_TIMEOUT` — a few seconds, on
+        the one run where somebody is expecting an installer to do
+        something. Offline it returns "" and setup carries straight on,
+        which is the whole reason this asks rather than simply running
+        the update: a first run behind a dead connection must meet the
+        wizard, not a failed task it cannot get past.
+
+        NEVER FATAL. If the update itself fails the dialog says why and
+        this returns False, so the wizard still opens — the same rule the
+        wizard's own Skip follows, that nobody offline or merely curious
+        meets a wall.
+        """
+        if not version.newer_release():
+            return False
+        self._say("A newer version is available - updating first…", 8000)
+        self._restart_after_task = "update_app"
+        self.run_task("update_app")
+        return self._relaunching
 
     def _run_setup(self) -> None:
         """The first-run wizard, on demand.
@@ -2278,6 +2335,22 @@ class MainWindow(QMainWindow):
         """
         from .setup_wizard import needed
         if needed():
+            # THE CODE FIRST, THEN THE QUESTIONS. A shareable zip is cut
+            # once and goes stale the moment anything lands on the
+            # release branch, so the copy somebody unzips can be months
+            # behind before it has ever been opened — and a real user
+            # met exactly that: portrait recognition simply did not work
+            # until they pressed Help > Update application, which nothing
+            # had told them to do.
+            #
+            # BEFORE the wizard rather than after it, for two reasons.
+            # Every step of setup then runs on current code, including
+            # the key check and the artwork download. And nothing has
+            # been typed yet, so the relaunch an update ends in costs the
+            # user nothing to sit through — after it, `needed()` is still
+            # true (no key yet) and the wizard opens on the new build.
+            if self._update_before_setup():
+                return
             self._run_setup()
             return
         # AND AN INSTALL THAT IS ALREADY PAST THE WIZARD STILL GETS THE
@@ -2436,6 +2509,26 @@ class MainWindow(QMainWindow):
                 "<b>No statistics downloaded yet.</b> Every number in "
                 "the app comes from these.",
                 "Set up now", self._run_setup)
+            return
+
+        # A NEWER BUILD, which is the one rung that can fix the app
+        # itself. It sits here deliberately: below the three live faults,
+        # which cost the draft on screen right now, and ABOVE everything
+        # about the statistics and the artwork, because a copy months
+        # behind can BE the reason those are wrong. A real user unzipped
+        # a shareable copy, found portrait recognition simply did not
+        # work, and the cure was Help > Update application - which
+        # nothing on screen had any way of suggesting.
+        #
+        # `_newer_build` is set ONCE per launch by a worker (see
+        # `_start_update_check`) and is "" for a clone, for no network
+        # and for already-current alike. Nothing here touches the
+        # network: this method runs four times a second.
+        if self._newer_build:
+            self._show_banner(
+                "<b>A newer version of the app is available.</b> "
+                "Updating takes a few seconds and keeps your settings.",
+                "Update now", self._update_app)
             return
 
         # THE BRACKET CHANGED. Checked before the age, because the numbers
@@ -4056,9 +4149,14 @@ class MainWindow(QMainWindow):
     def _relaunch(self) -> None:
         """Start a fresh copy of ourselves and quit.
 
+        Sets `_relaunching` first, because a caller that is part way
+        through a sequence has to know not to carry on: `offer_setup`
+        must not open the wizard over an app that is quitting.
+
         Detached on purpose: the new process must outlive this one, and it
         must not inherit a half-torn-down Qt event loop.
         """
+        self._relaunching = True
         try:
             # `__main__.py` rather than `-m`, so the new process does not
             # depend on inheriting our working directory — the same target

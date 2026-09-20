@@ -27,6 +27,25 @@ APP_NAME = "Dota Draft Assist"
 # practical answer: this string ships in everybody's copy, so a personal
 # address here is one a spam harvester reads off the first public clone.
 SUPPORT_EMAIL = "dotadraftassist@outlook.com"
+
+# WHERE A COPY OF THIS APP UPDATES ITSELF FROM, spelled ONCE. The
+# updater, the version check behind the banner and the shareable zip's
+# own build stamp all read these — three places that must agree about
+# which repository and which branch, or the app checks one thing and
+# updates from another.
+GITHUB_OWNER = "bijankle"
+GITHUB_REPO = "Dota_Draft_Assist"
+
+# What a downloaded copy follows. Development happens on branches and is
+# merged here when it is fit to hand to somebody, so a stranger's copy
+# tracks finished work rather than somebody's half-written branch.
+RELEASE_BRANCH = "main"
+
+# What the ZIP path wrote last time, and what a shareable zip is stamped
+# with so a fresh unzip knows which build it is. Gitignored: it describes
+# one machine's install and nobody else's.
+INSTALL_RECORD = "installed_version.json"
+
 DATA_CACHE = REPO_ROOT / "data_cache"
 RAW_DUMP_DIR = DATA_CACHE / "raw"
 # EVERYTHING YOU WOULD SEND SOMEBODY LIVES UNDER `debug/`, and the

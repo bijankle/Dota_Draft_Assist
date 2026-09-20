@@ -7178,6 +7178,77 @@ listener itself is testable by POSTing payloads to it, which the tests do.
   send it. Updating their own copy, and everybody else's, is still
   Help > Update application and still about 4 MB.
 
+  **AND THE ZIP STAMPS ITS OWN BUILD, WHICH IS WHAT MADE THE REST
+  POSSIBLE** (`make_release.built_from` / `stamp`, `config.
+  INSTALL_RECORD`). A shareable zip is cut once and goes stale the
+  moment anything lands on `main`, so the copy somebody unzips can be
+  months behind before it has ever been opened. A real user met exactly
+  that: "when i use the zip version of the file i need to hit the
+  'update application' to get the core function of portrait recognition
+  to owrk properyl" - the crop-box table fix was on `main` and their
+  copy predated it.
+  **THE APP COULD NOT EVEN TELL.** `installed_version.json` is written
+  by the ZIP UPDATER and is gitignored, so it is not in the tracked list
+  and a fresh unzip had NO RECORD AT ALL: `version.described()` said
+  "unknown", and a copy that does not know which build it is cannot be
+  told it is out of date. `stamp()` writes one into the zip - the sha it
+  was cut at AND the file manifest, the same shape `update_app` writes,
+  so the first update from a shareable zip can also remove files that
+  went away rather than leaving them importable.
+
+- **A FRESH UNZIP UPDATES ITSELF BEFORE SETUP ASKS ANYTHING, AND A STALE
+  ONE GETS A BANNER** (`version.newer_release` / `is_a_clone` /
+  `installed_sha`, `MainWindow._start_update_check` /
+  `_update_before_setup`, the `_newer_build` banner rung), at the user's
+  request: "i think it would be ideal that as part of the setup that the
+  program runs an app update... but if you cant do that then just have
+  it as a banner that the user is alerted to click on which updates the
+  app". Both, because they answer different moments - the fresh unzip
+  and the copy that has sat for a month.
+  **THE CODE FIRST, THEN THE QUESTIONS.** The update runs BEFORE the
+  wizard rather than after it, for two reasons: every step of setup then
+  runs on current code, including the key check and the artwork
+  download; and nothing has been typed yet, so the relaunch an update
+  ends in costs the user nothing to sit through. After it `needed()` is
+  still true - there is still no key - so the wizard opens on the new
+  build.
+  **AND IT ASKS BEFORE IT RUNS, which is the difference between a first
+  run and a wall.** Simply running the update would make an offline
+  first launch sit through a timeout and then meet a failed task it
+  cannot get past. `newer_release()` is bounded by `CHECK_TIMEOUT` (6s)
+  and answers "" for offline, so setup carries straight on - the same
+  rule the wizard's own Skip follows, that nobody offline or merely
+  curious meets a wall. A failed update is non-fatal too: the dialog
+  says why and the wizard still opens.
+  **`""` IS THE ANSWER TO FOUR DIFFERENT QUESTIONS, deliberately** - a
+  clone, no network, a rate limit, and already-current. None of them is
+  a fault and none of them should put anything on screen, so they
+  collapse into one value and only the case with something to offer
+  returns a string.
+  **A CLONE IS NEVER NAGGED, and that guard is load-bearing.** A clone
+  follows whatever branch it is actually tracking, which is the whole
+  reason `choose_target` prefers the upstream - so comparing it against
+  `main` would put an update banner over the author's own window every
+  single time they worked on a branch. `is_a_clone()` is asked FIRST, so
+  a clone does not even look.
+  **THE BANNER READS A FLAG AND NEVER THE NETWORK.**
+  `_update_first_run_banner` runs four times a second, so a check in it
+  would be an HTTP request per tick. `_start_update_check` asks ONCE per
+  launch on a daemon thread that touches no Qt and sets one string; the
+  refresh loop picks it up on its next tick, which is why there is no
+  QThread and no cross-thread signal. A test parses that method and
+  fails if `newer_release` ever appears inside it.
+  **THE RUNG SITS BELOW THE LIVE FAULTS AND ABOVE THE DATA ONES.** The
+  feed, the crop boxes and a bad draft cost the draft on screen right
+  now; a newer build is the one rung that can fix the APP, and a copy
+  months behind can BE the reason the statistics and artwork rungs are
+  complaining.
+  **AND THE COORDINATES ARE SPELLED ONCE** (`config.GITHUB_OWNER`,
+  `GITHUB_REPO`, `RELEASE_BRANCH`, `INSTALL_RECORD`). `update_app` had
+  its own copies; two spellings is the app CHECKING one repository and
+  UPDATING from another, which is the fault `config.APP_NAME` already
+  exists to prevent one window-title over.
+
 - **EVERYTHING WORTH SENDING IS UNDER `debug/`** (`draft_assist/
   debugdir.py`, `crashlog.py`, `tools/setup_log.py`), at the owner's
   request: "i want you to make sure that all error debugging, etc is
