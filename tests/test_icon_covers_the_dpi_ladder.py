@@ -246,3 +246,52 @@ def test_the_window_puts_its_icon_back_after_qt():
              if isinstance(n, ast.FunctionDef) and n.name == "showEvent"]
     assert shown, "MainWindow.showEvent has gone"
     assert any("push_native_icon" in ast.dump(n) for n in shown)
+
+
+# ---- the size the taskbar actually draws at --------------------------
+
+TASKBAR_LOGICAL = 24
+
+
+@pytest.mark.parametrize("scale", SCALINGS)
+def test_the_ladder_has_the_taskbar_size(scale):
+    """Windows 11 draws an app icon at 24 LOGICAL px. There is no system
+    metric for that - SM_CXSMICON is 16 and SM_CXICON is 32 - so it has
+    to be carried explicitly."""
+    assert round(TASKBAR_LOGICAL * scale) in appicon.ICO_SIZES
+
+
+def test_the_small_icon_is_not_the_small_icon_metric():
+    """THE FAULT, as arithmetic. SM_CXSMICON is 16 logical and the
+    taskbar draws at 24 logical, and both scale with DPI - so an
+    ICON_SMALL taken from that metric is exactly two thirds of the
+    button at EVERY scaling. Measured twice: 16px beside a neighbour's
+    24px, a ratio of 0.667 against a predicted 0.667.
+
+    It is also why making the metric DPI-aware changed nothing visible:
+    that was right and not enough, since 16 became 24 while the slot
+    became 36.
+    """
+    import ast
+    from pathlib import Path
+    source = Path(appicon.__file__).read_text(encoding="utf-8")
+    assert "_TASKBAR_ICON = 24" in source
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "push_native_icon":
+            body = ast.dump(node)
+            assert "_TASKBAR_ICON" in body, (
+                "ICON_SMALL is still taken from SM_CXSMICON alone, which "
+                "is two thirds of the taskbar's slot at every scaling")
+            assert "max" in body, "it must never go BELOW the metric either"
+
+
+@pytest.mark.parametrize("scale", SCALINGS)
+def test_the_small_icon_would_now_fill_the_slot(scale):
+    """The arithmetic the fix performs, checked independently of it."""
+    dpi = round(96 * scale)
+    metric_small = round(16 * dpi / 96)
+    taskbar = round(TASKBAR_LOGICAL * dpi / 96)
+    chosen = max(metric_small, taskbar)
+    assert chosen == taskbar, f"{scale:.0%} would still under-fill"
+    assert chosen in appicon.ICO_SIZES, f"{chosen}px is not in the file"

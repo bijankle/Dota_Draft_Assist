@@ -631,6 +631,12 @@ _WM_GETICON = 0x007F
 _ICON_SMALL, _ICON_BIG = 0, 1
 _SM_CXICON, _SM_CYICON = 11, 12
 _SM_CXSMICON, _SM_CYSMICON = 49, 50
+# What the Windows 11 taskbar draws an app icon at, in LOGICAL pixels.
+# There is no system metric for it - SM_CXSMICON is 16 and SM_CXICON is
+# 32, and the taskbar uses neither. Supplying the small-icon metric
+# therefore fills exactly two thirds of the button at every scaling,
+# which is what was measured on two screenshots before this was found.
+_TASKBAR_ICON = 24
 _IMAGE_ICON = 1
 _LR_LOADFROMFILE = 0x0010
 # The handles must OUTLIVE the call. Windows does not copy them, and a
@@ -786,14 +792,35 @@ def push_native_icon(hwnd: int) -> bool:
             def metric(index):
                 return int(user32.GetSystemMetrics(index))
 
-        def load(cx: int, cy: int):
+        def load_px(size: int):
             return user32.LoadImageW(
                 None, str(icon_file), _IMAGE_ICON,
-                metric(cx), metric(cy), _LR_LOADFROMFILE)
+                size, size, _LR_LOADFROMFILE)
 
-        want = (metric(_SM_CXICON), metric(_SM_CXSMICON))
-        big = load(_SM_CXICON, _SM_CYICON)
-        small = load(_SM_CXSMICON, _SM_CYSMICON)
+        # AND SM_CXSMICON IS NOT THE TASKBAR'S SIZE. This is the
+        # arithmetic the last two goes at this button both missed: the
+        # small-icon metric is 16 LOGICAL px and the Windows 11 taskbar
+        # draws at 24 LOGICAL px, so an ICON_SMALL taken from that
+        # metric is exactly two thirds of the slot - at 100%, at 150%,
+        # at every scaling, because both scale together. Measured twice
+        # on two screenshots: our button 16px beside a neighbour's 24px,
+        # a ratio of 0.667 against a predicted 0.667.
+        #
+        # That is also why making the metric DPI-aware changed nothing
+        # visible. It was right and it was not enough: 16 became 24
+        # while the slot became 36.
+        #
+        # So ICON_SMALL is the LARGER of the two - never smaller than
+        # what the metric asks for, and never smaller than the taskbar.
+        # Windows scales an oversized icon down for the places that
+        # want the small one, and this window draws its own title bar
+        # anyway.
+        taskbar = round(_TASKBAR_ICON * (dpi or 96) / 96)
+        small_px = max(metric(_SM_CXSMICON), taskbar)
+        big_px = max(metric(_SM_CXICON), small_px)
+        want = (big_px, small_px)
+        big = load_px(big_px)
+        small = load_px(small_px)
         if not big and not small:
             window_icon_note = f"LoadImage found nothing in {icon_file.name}"
             return False
