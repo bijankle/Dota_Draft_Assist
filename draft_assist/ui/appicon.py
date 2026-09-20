@@ -621,12 +621,44 @@ def push_native_icon(hwnd: int) -> bool:
         user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
                                         ctypes.c_void_p, ctypes.c_void_p]
 
+        # THE METRICS MUST BE THE ONES FOR THIS WINDOW'S DISPLAY.
+        # `GetSystemMetrics` is not DPI-scaled in a process that has
+        # declared itself DPI-aware, which Qt does - so on a 150%
+        # display it answers SM_CXSMICON 16 while the taskbar's slot is
+        # 24, and the button gets a 16px picture in a 24px hole. That
+        # is measured rather than argued: on a 2560x1600 laptop our
+        # button drew at exactly 16x16 beside Dota's 24x24.
+        # `GetSystemMetricsForDpi` is the DPI-aware form and needs
+        # Windows 10 1607; older ones fall back to the flat metric,
+        # which is what they were always getting.
+        dpi = 0
+        try:
+            user32.GetDpiForWindow.restype = wintypes.UINT
+            user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+            dpi = int(user32.GetDpiForWindow(wintypes.HWND(int(hwnd))))
+        except Exception:               # noqa: BLE001 - see the docstring
+            dpi = 0
+        metric = None
+        if dpi:
+            try:
+                user32.GetSystemMetricsForDpi.restype = ctypes.c_int
+                user32.GetSystemMetricsForDpi.argtypes = [ctypes.c_int,
+                                                          wintypes.UINT]
+
+                def metric(index, _dpi=dpi):
+                    return int(user32.GetSystemMetricsForDpi(index, _dpi))
+            except Exception:           # noqa: BLE001 - see the docstring
+                metric = None
+        if metric is None:
+            def metric(index):
+                return int(user32.GetSystemMetrics(index))
+
         def load(cx: int, cy: int):
             return user32.LoadImageW(
                 None, str(icon_file), _IMAGE_ICON,
-                user32.GetSystemMetrics(cx), user32.GetSystemMetrics(cy),
-                _LR_LOADFROMFILE)
+                metric(cx), metric(cy), _LR_LOADFROMFILE)
 
+        want = (metric(_SM_CXICON), metric(_SM_CXSMICON))
         big = load(_SM_CXICON, _SM_CYICON)
         small = load(_SM_CXSMICON, _SM_CYSMICON)
         if not big and not small:
@@ -646,7 +678,13 @@ def push_native_icon(hwnd: int) -> bool:
                                       ctypes.c_void_p(_ICON_BIG), None)
         got_small = user32.SendMessageW(window, _WM_GETICON,
                                         ctypes.c_void_p(_ICON_SMALL), None)
+        # THE SIZES ARE PART OF THE ANSWER. "the window has an icon" and
+        # "the window has an icon the taskbar can use" are different
+        # claims, and the whole of this fault was the second one being
+        # false while the first was true.
         window_icon_note = (f"{icon_file.name} -> hwnd {int(hwnd)}; "
+                            f"dpi={dpi or 'unknown'} asked for "
+                            f"big={want[0]} small={want[1]}; "
                             f"reads back big={got_big or 0} "
                             f"small={got_small or 0}")
         return bool(got_big or got_small)
