@@ -637,6 +637,11 @@ _SM_CXSMICON, _SM_CYSMICON = 49, 50
 # therefore fills exactly two thirds of the button at every scaling,
 # which is what was measured on two screenshots before this was found.
 _TASKBAR_ICON = 24
+# The window CLASS icon, which Windows falls back to when a window has
+# no icon of its own -- and which Qt sets for itself: this app's window
+# class is reported as "Qt6112QWindowIcon". GCLP_* are the 64-bit
+# names; the 32-bit call is GCL_* with the same values.
+_GCLP_HICON, _GCLP_HICONSM = -14, -34
 _IMAGE_ICON = 1
 _LR_LOADFROMFILE = 0x0010
 # The handles must OUTLIVE the call. Windows does not copy them, and a
@@ -684,16 +689,27 @@ def _icon_size(handle) -> str:
 
         user32 = ctypes.windll.user32
         gdi32 = ctypes.windll.gdi32
+        # ARGTYPES, for the reason they are declared everywhere else in
+        # this module: ctypes defaults a return to a 32-bit int, and a
+        # handle that comes back truncated is a handle to nothing.
+        user32.GetIconInfo.restype = wintypes.BOOL
+        user32.GetIconInfo.argtypes = [wintypes.HICON,
+                                       ctypes.POINTER(ICONINFO)]
+        gdi32.GetObjectW.restype = ctypes.c_int
+        gdi32.GetObjectW.argtypes = [wintypes.HGDIOBJ, ctypes.c_int,
+                                     ctypes.c_void_p]
+        gdi32.DeleteObject.restype = wintypes.BOOL
+        gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
         info = ICONINFO()
-        if not user32.GetIconInfo(ctypes.c_void_p(int(handle)),
+        if not user32.GetIconInfo(wintypes.HICON(int(handle)),
                                   ctypes.byref(info)):
-            return "?"
+            return f"?GetIconInfo:{ctypes.get_last_error()}"
         try:
             bitmap = BITMAP()
             source = info.hbmColor or info.hbmMask
             if not gdi32.GetObjectW(source, ctypes.sizeof(BITMAP),
                                     ctypes.byref(bitmap)):
-                return "?"
+                return f"?GetObject:{ctypes.get_last_error()}"
             height = bitmap.bmHeight
             if not info.hbmColor:
                 height //= 2       # a mask holds the colour AND the AND mask
@@ -702,8 +718,12 @@ def _icon_size(handle) -> str:
             for stale in (info.hbmColor, info.hbmMask):
                 if stale:
                     gdi32.DeleteObject(stale)
-    except Exception:                   # noqa: BLE001 - only a diagnostic
-        return "?"
+    except Exception as exc:            # noqa: BLE001 - only a diagnostic
+        # NEVER A BARE "?". This module's whole recurring fault is a
+        # report that cannot separate two causes, and the first version
+        # of this very function printed "?" for both icons - which said
+        # nothing about whether the size had stuck and cost a round.
+        return f"?{type(exc).__name__}:{exc}"
 
 
 def push_native_icon(hwnd: int) -> bool:
@@ -831,6 +851,28 @@ def push_native_icon(hwnd: int) -> bool:
                 user32.SendMessageW(window, _WM_SETICON,
                                     ctypes.c_void_p(which),
                                     ctypes.c_void_p(handle))
+        # AND THE CLASS ICON, which is where Windows looks when a
+        # window has none of its own -- and which Qt has already set,
+        # since this app's window class comes back named
+        # "Qt6112QWindowIcon". WM_SETICON should win over it, and the
+        # button stayed at exactly two thirds of its slot through two
+        # fixes that each provably did what they claimed, so "should"
+        # has run out of credit. Setting both costs two calls and
+        # removes a whole candidate.
+        class_note = "not attempted"
+        try:
+            setter = getattr(user32, "SetClassLongPtrW", None) or \
+                user32.SetClassLongW
+            setter.restype = ctypes.c_void_p
+            setter.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+            for which, handle in ((_GCLP_HICON, big),
+                                  (_GCLP_HICONSM, small)):
+                if handle:
+                    setter(window, which, ctypes.c_void_p(handle))
+            class_note = "set"
+        except Exception as exc:        # noqa: BLE001 - never fatal
+            class_note = f"{type(exc).__name__}"
+
         # READ IT BACK. "I sent the message" is not the same claim as
         # "the window has an icon", and this module has already shipped
         # four fixes whose diagnostics could not tell those apart.
@@ -854,7 +896,8 @@ def push_native_icon(hwnd: int) -> bool:
                             f"dpi={dpi or 'unknown'} asked for "
                             f"big={want[0]} small={want[1]}; "
                             f"reads back big={_icon_size(got_big)} "
-                            f"small={_icon_size(got_small)}")
+                            f"small={_icon_size(got_small)}; "
+                            f"class icon {class_note}")
         return bool(got_big or got_small)
     except Exception as exc:            # noqa: BLE001 - see the docstring
         window_icon_note = f"{type(exc).__name__}: {exc}"

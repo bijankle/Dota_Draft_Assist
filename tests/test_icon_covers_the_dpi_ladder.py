@@ -295,3 +295,51 @@ def test_the_small_icon_would_now_fill_the_slot(scale):
     chosen = max(metric_small, taskbar)
     assert chosen == taskbar, f"{scale:.0%} would still under-fill"
     assert chosen in appicon.ICO_SIZES, f"{chosen}px is not in the file"
+
+
+# ---- the class icon, and a diagnostic that cannot say "?" ------------
+
+def test_the_class_icon_is_set_too():
+    """Windows falls back to the window CLASS icon, and Qt sets one for
+    itself - this app's class comes back named "Qt6112QWindowIcon".
+    WM_SETICON should win over it, and the button stayed at exactly two
+    thirds of its slot through two fixes that each provably did what
+    they claimed, so both are set now."""
+    import ast
+    from pathlib import Path
+    source = Path(appicon.__file__).read_text(encoding="utf-8")
+    assert "_GCLP_HICON" in source and "_GCLP_HICONSM" in source
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "push_native_icon":
+            body = ast.dump(node)
+            assert "SetClassLongPtrW" in body
+            assert "SetClassLongW" in body, "32-bit Windows needs the other name"
+
+
+def test_the_readback_never_reports_a_bare_question_mark():
+    """It did, on both icons, and said nothing about whether the size
+    had stuck - which cost a whole round. Every failure path has to
+    name itself."""
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path(appicon.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_icon_size":
+            for leaf in ast.walk(node):
+                if isinstance(leaf, ast.Return) and isinstance(
+                        leaf.value, ast.Constant):
+                    assert leaf.value.value != "?", (
+                        "a bare '?' cannot separate two causes")
+
+
+def test_the_readback_declares_its_argtypes():
+    """ctypes defaults a return to a 32-bit int; a truncated handle is
+    a handle to nothing. The rule the rest of this module follows."""
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path(appicon.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_icon_size":
+            body = ast.dump(node)
+            assert "argtypes" in body and "restype" in body
