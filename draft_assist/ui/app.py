@@ -1964,6 +1964,14 @@ class MainWindow(QMainWindow):
         capture session around them, so a data update takes effect without
         restarting the app."""
         self.ds = store.load_or_empty()
+        # AND THE PROVIDER'S COPY, which is a different object. It was
+        # captured when the window was built and nothing here replaced
+        # it, so on a fresh install the GSI parser kept the EMPTY
+        # dataset for the life of the process and could not name a
+        # single hero the minimap reported. See `set_dataset`.
+        setter = getattr(self.provider, "set_dataset", None)
+        if setter is not None:
+            setter(self.ds)
         # The shield reads the matrix, so a reloaded dataset is a new
         # answer and this is the one place that can notice.
         self._recompute_shields()

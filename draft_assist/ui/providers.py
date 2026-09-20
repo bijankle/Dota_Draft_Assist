@@ -341,6 +341,29 @@ class GsiProvider:
             self._silence_is_a_fault = False
         return self._silence_reason
 
+    def set_dataset(self, dataset: Dataset) -> None:
+        """Take the dataset that has just been loaded from disk.
+
+        THE DATASET IS CAPTURED AT CONSTRUCTION AND THE APP RELOADS IT
+        UNDERNEATH. `MainWindow.reload_backend` re-read the statistics
+        into its OWN `self.ds` and left the provider holding whatever
+        existed when the window was built -- which on a fresh install is
+        the EMPTY dataset, because there are no statistics until the
+        wizard has fetched them.
+
+        Everything on screen looked right, because everything on screen
+        reads the window's copy: 126 heroes, a full suggestion strip,
+        real scores. What reads the PROVIDER's copy is
+        `_hero_id_by_internal_name`, so `name_to_id` was `{}` and every
+        hero the minimap named came back unknown -- all ten of them, for
+        the whole match, on every fresh install until the app was next
+        restarted. Your own hero went on resolving throughout, because
+        that one comes from `hero.id` in the payload and never touches
+        the map, which is exactly why the board showed one hero and no
+        line-up.
+        """
+        self.ds = dataset
+
     def poll(self) -> Snapshot:
         from ..gsi import state as gsi_state
 
@@ -495,6 +518,10 @@ class HybridProvider:
         # The last match the screen was read for. A new one is the only
         # unambiguous "this board is over" the app gets — see `_new_match`.
         self._match = ""
+
+    def set_dataset(self, dataset: Dataset) -> None:
+        """Hand the reloaded dataset to the half that reads it."""
+        self.gsi.set_dataset(dataset)
 
     # The Debug tab and the capture menu reach for these.
     @property
