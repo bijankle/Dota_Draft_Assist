@@ -4322,13 +4322,29 @@ class MainWindow(QMainWindow):
         # the next turn of the event loop, when the show is finished,
         # and the later one covers a re-apply that arrives with the
         # first paint or a DPI change.
+        # AN OWNED TIMER, NEVER `QTimer.singleShot`. A bare singleShot
+        # keeps a bound method of this window alive with no way to
+        # cancel it, so a window closed inside two seconds - which is
+        # every window the tests build - leaves a callback pointing at
+        # a destroyed C++ object. That is the family this app has been
+        # bitten by repeatedly, and Qt ABORTS rather than raising, so
+        # it would arrive as a segfault with no traceback into our own
+        # code. Parented to `self`, the timer is destroyed with the
+        # window and simply never fires. (PyQt6 has no
+        # `singleShot(msec, context, slot)` overload to do this for
+        # us - only `(msec, slot)` and `(msec, timerType, slot)`.)
         for delay in (0, 2000):
-            QTimer.singleShot(delay, self._push_window_icon)
+            later = QTimer(self)
+            later.setSingleShot(True)
+            later.timeout.connect(self._push_window_icon)
+            later.start(delay)
 
     def _push_window_icon(self) -> None:
         """Hand the window's native icon over again. Never fatal, and
         safe to repeat: it loads from the same .ico and replaces the
         handles the window already holds."""
+        if not self.isVisible():
+            return                      # closed before the timer landed
         try:
             appicon.push_native_icon(int(self.winId()))
         except Exception:               # noqa: BLE001 - never worth a crash

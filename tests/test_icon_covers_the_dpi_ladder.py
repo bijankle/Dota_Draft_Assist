@@ -252,8 +252,12 @@ def test_the_window_puts_its_icon_back_after_qt():
              if isinstance(n, ast.FunctionDef) and n.name == "showEvent"]
     assert shown, "MainWindow.showEvent has gone"
     body = "".join(ast.dump(n) for n in shown)
-    assert "singleShot" in body, (
+    assert "QTimer" in body, (
         "pushing from inside showEvent leaves Qt free to run after us")
+    assert "singleShot" not in body, (
+        "a bare QTimer.singleShot cannot be cancelled, so a window "
+        "closed before it lands leaves a callback on a destroyed "
+        "object - Qt ABORTS on that rather than raising")
     assert "_push_window_icon" in body
     pushers = [n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef)

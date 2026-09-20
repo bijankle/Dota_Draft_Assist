@@ -107,18 +107,43 @@ def _drafting(row: dict) -> bool:
 
 
 def _blind_run(states: list[dict]) -> float:
-    """The longest stretch of hero selection with a frame and no hero.
+    """The longest stretch of hero selection with a frame, something on
+    the pick bar, and no hero read off it.
 
     A FRAME IS REQUIRED, which is what separates this from the app not
     being bound to Dota at all: capture failing and recognition failing
     are different bugs and want different fixes, and the recorder logs
     them apart for exactly that reason.
+
+    AND SO IS A HERO TO FIND, which this did not require and which made
+    it flag drafts that went perfectly well. HERO SELECTION OPENS WITH
+    AN EMPTY PICK BAR - nobody has picked yet - so reading no hero then
+    is the CORRECT answer and says nothing whatever about recognition.
+    This file's own notes already say so about two screenshots that
+    "failed": their bar was empty, "so locating nothing is the CORRECT
+    answer rather than a fault". Charged as blindness, the opening of
+    every slow draft reads as the app being broken, which is what
+    "it shouldn't think this is a problem that needs flagging" was.
+
+    WHAT PROVES THERE IS SOMETHING TO FIND is the GAME's own line-up.
+    GSI names no other hero while picking, but it names YOURS the
+    moment you lock it in - so a non-empty line-up means at least one
+    portrait is certainly on that bar, and reading none from then on is
+    a real fault. Before it, silence is the truth.
+
+    It is deliberately CONSERVATIVE: if team-mates have picked and you
+    have not, the bar has portraits on it and this will not count them.
+    A fault missed is a report nobody sends; a fault invented is a
+    banner over a draft that was fine, and this app has a standing rule
+    that a banner up all evening is one nobody reads on the night it
+    matters.
     """
     longest = started = 0.0
     running = False
     for row in states:
         picking = "HERO_SELECTION" in str(row.get("game_state") or "")
-        blind = (picking and row.get("has_frame")
+        named = bool(row.get("allies") or row.get("enemies"))
+        blind = (picking and row.get("has_frame") and named
                  and not row.get("read_heroes"))
         at = float(row.get("at") or 0.0)
         if blind and not running:

@@ -84,11 +84,28 @@ def test_the_crop_box_verdict_is_read_rather_than_inferred(tmp_path):
 
 
 def test_a_long_blind_stretch_while_picking_is_a_fault(tmp_path):
-    """The fault this is drawn from: two of ten slots for eighty seconds."""
-    rows = [a_tick(at=float(n), read_heroes=0)
+    """The fault this is drawn from: two of ten slots for eighty seconds.
+
+    The line-up matters and this fixture used not to carry one. Blindness
+    needs a hero to be BLIND TO: hero selection opens with an empty pick
+    bar, so reading nothing then is correct. In the real fault the
+    player's own hero was long since locked, which is what GSI names and
+    what proves a portrait is on that bar.
+    """
+    rows = [a_tick(at=float(n), read_heroes=0, allies=["Tiny"])
             for n in range(0, int(bugreport.BLIND_SECONDS) + 6)]
     verdict = bugreport.grade(a_folder(tmp_path, rows))
     assert "blind" in [f.key for f in verdict.faults]
+
+
+def test_the_empty_opening_of_a_draft_is_not_a_fault(tmp_path):
+    """Nobody has picked yet, so there is nothing on the bar to read -
+    and the app was raising a bug-report banner over it."""
+    rows = [a_tick(at=float(n), read_heroes=0, allies=[])
+            for n in range(0, int(bugreport.BLIND_SECONDS) + 40)]
+    verdict = bugreport.grade(a_folder(tmp_path, rows))
+    assert "blind" not in [f.key for f in verdict.faults]
+    assert not verdict.bad
 
 
 def test_no_frame_is_not_a_blind_stretch(tmp_path):
