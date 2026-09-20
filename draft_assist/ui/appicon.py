@@ -61,10 +61,33 @@ DEFAULT_CANDIDATES = ("app-default.ico", "app-default.png")
 # — see `_best`, which ranks whichever files are present by how big a
 # picture each one actually holds.
 # The sizes Windows actually asks a taskbar icon for.
-SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
-# What goes into a .ico for a shortcut. Fewer than SIZES: the file is read
-# by Explorer, which picks the nearest and scales.
-ICO_SIZES = (16, 32, 48, 64, 128, 256)
+# Every size the app hands out a pixmap at. ICO_SIZES below is the
+# same ladder: two lists that can disagree is the window and the
+# taskbar drawing from different pictures.
+SIZES = (16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 56, 60, 64, 72, 80, 96, 128, 256)
+# WHAT GOES INTO THE .ico, AND IT IS A LADDER RATHER THAN A HANDFUL.
+# This was six sizes, on the stated premise that "the file is read by
+# Explorer, which picks the nearest and scales". Explorer does. THE
+# TASKBAR DOES NOT: handed no entry at the size it asked for, it draws
+# the nearest SMALLER one at its own size, centred in the slot - so the
+# button comes out with a margin all round and the app reads as having
+# a smaller icon than everything beside it.
+#
+# It took a screenshot to see, because nothing about our own artwork is
+# wrong: `pixmap(n)` fills 100% of its square at EVERY size in `SIZES`,
+# with zero margin, and the margin on screen was therefore being added
+# by something outside this app. Dota's button in the same shot had
+# none, which rules out the shell insetting every icon equally.
+#
+# The sizes it asks for are NOT the round numbers. Windows scales the
+# shell's 16/24/32/48px icons by the display scaling, so 150% wants 24,
+# 36, 48, 72 and 175% wants 28, 42, 56, 84 - and a 2560x1600 laptop is
+# never at 100%. 16/32/48/64/128/256 misses every one of the odd ones.
+# Each added entry is a DIB of w*h*4 bytes, so the whole ladder is a few
+# hundred KB in a file that is generated, gitignored and rewritten at
+# every start. Cheap, against an icon that looks wrong on every
+# high-DPI machine.
+ICO_SIZES = (16, 20, 24, 28, 30, 32, 36, 40, 42, 48, 56, 60, 64, 72, 80, 96, 128, 256)
 # Bloodseeker. The user asked for this one by name; the recogniser has
 # already downloaded it, so nothing new is fetched and nothing is shipped.
 FALLBACK_HERO = 4
