@@ -1972,6 +1972,9 @@ class MainWindow(QMainWindow):
         setter = getattr(self.provider, "set_dataset", None)
         if setter is not None:
             setter(self.ds)
+        # AND THE SCREEN READING ITSELF, which the app could previously
+        # only ever LOSE. See `_ensure_vision`.
+        self._ensure_vision()
         # The shield reads the matrix, so a reloaded dataset is a new
         # answer and this is the one place that can notice.
         self._recompute_shields()
@@ -2001,6 +2004,54 @@ class MainWindow(QMainWindow):
             "Reloaded: "
             + (f"{len(self.ds.hero_ids)} heroes" if not self.ds.is_empty
                else "no data downloaded yet"), 5000)
+
+    def _ensure_vision(self) -> bool:
+        """Give the app its screen reading once the portraits are there.
+
+        THE PROVIDER IS BUILT ONCE AND COULD ONLY EVER LOSE THIS HALF.
+        `_build_provider` ends `if session is None: return gsi` - a
+        provider with no vision at all - and the comment beside it says
+        "no portraits yet; the banner says to fetch them". The banner
+        does. You fetch them, `reload_backend` runs, and it could only
+        refresh a session that ALREADY existed: there was none, so
+        nothing happened, and the app went on not reading the screen for
+        the rest of the process. A fresh install is exactly the case,
+        because the library is built by the very download the banner is
+        asking for.
+
+        WHAT THAT COSTS IS THE TEAMS. The minimap says WHICH ten heroes
+        and cannot say whose five - `team`, `image` and `yaw` are
+        identical or position-determined within every lane pair, so the
+        split is a coin flip and the app says so in its own note. The
+        rule that settles it is `_resolve_sides_by_sight`, which takes
+        the ten from the game and their POSITIONS from the pick bar. No
+        vision, no screen, no sides: a whole bot draft came out with
+        four of five heroes on the wrong team.
+
+        Attaches to the provider in place rather than rebuilding the
+        sources, so the GSI listener keeps its port and a draft in
+        progress is not interrupted.
+        """
+        if not bool(self.settings.get("use_vision", True)):
+            return False
+        from .providers import GsiProvider, HybridProvider, LiveProvider
+        provider = self.provider
+        if isinstance(provider, HybridProvider):
+            if provider.vision is not None:
+                return False
+        elif not isinstance(provider, GsiProvider):
+            return False              # demo, replay, manual: not ours to touch
+        session = _capture_session()
+        if session is None:
+            return False              # still no library; the banner stands
+        vision = LiveProvider(session)
+        if isinstance(provider, HybridProvider):
+            provider.vision = vision
+            vision.start()
+        else:
+            self._swap_provider(HybridProvider(provider, vision))
+        self._sync_source_controls()
+        return True
 
     def _choose_brackets(self) -> None:
         """Pick the rank brackets statistics come from, then offer the
