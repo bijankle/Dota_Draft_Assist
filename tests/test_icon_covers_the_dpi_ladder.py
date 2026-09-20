@@ -128,3 +128,121 @@ def test_the_diagnostic_says_what_size_it_asked_for():
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "push_native_icon":
             assert "asked for " in ast.dump(node)
+
+
+# ---- the shell's icon cache ------------------------------------------
+
+def test_the_generated_ico_is_named_after_its_contents(qapp):
+    """THE LAST PLACE A STALE PICTURE COULD COME FROM. A taskbar button
+    for a process with an AppUserModelID is resolved through the
+    matching Start-menu shortcut, not from the window - and that path
+    goes through the shell's icon cache, keyed on the icon's PATH.
+    Rewriting one fixed filename with better contents is precisely what
+    it does not notice.
+
+    Measured: with the window's own ICON_SMALL a valid 24px handle, the
+    button still drew 16x16 beside Steam's 24x24.
+    """
+    first = appicon.generated_ico()
+    assert first.name.startswith(appicon.GENERATED_PREFIX)
+    assert first.suffix == ".ico"
+    assert first.name != f"{appicon.GENERATED_PREFIX}.ico", (
+        "a fixed name is what the icon cache can serve stale")
+
+
+def test_a_different_ladder_is_a_different_file(qapp, monkeypatch):
+    """Different contents must mean a different path, or the cache can
+    hand back the old render."""
+    was = appicon.generated_ico()
+    monkeypatch.setattr(appicon, "ICO_SIZES", (16, 32))
+    assert appicon.generated_ico() != was
+
+
+def test_the_same_icon_is_not_rewritten(qapp):
+    """An unchanged icon is eighteen sizes that need not be rendered."""
+    first = appicon.ensure_generated_ico()
+    stamp = first.stat().st_mtime_ns
+    again = appicon.ensure_generated_ico()
+    assert again == first
+    assert again.stat().st_mtime_ns == stamp
+
+
+def test_old_generated_icos_are_swept(qapp, tmp_path, monkeypatch):
+    """`assets/` must not collect one file per icon anybody ever chose."""
+    monkeypatch.setattr(appicon, "ASSETS_DIR", tmp_path)
+    stale = tmp_path / f"{appicon.GENERATED_PREFIX}-deadbeef01.ico"
+    stale.write_bytes(b"not really an icon")
+    keep = appicon.ensure_generated_ico()
+    assert keep.exists()
+    assert not stale.exists()
+
+
+# ---- what the window ends up holding ---------------------------------
+
+def test_the_file_itself_is_beyond_doubt(qapp):
+    """Decoded frame by frame, every entry must be its declared size
+    AND fill it. This is the half that kept being assumed: the .ico was
+    provably right while the button was provably wrong, and measuring
+    `pixmap()` instead of the written FILE could not tell them apart."""
+    import numpy as np
+    from PyQt6.QtGui import QImage, QImageReader
+    reader = QImageReader(str(appicon.ensure_generated_ico()))
+    assert reader.imageCount() == len(appicon.ICO_SIZES)
+    seen = []
+    for index in range(reader.imageCount()):
+        reader.jumpToImage(index)
+        img = reader.read().convertToFormat(QImage.Format.Format_RGBA8888)
+        assert not img.isNull(), f"frame {index} will not decode"
+        w, h = img.width(), img.height()
+        buf = img.constBits()
+        buf.setsize(h * img.bytesPerLine())
+        a = np.frombuffer(buf, np.uint8).reshape(
+            h, img.bytesPerLine() // 4, 4)[:, :w, :]
+        ys, xs = np.where(a[..., 3] > 16)
+        assert len(xs), f"frame {index} ({w}x{h}) is empty"
+        assert (xs.min(), xs.max()) == (0, w - 1), f"{w}x{h} is inset"
+        assert (ys.min(), ys.max()) == (0, h - 1), f"{w}x{h} is inset"
+        seen.append(w)
+    assert sorted(seen) == sorted(appicon.ICO_SIZES)
+
+
+def test_the_diagnostic_measures_the_icon_rather_than_naming_a_handle():
+    """A handle says an icon EXISTS; it cannot say how big it is, and
+    "how big" is the whole question for a taskbar button. Three fixes
+    in a row were reported on by a line that could not tell the two
+    apart."""
+    import ast
+    from pathlib import Path
+    source = Path(appicon.__file__).read_text(encoding="utf-8")
+    assert "def _icon_size(" in source
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "push_native_icon":
+            assert "_icon_size" in ast.dump(node)
+
+
+def test_measuring_an_icon_never_leaks_its_bitmaps():
+    """GetIconInfo hands back two bitmaps that belong to the caller. A
+    diagnostic that exhausts GDI handles is worse than the bug."""
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path(appicon.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_icon_size":
+            body = ast.dump(node)
+            assert "DeleteObject" in body
+            assert any(isinstance(n, ast.Try) and n.finalbody
+                       for n in ast.walk(node)), "the delete must be in a finally"
+
+
+def test_the_window_puts_its_icon_back_after_qt():
+    """Qt sets the window icon on the way up, at the un-scaled metric.
+    Ours ran at the end of __init__, which is before that."""
+    import ast
+    from pathlib import Path
+    from draft_assist.ui import app as app_mod
+    tree = ast.parse(Path(app_mod.__file__).read_text(encoding="utf-8"))
+    shown = [n for n in ast.walk(tree)
+             if isinstance(n, ast.FunctionDef) and n.name == "showEvent"]
+    assert shown, "MainWindow.showEvent has gone"
+    assert any("push_native_icon" in ast.dump(n) for n in shown)

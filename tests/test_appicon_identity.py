@@ -22,6 +22,14 @@ from draft_assist.config import REPO_ROOT                   # noqa: E402
 from draft_assist.ui import appicon                         # noqa: E402
 
 
+def _is_generated(path) -> bool:
+    """The app's own .ico. The name carries a digest of the artwork and
+    the size ladder, so the shell's icon cache cannot serve an old
+    render of it under a name it already knows - see `generated_ico`."""
+    return (path.name.startswith(appicon.GENERATED_PREFIX)
+            and path.suffix == ".ico")
+
+
 @pytest.fixture(scope="module")
 def qapp():
     yield QApplication.instance() or QApplication([])
@@ -78,7 +86,7 @@ def test_a_supplied_ico_is_used_as_it_is(qapp, tmp_path, monkeypatch):
     empty = tmp_path / "app.ico"
     empty.write_bytes(b"\x00\x00\x01\x00\x00\x00")   # zero images
     assert not appicon.is_ico(empty)
-    assert appicon.shell_ico().name == "app-generated.ico"
+    assert _is_generated(appicon.shell_ico())
     appicon.forget()
 
 
@@ -236,7 +244,7 @@ def test_a_png_renamed_to_ico_is_not_treated_as_one(qapp, tmp_path,
 
     # And the shell is handed a real one, generated from it.
     shell = appicon.shell_ico()
-    assert shell.name == "app-generated.ico"
+    assert _is_generated(shell)
     assert appicon.is_ico(shell)
     assert struct.unpack("<HHH", shell.read_bytes()[:6])[2] == len(
         appicon.ICO_SIZES)
@@ -289,7 +297,7 @@ def test_an_ico_holding_one_small_image_is_rebuilt_not_passed_through(
     assert set(appicon.SIZES) <= baked, "rebuilt around its biggest image"
 
     shell = appicon.shell_ico()
-    assert shell.name == "app-generated.ico"
+    assert _is_generated(shell)
     assert appicon.ico_sizes(shell) == set(appicon.ICO_SIZES)
     appicon.forget()
 
@@ -354,7 +362,7 @@ def test_the_bigger_picture_wins_rather_than_the_first_extension(
     # And the .ico the shell is handed is rendered from the PNG, not from
     # the 32 — which is the whole point of choosing the right file.
     shell = appicon.shell_ico()
-    assert shell.name == "app-generated.ico"
+    assert _is_generated(shell)
     assert appicon.ico_sizes(shell) == set(appicon.ICO_SIZES)
     appicon.forget()
 
@@ -442,7 +450,7 @@ def test_the_window_and_the_pin_are_built_from_the_same_file(
 
     assert appicon.chosen_path().name == "app.png"
     assert appicon.source() == "assets"
-    assert appicon.shell_ico().name == "app-generated.ico", \
+    assert _is_generated(appicon.shell_ico()), \
         "the shipped .ico is not the picture the window is showing"
     appicon.forget()
 

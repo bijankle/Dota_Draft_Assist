@@ -403,6 +403,9 @@ class MainWindow(QMainWindow):
         # `_start_update_check` — the banner reads the answer, the check
         # never runs on the refresh loop.
         self._newer_build = ""
+        # `showEvent` re-pushes the window's native icon once, because
+        # Qt sets its own on the way up and whichever runs last wins.
+        self._icon_pushed = False
         self._relaunching = False
         self._start_update_check()
         self._update_first_run_banner()
@@ -4289,6 +4292,29 @@ class MainWindow(QMainWindow):
         # out again for it.
         appicon.claim_window_identity(int(self.winId()))
         appicon.push_native_icon(int(self.winId()))
+
+    def showEvent(self, event) -> None:
+        """Put our own icon back after Qt has had its turn.
+
+        `_apply_app_icon` pushes the native icon at the end of
+        `__init__`, which is BEFORE the window is shown - and Qt sets
+        the window icon itself from the QIcon on the way up, at the
+        UN-SCALED small-icon metric. Whichever of the two runs last
+        wins, and ours was running first.
+
+        That is the standing shape of every icon fault in this app: our
+        own title bar draws from `appicon.pixmap` and has been right
+        throughout, while the thing the SHELL reads had something else
+        in it. Once per show, never fatal.
+        """
+        super().showEvent(event)
+        if self._icon_pushed:
+            return
+        self._icon_pushed = True
+        try:
+            appicon.push_native_icon(int(self.winId()))
+        except Exception:               # noqa: BLE001 - never worth a crash
+            pass
 
     def _set_pinned(self, on: bool) -> None:
         """The pin was pressed: hold the window in front, or stop.

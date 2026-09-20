@@ -535,9 +535,84 @@ def shell_ico() -> Path | None:
     if candidate is not None and covers_the_shell(candidate):
         return candidate
     try:
-        return write_ico(ASSETS_DIR / "app-generated.ico")
+        return ensure_generated_ico()
     except Exception:                   # noqa: BLE001 - see the docstring
         return None
+
+
+GENERATED_PREFIX = "app-generated"
+
+
+def ico_fingerprint() -> str:
+    """A short digest of everything that decides the .ico's contents.
+
+    The SOURCE picture (by path, size and mtime) and the size ladder.
+    Not the rendered bytes: this is asked on every start, and rendering
+    eighteen sizes to find out whether they changed is the work the
+    fingerprint exists to skip.
+    """
+    import hashlib
+    bits = [repr(ICO_SIZES)]
+    source = chosen_path()
+    if source is not None:
+        try:
+            stat = source.stat()
+            bits.append(f"{source.name}:{stat.st_size}:{int(stat.st_mtime)}")
+        except OSError:
+            bits.append(source.name)
+    return hashlib.sha1("|".join(bits).encode()).hexdigest()[:10]
+
+
+def generated_ico() -> Path:
+    """Where this app's own .ico goes, NAMED AFTER ITS CONTENTS.
+
+    IT USED TO BE ONE FIXED NAME, and that is the last place the shell
+    could still serve a stale picture from. A taskbar button for a
+    process that has declared an AppUserModelID is resolved through the
+    matching Start-menu shortcut rather than from the window, and that
+    path goes through the shell's ICON CACHE - which is keyed on the
+    icon's path and is notoriously willing to keep an old render of it.
+    Rewriting the same filename with better contents is exactly the
+    case it does not notice.
+
+    Measured: with the window's own ICON_SMALL a valid 24px handle
+    (`dpi=144 asked for big=48 small=24`, both reading back non-zero),
+    the button still drew at 16x16 beside Steam's 24x24 - so the
+    taskbar was not drawing from the window, and the file it WAS
+    drawing from had not changed its name since the 16px-only days.
+
+    A content-addressed name cannot be stale: different contents,
+    different path, nothing cached under it. It also makes the common
+    start CHEAPER, since an unchanged icon is a file that already
+    exists and eighteen sizes that do not have to be rendered.
+    """
+    return ASSETS_DIR / f"{GENERATED_PREFIX}-{ico_fingerprint()}.ico"
+
+
+def sweep_generated_icos(keep: Path | None = None) -> int:
+    """Delete the .ico files earlier runs generated. Never fatal - a
+    leftover is untidy, and failing to start over one would be worse."""
+    removed = 0
+    for stale in ASSETS_DIR.glob(f"{GENERATED_PREFIX}*.ico"):
+        if keep is not None and stale == keep:
+            continue
+        try:
+            stale.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def ensure_generated_ico() -> Path:
+    """The .ico for this icon, written only when it is not already
+    there. Old ones are swept, so `assets/` does not collect a file per
+    icon anybody has ever chosen."""
+    target = generated_ico()
+    if not target.exists():
+        write_ico(target)
+        sweep_generated_icos(keep=target)
+    return target
 
 
 def _property_key(name: str, pscon, pythoncom):
@@ -565,6 +640,64 @@ _handles: list = []
 # What `push_native_icon` last did. In the paste beside `identity_note`,
 # because between them they say which of the two mechanisms is at fault.
 window_icon_note = "not attempted"
+
+
+def _icon_size(handle) -> str:
+    """"WxH" for an HICON, or a bare marker when it cannot be measured.
+
+    A handle says an icon EXISTS. It cannot say how big it is, and
+    "how big is it" is the whole question for a taskbar button. The
+    colour bitmap inside the icon carries the answer.
+
+    Never fatal, and it must not leak: `GetIconInfo` hands back two
+    BITMAPS that belong to the caller, so both are deleted whatever
+    happens - a diagnostic that exhausts GDI handles would be a far
+    worse bug than the one it is reporting.
+    """
+    if not handle:
+        return "none"
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class ICONINFO(ctypes.Structure):
+            _fields_ = [("fIcon", wintypes.BOOL),
+                        ("xHotspot", wintypes.DWORD),
+                        ("yHotspot", wintypes.DWORD),
+                        ("hbmMask", wintypes.HBITMAP),
+                        ("hbmColor", wintypes.HBITMAP)]
+
+        class BITMAP(ctypes.Structure):
+            _fields_ = [("bmType", ctypes.c_long),
+                        ("bmWidth", ctypes.c_long),
+                        ("bmHeight", ctypes.c_long),
+                        ("bmWidthBytes", ctypes.c_long),
+                        ("bmPlanes", wintypes.WORD),
+                        ("bmBitsPixel", wintypes.WORD),
+                        ("bmBits", ctypes.c_void_p)]
+
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+        info = ICONINFO()
+        if not user32.GetIconInfo(ctypes.c_void_p(int(handle)),
+                                  ctypes.byref(info)):
+            return "?"
+        try:
+            bitmap = BITMAP()
+            source = info.hbmColor or info.hbmMask
+            if not gdi32.GetObjectW(source, ctypes.sizeof(BITMAP),
+                                    ctypes.byref(bitmap)):
+                return "?"
+            height = bitmap.bmHeight
+            if not info.hbmColor:
+                height //= 2       # a mask holds the colour AND the AND mask
+            return f"{bitmap.bmWidth}x{height}"
+        finally:
+            for stale in (info.hbmColor, info.hbmMask):
+                if stale:
+                    gdi32.DeleteObject(stale)
+    except Exception:                   # noqa: BLE001 - only a diagnostic
+        return "?"
 
 
 def push_native_icon(hwnd: int) -> bool:
@@ -678,15 +811,23 @@ def push_native_icon(hwnd: int) -> bool:
                                       ctypes.c_void_p(_ICON_BIG), None)
         got_small = user32.SendMessageW(window, _WM_GETICON,
                                         ctypes.c_void_p(_ICON_SMALL), None)
-        # THE SIZES ARE PART OF THE ANSWER. "the window has an icon" and
-        # "the window has an icon the taskbar can use" are different
-        # claims, and the whole of this fault was the second one being
-        # false while the first was true.
+        # AND THE SIZE THAT CAME BACK, NOT JUST A HANDLE. This module
+        # has now been wrong three times running about one taskbar
+        # button, and every time the diagnostic could not tell two
+        # claims apart. "I sent the message" is not "the window has an
+        # icon" - that was the last fix. "The window has an icon" is
+        # not "the window has a 24px icon", which is this one: the
+        # file is provably right (18 frames, each filling its square,
+        # a real 24x24 among them), the load provably succeeded, and
+        # the button still drew 16px of our CURRENT artwork - measured
+        # at 0.93 correlation against it, so not a stale cache either.
+        # Something is replacing the icon after we set it, and a
+        # handle cannot say so. A size can.
         window_icon_note = (f"{icon_file.name} -> hwnd {int(hwnd)}; "
                             f"dpi={dpi or 'unknown'} asked for "
                             f"big={want[0]} small={want[1]}; "
-                            f"reads back big={got_big or 0} "
-                            f"small={got_small or 0}")
+                            f"reads back big={_icon_size(got_big)} "
+                            f"small={_icon_size(got_small)}")
         return bool(got_big or got_small)
     except Exception as exc:            # noqa: BLE001 - see the docstring
         window_icon_note = f"{type(exc).__name__}: {exc}"

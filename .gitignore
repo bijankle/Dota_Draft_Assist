@@ -33,7 +33,7 @@ assets/app.png
 assets/app.jpg
 assets/app.jpeg
 assets/app.bmp
-assets/app-generated.ico
+assets/app-generated*.ico
 calibration_local.json
 
 # OS / editor
