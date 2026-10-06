@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..capture import session as session_mod
 from ..capture.window import DOTA_TITLE
 from ..gsi.state import DRAFTING_STATES
 from ..data.store import Dataset
@@ -40,6 +41,10 @@ class Snapshot:
     read_raw: DraftRead | None = None        # per-frame, for the debug view
     gate_score: float = float("inf")
     stalled: bool = False
+    # How long the captured PICTURE has been identical. `stalled` says a
+    # frame did not ARRIVE; this says the one that did was the same one
+    # again - a dead capture that looks perfectly healthy.
+    frozen_for: float = 0.0
     frames_arrived: int = 0
     source: str = ""
     warning: str = ""
@@ -129,6 +134,7 @@ class SessionProvider:
             frame=state.last_frame, read=read,
             read_raw=state.last_read_raw,
             gate_score=state.gate_score, stalled=state.stalled,
+            frozen_for=state.frozen_for,
             frames_arrived=state.frames_arrived)
         if read is not None:
             snap.left = read.team_ids("radiant")
@@ -641,7 +647,16 @@ class HybridProvider:
         # phrase: it is the one place that knows how many boxes DID hold a
         # hero the game named, and nine of ten matching is a hero in a
         # costume rather than a calibration fault.
-        if placed.boxes_wrong:
+        # AND NOT WHEN THE PICTURE IS FROZEN. `boxes_wrong` means "the
+        # game named ten heroes and too few of the boxes hold one", which
+        # is proof about the GEOMETRY only while the frame is a live
+        # picture of the draft. A capture stuck on the last thing it saw
+        # fails every box for a reason that has nothing to do with where
+        # they are - and the report that brought this in said "the app
+        # could not find the hero portraits on screen" about boxes that
+        # were sitting exactly where they should be, on a three-minute-old
+        # still of the Dota main menu.
+        if placed.boxes_wrong and snap.frozen_for < session_mod.FROZEN_AFTER:
             snap.crop_boxes_wrong = True
 
         with self._search_lock:
@@ -845,6 +860,7 @@ class HybridProvider:
         snap.read_raw = screen.read_raw
         snap.gate_score = screen.gate_score
         snap.stalled = screen.stalled
+        snap.frozen_for = getattr(screen, "frozen_for", 0.0)
         snap.frames_arrived = max(snap.frames_arrived, screen.frames_arrived)
         if screen.warning and not snap.warning:
             snap.warning = screen.warning

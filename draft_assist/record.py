@@ -378,6 +378,13 @@ def snapshot_record(snap, allies, enemies, dataset) -> dict:
         # boxes matching too few of them is a verdict rather than
         # recognition being unlucky.
         "crop_boxes_wrong": bool(getattr(snap, "crop_boxes_wrong", False)),
+        # HOW LONG THE PICTURE HAD BEEN THE SAME ONE. A capture can go
+        # on delivering identical pixels for ever and look perfectly
+        # healthy to every other field here - `has_frame` true,
+        # `ran_recognition` true, `read_heroes` nought - which is
+        # exactly the report this was added for: 579 ticks like that,
+        # and the frames in it byte-identical stills of the main menu.
+        "frozen_for": round(float(getattr(snap, "frozen_for", 0.0)), 1),
         # And this one says the teams were split by a rule known to
         # invert, which is a different complaint from a hero being
         # misread and wants a different answer.

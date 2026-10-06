@@ -36,6 +36,24 @@ MISSES_TO_DEACTIVATE = 4
 # draft screen (feeds gate references).
 CONFIRM_SLOTS = 6
 STALL_AFTER = 5.0      # no frames for this long -> "stalled" flag
+# THE PICTURE HAS NOT CHANGED FOR THIS LONG -> "frozen". A DIFFERENT
+# QUESTION FROM `stalled`, which watches whether a frame ARRIVED: a
+# capture that goes on delivering the SAME pixels for ever looks
+# perfectly healthy to that check and is completely dead.
+#
+# Measured, from a real report: 579 ticks, every one with a frame,
+# recognition run on 386 of them, `read_heroes` 0 on all 579 - and the
+# four frames the report carried, spread over three minutes of a draft,
+# were BYTE-IDENTICAL to each other and were a picture of the Dota MAIN
+# MENU. The app then blamed its own crop boxes, which were on exactly
+# the right part of a picture that was never going to contain a pick
+# bar.
+#
+# Ten seconds because a live Dota screen is never pixel-identical for
+# that long - the clock alone redraws every second - while an alt-tabbed
+# or minimised client legitimately is, and that is a true answer rather
+# than a false alarm: the capture is not showing the draft either way.
+FROZEN_AFTER = 10.0
 # While the game feed is SILENT, recognition runs this often even when the
 # gate says no, because a gate that never runs recognition never learns the
 # screen it is wrong about. See `_should_probe`.
@@ -65,6 +83,9 @@ class SessionState:
     gate_score: float = float("inf")
     frames_arrived: int = 0
     stalled: bool = False
+    # How long the captured PICTURE has been identical. `stalled` above
+    # answers "did a frame arrive"; this answers "was it a new one".
+    frozen_for: float = 0.0
     last_read: DraftRead | None = None       # STABILISED — what consumers use
     last_read_raw: DraftRead | None = None   # per-frame — what debug shows
     last_frame: np.ndarray | None = None
@@ -142,6 +163,11 @@ class CaptureSession:
         self._latest: np.ndarray | None = None
         self._arrived_at = 0.0
         self._count = 0
+        # The last picture's fingerprint, and when it last CHANGED. See
+        # FROZEN_AFTER: a capture can go on delivering the same pixels
+        # for ever and look perfectly healthy to `stalled`.
+        self._fingerprint: int | None = None
+        self._changed_at = 0.0
         self._trips = 0
         self._misses = 0
         self._next_tick = 0.0
@@ -450,6 +476,16 @@ class CaptureSession:
         # reported `frame=none` and the debug view had nothing to show —
         # exactly when a picture is what you need.
         self.state.last_frame = frame
+
+        # IS IT A NEW PICTURE? Decimating by slicing is a VIEW and costs
+        # nothing, and a 31-step stride over a 3440x1440 frame is about
+        # 15 KB to hash - far too coarse to miss a screen change and far
+        # too cheap to matter four times a second. The same trick, and
+        # the same reason, as `gate.signature`.
+        mark = hash(frame[::31, ::31].tobytes())
+        if mark != self._fingerprint or not self._changed_at:
+            self._fingerprint, self._changed_at = mark, now
+        self.state.frozen_for = now - self._changed_at
 
         active = (self.state.forced or self.state.required
                   or self.state.mode == "active")

@@ -68,6 +68,7 @@ from ..model import items as items_mod
 from ..model import roles as roles_mod
 from ..model import scoring
 from . import settings as ui_settings
+from ..capture import session as session_mod
 from ..capture.window import DOTA_TITLE
 from .. import record as record_mod
 from . import mailer
@@ -2056,6 +2057,25 @@ class MainWindow(QMainWindow):
         self._sync_source_controls()
         return True
 
+    def _rebind_capture(self) -> None:
+        """Let go of the Dota window and look for it again.
+
+        The remedy for a frozen capture, and the one thing the app can do
+        about it by itself: a capture that has stopped producing new
+        pixels is not going to start again on its own, but `LiveProvider`
+        re-looks for the window every few seconds whenever it is not
+        bound to one. Never fatal - this runs from a banner button.
+        """
+        provider = getattr(self.provider, "vision", None) or self.provider
+        rebind = getattr(provider, "rebind", None)
+        if rebind is None:
+            self._say("Screen reading is not switched on", 6000)
+            return
+        try:
+            self._say(rebind(None), 8000)   # None means "find the Dota client"
+        except Exception as exc:            # noqa: BLE001 - a banner button
+            self._say(f"Could not reconnect: {exc}", 8000)
+
     def _choose_brackets(self) -> None:
         """Pick the rank brackets statistics come from, then offer the
         re-pull the change requires."""
@@ -2485,6 +2505,22 @@ class MainWindow(QMainWindow):
                 "-gamestateintegration to Dota's launch options in Steam, "
                 "then restart Dota.",
                 "Show me how", self._launch_option_help)
+            return
+        # THE PICTURE ITSELF, AHEAD OF THE BOXES, because a capture stuck
+        # on the last thing it saw fails every box for a reason that has
+        # nothing to do with where they are. Told it was the boxes, the
+        # only thing somebody can do is recalibrate geometry that was
+        # never wrong - which is exactly what a real report asked for
+        # after a whole draft read off a three-minute-old still of the
+        # Dota main menu, with 579 ticks all reporting a frame.
+        if (snap is not None
+                and getattr(snap, "frozen_for", 0.0) >= session_mod.FROZEN_AFTER):
+            self._show_banner(
+                "<b>The Dota window is not updating.</b> The app is still "
+                "receiving the same picture, so it cannot read the draft. "
+                "Switch Dota to borderless or windowed mode, or bring it "
+                "back onto this screen.",
+                "Reconnect", self._rebind_capture)
             return
         # THE CROP BOXES, second only to the feed, because between them
         # they are the two ways the app goes blind for a whole draft. This
@@ -6553,6 +6589,7 @@ def _capture_session():
     run has none, and the banner exists to say so."""
     from ..capture.session import CaptureSession
     from ..vision import library
+    from ..vision import layout as layout_mod
     from ..vision.layout import load_layout
     try:
         params = library.load_params()
@@ -6564,7 +6601,12 @@ def _capture_session():
     # the shipped table, so the session must not re-fit over it on the
     # first frame. Without this the whole point of `calibration_local.json`
     # would be undone one tick after startup.
-    session.layout_is_measured = CALIBRATION_FILE.exists()
+    # WHETHER ONE WILL BE USED, not whether a file is there. An
+    # impossible calibration is ignored by `load_layout`, and latching on
+    # the file's mere existence would then pin this session to the
+    # sizeless defaults and stop `fit_to_frame` keying the shipped table
+    # on the real frame - which is worse than never having written it.
+    session.layout_is_measured = layout_mod.calibration_in_use()
     return session
 
 

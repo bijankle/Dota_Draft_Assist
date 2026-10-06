@@ -14,7 +14,7 @@ debug overlay draws the boxes so being off is visible instantly.
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from ..config import CALIBRATION_FILE
@@ -174,6 +174,93 @@ class DraftLayout:
                         slot.y + self.role_dy, slot.w, self.role_h)
 
 
+# How far the two bank origins may be from mirroring each other before
+# the calibration is refused, as a fraction of the HUD span. The pick bar
+# is CENTRED on that span, so the left origin is the mirror of the right
+# to within 1 to 4 PIXELS on every frame that has ever located all ten.
+# IT IS BOUNDED FROM BOTH SIDES, and the lower bound was a surprise.
+#
+#   must CATCH   a bank one portrait out ........ 0.0645 (the smallest
+#                                                 pitch any group uses)
+#   must PASS    `DraftLayout()`'s own defaults .. 0.0285 out of mirror
+#
+# Those shipped six predate `measured.py` and are deliberately untouched
+# - they are only ever used when there is no frame to measure against,
+# since every path that HAS one goes through the table - but they are
+# not mirror-consistent, and refusing them would refuse the app's own
+# starting point. 0.04 sits between the two with room either side.
+#
+# A real measurement is nowhere near either bound: the mirror lands
+# within 1 to 4 PIXELS on every frame that has ever located all ten,
+# which at a 2560px HUD span is 0.0016.
+MIRROR_TOLERANCE = 0.04
+
+
+def why_impossible(layout: "DraftLayout") -> str:
+    """Why these boxes cannot be a real pick bar, or "" if they could.
+
+    TWO CHECKS, AND THE FIRST IS UNARGUABLE: the boxes have to be inside
+    the HUD box. A calibration whose last Dire portrait starts past the
+    right-hand edge describes a bar that is not on the screen.
+
+    The second catches the error that stays on screen. `autocal` reads a
+    bank's origin off the first portrait it locates in it, so a missed
+    leading portrait shifts that bank by a whole pitch and leaves every
+    other fraction correct - and the result still fits inside the box, so
+    nothing refuses it.
+
+    MEASURED, from a real report: a 3440x1440 machine was reading with
+    `dire_x` 0.6996 against a shipped 0.5710 - out by 329px, which is
+    1.99 pitches - while its other five fractions matched the shipped
+    table to within four pixels. Its Dire bank ran to 1.018 of the HUD
+    box, 46px past the edge of the screen area, and its mirror came out
+    NEGATIVE. The app used it for a whole draft and then reported that it
+    could not find the portraits.
+    """
+    right_edge = layout.dire_x + 4 * layout.pitch + layout.slot_w
+    if layout.radiant_x < 0 or layout.dire_x < 0:
+        return "a bank starts left of the HUD box"
+    if right_edge > 1.0:
+        return (f"the Dire bank runs to {right_edge:.3f} of the HUD box, "
+                "which is off the right-hand edge of the screen")
+    if layout.y < 0 or layout.y + layout.slot_h > 1.0:
+        return "the bar is outside the frame vertically"
+    if layout.slot_w <= 0 or layout.slot_h <= 0 or layout.pitch <= 0:
+        return "a portrait has no size"
+    mirrored = 1.0 - right_edge
+    if abs(mirrored - layout.radiant_x) > MIRROR_TOLERANCE:
+        return (f"the two banks do not mirror: the Radiant origin is "
+                f"{layout.radiant_x:.4f} where the bar being centred puts "
+                f"it at {mirrored:.4f}, which is "
+                f"{abs(mirrored - layout.radiant_x) / max(layout.pitch, 1e-6):.1f} "
+                "portrait pitches out")
+    return ""
+
+
+def calibration_in_use(calibration_file: Path | None = None) -> bool:
+    """Is there a calibration this machine will actually USE?
+
+    NOT the same question as "does the file exist", which is what the
+    capture session used to latch on. An impossible file is ignored by
+    `load_layout`, so latching on its existence would pin the session to
+    `DraftLayout()`'s sizeless defaults and stop `fit_to_frame` ever
+    keying the shipped table on the real frame - leaving the display
+    worse off than if the file had never been written.
+    """
+    path = calibration_file or CALIBRATION_FILE
+    if not path.exists():
+        return False
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        candidate = DraftLayout()
+        for k, v in saved.items():
+            if hasattr(candidate, k):
+                setattr(candidate, k, float(v))
+    except (OSError, ValueError, TypeError):
+        return False
+    return not why_impossible(candidate)
+
+
 def load_layout(width: int = 0, height: int = 0,
                 calibration_file: Path | None = None) -> DraftLayout:
     """Where to look for the portraits, most specific answer first.
@@ -206,8 +293,22 @@ def load_layout(width: int = 0, height: int = 0,
         if bad:
             raise ValueError(f"{calibration_file} has unknown keys {sorted(bad)}; "
                              f"valid keys: {sorted(known)}")
+        candidate = replace(layout)
         for k, v in overrides.items():
-            setattr(layout, k, float(v))
+            setattr(candidate, k, float(v))
+        # AND A SAVED MEASUREMENT CAN BE WRONG, which this used to have no
+        # way of saying. The local file outranks everything and
+        # `CaptureSession.layout_is_measured` latches on its mere
+        # EXISTENCE, so a bad one is permanent: the boxes never land, so
+        # `bugreport.repair` can never locate ten portraits, so it can
+        # never write a better one. A real machine sat in that loop for a
+        # whole draft and reported that the app could not find the
+        # portraits. An impossible file is ignored, which puts the display
+        # straight back on the shipped table it should have been using.
+        broken = why_impossible(candidate)
+        if broken:
+            return layout
+        layout = candidate
     return layout
 
 
@@ -220,5 +321,13 @@ def save_calibration(layout: DraftLayout,
     a test run left a stray calibration_local.json behind and broke an
     unrelated test on the next run. Same rule as `ui_settings.load`.
     """
+    broken = why_impossible(layout)
+    if broken:
+        # REFUSED RATHER THAN WRITTEN. What this saves is an ANSWER that
+        # outranks the shipped table for ever after, so writing one that
+        # cannot describe a pick bar is the expensive mistake - and the
+        # app cannot measure its way out of it afterwards, because the
+        # boxes have to land before a better measurement can be taken.
+        raise ValueError(f"refusing to save these crop boxes: {broken}")
     path = calibration_file or CALIBRATION_FILE
     path.write_text(json.dumps(asdict(layout), indent=2), encoding="utf-8")

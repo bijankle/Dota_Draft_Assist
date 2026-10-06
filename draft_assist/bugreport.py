@@ -156,6 +156,29 @@ def _blind_run(states: list[dict]) -> float:
     return longest
 
 
+# A picture identical for this long, while the game says a draft is on,
+# is a dead capture rather than a quiet screen. The session applies the
+# same floor live; this reads back what it recorded.
+FROZEN_SECONDS = 10.0
+
+
+def _frozen_run(states: list[dict]) -> float:
+    """The longest the captured picture went without changing.
+
+    Read back from `frozen_for`, which the session measures live. A
+    recording made before that field existed has none, and answers 0 -
+    "not measured" rather than "it was fine", which is the honest way
+    round: the fault it describes was invisible until it was recorded.
+    """
+    best = 0.0
+    for row in states:
+        value = row.get("frozen_for")
+        if value is None:
+            continue
+        best = max(best, float(value))
+    return best if best >= FROZEN_SECONDS else 0.0
+
+
 def grade(folder: Path, dataset=None) -> Verdict:
     """Read one finished recording and say whether it went wrong."""
     out = Verdict()
@@ -167,6 +190,30 @@ def grade(folder: Path, dataset=None) -> Verdict:
     out.notes.append(f"{len(states)} ticks, {len(drafting)} of them in a draft")
     if not drafting:
         out.notes.append("this session never reached a draft")
+        return out
+
+    # 0. THE PICTURE ITSELF, because a frozen one explains every other
+    #    fault below and none of them can be judged while it holds. The
+    #    report this came from read "the app could not find the hero
+    #    portraits on screen" and "nothing was read for 90s" - both true,
+    #    both caused by a capture stuck on a three-minute-old still of the
+    #    Dota main menu, with the crop boxes sitting exactly where they
+    #    should be. Naming the boxes there sends somebody to recalibrate
+    #    geometry that was never wrong.
+    frozen = _frozen_run(drafting)
+    if frozen:
+        out.notes.append(f"the captured picture never changed for {frozen:.0f}s")
+        out.faults.append(Fault(
+            "frozen",
+            f"the screen capture froze for {frozen:.0f}s",
+            "The app went on receiving frames and they were all the SAME "
+            "picture, so recognition had nothing new to read. This is the "
+            "capture, not the crop boxes and not the portrait library - "
+            "the usual causes are Dota going fullscreen-exclusive, or the "
+            "window being minimised or on a display that stopped being "
+            "captured.",
+            repairable=False))
+        # Everything below is measured off that same dead picture.
         return out
 
     # 1. THE BOXES, which is the one verdict rather than an inference.
