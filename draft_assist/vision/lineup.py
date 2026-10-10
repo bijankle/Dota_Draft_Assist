@@ -238,6 +238,17 @@ def read_placed(frame, hero_ids: list[int],
         note=f"matched {len(assignment)} portraits in the calibrated boxes")
 
 
+def _banks_look_right(split: int, total: int) -> bool:
+    """Does cutting here give two banks the pick bar could really have?
+
+    Five a side, and with one portrait missed, five and four. Nine or ten
+    located is all `read_searched` accepts, so the left bank is four or
+    five and the right is whatever is left of the same.
+    """
+    left, right = split, total - split
+    return left in (4, 5) and right in (4, 5) and left + right == total
+
+
 def split_banks(found: list) -> tuple[int, str]:
     """Where the left bank ends, read off the gaps. (-1, reason) if it cannot be.
 
@@ -264,10 +275,32 @@ def split_banks(found: list) -> tuple[int, str]:
     if not wide:
         return -1, (f"no gap on the bar is {BANK_GAP_STEPS:g}x the "
                     f"{pitch:.0f}px step, so the two banks cannot be told apart")
-    if len(wide) > 1:
-        return -1, (f"{len(wide)} gaps look like the split between banks; "
+    # TWO WIDE GAPS IS NOT A REASON TO GIVE UP, and refusing on the COUNT
+    # threw away most of the readings this app has ever taken. Across
+    # twelve reported drafts the side reading failed seven times, and in
+    # three of those the boxes were provably ON the bar - "9 of the ten
+    # matched in the calibrated boxes" and then "2 gaps look like the
+    # split between banks; this frame is probably not a pick bar".
+    #
+    # THE BAR IS FIVE A SIDE, which is a fact about Dota rather than a
+    # threshold, and it is the constraint that was going unused. A hole
+    # where a portrait was missed and the real boundary between banks are
+    # both "wide"; only one of them cuts the bar into banks of five. So
+    # the candidates are TESTED against that instead of counted, and the
+    # ambiguity that remains - two gaps that would BOTH give five a side,
+    # which needs a bar this function cannot read - is still refused.
+    total = len(found)
+    fits = [i for i in wide if _banks_look_right(i + 1, total)]
+    if len(fits) == 1:
+        return fits[0] + 1, ""
+    if not fits:
+        shape = ", ".join(f"{i + 1}/{total - i - 1}" for i in wide)
+        many = "s" if len(wide) > 1 else ""
+        return -1, (f"{len(wide)} gap{many} look like the split between "
+                    f"banks and none of them is five a side ({shape}); "
                     "this frame is probably not a pick bar")
-    return wide[0] + 1, ""
+    return -1, (f"{len(fits)} gaps would each split the bar five a side; "
+                "this frame is probably not a pick bar")
 
 
 def _place_missing(found: list, hero_ids: list[int],

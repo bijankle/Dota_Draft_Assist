@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from ..capture import session as session_mod
+from ..vision.lineup import TEAM_SIZE
 from ..capture.window import DOTA_TITLE
 from ..gsi.state import DRAFTING_STATES
 from ..data.store import Dataset
@@ -524,6 +525,12 @@ class HybridProvider:
         # The last match the screen was read for. A new one is the only
         # unambiguous "this board is over" the app gets — see `_new_match`.
         self._match = ""
+        # WHICH SIDE THE SCREEN PUT EACH HERO ON, this match. The pick bar
+        # is the one source that is CERTAIN about sides - Radiant is
+        # always its left bank and the feed says which bank is yours - and
+        # until now the app threw that away the moment strategy time
+        # arrived. See `_orient_by_memory`.
+        self._screen_side: dict[int, str] = {}
 
     def set_dataset(self, dataset: Dataset) -> None:
         """Hand the reloaded dataset to the half that reads it."""
@@ -590,6 +597,82 @@ class HybridProvider:
         snap.lineup_source = "minimap+screen"
         snap.source = (f"game data + screen · ten heroes from the game, "
                        f"sides read off the pick bar ({read.how})")
+
+    def _orient_by_memory(self, snap) -> None:
+        """Put the minimap's ten onto the sides the SCREEN already read.
+
+        THE LAST RESORT BEFORE A COIN FLIP, and it answers the complaint
+        it was built from: "sometimes at the end when drafting phase is
+        over and everyone is locked in, the app gets 1 person on each team
+        and switches them to the other team."
+
+        `_split_by_lane_pairs` produces a clean five a side and cannot say
+        WHICH half is yours; that is a coin flip this project has watched
+        land wrong on real matches more than once. Meanwhile the screen
+        spent the whole of hero selection reading the pick bar, where
+        Radiant IS the left bank and there is nothing to guess - and all
+        of it was discarded the moment strategy time arrived.
+
+        Measured on the reported draft of 2026-10-10: at 22.4s the screen
+        had allies Snapfire, Pudge, Mars, Phantom Lancer, Crystal Maiden;
+        at 35.0s the minimap replaced them with Snapfire, Queen of Pain,
+        Juggernaut, Necrophos, Undying. Four of the five moved to the
+        enemy team. Scored against what the screen had read, the half the
+        app chose agreed on 1 and contradicted on 3, and the half it threw
+        away agreed on 4 and contradicted on 1.
+
+        PER HERO, NOT PER HALF, because the right answer there was not
+        either half: the player's own hero came from one side of its lane
+        pair and the other four from the other. Nothing about the halves
+        is consistently ordered, which is exactly what this project has
+        recorded about object index all along - so what is honoured is
+        each hero the screen actually saw, and the minimap is left to
+        place only the heroes it never did.
+
+        Declines rather than guessing whenever the memory cannot be made
+        to fit five a side: a wrong split asserted confidently is worse
+        than a coin flip the user is already correcting by hand.
+        """
+        ten = list(snap.left) + list(snap.right)
+        if len(ten) != 2 * TEAM_SIZE or not self._screen_side:
+            return
+        seen = {hero: self._screen_side[hero] for hero in ten
+                if hero in self._screen_side}
+        if not seen:
+            return
+        allies = [hero for hero in ten if seen.get(hero) == "ally"]
+        enemies = [hero for hero in ten if seen.get(hero) == "enemy"]
+        if len(allies) > TEAM_SIZE or len(enemies) > TEAM_SIZE:
+            return               # the screen contradicts itself: decline
+        # A hero the GAME calls yours is never on the other side. That
+        # outranks the screen, as it does everywhere else in this file.
+        if snap.my_hero_id and snap.my_hero_id in enemies:
+            return
+        # Everything the screen never placed keeps the side the minimap
+        # gave it, unless that side is already full.
+        was_ally = set(snap.left)
+        for hero in ten:
+            if hero in allies or hero in enemies:
+                continue
+            first = allies if hero in was_ally else enemies
+            second = enemies if first is allies else allies
+            (first if len(first) < TEAM_SIZE else second).append(hero)
+        if len(allies) != TEAM_SIZE or len(enemies) != TEAM_SIZE:
+            return
+        if set(allies) == was_ally:
+            return               # the minimap already agreed; say nothing
+        snap.left = merge(allies, self.manual.entered("ally"))
+        snap.right = merge(enemies, self.manual.entered("enemy"))
+        snap.sides_certain = True
+        snap.lineup_source = "minimap+screen"
+        snap.source = (f"game data + screen · ten heroes from the game, "
+                       f"sides from the {len(seen)} the screen read while "
+                       f"you were picking")
+        snap.gsi_notes = list(getattr(snap, "gsi_notes", []) or []) + [
+            f"the minimap's split disagreed with the pick bar on "
+            f"{len(was_ally - set(allies))} hero(es); the screen was read "
+            f"during hero selection, where Radiant is always the left "
+            f"bank, so it wins"]
 
     def _read_or_start_search(self, key, snap, ten):
         """The cheap read now; the expensive one on a worker.
@@ -839,6 +922,7 @@ class HybridProvider:
         was, self._match = self._match, snap.match_id
         if not was:
             return                  # the first match of the session
+        self._screen_side.clear()
         forget = getattr(self.session, "forget_reading", None)
         if forget is not None:
             forget()
@@ -867,6 +951,8 @@ class HybridProvider:
 
         if snap.lineup_source == "minimap" and not snap.sides_certain:
             self._resolve_sides_by_sight(snap)
+        if snap.lineup_source == "minimap" and not snap.sides_certain:
+            self._orient_by_memory(snap)
         if snap.lineup_source:
             return snap                      # the game told us outright
 
@@ -936,6 +1022,13 @@ class HybridProvider:
         snap.unknown = read.unknown_count()
         snap.lineup_source = ("screen" if not known_allies and not known_enemies
                               else "game data + screen")
+        # KEPT FOR STRATEGY TIME. This is the moment the sides are known
+        # for certain, and it is thrown away a minute later unless it is
+        # written down now.
+        for hero in snap.left:
+            self._screen_side[hero] = "ally"
+        for hero in snap.right:
+            self._screen_side.setdefault(hero, "enemy")
         snap.needs_manual = len(snap.left) + len(snap.right) < 9
         snap.mode = "forced" if self.forced else (
             "draft" if snap.game_state or snap.left or snap.right else "idle")

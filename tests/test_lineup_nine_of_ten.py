@@ -144,7 +144,14 @@ def test_a_bar_that_is_not_five_a_side_is_refused(monkeypatch):
     found[5] = Located(found[5].hero_id, found[4].x + 60, found[5].y,
                        found[5].w, found[5].h, 0.8)
     found.sort(key=lambda item: item.x)
-    assert lineup_mod.split_banks(found)[0] == 6
+    # REFUSED BY `split_banks` ITSELF NOW. It used to hand 6 back and
+    # leave the caller to notice, which is the same verdict one layer
+    # later - and counting the wide gaps rather than testing them is what
+    # made it throw away readings where the boxes were provably on the
+    # bar. Five a side is a fact about the pick bar; the gap count is not.
+    split, why = lineup_mod.split_banks(found)
+    assert split == -1
+    assert "6/4" in why and "five a side" in why
     read = searched(monkeypatch, found)
     assert not read.ok
     assert "6/4" in read.note

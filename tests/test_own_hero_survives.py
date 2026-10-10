@@ -57,6 +57,7 @@ def hybrid():
     hub._search_running = None
     hub._search_at = 0.0
     hub.vision = object()
+    hub._screen_side = {}
     return hub
 
 
