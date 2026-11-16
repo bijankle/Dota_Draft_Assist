@@ -72,7 +72,27 @@ def build_dataset(skip_bracket_check: bool = False,
 
     index = normalize.hero_index(hero_ids)
     b = normalize.baseline_vector(index, baselines)
-    d_vs, d_with = normalize.build_delta_matrices(index, b, matchups)
+    report: dict = {}
+    d_vs, d_with = normalize.build_delta_matrices(index, b, matchups, report)
+    # WHICH HEROES THE BASELINE IS WRONG ABOUT, measured on this pull.
+    # The baseline comes from OpenDota and the pair counts from whichever
+    # source is configured, and the two do not bracket matches the same
+    # way - so a hero whose win rate is steep across brackets carries a
+    # constant error on every pair it appears in. Summed over a drafted
+    # board that is nine times the error, which is how Techies reached
+    # +63 beside team-mates at +5 to +13. `normalize` takes it back out;
+    # this says what it took, worst first, so the next pull can be
+    # checked rather than trusted.
+    worst = sorted(report.get("main_effects", {}).items(),
+                   key=lambda kv: -abs(kv[1]))[:10]
+    skew = [{"hero": heroes.get(hid, {}).get("name", str(hid)),
+             "points": round(offset * 100, 2)}
+            for hid, offset in worst if abs(offset) >= normalize.MAIN_EFFECT_WARN]
+    if skew:
+        print("  NOTE: the baseline disagrees with the pair data for "
+              f"{len(skew)} hero(es) - the main effect was removed from each:")
+        for row in skew:
+            print(f"    {row['hero']:<22} {row['points']:+.1f} points")
     problems = normalize.sanity_check(
         d_vs, d_with, expect_synergy=any(s["with"] for s in matchups.values()))
     if problems:
@@ -90,6 +110,10 @@ def build_dataset(skip_bracket_check: bool = False,
             "pulled_at": time.time(),
             "target_brackets": list(brackets),
             "pair_source": source,
+            # The heroes whose pair data most disagreed with their
+            # baseline, and by how many points of win rate. Empty is the
+            # healthy answer. See `normalize._without_main_effect`.
+            "baseline_skew": skew,
             # OpenDota has no ally-pair endpoint, so a dataset built from it
             # carries an all-zero synergy matrix. Recorded rather than
             # inferred, so the UI can say so instead of showing an empty

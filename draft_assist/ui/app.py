@@ -3586,6 +3586,20 @@ class MainWindow(QMainWindow):
             f"calibration file: "
             f"{'yes' if CALIBRATION_FILE.exists() else 'no (shipped values)'}",
         ]
+        # WHICH HEROES THE BASELINE IS WRONG ABOUT, off the dataset in use.
+        # This is the line that answers "why is techies blown out, and why
+        # him specifically" - the pair counts and the baseline table come
+        # from different sources that bracket matches differently, so a
+        # hero whose win rate moves a lot between them carries a constant
+        # error on all nine of its pairs. `store.load` measures what it had
+        # to take off; empty is the healthy answer and prints nothing.
+        skew = (self.ds.meta.get("baseline_skew_now")
+                or self.ds.meta.get("baseline_skew") or [])
+        if skew:
+            worst = ", ".join(f"{r['hero']} {r['points']:+.1f}pts"
+                              for r in skew[:5])
+            lines.append(f"baseline disagrees with the pair data for "
+                         f"{len(skew)} hero(es): {worst}")
         if snap is not None:
             frame = getattr(snap, "frame", None)
             shape = getattr(frame, "shape", None)

@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import CACHE_MAX_AGE_HOURS, DATA_CACHE
+from . import normalize
 
 MATRIX_FILE = DATA_CACHE / "dataset.npz"
 META_FILE = DATA_CACHE / "dataset_meta.json"
@@ -65,16 +66,55 @@ def load(path: Path = MATRIX_FILE) -> Dataset:
     meta = json.loads(META_FILE.read_text(encoding="utf-8"))
     heroes = {int(k): v for k, v in meta.pop("heroes").items()}
     hero_ids = [int(x) for x in z["hero_ids"]]
+    # A CACHE WRITTEN BY AN OLDER VERSION MUST NOT SHOW NUMBERS THIS ONE
+    # WOULD NOT PRODUCE. The matrices are already deltas, so this is
+    # idempotent and costs a couple of 127x127 sweeps; what it buys is
+    # that a copy of the app which has just updated itself is right at
+    # once, instead of after whenever the owner next pulls statistics.
+    # See normalize.recentre.
+    at_load: dict = {}
+    d_vs, d_with = normalize.recentre(z["delta_vs"].astype(np.float64),
+                                      z["delta_with"].astype(np.float64),
+                                      at_load)
+    meta["baseline_skew_now"] = _worst_skew(
+        at_load.get("main_effects", {}), hero_ids, heroes)
     return Dataset(
         hero_ids=hero_ids,
         index={hid: i for i, hid in enumerate(hero_ids)},
         heroes=heroes,
         baseline=z["baseline"].astype(np.float64),
         picks=z["picks"],
-        delta_vs=z["delta_vs"].astype(np.float64),
-        delta_with=z["delta_with"].astype(np.float64),
+        delta_vs=d_vs,
+        delta_with=d_with,
         meta=meta,
     )
+
+
+def _worst_skew(report: dict, hero_ids: list[int],
+                heroes: dict[int, dict]) -> list[dict]:
+    """The heroes this load had to correct most, worst first.
+
+    WHY THIS IS MEASURED AT LOAD AND NOT ONLY AT BUILD. The build's own
+    `baseline_skew` is the right record and is absent from every cache
+    written before it existed - which is every cache in the world on the
+    day the fix ships. This is the same figure taken off the matrices
+    actually in use, so the question "why was Techies six times
+    everybody else?" has an answer on the owner's own machine without
+    waiting for a re-pull.
+
+    Only heroes over `normalize.MAIN_EFFECT_WARN`, so the healthy answer
+    is an empty list rather than 127 rows of noise.
+    """
+    rows = []
+    for i, offset in sorted(report.items(), key=lambda kv: -abs(kv[1])):
+        if i >= len(hero_ids) or abs(offset) < normalize.MAIN_EFFECT_WARN:
+            continue
+        hid = hero_ids[i]
+        rows.append({"hero": heroes.get(hid, {}).get("name", str(hid)),
+                     "points": round(offset * 100, 2)})
+        if len(rows) == 10:
+            break
+    return rows
 
 
 def pair_only_brackets(path: Path = META_FILE) -> bool | None:

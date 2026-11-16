@@ -94,6 +94,97 @@ credentials, and put the account at risk. Do not go there.
    contaminated by hero main effects; we want only the interaction term. If a
    stored matrix ever contains raw rates, every recommendation is wrong.
 
+   **AND SUBTRACTING THE BASELINE DOES NOT FINISH THE JOB, WHICH IS WHAT
+   PUT TECHIES AT +63** (`normalize._without_main_effect`, `MAIN_EFFECT_WARN`,
+   `meta["baseline_skew"]`). Reported as "why is techies synergy score blwon
+   out???? fix this across the board", with Techies at **+63.1** on the board
+   beside team-mates at +5 to +13, carrying Radiant to +101.2 against Dire's
+   +50.3.
+   **IT IS NOT A PROPERTY OF TECHIES; IT IS THE BASELINE BEING WRONG ABOUT
+   TECHIES.** The subtraction removes `b_i`, the win rate SOME OTHER TABLE
+   reported for that hero - and the two halves come from different places:
+   the baselines are OpenDota's, the pair counts are Stratz's, and this file
+   already says two paragraphs down that "Stratz buckets whole matches by
+   average rank; OpenDota counts each player at their own rank", and that
+   Stratz's filter may be WIDENED to a pair-only span. So `b_i` is measured
+   over one population and the pair rates over another. A hero whose win rate
+   is flat across brackets barely notices; one whose win rate is steep does
+   not. That is the answer to "but why te hies specifically aswell? he is 6
+   times bigger than everyone elses total" - **the error is on EVERY hero's
+   row** and is proportional to how far that hero's win rate moves between
+   the two populations, so the hero on top of the board is whichever one
+   moves most.
+   **WHICH HERO THAT IS HAS NOT BEEN MEASURED HERE, and must not be asserted
+   from reputation.** Techies being the steepest is the obvious candidate and
+   is exactly the kind of claim this file keeps catching itself making - an
+   answer assembled out of our own reasoning, wearing the clothes of a
+   measurement. It cannot be checked from this machine: it wants
+   `api.opendota.com`, which the development environment does not reach. So
+   the code measures it instead, on the owner's own pull, and
+   `meta["baseline_skew"]` is where the answer will be.
+   **AND IT SUMS RATHER THAN CANCELS**, which is what turns a few points into
+   sixty. It is the same constant on every pair that hero appears in, and a
+   drafted board asks for NINE of them (four synergies plus five matchups),
+   so a 7-point baseline error becomes a +63 contribution with no interaction
+   behind it whatever. Reproduced: a 7pp error over data containing no
+   interaction at all gives **+59.1** for the mis-baselined hero and **+0.0**
+   for every correctly-baselined one.
+   **THE ARITHMETIC MATCHES THE SCREENSHOT TO ONE DECIMAL PLACE, which is
+   what closes the argument.** One hero carrying an offset `a` and NO real
+   interaction anywhere predicts the whole board: the hero itself shows
+   **9a**, each of its four team-mates shows **1a** (the shared synergy pair,
+   which is symmetric), and the side total shows **13a**. At a = 7.0 points
+   that is **63.0**, **7.0** and **91.0** - against a reported Techies of
+   **+63.1**, team-mates of +5 to +16, and a Radiant total of **+101.2**. So
+   roughly ninety of their hundred points was one number about one hero.
+   **AND 9 AGAINST 1 IS THE WHOLE OF "he is 6 times bigger than everyone
+   elses total".** It is not that Techies is special; it is that the hero
+   with the bad baseline meets it nine times and everybody else meets it
+   once. The team-mates were carrying +7 of their own figures from the same
+   error, which is why the ratio came out near six rather than exactly nine.
+   **AND IT INFLATES THE OTHER SIDE'S TOTAL TOO**, which is the last thing
+   on that screenshot the mechanism has to account for. An enemy's figure is
+   how your five fare against it, so every enemy's matchup against the
+   mis-baselined hero reads as +a in your favour and Dire's total climbs
+   with Radiant's - run through `scoring.net_contributions` on their own ten
+   heroes, a 7-point offset on Techies gives Radiant **+85.3** and Dire
+   **+29.9**, and the correction takes them to **+4.1** and **-4.1**. Their
+   screenshot read +101.2 and +50.3. Nothing about the draft was being
+   measured; both numbers were one hero's baseline.
+   **AND IT HAD SILENTLY BROKEN THE INVARIANT AT THE TOP OF THIS FILE.**
+   "A baseline term floats the strong heroes to the top of every list
+   regardless of the draft, which is the one thing the list is not for" -
+   which is exactly what a row offset does, because `score_all` ranks on
+   `vs_total + with_total` and those are rows of these matrices. Measured
+   on a 20-hero synthetic with one offset hero and no interaction anywhere,
+   that hero was the **number one suggestion in every draft at +33.7**
+   against a field of +3. So this was never only the board: it was the
+   suggestion strip recommending one hero for a reason that had nothing to
+   do with the ten heroes on screen.
+   **THE REMEDY IS THIS SECTION'S OWN STATED GOAL.** "We want the interaction
+   term, not the main effects" - and a hero whose row MEAN is not zero still
+   carries a main effect, whatever the baseline said. So the mean is measured
+   off the deltas themselves and removed, which is the only reading that does
+   not need the two sources to agree.
+   **AS A PER-HERO TERM, BECAUSE THAT CANNOT BREAK EITHER MATRIX.** `d[i,j] -=
+   a_i - a_j` preserves antisymmetry and `d[i,j] -= a_i + a_j` preserves
+   symmetry, which `sanity_check` enforces and which the grids read as the two
+   triangles and the 5x5. A flat subtraction would have failed both.
+   **AND IT IS SWEPT RATHER THAN SOLVED** (`CENTRING_SWEEPS`). One pass zeroes
+   every row mean exactly when every pair is present; with pairs MISSING - and
+   a missing pair must stay at exactly zero, since zero means "no information"
+   - each row's correction perturbs its neighbours' and it converges instead.
+   **ONLY PAIRS WITH DATA ARE TOUCHED OR COUNTED**, or the fix would write
+   numbers into pairs nobody measured.
+   **AND IT SAYS WHICH HEROES THE BASELINE WAS WRONG ABOUT, ON THE USER'S OWN
+   PULL.** `build_dataset` prints the worst ten over `MAIN_EFFECT_WARN` (two
+   points of win rate, far outside real noise and far inside the seven that
+   produced this) and stores them in `meta["baseline_skew"]`. Without that the
+   fix is silent and the next occurrence is another screenshot: the number is
+   the one thing that distinguishes "the sources disagree about this hero"
+   from "this hero really does pair well", and it is measured rather than
+   argued. Empty is the healthy answer.
+
 2. **All pick-slot coordinates are fractions of Dota's 16:9 HUD box, never
    absolute pixels and never fractions of the raw window.** Dota pillarboxes
    its HUD into a centred 16:9 area, so on 3440x1440 the portraits live in
