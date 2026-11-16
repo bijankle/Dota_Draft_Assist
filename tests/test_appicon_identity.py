@@ -673,17 +673,44 @@ def test_choosing_a_new_icon_reaches_the_window_as_well_as_the_files(qapp):
         assert call in source, call
 
 
+def _paste() -> str:
+    """The diagnostic text a real window produces.
+
+    Rendering it answers the question these two tests ask; reading
+    their own source for the name of a variable does not.
+    """
+    from draft_assist.config import RULES_FILE
+    from draft_assist.model import items as items_mod
+    from draft_assist.ui.app import MainWindow
+    from draft_assist.ui.demo import demo_dataset
+    from draft_assist.ui.providers import DemoProvider
+
+    rules, meta = items_mod.load_rules(RULES_FILE)
+    ds = demo_dataset()
+    win = MainWindow(ds, DemoProvider(ds), rules, meta)
+    win.timer.stop()
+    try:
+        return win._diagnostic_text()
+    finally:
+        win.close()
+
+
 def test_the_paste_reports_both_taskbar_mechanisms(qapp):
     """They fail independently and for different reasons — one is a
     property store, the other a window message — so a report naming only
     one cannot say which is at fault. Four rounds of this were spent on
-    diagnostics that could not tell two outcomes apart."""
-    import inspect
-    from draft_assist.ui.app import MainWindow
+    diagnostics that could not tell two outcomes apart.
 
-    source = inspect.getsource(MainWindow._copy_debug_log)
-    assert "identity_note" in source
-    assert "window_icon_note" in source
+    THE TEXT, NOT THE SOURCE. This scanned `_copy_debug_log` for the
+    two names and broke the moment that method started delegating to
+    the one shared body - while the paste it is about was perfectly
+    correct. It would also have passed on a method that computed both
+    lines and threw them away, which is the opposite failure and the
+    worse one.
+    """
+    paste = _paste()
+    assert "taskbar identity:" in paste
+    assert "window icon:" in paste
 
 
 def test_the_start_menu_shortcut_is_written_automatically(qapp):
@@ -752,12 +779,9 @@ def test_the_paste_reports_all_three_taskbar_mechanisms(qapp):
     """The identity, the window's own icon, and the shortcut the identity
     resolves to. They fail independently, and five rounds of this went on
     diagnostics that could not say which one was at fault."""
-    import inspect
-    from draft_assist.ui.app import MainWindow
-
-    source = inspect.getsource(MainWindow._copy_debug_log)
-    for note in ("identity_note", "window_icon_note", "shortcut_note"):
-        assert note in source, note
+    paste = _paste()
+    for line in ("taskbar identity:", "window icon:", "start menu:"):
+        assert line in paste, line
 
 
 def test_nothing_that_paints_runs_before_the_qapplication(qapp):
