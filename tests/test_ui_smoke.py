@@ -800,8 +800,15 @@ def test_copying_a_report_puts_it_on_the_clipboard(qapp, monkeypatch,
         (folder / "gsi").mkdir(parents=True)
         (folder / "state.jsonl").write_text("")
         window._refresh_sessions()
-        window._copy_session_report()
-        assert "2026-09-05_2031" in QApplication.clipboard().text()
+        # ONE BUTTON, and the recording's report is part of its paste.
+        # There used to be a "Copy report" beside the session list and a
+        # "Copy everything" on the Live page, and which facts you got
+        # depended on which page you were on.
+        window._copy_debug_log()
+        pasted = QApplication.clipboard().text()
+        assert "2026-09-05_2031" in pasted
+        assert "Dota Draft Assist" in pasted
+        assert "loop timings" in pasted
     finally:
         window.close()
 
@@ -1114,15 +1121,24 @@ def test_both_sources_are_on_by_default():
     assert defaults["auto_record"] is True
 
 
-def test_settings_dialog_round_trips_the_switches(qapp):
-    from draft_assist.ui.settings_dialog import SettingsDialog
+def test_the_settings_page_round_trips_the_switches(qapp):
+    """THE LIVE PAGE, not the dead dialog it used to test.
 
-    dialog = SettingsDialog({"use_gsi": True, "use_vision": False,
-                             "auto_record": True})
-    assert dialog.boxes["use_vision"].isChecked() is False
-    dialog.boxes["use_vision"].setChecked(True)
-    dialog.boxes["use_gsi"].setChecked(False)
-    values = dialog.values()
+    `settings_dialog.SettingsDialog` was the OK/Cancel version this app
+    replaced with a modeless window, and it outlived its last caller:
+    nothing in the app built one, this test was the only thing keeping
+    it importable, and it carried its own copy of `values()` and the
+    pair-source radio buttons. Two implementations of one page is one of
+    them going stale, and the stale one was the one under test.
+    """
+    from draft_assist.ui.settings_window import GeneralPage
+
+    page = GeneralPage({"use_gsi": True, "use_vision": False,
+                        "auto_record": True})
+    assert page.boxes["use_vision"].isChecked() is False
+    page.boxes["use_vision"].setChecked(True)
+    page.boxes["use_gsi"].setChecked(False)
+    values = page.values()
     assert values["use_vision"] is True and values["use_gsi"] is False
 
 
@@ -1572,34 +1588,6 @@ def test_a_new_match_forgets_moved_heroes(qapp):
         window.close()
 
 
-def test_replaying_a_session_is_a_button_on_the_recording(qapp, monkeypatch,
-                                                          tmp_path):
-    """It was a Game menu item that replayed "the newest" archive. It is
-    one more thing you do WITH a recording, so it lives with them."""
-    window = recording_window(qapp, monkeypatch, tmp_path)
-    try:
-        folder = tmp_path / "2026-09-05_1724"
-        (folder / "gsi").mkdir(parents=True)
-        (folder / "state.jsonl").write_text("")
-        window._refresh_sessions()
-
-        ran = {}
-        monkeypatch.setattr(window, "run_task",
-                            lambda key, arg="": ran.update(key=key, arg=arg))
-        window._replay_session()
-        assert ran["key"] == "replay_gsi"
-        assert ran["arg"] == str(folder / "gsi")
-
-        labels = []
-        for action in window.menu_bar.actions():
-            menu = action.menu()
-            if menu is not None:
-                labels += [a.text().replace("&", "") for a in menu.actions()]
-        assert not any("Replay recorded" in text for text in labels)
-    finally:
-        window.close()
-
-
 def test_a_task_argument_reaches_the_command_line():
     from draft_assist.ui.tasks import TASKS
 
@@ -1870,9 +1858,11 @@ def test_a_tall_tab_does_not_set_the_windows_floor(window, qapp):
     # are `_scrolling`, so the tab asks for nothing and the floor stays
     # where the Draft tab puts it. The next long panel added to Debug
     # fails here rather than taking the whole desktop height silently.
-    assert window.tabs.indexOf(window.debug_tabs) >= 0, \
+    assert window.tabs.indexOf(window.debug_page) >= 0, \
         "Debug is not a tab of the main window"
-    assert window.debug_tabs.minimumSizeHint().height() < 400, \
+    # THE WHOLE TAB, report button and all - which is what sets the
+    # floor, and is stricter than asking the inner pair alone.
+    assert window.debug_page.minimumSizeHint().height() < 400, \
         "the Debug pages are not scrolling; they dictate a window height"
     assert window.minimumSizeHint().height() < 900, \
         f"the window cannot be made short: {window.minimumSizeHint()}"
@@ -1896,16 +1886,22 @@ def test_debug_is_the_tab_right_of_history(window, qapp):
 def test_every_route_to_debug_asks_for_its_index(window, qapp):
     """It was hard-coded to 1 once, which is the History tab.
 
-    Four ways in — the Help item, the search, the latest-report button
-    and the tab itself — so the index is ASKED FOR in one place. A number
-    that is right until somebody adds a tab is a number that will be
-    wrong, and this is the fault that already shipped.
+    Three ways in — the Help item, the search and the tab itself — so
+    the index is ASKED FOR in one place. A number that is right until
+    somebody adds a tab is a number that will be wrong, and this is the
+    fault that already shipped.
+
+    AND THE TAB IS NOT THE INNER TAB WIDGET ANY MORE. The one report
+    button sits above both Debug pages, so what the tab bar holds is
+    `debug_page` and `debug_tabs` is inside it - `indexOf` on the inner
+    one answers -1 and switches nothing, which is this very fault one
+    level up, and it is why the lookup is tested rather than assumed.
     """
     window.show()
     qapp.processEvents()
     window.tabs.setCurrentIndex(0)
     window.show_debug()
-    assert window.tabs.currentWidget() is window.debug_tabs
+    assert window.tabs.currentWidget() is window.debug_page
     assert window.debug_tabs.currentIndex() == 0
     window.show_debug(1)
     assert window.debug_tabs.currentIndex() == 1
@@ -3144,16 +3140,28 @@ def test_every_signed_number_in_the_app_is_one_size(qapp):
     # The same digits at every size the figure FITS: a smaller tile does
     # not get a smaller number, it just has less room around it.
     assert ink(132, 74) == ink(110, 62) == ink(96, 54) == ink(80, 45)
-    # BELOW 80px IT STEPS DOWN, AND THAT MOVED WITH THE REBASE. A figure
-    # 20% bigger needs 20% more tile to print whole, so the width at
-    # which "+21.7" stops fitting went from ~64px to ~80. That matters
-    # because `TILE_MIN` IS 64: at the window's very narrowest the picks
-    # are now inside the stepping-down band where they used to be just
-    # outside it, so the number shrinks there rather than holding full
-    # size. It is the documented fallback working, not a new behaviour —
-    # a number clipped to "+21." is not a smaller number but a wrong one
-    # — but the band it applies over is wider than it was.
-    assert ink(76, 43) < ink(132, 74)
+    # AND BELOW THAT IT STEPS DOWN. The width it steps down AT is a
+    # property of the FONT, not a number to write here: `paint_badge`
+    # shrinks while `advance(text) > box.width() - 2 * MARGIN`, so the
+    # threshold is that advance plus the two margins, measured against
+    # the font actually in use. Hard-coded at 76 this asserted the
+    # default font of the machine it was written on, and failed on any
+    # machine whose default font is narrower - which says nothing
+    # whatever about the app.
+    #
+    # It still matters that the band exists and roughly where: a figure
+    # 20% bigger needs 20% more tile to print whole, and `TILE_MIN` is
+    # 64, so at the window's very narrowest the picks are inside the
+    # stepping-down band. That is the documented fallback working - a
+    # number clipped to "+21." is not a smaller number but a wrong one.
+    from PyQt6.QtGui import QFontMetricsF
+    probe = QFont()
+    probe.setPixelSize(tilekit.number_px())
+    needs = (QFontMetricsF(probe).horizontalAdvance("+21.7")
+             + 2 * tilekit.MARGIN)
+    assert all(w > needs for w in (132, 110, 96, 80)), (
+        f"the widths above must all FIT; '+21.7' needs {needs:.1f}px")
+    assert ink(int(needs) - 8, 43) < ink(132, 74)
     assert ink(48, 27) < ink(76, 43)
 
 
@@ -3266,11 +3274,21 @@ def test_the_widest_value_is_never_clipped(qapp):
     box = chrome.CountBox(20, 1, 20)
     box.show()
     _settle(qapp)
+    # THE BOX'S OWN WIDTH, LESS THE ARROW STRIP IT PAINTS ITSELF.
+    # This used to measure `box.lineEdit().width()` - an internal
+    # QAbstractSpinBox child whose geometry is only realised on a real
+    # paint. Offscreen it answers 1 at every size, so the test failed on
+    # any machine without a display while the control was perfectly
+    # correct: measured, `box.width()` is 82 for a widest value needing
+    # 23. What the control actually promises is that the room left for
+    # the number fits the widest value it can hold, and that is
+    # checkable anywhere.
+    room = box.width() - chrome.CountBox.ARROWS_W
     for value in (1, 9, 10, 20):
         box.setValue(value)
         _settle(qapp)
-        assert box.fontMetrics().horizontalAdvance(str(value)) \
-            <= box.lineEdit().width(), f"{value} does not fit"
+        assert box.fontMetrics().horizontalAdvance(str(value)) <= room, \
+            f"{value} does not fit in {room}px"
     box.close()
 
 

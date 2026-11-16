@@ -192,7 +192,6 @@ def read_lineups(payload: dict, name_to_id: dict[str, int],
     if not entries:
         return out
     names = [name for _i, name, _p in entries]
-    positions = {name: position for _i, name, position in entries}
 
     if len(names) != 2 * TEAM_SIZE:
         out.notes.append(

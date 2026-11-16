@@ -224,7 +224,8 @@ def is_ico(path) -> bool:
     are inside.
     """
     try:
-        head = Path(path).open("rb").read(6)
+        with Path(path).open("rb") as handle:
+            head = handle.read(6)
     except OSError:
         return False
     if len(head) < 6:

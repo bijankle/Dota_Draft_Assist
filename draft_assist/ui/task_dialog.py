@@ -8,7 +8,6 @@ prompt.
 
 import re
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel,
                              QPlainTextEdit, QProgressBar, QPushButton,

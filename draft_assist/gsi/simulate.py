@@ -19,7 +19,7 @@ Two fidelities, and the difference matters:
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import state as gsi_state

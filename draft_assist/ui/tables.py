@@ -14,7 +14,7 @@ Two things live here that Qt does not give for free:
 """
 
 from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (QHeaderView, QLabel,
                              QStyledItemDelegate, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget)
@@ -1537,7 +1537,6 @@ class MatrixTable(QWidget):
             return
 
         from .portraits import portrait
-        size = getattr(self, "_icon_size", HEADER_ICON)
         for ids, names, header, setter in (
                 ([i for i, _n in matrix.cols], cols,
                  self.table.horizontalHeader(),

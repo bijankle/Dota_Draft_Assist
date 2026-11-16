@@ -50,14 +50,21 @@ def baseline_vector(index: dict[int, int],
     return b
 
 
-def build_delta_matrices(index: dict[int, int], b: np.ndarray,
-                         matchups: dict[int, dict],
-                         report: dict | None = None
-                         ) -> tuple[np.ndarray, np.ndarray]:
-    """Raw pairwise counts -> (delta_vs, delta_with), both NxN float32.
+def raw_deltas(index: dict[int, int], b: np.ndarray,
+               matchups: dict[int, dict]
+               ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The baseline subtraction alone: one stage, testable on its own.
 
-    matchups[hid]["vs"|"with"][other_id] = (match_count, win_count), wins
-    from hid's perspective. Missing pairs stay at delta 0 (no information).
+    Returns (d_vs, d_with, seen_vs, seen_with). `seen` is which pairs
+    had any data at all, which is NOT recoverable from the deltas
+    afterwards - a measured pair can land on exactly 0.0 - and is what
+    keeps a pair nobody played out of every later average.
+
+    It is its own function because the arithmetic here and the main
+    effect removal after it are separate claims that want separate
+    tests: a two-hero case pins this stage down exactly, and cannot say
+    anything about the other, where two heroes are too few to tell an
+    interaction from the two heroes' own strength.
     """
     n = len(index)
     d_vs = np.zeros((n, n), dtype=np.float64)
@@ -89,6 +96,21 @@ def build_delta_matrices(index: dict[int, int], b: np.ndarray,
     seen_with |= seen_with.T
     for mat in (d_vs, d_with, seen_vs, seen_with):
         np.fill_diagonal(mat, 0 if mat.dtype == np.float64 else False)
+    return d_vs, d_with, seen_vs, seen_with
+
+
+def build_delta_matrices(index: dict[int, int], b: np.ndarray,
+                         matchups: dict[int, dict],
+                         report: dict | None = None
+                         ) -> tuple[np.ndarray, np.ndarray]:
+    """Raw pairwise counts -> (delta_vs, delta_with), both NxN float32.
+
+    matchups[hid]["vs"|"with"][other_id] = (match_count, win_count), wins
+    from hid's perspective. Missing pairs stay at delta 0 (no
+    information). The baseline subtraction is `raw_deltas`; what happens
+    after it is `_without_main_effect`.
+    """
+    d_vs, d_with, seen_vs, seen_with = raw_deltas(index, b, matchups)
 
     # AND WHATEVER MAIN EFFECT THE BASELINE FAILED TO REMOVE. What was
     # taken off each hero is recorded when a caller asks: it is the one
@@ -97,8 +119,9 @@ def build_delta_matrices(index: dict[int, int], b: np.ndarray,
     if report is not None:
         before = _row_means(d_vs, seen_vs) + _row_means(d_with, seen_with)
         back = {i: hid for hid, i in index.items()}
-        report["main_effects"] = {back[i]: float(before[i] / 2.0)
-                                  for i in range(n) if back.get(i) is not None}
+        report["main_effects"] = {
+            back[i]: float(before[i] / 2.0)
+            for i in range(len(index)) if back.get(i) is not None}
     d_vs = _without_main_effect(d_vs, seen_vs, antisymmetric=True)
     d_with = _without_main_effect(d_with, seen_with, antisymmetric=False)
     return d_vs.astype(np.float32), d_with.astype(np.float32)
@@ -119,10 +142,32 @@ MAIN_EFFECT_WARN = 0.02
 
 
 # How many sweeps of the main-effect removal to run. One pass zeroes every
-# row mean exactly when every pair is present; with pairs missing, each
-# row's correction perturbs its neighbours' and it converges instead.
-# Four is far past the point where it stops moving on real data.
+# row mean EXACTLY when every pair is present (see `_damping`); with pairs
+# missing, each row's correction perturbs its neighbours' and it converges
+# instead. Four is far past the point where it stops moving on real data.
 CENTRING_SWEEPS = 4
+
+
+def _damping(counts: np.ndarray) -> np.ndarray:
+    """How much of a row's mean to take off it: k / (k + 1).
+
+    THE OBVIOUS COEFFICIENT IS 1 AND IT OVERSHOOTS, which is not a
+    rounding matter - it shipped for an hour and it OSCILLATED. Taking
+    `a_i = m_i` off an antisymmetric row also lifts every OTHER row by
+    its share of the same figure, so the correction lands past zero by
+    n / (n - 1) and the sweep's multiplier is -1 / (n - 1). At two
+    heroes that is exactly -1: the matchup flipped sign on every sweep
+    and the answer came out of the PARITY of `CENTRING_SWEEPS`. A test
+    that wanted +0.05 passed on four sweeps and would have read -0.05
+    on three.
+
+    Solving `m_i - a_i + (A - a_i) / k = 0` for a full matrix gives
+    `a_i = m_i * k / (k + 1)`, which is exact in ONE sweep at every
+    size, and k is per ROW so a hero with fewer partners is damped
+    harder - which is right, since its row mean is that much more its
+    own pairs and that much less a main effect.
+    """
+    return counts / (counts + 1.0)
 
 
 def _without_main_effect(d: np.ndarray, seen: np.ndarray,
@@ -173,8 +218,16 @@ def _without_main_effect(d: np.ndarray, seen: np.ndarray,
         if np.abs(means).max() < 1e-12:
             break
         if antisymmetric:
-            shift = means[:, None] - means[None, :]
+            # Damped, because taking a row's whole mean off an
+            # ANTISYMMETRIC matrix overshoots - see `_damping`.
+            a = means * _damping(counts)
+            shift = a[:, None] - a[None, :]
         else:
+            # The symmetric case has its own solution and must NOT take
+            # the antisymmetric damping: `a_i = m_i - M/2` is the exact
+            # answer in the large-n limit, and damping it only slows the
+            # sweep down (measured: 1.8e-11 against 2.7e-10 of a win
+            # rate at 127 heroes, both far below anything drawn).
             shift = (means - means[live].mean() / 2.0)[:, None]
             shift = shift + shift.T
         out -= np.where(seen, shift, 0.0)

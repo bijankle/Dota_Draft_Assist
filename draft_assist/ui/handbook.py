@@ -192,7 +192,7 @@ SECTIONS: tuple = (
         "SHAPE of your display. Measuring says the pick bar sits in one "
         "of two places - one for 16:9 and wider, one for anything "
         "narrower - and a resolution somebody has drafted on and sent a "
-        "report back for gets its own entry. Settings > Debug > Copy "
+        "report back for gets its own entry. The Debug tab > Copy "
         "everything names which of the three answers your boxes came "
         "from: your own saved measurement, your exact resolution, or its "
         "shape.",
@@ -205,8 +205,8 @@ SECTIONS: tuple = (
         "one draft with Auto on and the app measures it off that "
         "recording by itself, otherwise send the measurement back so the "
         "next person with your screen size is right on their first "
-        "draft. The numbers themselves are shown in Settings ▸ "
-        "Debug ▸ Live, where a bad reading can be diagnosed. There is "
+        "draft. The numbers themselves are shown on the Debug tab ▸ "
+        "Live, where a bad reading can be diagnosed. There is "
         "nothing to drag: drawing the boxes by hand was how this worked "
         "before it could measure, and it has been removed.",
     )),
@@ -322,9 +322,11 @@ SECTIONS: tuple = (
              "Changing the bracket invalidates the cache. The banner "
              "says so; press its button to pull the new ones."),
             ("Anything else",
-             "Settings ▸ Debug ▸ Copy everything puts the status line, "
-             "what the app is reading, the recognition log and the loop "
-             "timings on the clipboard in one paste."),
+             "The Debug tab ▸ Copy everything puts the whole picture on "
+             "the clipboard in one paste: which build this is, the "
+             "status line, what the app is reading, the crop boxes, the "
+             "recognition log, the loop timings and the selected "
+             "recording's report."),
         )),
     )),
     ("files", "Your files", (

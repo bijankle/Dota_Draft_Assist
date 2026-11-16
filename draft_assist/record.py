@@ -300,6 +300,10 @@ class Recorder:
             return None
         import cv2
 
+        # The import above is not for this function's own use: the
+        # write moved to the writer thread. It is here so the first
+        # import of cv2 happens on the MAIN thread, before
+        # `_ensure_writer` starts the daemon that imports it too.
         self._last_frame = time.monotonic()
         self._ensure_writer()
         path = self.folder / "frames" / f"{self.frames + 1:05d}.png"

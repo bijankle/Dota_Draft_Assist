@@ -37,10 +37,10 @@ from pathlib import Path
 
 from PyQt6.QtCore import (PYQT_VERSION_STR, QPoint, QRect,
                           QT_VERSION_STR, Qt, QTimer)
-from PyQt6.QtGui import (QAction, QColor, QImage, QKeySequence,
+from PyQt6.QtGui import (QAction, QImage, QKeySequence,
                          QPainter, QPixmap)
-from PyQt6.QtWidgets import (QApplication, QCheckBox,
-                             QDialog, QFrame, QGridLayout,
+from PyQt6.QtWidgets import (QApplication,
+                             QFrame, QGridLayout,
                              QHBoxLayout, QLabel,
                              QFileDialog,
                              QMainWindow, QMessageBox,
@@ -915,19 +915,14 @@ class MainWindow(QMainWindow):
         self.recording_label.setProperty("dim", True)
         self.recording_label.setVisible(False)
 
-        # Recordings and the report have a whole tab of their own
-        # (Debug ▸ Recordings). Buttons for them up here were the same
-        # thing said twice, in the row that has to stay readable at the
-        # narrowest the window goes.
-        self.open_recordings_button = QPushButton("Recordings")
-        self.open_recordings_button.clicked.connect(
-            lambda: open_folder(RECORDINGS_DIR))
-
-        # Update is in Help, not up here. It is pressed once a patch, and
-        # the row it was in has to stay readable at the narrowest the
-        # window goes. It still closes and reopens the app by itself.
-        self.report_button = QPushButton("Report")
-        self.report_button.clicked.connect(self._show_latest_report)
+        # TWO BUTTONS THAT WERE THE TAB SAYING ITS OWN NAME, deleted at
+        # the user's request: "a lot of the debugging menu buttons were
+        # developed as i was debuggign and many arent relevant". A
+        # "Recordings" button opened the recordings FOLDER, which lives
+        # inside `debug/` and so is one level down from Open debug
+        # folder; a "Report" button refreshed the session list and
+        # switched to Debug > Recordings, which is what clicking that tab
+        # does. Neither did anything the page it pointed at does not.
 
         self.force_check = chrome.TickBox("Force recognition")
         self.force_check.toggled.connect(self._set_forced)
@@ -1358,9 +1353,12 @@ class MainWindow(QMainWindow):
         self.source_combo = Dropdown()
         self.source_combo.setMinimumWidth(300)
         src_row.addWidget(self.source_combo, 1)
-        self.refresh_sources_button = QPushButton("Refresh")
-        self.refresh_sources_button.clicked.connect(self._refresh_sources)
-        src_row.addWidget(self.refresh_sources_button)
+        # NO REFRESH BUTTON. The list is rebuilt whenever the Debug tab
+        # is opened (`show_debug`, and `_debug_page_changed`), which is
+        # the only moment anybody could want it rebuilt - a window
+        # appearing while this page is already open is the one case, and
+        # it costs a tab click rather than a button nobody could tell
+        # the purpose of.
         self.bind_button = QPushButton("Capture this window")
         self.bind_button.setProperty("accent", True)
         self.bind_button.clicked.connect(self._bind_source)
@@ -1424,17 +1422,8 @@ class MainWindow(QMainWindow):
         # already pasting them one after the other, which is what this
         # box now is on screen.
         log_card, loglay = card("What this tick did")
-        log_row = QHBoxLayout()
-        log_row.addStretch(1)
-        self.copy_log_button = QPushButton("Copy everything")
-        self.copy_log_button.setProperty("accent", True)
-        self.copy_log_button.setToolTip(
-            "Copy the status line, what the app is reading, this log and "
-            "the loop timings — everything needed to diagnose a bad draft "
-            "or a slow one, in one paste")
-        self.copy_log_button.clicked.connect(self._copy_debug_log)
-        log_row.addWidget(self.copy_log_button)
-        loglay.addLayout(log_row)
+        # THE COPY BUTTON IS NOT HERE ANY MORE. It is one button for the
+        # whole Debug tab, above both pages - see `_debug_header`.
         self.debug_text = GrowingLog()
         loglay.addWidget(self.debug_text)
         dlay.addWidget(log_card)
@@ -1499,13 +1488,19 @@ class MainWindow(QMainWindow):
         dlay.addWidget(cal_card)
 
         snap_row = QHBoxLayout()
-        self.snapshot_button = QPushButton(
-            "Save debug snapshot (frame + crops + matches)")
+        # KEPT, and it is the only thing on this page that writes a file.
+        # Everything that saved pictures for refining recognition has
+        # gone, but recognition is not finished - ten of fourteen
+        # recordings read no heroes at all - and this is the one way to
+        # get the crops as PICTURES off a live frame when there is no
+        # recording to read them from. "Open debug folder" moved up to
+        # the tab header beside the one report button.
+        self.snapshot_button = QPushButton("Save a snapshot of this frame")
+        self.snapshot_button.setToolTip(
+            "Write this frame, the ten crops taken from it and what each "
+            "one matched into the debug folder")
         self.snapshot_button.clicked.connect(self._save_snapshot)
         snap_row.addWidget(self.snapshot_button)
-        open_debug = QPushButton("Open debug folder")
-        open_debug.clicked.connect(lambda: open_folder(debugdir.root()))
-        snap_row.addWidget(open_debug)
         self.snapshot_label = QLabel("")
         self.snapshot_label.setProperty("dim", True)
         snap_row.addWidget(self.snapshot_label, 1)
@@ -1518,6 +1513,7 @@ class MainWindow(QMainWindow):
         debug_tabs.addTab(_scrolling(dbg), "Live")
         debug_tabs.addTab(_scrolling(self._build_sessions_tab()),
                           "Recordings")
+        debug_tabs.currentChanged.connect(self._debug_page_changed)
         # A TAB OF THE MAIN WINDOW AGAIN, right of History, at the
         # user's request: "make debug a view again, right of history...
         # i use it too often not to". It spent a while as a tab of the
@@ -1538,7 +1534,14 @@ class MainWindow(QMainWindow):
         # here are already `_scrolling`, so they ask for nothing; a test
         # holds the floor so the next long panel added to Debug cannot
         # do it again silently.
-        tabs.addTab(debug_tabs, "Debug")
+        # THE WRAPPER IS THE TAB, `debug_tabs` IS INSIDE IT. Kept on
+        # the window because `show_debug` has to ask the tab bar for its
+        # index and that only works for the widget actually added here -
+        # `indexOf(debug_tabs)` silently answers -1 through a wrapper,
+        # which is the hard-coded-index fault `show_debug` exists to
+        # prevent, one level up.
+        self.debug_page = self._debug_page(debug_tabs)
+        tabs.addTab(self.debug_page, "Debug")
 
         # Our own, INSIDE the shell, rather than QMainWindow's: the
         # ornate frame is drawn round the shell, and a status bar hung off
@@ -1600,9 +1603,10 @@ class MainWindow(QMainWindow):
         self.session_list.setMinimumWidth(220)
         self.session_list.currentRowChanged.connect(self._show_session)
         left.addWidget(self.session_list, 1)
-        refresh = QPushButton("Refresh")
-        refresh.clicked.connect(self._refresh_sessions)
-        left.addWidget(refresh)
+        # NO REFRESH BUTTON: the list is rebuilt whenever this page is
+        # opened (`_debug_page_changed`), which is when a recording
+        # finished while somebody was elsewhere in the app - the only
+        # case a manual refresh ever answered.
         layout.addLayout(left)
 
         right = QVBoxLayout()
@@ -1633,16 +1637,18 @@ class MainWindow(QMainWindow):
         policy.setHeightForWidth(True)
         policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
         buttons_box.setSizePolicy(policy)
-        self.copy_report_button = QPushButton("Copy report")
-        self.copy_report_button.setProperty("accent", True)
-        self.copy_report_button.clicked.connect(self._copy_session_report)
-        buttons.addWidget(self.copy_report_button)
-        replay = QPushButton("Replay this session")
-        replay.setToolTip(
-            "Send this session's payloads back through the app exactly as "
-            "Dota sent them — the highest-fidelity test there is")
-        replay.clicked.connect(self._replay_session)
-        buttons.addWidget(replay)
+        # NO "Copy report" HERE. The report below is part of the ONE
+        # paste, at the user's request: "any error reports should be in
+        # 1 ... no point in multiple aspectsd haivbng a button eavchj".
+        # The button is in the tab header, above both pages, so it is
+        # reachable from whichever one you are on.
+        #
+        # AND NO "Replay this session". It posted the recording's
+        # payloads back at the live listener - the highest-fidelity test
+        # there is, and a test, which is what was asked to go: "many
+        # arent relevant as some bugs were resolved". `tasks.replay_gsi`
+        # and `tools/replay.py` are untouched, so it is one button to
+        # put back.
         measure = QPushButton("Measure this session")
         measure.setToolTip(
             "Measure where the pick bar was and where each hero stood "
@@ -1660,14 +1666,6 @@ class MainWindow(QMainWindow):
             "it attached \u2014 you see it before it sends")
         report.clicked.connect(self._report_session)
         buttons.addWidget(report)
-        # The two that came off the toolbar. They belong beside the
-        # recordings they are about, not in the row above the draft.
-        buttons.addWidget(self.report_button)
-        self.report_button.setToolTip(
-            "The newest session's report, whatever is selected here")
-        buttons.addWidget(self.open_recordings_button)
-        self.open_recordings_button.setToolTip(
-            "Open the recordings folder")
         buttons.addWidget(self.recording_label)
         open_session = QPushButton("Open this folder")
         open_session.clicked.connect(self._open_session_folder)
@@ -1690,44 +1688,117 @@ class MainWindow(QMainWindow):
         self._refresh_sessions()
         return page
 
+    def _debug_page(self, inner_tabs) -> QWidget:
+        """The Debug tab: ONE report button, then the two pages.
+
+        AT THE USER'S REQUEST, and it is the rule the rest of this app
+        already follows everywhere else: "any error reports should be in
+        1 ... as in copy to clipboard the whole game log info as text
+        for many aspects... no point in multiple aspectsd haivbng a
+        button eavchj".
+
+        There were two. "Copy everything" on the Live page took the
+        status line, the reading, the tick log and the loop timings;
+        "Copy report" on the Recordings page took the selected session's
+        report; and NEITHER took the crop boxes, which only the emailed
+        zip ever carried. So the answer to "send me what went wrong"
+        depended on which page you happened to be on, and no single
+        press produced all of it.
+
+        It sits ABOVE the two pages rather than on one of them, because
+        a button on the Live page is a button you have to leave the
+        recording to reach.
+        """
+        page = QWidget()
+        page.setProperty("bare", True)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        row = QHBoxLayout()
+        # THE ROW STARTS WHERE THE PAGE BELOW IT STARTS. Both inner
+        # pages inset their own contents by 12, so a header flush
+        # against the window's edge puts the only button on this tab a
+        # dozen pixels left of everything it is above - which is the
+        # same misalignment the draft tab has a test about.
+        row.setContentsMargins(12, 8, 12, 0)
+        self.copy_log_button = QPushButton("Copy everything")
+        self.copy_log_button.setProperty("accent", True)
+        self.copy_log_button.setToolTip(
+            "Copy the whole picture in one paste: which build this is, "
+            "the status line, what the app is reading, the crop boxes, "
+            "this tick's log, the loop timings and the selected "
+            "recording's report")
+        self.copy_log_button.clicked.connect(self._copy_debug_log)
+        row.addWidget(self.copy_log_button)
+        open_debug = QPushButton("Open debug folder")
+        open_debug.setToolTip(
+            "Everything worth sending is in here: startup logs, crashes, "
+            "problem reports and recordings")
+        open_debug.clicked.connect(lambda: open_folder(debugdir.root()))
+        row.addWidget(open_debug)
+        row.addStretch(1)
+        layout.addLayout(row)
+        layout.addWidget(inner_tabs, 1)
+        return page
+
+    def _debug_page_changed(self, index: int) -> None:
+        """Rebuild whichever page was just opened.
+
+        This is what replaced two "Refresh" buttons. Both answered the
+        same question - something changed while I was looking somewhere
+        else - and the moment that matters is the moment the page comes
+        up, which the page can notice for itself.
+        """
+        if index == 0:
+            self._refresh_sources()
+        else:
+            self._refresh_sessions()
+
     def show_debug(self, inner: int = 0) -> None:
         """Bring the Debug tab up, on one of its two pages.
 
-        ONE route, because there are four ways in — Help ▸ Debug
-        view, the search, the latest-report button and the tab itself —
-        and four copies of "find the index of the tab called Debug"
-        is three of them going stale the next time a tab is added.
-        `inner` is 0 for Live and 1 for Recordings.
+        ONE route, because there are three ways in — Help ▸ Debug
+        view, the search and the tab itself — and three copies of "find
+        the index of the tab called Debug" is two of them going stale
+        the next time a tab is added. (There were four: a "Report"
+        button on the tab row came here too, and it is deleted - the
+        tab does the same thing.) `inner` is 0 for Live and 1 for
+        Recordings.
+
+        TWO WIDGETS, because the one report button sits above both
+        pages: `debug_page` is what the tab bar holds and `debug_tabs`
+        is the inner pair. Asking `indexOf` for the inner one answers
+        -1 and switches nothing.
         """
-        page = getattr(self, "debug_tabs", None)
-        if page is None:
+        inner_tabs = getattr(self, "debug_tabs", None)
+        outer = getattr(self, "debug_page", None)
+        if inner_tabs is None or outer is None:
             return
-        index = self.tabs.indexOf(page)
+        index = self.tabs.indexOf(outer)
         if index >= 0:
             self.tabs.setCurrentIndex(index)
-        page.setCurrentIndex(inner)
-
-    def _show_latest_report(self) -> None:
-        """Jump to the newest session's report. One button, one document —
-        the screen's reading and the game's payloads were never two
-        separate questions."""
-        self._refresh_sessions()
-        # Debug is a main-window tab again, and its index is ASKED FOR
-        # rather than typed: it was hard-coded to 1 once, which is the
-        # History tab, and a number that is right until somebody adds a
-        # tab is a number that will be wrong.
-        self.show_debug(1)
-        if not self.sessions:
-            self._say(
-                "No recordings yet — press Record before a game", 8000)
+        inner_tabs.setCurrentIndex(inner)
 
     def _refresh_sessions(self) -> None:
+        """Rebuild the list, KEEPING whatever was selected.
+
+        It used to drop to row 0 every time, which was survivable while
+        a Refresh button was the only thing that called it and is not
+        now that opening the page does: switching to Live and back
+        would move you off the recording you were reading and onto the
+        newest one. Same rule as `_refresh_sources`, which has always
+        put the chosen window back.
+        """
+        chosen = self._current_session()
         self.sessions = record_mod.sessions(RECORDINGS_DIR)
         self.session_list.clear()
         for folder in self.sessions:
             self.session_list.addItem(folder.name)
         if self.sessions:
-            self.session_list.setCurrentRow(0)
+            names = [f.name for f in self.sessions]
+            row = names.index(chosen.name) if (
+                chosen is not None and chosen.name in names) else 0
+            self.session_list.setCurrentRow(row)
         else:
             self.session_report.setPlainText(
                 "No recordings yet. Press Record before a game and Stop "
@@ -1748,24 +1819,6 @@ class MainWindow(QMainWindow):
     def _current_session(self):
         row = self.session_list.currentRow()
         return self.sessions[row] if 0 <= row < len(self.sessions) else None
-
-    def _copy_session_report(self) -> None:
-        text = self.session_report.toPlainText()
-        if not text:
-            return
-        QApplication.clipboard().setText(text)
-        self._say("Report copied to the clipboard", 5000)
-
-    def _replay_session(self) -> None:
-        """Replay the selected recording. It lives here rather than in a
-        menu because it is one more thing you do WITH a recording, and the
-        recording is what you already have selected."""
-        folder = self._current_session()
-        if folder is None or not (folder / "gsi").is_dir():
-            self._say(
-                "Select a recording with game data first", 6000)
-            return
-        self.run_task("replay_gsi", str(folder / "gsi"))
 
     def _measure_session(self) -> None:
         """Measure the selected recording.
@@ -2586,7 +2639,7 @@ class MainWindow(QMainWindow):
                      if step.ident in outstanding]
             many = len(names) != 1
             self._show_banner(
-                f"<b>Setup {'has' if many else 'has'} "
+                f"<b>Setup has "
                 f"{len(names)} step{'s' if many else ''} left.</b> "
                 + ", ".join(names).capitalize() + ".",
                 "Finish setup", self._run_setup)
@@ -2885,8 +2938,7 @@ class MainWindow(QMainWindow):
         for widget in (self.force_check,):
             widget.setVisible(is_capture)
         self.force_action.setEnabled(is_capture)
-        for widget in (self.source_combo, self.refresh_sources_button,
-                       self.bind_button):
+        for widget in (self.source_combo, self.bind_button):
             widget.setEnabled(is_capture
                               and hasattr(self.provider, "available_sources"))
 
@@ -3574,11 +3626,37 @@ class MainWindow(QMainWindow):
         return f" ({shape[1]}x{shape[0]})" if shape is not None else ""
 
     def _diagnostic_text(self, repair_note: str = "") -> str:
-        """The same facts Debug > Copy everything prints, for the zip."""
+        """Everything about this copy of the app and this tick, once.
+
+        THIS IS THE ONE BODY, and it used not to be. Its own docstring
+        said "the same facts Debug > Copy everything prints" while the
+        two had drifted apart in BOTH directions: the zip carried the
+        crop boxes, which shape the boxes came from and the repair note
+        and nothing else; the clipboard carried the build, the status
+        line, the icon and taskbar notes, the stray-window report, the
+        tick log and the loop timings and none of the above. So a
+        problem report and a paste described two different things, and
+        the crop boxes - the commonest cause of a bad draft - were in
+        whichever one nobody had sent.
+
+        `_copy_debug_log` is now this plus the selected recording's
+        report, which is the only part a zip does not want (it already
+        carries that recording whole).
+        """
         snap = self.snapshot
         layout = self.layout_spec
         lines = [
+            # WHICH COPY THIS IS, FIRST. Four reports of the boot
+            # flicker arrived with no way to tell whether the one that
+            # fixes it was on the machine that sent them - and one of
+            # them came from a different install path entirely. A
+            # diagnostic that cannot name its own build cannot say
+            # whether a fix reached it.
             version.described(),
+            f"status: {self.status.currentMessage()}",
+            f"data: {self.ds.meta.get('pair_source', '?')} "
+            f"{self.ds.age_hours():.1f}h old "
+            f"brackets {self.ds.meta.get('target_brackets', '?')}",
             f"screen layout in use: y={layout.y:.4f} "
             f"slot_h={layout.slot_h:.4f} radiant_x={layout.radiant_x:.4f} "
             f"dire_x={layout.dire_x:.4f} slot_w={layout.slot_w:.4f} "
@@ -3620,6 +3698,41 @@ class MainWindow(QMainWindow):
             ]
         if repair_note:
             lines.append(f"repair attempted: {repair_note}")
+        lines += [
+            f"app icon: {appicon.describe()}",
+            f"taskbar identity: {appicon.identity_note}",
+            f"window icon: {appicon.window_icon_note}",
+            f"start menu: {appicon.shortcut_note}",
+            f"folder shortcut: {appicon.folder_shortcut_note}",
+            f"on top: {ontop.note}",
+            "",
+            "--- windows this process opened ---",
+            self.strays.report(self._own_hwnd()),
+            "",
+            "--- widgets realised with no parent ---",
+            strays.loose_report(),
+            "",
+            "--- what the app is reading ---",
+            self.unknown_label.text(),
+            self.manual_hint.text(),
+        ]
+        if snap is not None:
+            lines += [
+                f"mode={snap.mode} source={snap.source!r} "
+                f"lineup_source={getattr(snap, 'lineup_source', '')!r}",
+                f"gate={snap.gate_score:.3f} "
+                f"frames_arrived={snap.frames_arrived}",
+                f"allies={[self.ds.name(h) for h in snap.left]}",
+                f"enemies={[self.ds.name(h) for h in snap.right]}",
+            ]
+            for note in getattr(snap, "gsi_notes", []) or []:
+                lines.append(f"note: {note}")
+        # ONE box on screen, and it already carries both headed
+        # sections - so this appends it whole rather than naming the two
+        # halves again.
+        lines += ["", "--- what this tick did ---",
+                  self.debug_text.toPlainText(),
+                  "", "--- loop timings (ms) ---", LOOP.report()]
         return "\n".join(lines)
 
     def _update_record_button(self) -> None:
@@ -4020,30 +4133,6 @@ class MainWindow(QMainWindow):
         """Send, and say which of the two routes the mail client allowed."""
         self._send_bug_report()
         return getattr(self, "_last_report_note", "")
-
-    def _measure_from_banner(self, *_ignored) -> None:
-        """The banner's button: measure the boxes off the frame in hand.
-
-        THE SAME CODE AS THE MEASURE BUTTON, deliberately. What raised
-        this strip is precisely what measuring needs — a picture of the
-        pick bar with all ten heroes named by the game — so the answer to
-        "the app cannot find the portraits" is to go and find them, not
-        to hand somebody two rectangles to drag over the client.
-        There is no hand-drag to fall back to any more, so when this
-        cannot run the note says what stopped it — no picture, not enough
-        heroes named yet, no portraits downloaded — every one of which is
-        something the user can act on.
-
-        The flag lives on the snapshot that raised the banner, so a
-        success has to clear it here. The next tick builds a fresh one and
-        would clear it anyway, but a strip that stays up after the thing
-        it is about has been fixed reads as the fix not having worked.
-        """
-        if self._measure_calibration():
-            snap = self.snapshot
-            if snap is not None:
-                snap.crop_boxes_wrong = False
-        self._update_first_run_banner(self.snapshot)
 
     def _measure_calibration(self) -> bool:
         """Measure the crop boxes from a frame whose heroes the game named.
@@ -6340,62 +6429,30 @@ class MainWindow(QMainWindow):
             return 0
 
     def _copy_debug_log(self) -> None:
-        """Everything needed to diagnose one game, in one paste.
+        """ONE paste for the whole app, at the user's request.
 
-        Four separate things had to be selected and copied by hand, from
-        panels that rewrite themselves four times a second. Gathering them
-        here is the difference between "send me the log" being a minute's
-        work and being a chore nobody does.
+        "any error reports should be in 1 ... as in copy to clipboard
+        the whole game log info as text for many aspects... no point in
+        multiple aspectsd haivbng a button eavchj". There were two
+        buttons and the paste you got depended on which page you were
+        on; neither carried the crop boxes.
+
+        The body is `_diagnostic_text`, the same text the emailed
+        problem report carries, so a paste and a zip can no longer
+        describe different things. The selected recording's report is
+        appended here and not there, because a zip already carries that
+        recording whole.
         """
-        snap = self.snapshot
-        parts = [
-            "=== Dota Draft Assist ===",
-            # WHICH COPY THIS IS, FIRST. Four reports of the boot
-            # flicker arrived with no way to tell whether the one that
-            # fixes it was on the machine that sent them - and one of
-            # them came from a different install path entirely. A
-            # diagnostic that cannot name its own build cannot say
-            # whether a fix reached it.
-            version.described(),
-            f"status: {self.status.currentMessage()}",
-            f"data: {self.ds.meta.get('pair_source', '?')} · "
-            f"{self.ds.age_hours():.1f}h old · "
-            f"brackets {self.ds.meta.get('target_brackets', '?')}",
-            f"app icon: {appicon.describe()}",
-            f"taskbar identity: {appicon.identity_note}",
-            f"window icon: {appicon.window_icon_note}",
-            f"start menu: {appicon.shortcut_note}",
-            f"folder shortcut: {appicon.folder_shortcut_note}",
-            f"on top: {ontop.note}",
-            "--- windows this process opened ---",
-            self.strays.report(self._own_hwnd()),
-            "",
-            "--- widgets realised with no parent ---",
-            strays.loose_report(),
-            "",
-            "--- what the app is reading ---",
-            self.unknown_label.text(),
-            self.manual_hint.text(),
-        ]
-        if snap is not None:
-            parts += [
-                f"mode={snap.mode} source={snap.source!r} "
-                f"lineup_source={getattr(snap, 'lineup_source', '')!r}",
-                f"game_state={snap.game_state!r} "
-                f"gate={snap.gate_score:.3f} "
-                f"frames_arrived={snap.frames_arrived} "
-                f"frame={'yes' if snap.frame is not None else 'none'}",
-                f"allies={[self.ds.name(h) for h in snap.left]}",
-                f"enemies={[self.ds.name(h) for h in snap.right]}",
-            ]
-            for note in getattr(snap, "gsi_notes", []) or []:
-                parts.append(f"note: {note}")
-        # ONE box now, and it already carries both headed sections — so
-        # this appends it whole rather than naming the two halves again.
-        parts += ["", self.debug_text.toPlainText(),
-                  "", "--- loop timings (ms) ---", LOOP.report()]
+        parts = ["=== Dota Draft Assist ===", self._diagnostic_text()]
+        report = self.session_report.toPlainText()
+        # A SESSION IS NAMED, NOT JUST PASTED. "Report copied" used to
+        # hand over a wall of text with nothing at the top saying which
+        # game it was about, and the folder name is the timestamp.
+        folder = self._current_session()
+        if report and folder is not None:
+            parts += ["", f"--- recording {folder.name} ---", report]
         QApplication.clipboard().setText("\n".join(parts))
-        self._say("Copied — paste it wherever you are reporting this.", 6000)
+        self._say("Copied - paste it wherever you are reporting this.", 6000)
 
     def _hero_names(self) -> dict[int, str]:
         """Every hero's name, built once per dataset rather than per tick."""
@@ -6662,7 +6719,12 @@ def _report_crash(exc: BaseException) -> None:
                                               exc.__traceback__))
     saved = crashlog.save(exc)
     try:
+        # HELD, NOT UNUSED. Where there is no QApplication yet this
+        # CREATES one and this name is the only reference to it - let it
+        # go and the application is collected and takes the message box
+        # with it. A linter cannot see that, so it is said here.
         app = QApplication.instance() or QApplication([])
+        assert app is not None
         box = QMessageBox(QMessageBox.Icon.Critical, "Dota Draft Assist",
                           "The application hit an unexpected error and has "
                           "to close.")

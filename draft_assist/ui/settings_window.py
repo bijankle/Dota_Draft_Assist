@@ -36,13 +36,49 @@ from __future__ import annotations
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QFrame,
                              QHBoxLayout, QLabel, QPushButton, QRadioButton,
-                             QScrollArea, QSpinBox, QTabWidget, QVBoxLayout,
+                             QScrollArea, QTabWidget, QVBoxLayout,
                              QWidget)
 
 from ..config import DEFAULT_PAIR_SOURCE
 from . import settings as ui_settings
 from .chrome import CountBox, TickBox
-from .settings_dialog import PAIR_SOURCES, SWITCHES
+
+# MOVED HERE FROM `settings_dialog`, WHICH IS DELETED. That module held
+# an OK/Cancel dialog this app replaced with the modeless window below,
+# and the class outlived its last caller: nothing in the app built a
+# `SettingsDialog` any more, one test kept it alive, and it carried a
+# duplicate of this page's own `values()` and pair-source handling. So a
+# fix to the live window left the dead one's test passing on the bug -
+# and the dead one still had the OK/Cancel this window's own docstring
+# explains the app does not want. Dead UI code is not inert; it goes
+# stale and then gets read as documentation.
+
+# Which site's matchup and synergy numbers the matrices are built from.
+# Exactly one at a time, so these are radio buttons: averaging two sites'
+# interaction terms would produce a figure neither site would recognise.
+# value, label, explanation
+PAIR_SOURCES = (
+    ("stratz", "Stratz",
+     "Matchups AND synergies, filtered to your bracket. What the app has "
+     "always used, and the only source that fills the synergy grid."),
+    ("opendota", "OpenDota",
+     "Matchups only, all brackets pooled — OpenDota publishes no ally-pair "
+     "data and no rank filter, so the synergy grid comes out empty and the "
+     "counter numbers are not bracket-specific."),
+)
+
+# key, label, explanation
+SWITCHES = (
+    ("use_gsi", "Read game data from Dota (GSI)",
+     "How the app knows a draft is happening, who you are and which side "
+     "you are on — and it supplies both line-ups once the game starts."),
+    ("use_vision", "Read the draft from the Dota window",
+     "The picks themselves during hero selection. The game feed does not "
+     "report them, so without this the draft has to be typed in."),
+    ("auto_record", "Record every draft automatically",
+     "Starts a recording when hero selection begins and stops a minute "
+     "after the draft ends. Nothing to press."),
+)
 
 
 def _note(text: str, indent: int = 0) -> QLabel:

@@ -394,20 +394,33 @@ def test_the_recorder_takes_itself_off(qapp):
     strays.stop_watching_widgets()
 
 
-def test_the_paste_names_the_build_it_came_from():
+def test_the_paste_names_the_build_it_came_from(window):
     """Four reports arrived with no way to tell which copy sent them.
 
     One of them was from a different install path with data ten days
     old, so whether the fix was even on that machine could not be read
     off the paste. A diagnostic that cannot name its own build cannot
     say whether a fix reached it.
+
+    THE TEXT, NOT THE SOURCE. This used to scan
+    `_copy_debug_log`'s own source for "version.described()", which
+    stopped being true the moment that method started delegating to the
+    one shared body - it failed while the paste it is about was
+    perfectly correct, and it would equally have PASSED on a method
+    that computed the line and threw it away. Rendering the thing and
+    reading it answers the real question.
     """
-    import inspect
+    from draft_assist import version
 
-    from draft_assist.ui import app as ui_app
-
-    body = inspect.getsource(ui_app.MainWindow._copy_debug_log)
-    assert "version.described()" in body, (
+    paste = window._diagnostic_text()
+    assert version.described() in paste, (
         "the diagnostic paste must carry the version and build")
-    assert "loose_report" in body, (
+    assert "widgets realised with no parent" in paste, (
         "the paste must carry the widgets realised without a parent")
+    # AND THE ONE PASTE IS THE SUPERSET. The clipboard button adds the
+    # selected recording and nothing else, so a problem report and a
+    # paste cannot describe different things - which they did: the zip
+    # carried the crop boxes and the clipboard carried the build, and
+    # neither carried both.
+    assert "screen layout in use" in paste
+    assert "loop timings" in paste

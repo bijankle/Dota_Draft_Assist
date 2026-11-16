@@ -14,8 +14,8 @@ press, a move, a release.
 
 from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
                           QSize, QTimer, Qt, pyqtSignal)
-from PyQt6.QtGui import (QTextOption, QColor, QFontMetrics, QPainter, QPainterPath, QPen,
-                         QPolygonF)
+from PyQt6.QtGui import (QTextOption, QColor, QFontMetrics, QPainter,
+                         QPainterPath, QPen, QPixmap, QPolygonF)
 from PyQt6.QtWidgets import (QPlainTextEdit, QAbstractButton, QCheckBox, QComboBox, QFrame,
                              QHBoxLayout, QLabel, QMenuBar,
                              QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
@@ -778,7 +778,7 @@ def paint_tick(painter, box) -> None:
         QPointF(left + size * 0.78, top + size * 0.29)]))
 
 
-def tick_pixmap(size: int = 15) -> "QPixmap":
+def tick_pixmap(size: int = 15) -> QPixmap:
     """The same tick in its own box, as a picture.
 
     A STYLESHEET CANNOT DRAW A MARK. It can colour `QMenu::indicator`
@@ -792,8 +792,6 @@ def tick_pixmap(size: int = 15) -> "QPixmap":
     committed PNG would be a binary nobody can diff that goes stale the
     moment the accent or greyscale changes.
     """
-    from PyQt6.QtGui import QPixmap
-
     pixmap = QPixmap(size, size)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)

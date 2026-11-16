@@ -50,7 +50,7 @@ stops you moving on.
 """
 
 import webbrowser
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
@@ -62,7 +62,7 @@ from ..config import (DEFAULT_TARGET_BRACKETS, has_stratz_key,
                       save_stratz_key, save_target_brackets, target_brackets)
 from ..gsi import install as gsi_install
 from ..history import account as account_mod
-from . import accountrow, chrome, rankpick, section_bar
+from . import accountrow, rankpick, section_bar
 
 KEY_URL = "https://stratz.com/api"
 

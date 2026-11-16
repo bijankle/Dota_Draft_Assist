@@ -170,6 +170,33 @@ credentials, and put the account at risk. Do not go there.
    a_i - a_j` preserves antisymmetry and `d[i,j] -= a_i + a_j` preserves
    symmetry, which `sanity_check` enforces and which the grids read as the two
    triangles and the 5x5. A flat subtraction would have failed both.
+   **AND `a_i` IS NOT THE ROW MEAN, WHICH IS THE OBVIOUS ANSWER AND
+   OSCILLATES** (`normalize._damping`). Taking a row's WHOLE mean off an
+   antisymmetric matrix also lifts every other row by its share of the
+   same figure, so the correction lands past zero by `n / (n - 1)` and
+   the sweep's multiplier is `-1 / (n - 1)`. At two heroes that is
+   exactly -1: the matchup FLIPPED SIGN on every sweep and the stored
+   number came out of the PARITY of `CENTRING_SWEEPS`. It shipped, and
+   `test_normalize` caught it within the hour - by passing. A test
+   wanting +0.05 got it on four sweeps and would have read **-0.05** on
+   three, which on real data is a matchup printed backwards.
+   Solving it gives `a_i = m_i * k / (k + 1)` for a row with k partners,
+   which is exact in ONE sweep at every size, and k is per ROW so a hero
+   with fewer partners is damped harder - right, since its row mean is
+   that much more its own pairs and that much less a main effect. The
+   SYMMETRIC branch has its own solution and deliberately does not take
+   that damping. `test_the_sweep_count_cannot_change_the_answer` holds
+   it: the answer may not move with the number of sweeps.
+   **AND TWO HEROES CANNOT BE ASKED THIS QUESTION AT ALL.** With one
+   pair in the matrix there is no second partner to measure either hero
+   against, so "they work well together" and "both are better than the
+   table says" are the same number and the honest answer is zero. That
+   is why `raw_deltas` is its own function: the baseline subtraction and
+   the main-effect removal are separate claims wanting separate tests,
+   and the three hand-computed two-hero cases pin the first exactly
+   while saying nothing about the second. At a real 127 heroes a single
+   genuine pair keeps over 98% of its edge, which is measured rather
+   than argued.
    **AND IT IS SWEPT RATHER THAN SOLVED** (`CENTRING_SWEEPS`). One pass zeroes
    every row mean exactly when every pair is present; with pairs MISSING - and
    a missing pair must stay at exactly zero, since zero means "no information"
@@ -282,7 +309,12 @@ credentials, and put the account at risk. Do not go there.
    about them had to be argued to get the display-shaped answer in.
 
    **AND A DISPLAY THE TABLE GETS WRONG IS A GUIDED PAGE, NOT A DEAD END**
-   (`ui/fixboxes.py`), at the owner's request: "if the portraits dont
+   (`ui/fixboxes.py`, reached by `_guide_the_boxes` - the older
+   `_measure_from_banner`, which ran the measurement outright and is what
+   this replaced, is DELETED: it had no caller left and its docstring
+   went on describing the behaviour the app had moved away from, which is
+   this project's own rule about dead UI code being read as
+   documentation), at the owner's request: "if the portraits dont
    align on the first go the user should be guided through the process of
    portrait recognition improvements for their specific case (+ bug
    reports sendng)". The crop-boxes banner has had ONE action on it —
@@ -917,7 +949,7 @@ credentials, and put the account at risk. Do not go there.
   a match not having started; a banner that is up all evening is one
   nobody reads on the night it matters.
   **AND THE CROP BOXES ARE THE SECOND RUNG** (`Snapshot.
-  crop_boxes_wrong`, `_measure_from_banner`), because between them these
+  crop_boxes_wrong`, `_guide_the_boxes`), because between them these
   two are the ways the app goes blind for a whole draft. A real ranked
   game read **two of the ten slots** for eighty seconds — the picks
   trickled in from the screen late and one was never read at all — and
@@ -5116,6 +5148,18 @@ credentials, and put the account at risk. Do not go there.
   Capture, and a SECOND rule names whole items that were deleted rather
   than moved, because there is nowhere at all to send somebody who goes
   looking for one of those.
+  **AND "Settings > Debug" IS A THIRD RULE, because the guard did not
+  cover a thing that MOVED OUT** (`MOVED_OUT`,
+  `test_nothing_says_debug_is_in_settings`). Debug was a tab of the
+  settings window for a while and came back to the main window at the
+  user's request - and FOUR strings went on sending people to Settings
+  for it: three of them in `ui/handbook.py`, which is the USER MANUAL.
+  That is the worst copy of this fault rather than the mildest, because
+  the manual is the one thing somebody opens when the app is not
+  working, and it is where all the prose cut from the screens went. The
+  guard was written for menus that were DELETED, and a menu that MOVED
+  leaves exactly the same dead trail; it found all four the first time
+  it ran.
   **AND THE INSTRUMENTS WENT, at the user's request**: "all of those
   were used to refine the software - once its done i dont nteed them".
   Help ▸ Recognition checks and its four items (Check hero recognition,
@@ -5171,18 +5215,85 @@ credentials, and put the account at risk. Do not go there.
   so the next long panel added to Debug fails a test rather than eating
   the desktop silently.
   **ONE ROUTE IN, AND ITS INDEX IS ASKED FOR RATHER THAN TYPED**
-  (`show_debug(inner)`). There are four ways to it — Help ▸ Debug view,
-  the search, the latest-report button and the tab — and the
-  latest-report one was `setCurrentIndex(1)` against the MAIN tabs when
-  Debug was index 1, which became the History tab the moment it moved.
-  A number that is right until somebody adds a tab is a number that
-  will be wrong, and this one already was.
+  (`show_debug(inner)`). There are three ways to it — Help ▸ Debug view,
+  the search and the tab. There were four: a "Report" button on the tab
+  row did `setCurrentIndex(1)` against the MAIN tabs when Debug was
+  index 1, which became the History tab the moment it moved. A number
+  that is right until somebody adds a tab is a number that will be
+  wrong, and this one already was.
+  **AND IT TAKES TWO WIDGETS NOW, WHICH IS THE SAME FAULT ONE LEVEL
+  UP** (`MainWindow.debug_page`). The one report button sits ABOVE both
+  pages, so what the tab bar holds is a wrapper and `debug_tabs` is
+  inside it — and `indexOf(debug_tabs)` through a wrapper answers -1
+  and switches nothing, silently. Caught by two tests that asserted
+  `tabs.currentWidget() is debug_tabs`, which is why the lookup is
+  tested rather than assumed.
+
+  **AND THE WHOLE TAB HAS ONE REPORT BUTTON**, at the user's request:
+  "a lot of the debugging menu buttons were developed as i was
+  debuggign and many arent relevant as some bugs were resolved...
+  please consolidate these buttons and only keep those which are
+  requried... also, i think that any error reports should be in 1 ...
+  as in copy to clipboard the whole game log info as text for many
+  aspects... no point in multiple aspectsd haivbng a button eavchj".
+  **THERE WERE THREE DESCRIPTIONS OF ONE APP AND NO WAY TO SEND ALL
+  OF IT.** "Copy everything" on the Live page took the build, the
+  status line, the reading, the tick log and the loop timings; "Copy
+  report" beside the session list took that recording's report; and
+  `_diagnostic_text`, which goes in the EMAILED ZIP, took the crop
+  boxes and which level they came from — and nothing else. So which
+  facts you sent depended on which page you happened to be on, and the
+  crop boxes, the commonest cause of a bad draft, were in whichever one
+  nobody had sent. `_diagnostic_text`'s own docstring claimed it
+  printed "the same facts Debug ▸ Copy everything prints" and had not
+  been true for a long time.
+  So `_diagnostic_text` IS the one body, `_copy_debug_log` is that plus
+  the selected recording (which a zip already carries whole), and a
+  test renders both and requires one to contain the other.
+  **IT SITS ABOVE THE TWO PAGES**, because a button on the Live page is
+  one you have to leave the recording to reach.
+  **ELEVEN BUTTONS WHERE THERE WERE SEVENTEEN**, and what went was
+  only ever the page saying its own name twice. **"Recordings"** opened
+  the recordings folder, which lives INSIDE the folder "Open debug
+  folder" opens; **"Report"** refreshed the session list and switched
+  to Debug ▸ Recordings, which is what clicking that tab does; **two
+  "Refresh" buttons** both answered "something changed while I was
+  looking elsewhere", which is what `_debug_page_changed` now does at
+  the moment the page comes up; **"Copy report"** is in the one paste;
+  and **"Replay this session"** posted a recording's payloads back at
+  the live listener — the highest-fidelity test there is, and a test,
+  which is what was asked to go. `tasks.replay_gsi` and
+  `tools/replay.py` are untouched, so it is one button to put back.
+  **"Save a snapshot of this frame" STAYS**, deliberately, and it is
+  the one thing on that page that writes a file. Everything else built
+  for refining recognition has gone — but recognition is NOT finished
+  (ten of fourteen recordings read no heroes at all), and this is the
+  only way to get the crops as PICTURES off a live frame when there is
+  no recording to read them from.
+  **AND THE HEADER STARTS WHERE THE PAGE DOES.** Both inner pages inset
+  their contents by 12, so a header flush against the window's edge put
+  the only button on this tab a dozen pixels left of everything it is
+  above. Caught by rendering the tab and looking at it; every test
+  passed.
   **AND THE SETTINGS WINDOW NO LONGER TOUCHES IT.** Its `debug`
   parameter is gone rather than left unused: one parent for the life of
   the app is the rule, and a dead parameter is read as documentation
   later. What survives of the old note is the plainer reason that
   window is still modeless — every action in it does its thing
   immediately, so there is nothing to apply and nothing to cancel.
+
+  **AND `settings_dialog.py` IS DELETED, WHICH IS WHAT THAT COST.**
+  That module held `SettingsDialog`, the OK/Cancel version this window
+  replaced, and the class outlived its last caller: nothing in the app
+  built one, a single test kept it importable, and it carried its own
+  copy of this page's `values()` and pair-source radio buttons. Two
+  implementations of one page is one of them going stale, and the stale
+  one was the one under test - a fix to the live window would leave the
+  dead one's test passing on the bug. Worse, the dead one still had the
+  OK and Cancel buttons this very note explains the app does not want,
+  sitting there to be read as documentation. Its two data tables
+  (`PAIR_SOURCES`, `SWITCHES`) moved into `settings_window.py`, which
+  was already importing them from it, and the test follows `GeneralPage`.
 
   **THE SETTINGS WINDOW IS MODELESS AND APPLIES AS YOU GO**, and the
   second half of that is what decides it. A preferences window with OK

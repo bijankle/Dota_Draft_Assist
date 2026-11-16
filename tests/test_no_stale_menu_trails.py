@@ -34,6 +34,15 @@ if str(ROOT) not in sys.path:
 # and both are trails.
 GONE = re.compile(r"\b(Game|Setup|Capture)\s*(?:>|▸)\s*[A-Z]")
 
+# AND DEBUG IS NOT IN SETTINGS. It was a tab there for a while and came
+# back out to the main window at the user's request - "make debug a
+# view again, right of history... i use it too often not to" - and the
+# USER MANUAL went on sending people to "Settings > Debug > Copy
+# everything" for months afterwards. The manual is the one place
+# somebody looks when the app is not working, so a trail there that
+# goes nowhere is the worst copy of this fault, not the mildest.
+MOVED_OUT = re.compile(r"Settings\s*(?:>|▸)\s*Debug\b")
+
 # Whole items that were deleted rather than moved, wherever they are
 # named as somewhere to go. Two families here and they went for
 # different reasons: the hand-drawn crop boxes, because the geometry is
@@ -121,3 +130,12 @@ def test_that_check_would_actually_catch_one(tmp_path):
                       encoding="utf-8")
     assert any(DELETED_ITEMS.search(text)
                for _line, text in strings_in(sample))
+
+
+def test_nothing_says_debug_is_in_settings():
+    """Debug is a tab of the main window, right of History."""
+    for path in FILES:
+        for line, text in strings_in(path):
+            assert not MOVED_OUT.search(text), (
+                f"{path.relative_to(ROOT)}:{line} sends somebody to "
+                f"Settings for the Debug view: {text!r}")
