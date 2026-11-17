@@ -58,6 +58,71 @@ from ..model import roles as roles_mod
 from . import theme, tilekit
 from .chrome import card
 
+# ---- the one place this view's typography is set -------------------
+#
+# **THE REST OF THE APP IS A SERIF, BOLD, AT 18px, AND THIS IS NOT**, at
+# the user's request: "I wanted it to be purely for you to pick fonts -
+# very standardized, or ones that are notoriously easy to read and easy
+# on the eyes. Same with the size of the font. I want this to be
+# designed for readability and simplicity... purely the new view".
+#
+# The app's own face is Alegreya at `theme.BODY_PX`, bold everywhere,
+# and that is RIGHT where it is: the board is read in the corner of the
+# eye over a running game, where weight is legibility and a serif at 18
+# is a glance. A table is the other kind of reading - a column at a
+# time, by somebody who came for the figure - and this view already has
+# the app's own precedent for the exception: `QLabel[prose="true"]`, the
+# user manual, "THE ONE PLACE THIS APP IS NOT BOLD", because "a page of
+# 18px bold is a wall whatever it says".
+#
+# **THE FACE IS THE PLATFORM'S OWN, AND NOTHING IS COMMITTED FOR IT.**
+# "Standardized" and "notoriously easy to read" is Segoe UI on the
+# machine this app runs on - Microsoft's own UI face, drawn for screen
+# text at exactly these sizes and tested harder than anything that could
+# be bundled here. Everything after it is a fallback so a checkout on
+# another machine still gets a real sans rather than dropping back to
+# the app's serif: Inter where somebody has it, then the two faces that
+# ship with every Linux desktop (which is what the test machines render
+# in), then Arial, then whatever the system calls its UI font.
+# Committing a face was the alternative and is not needed: this app's
+# own bar is that a committed font must state its own licence in its
+# name table, and there is no file to clear it for.
+SANS = ('"Segoe UI", "Inter", "Noto Sans", "DejaVu Sans", '
+        '"Liberation Sans", "Helvetica Neue", Arial, system-ui, sans-serif')
+
+# **SMALLER THAN THE APP AND IT READS LARGER.** A humanist sans has a
+# much bigger x-height than Alegreya, so 15px here sets about the size
+# 18px does there - and the rows it saves are rows of the answer. The
+# header is smaller again and the only thing on the page carrying any
+# weight, because in a table the heading's job is to be found rather
+# than read.
+CELL_PX = 15
+HEAD_PX = 13
+TITLE_PX = 17
+# **THE BIGGEST SINGLE READABILITY WIN IS NOT THE FACE, IT IS THE
+# LEADING.** The app-wide rule pads a cell by `2px 4px`, which is right
+# for a 5x5 of deltas read as a block and far too tight for a row read
+# across. Six and ten is a line of text with room to be a line of text.
+CELL_PAD = "6px 10px"
+
+# NO COLOUR IN HERE, deliberately. `theme.set_greyscale` rebuilds the
+# APPLICATION stylesheet and nothing sweeps a widget's own, so a hex
+# written here would be the one thing on screen that stayed in colour.
+# Everything this sheet says is typography and spacing; every colour on
+# the page still comes from the app's stylesheet or from a per-item
+# foreground looked up at paint time.
+STYLESHEET = f"""
+QWidget {{ font-family: {SANS}; font-size: {CELL_PX}px; font-weight: 400; }}
+QLabel[heading="true"] {{ font-size: {TITLE_PX}px; font-weight: 600; }}
+QLabel[dim="true"] {{ font-size: {HEAD_PX}px; font-weight: 400; }}
+QTableWidget {{ font-size: {CELL_PX}px; font-weight: 400; }}
+QTableWidget::item {{ padding: {CELL_PAD}; }}
+QHeaderView::section {{
+    font-size: {HEAD_PX}px; font-weight: 600;
+    letter-spacing: 0.3px; padding: {CELL_PAD};
+}}
+"""
+
 # What an empty slot prints. An EM DASH rather than a blank cell, for the
 # same reason the board draws a dashed plate rather than nothing: the
 # shape of the answer standing where the answer will appear, so the table
@@ -153,6 +218,11 @@ class TextTable(QTableWidget):
         """Replace the whole table. `stretch` names the columns that
         absorb the card's spare width; the rest are cut to their
         contents."""
+        # THE FONT COMES FROM THE STYLESHEET, so it is not this
+        # widget's font until Qt has polished it - and `_fit_height`
+        # below and the numeric cells' `QFont(self.font())` both
+        # measure against it. The History tab paid for this twice.
+        self.ensurePolished()
         self.clearContents()
         self.setColumnCount(len(headers))
         self.setHorizontalHeaderLabels(headers)
@@ -176,13 +246,16 @@ class TextTable(QTableWidget):
                 if cell.tip:
                     item.setToolTip(cell.tip)
                 if cell.numeric:
-                    # ALEGREYA HAS OLD-STYLE FIGURES: 3 4 5 7 9 hang
-                    # below the baseline and 0 1 2 sit at x-height, so a
-                    # column of them is a ragged column. `lnum` makes
-                    # every digit one height on one baseline, which is
-                    # what a column of numbers is for.
+                    # LINING AND TABULAR. Lining because Alegreya's
+                    # figures hang below the baseline and sit at
+                    # x-height, so a column of them is ragged wherever
+                    # that face is still reached; tabular because a
+                    # COLUMN of figures wants every digit the same width
+                    # or the decimal points wander down the page. Both
+                    # are no-ops on a face without them, which is the
+                    # same outcome a checkout with no fonts has.
                     font = QFont(self.font())
-                    tilekit.lining_figures(font)
+                    tilekit.lining_figures(font, tabular=True)
                     item.setFont(font)
                 self.setItem(r, c, item)
         for c in range(len(headers)):
@@ -234,9 +307,15 @@ class SimpleView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # ON THE PAGE, not on the application: a widget's own stylesheet
+        # merges with the app's and wins on an equal selector, so this
+        # restyles everything inside the simplified view and reaches
+        # nothing outside it. Which is the whole request - "purely the
+        # new view".
+        self.setStyleSheet(STYLESHEET)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
 
         self.cards: dict[str, QWidget] = {}
 

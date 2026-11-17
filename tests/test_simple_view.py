@@ -24,7 +24,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path  # noqa: E402
 
 from PyQt6.QtCore import QPoint, QPointF, Qt  # noqa: E402
-from PyQt6.QtGui import QWheelEvent  # noqa: E402
+from PyQt6.QtGui import QFont, QWheelEvent  # noqa: E402
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication,  # noqa: E402
                              QHeaderView)
 
@@ -397,3 +397,89 @@ def test_a_heading_is_aligned_like_the_column_under_it(simple):
     right = Qt.AlignmentFlag.AlignRight.value
     assert table.horizontalHeaderItem(3).textAlignment() & right
     assert not table.horizontalHeaderItem(2).textAlignment() & right
+
+
+# ---- its own typography, and nobody else's ---------------------------
+
+def test_the_page_is_a_plain_sans_at_a_reading_size(simple):
+    """"Very standardized, or ones that are notoriously easy to read and
+    easy on the eyes. Same with the size of the font. I want this to be
+    designed for readability and simplicity."
+
+    The app's own face is Alegreya, bold, at `theme.BODY_PX` - right for
+    a board read in the corner of the eye over a running game, and the
+    wrong kind of reading for a table. This page asks for the platform's
+    own UI sans at a regular weight instead, which is the same exception
+    `QLabel[prose="true"]` already makes for the manual.
+    """
+    table = simple.simple_view.board
+    table.ensurePolished()
+    font = table.font()
+    assert font.family() != theme.BODY_FAMILY
+    assert font.family() == "Segoe UI"          # first in `SANS`
+    assert font.pixelSize() == simpleview.CELL_PX < theme.BODY_PX
+    # `weight()` is an int on some PyQt builds and a QFont.Weight on
+    # others; both compare against the enum.
+    assert int(font.weight()) < int(QFont.Weight.DemiBold)   # not bold
+
+
+def test_it_restyles_nothing_outside_itself(simple):
+    """"Purely the new view." A widget's own stylesheet merges with the
+    application's and wins on an equal selector, so this reaches
+    everything inside the page and nothing beyond it."""
+    for widget in (simple.suggest_row, simple.matchup_matrix.table,
+                   simple.item_row):
+        widget.ensurePolished()
+        assert widget.font().family() == theme.BODY_FAMILY
+        assert widget.font().pixelSize() == theme.BODY_PX
+
+
+def test_the_pages_stylesheet_names_no_colour(simple):
+    """`theme.set_greyscale` rebuilds the APPLICATION stylesheet and
+    nothing sweeps a widget's own, so a hex written here would be the
+    one thing on screen that stayed in colour. Everything this sheet
+    says is typography and spacing."""
+    assert "#" not in simpleview.STYLESHEET
+    for name in ("GOOD", "BAD", "TEXT", "ACCENT"):
+        assert getattr(theme, name) not in simpleview.STYLESHEET
+
+
+def test_greyscale_still_reaches_the_figures_here(simple):
+    """The colours are looked up at paint time and the tables are
+    redrawn by `_refresh_views`, which greyscale runs."""
+    try:
+        simple._set_greyscale(True)
+        colours = {simple.simple_view.board.item(r, 3).foreground()
+                   .color().name()
+                   for r in range(simple.simple_view.board.rowCount())}
+        assert colours & {theme.GOOD, theme.BAD, theme.TEXT_DIM}
+        assert theme.GOOD == theme.GOOD.lower()
+        # The greyscale palette is grey: no channel apart from the rest.
+        for hexed in colours:
+            r, g, b = (int(hexed[i:i + 2], 16) for i in (1, 3, 5))
+            assert max(r, g, b) - min(r, g, b) <= 2, hexed
+    finally:
+        simple._set_greyscale(False)
+
+
+def test_a_row_has_room_to_be_a_row(simple):
+    """The biggest readability win is the leading, not the face. The
+    app-wide rule pads a cell by `2px 4px`, which is right for a 5x5 of
+    deltas read as a block and far too tight for a row read across."""
+    assert simpleview.CELL_PAD == "6px 10px"
+    assert f"padding: {simpleview.CELL_PAD}" in simpleview.STYLESHEET
+    table = simple.simple_view.board
+    assert table.rowHeight(0) >= simpleview.CELL_PX + 12
+
+
+def test_a_column_of_figures_lines_up(simple):
+    """Tabular figures, so the decimal points do not wander down the
+    page - and lining ones, since Alegreya's hang below the baseline
+    wherever that face is still reached."""
+    item = simple.simple_view.board.item(0, 3)
+    font = item.font()
+    tag = getattr(type(font), "Tag", None)
+    if tag is None:                      # Qt older than 6.7
+        pytest.skip("this Qt cannot be asked for font features")
+    assert font.featureValue(tag("lnum")) == 1
+    assert font.featureValue(tag("tnum")) == 1

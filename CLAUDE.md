@@ -2856,6 +2856,52 @@ credentials, and put the account at risk. Do not go there.
   of them is ragged. One implementation, so a column of numbers and the
   badge on a pick cannot end up drawn with two different sets of
   digits.
+  **AND IT IS THE SECOND PLACE THIS APP IS NOT BOLD** (`simpleview.
+  SANS`, `CELL_PX`, `STYLESHEET`), at the user's request: "i wanted it
+  to be purely for you to pick fonts - very standardized, or ones that
+  are notoriously easy to read and easy on the eyes. Same with the size
+  of the font. I want this to be designed for readability and
+  simplicity... purely the new view".
+  The app's own face is Alegreya at `BODY_PX`, bold everywhere, and
+  that stays RIGHT where it is: the board is read in the corner of the
+  eye over a running game, where weight IS legibility. A table is the
+  other kind of reading, and the precedent is already here -
+  `QLabel[prose="true"]`, the user manual, "a page of 18px bold is a
+  wall whatever it says".
+  **THE FACE IS THE PLATFORM'S OWN AND NOTHING IS COMMITTED FOR IT.**
+  "Standardized" and "notoriously easy to read" is Segoe UI on the
+  machine this app runs on: Microsoft's own UI face, drawn for screen
+  text at these sizes and tested harder than anything that could be
+  bundled. Inter, Noto Sans, DejaVu Sans, Liberation Sans and Arial
+  stand behind it so a checkout elsewhere still gets a real sans rather
+  than falling back to the app's serif - which is what the Linux test
+  machines render in. Committing a face was the alternative and was not
+  needed: this app's bar is that a committed font STATES ITS OWN
+  LICENCE in its name table, and there is no file to clear it for.
+  **SMALLER AND IT READS LARGER.** A humanist sans has a much bigger
+  x-height than Alegreya, so 15px here sets about what 18px does there
+  - and the rows it saves are rows of the answer. 13px for the column
+  headings, the only thing on the page carrying weight, because a
+  table's heading is found rather than read.
+  **THE BIGGEST WIN IS THE LEADING, NOT THE FACE.** The app-wide rule
+  pads a cell `2px 4px`, which is right for a 5x5 of deltas read as a
+  block and far too tight for a row read across; `6px 10px` is a line
+  of text with room to be one.
+  **ON THE PAGE, NOT ON THE APPLICATION, AND IT NAMES NO COLOUR.** A
+  widget's own stylesheet merges with the app's and wins on an equal
+  selector, so this reaches everything inside the simplified view and
+  nothing outside it - which is the request. And it is typography and
+  spacing ONLY: `theme.set_greyscale` rebuilds the APPLICATION
+  stylesheet and nothing sweeps a widget's own, so a hex written there
+  would be the one thing on screen that stayed in colour. Tests hold
+  both halves, and a third holds that the rich view is untouched.
+  **THE FIGURES ARE TABULAR AS WELL AS LINING**
+  (`lining_figures(tabular=True)`). Lining because Alegreya's hang
+  below the baseline wherever that face is still reached; tabular
+  because a COLUMN of figures wants every digit the same width or the
+  decimal points wander down the page. Off by default, because a badge
+  on a tile is one number on its own and proportional digits set better
+  there.
   **AND THE VIEW MENU'S GUARD WENT 7 TO 8** to let it in
   (`test_the_menu_bar_stays_small`). Worth recording rather than
   waving through: that number is a guard against menus sprawling and

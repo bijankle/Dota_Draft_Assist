@@ -571,7 +571,7 @@ SHIELD = (("m", 0.50, 0.02),
           ("c", 0.17, 0.13, 0.33, 0.06, 0.50, 0.02))
 
 
-def lining_figures(font: QFont) -> None:
+def lining_figures(font: QFont, tabular: bool = False) -> None:
     """Ask for digits that are all one height and all on the baseline.
 
     **ALEGREYA HAS OLD-STYLE FIGURES BY DEFAULT**, which is right for
@@ -592,6 +592,13 @@ def lining_figures(font: QFont) -> None:
     does. One implementation, so a column of numbers and a badge cannot
     end up drawn with two different sets of digits.
 
+    `tabular` asks for `tnum` as well, which is a different property
+    and only wanted in one place: a COLUMN of figures, where every
+    digit has to occupy the same width or the decimal points wander
+    down the page. It is off by default because a mark on a tile is one
+    number on its own, where proportional digits set better - a "1" in
+    a tabular font carries a drift of empty space either side.
+
     Guarded twice. `QFont.setFeature` is Qt 6.7 and this project asks
     only for PyQt6>=6.6, so an older install must get the old figures
     rather than an AttributeError out of a paint handler; and a font
@@ -602,10 +609,11 @@ def lining_figures(font: QFont) -> None:
     tag = getattr(QFont, "Tag", None)
     if setter is None or tag is None:
         return
-    try:
-        setter(tag("lnum"), 1)
-    except (TypeError, ValueError):       # a Qt that spells it differently
-        pass
+    for name in ("lnum",) + (("tnum",) if tabular else ()):
+        try:
+            setter(tag(name), 1)
+        except (TypeError, ValueError):   # a Qt that spells it differently
+            pass
 
 
 def _paint_rank(painter: QPainter, where: QRect, rank,
