@@ -139,6 +139,24 @@ DEFAULTS = {
     "show_suggestions": True,
     "show_items": True,
     "show_matrices": False,
+    # WHICH SHAPE THE DRAFT TAB IS IN. False is the app as it has
+    # always looked - portraits, painted grids, tiles; True is the same
+    # draft as a page of text tables (`ui/simpleview.py`).
+    #
+    # OFF BY DEFAULT, at the user's request in those words: "I want this
+    # to be off by default so that by default it looks like how it is
+    # right now". And REMEMBERED, also in their words: "once you toggle
+    # to it it should be remembered, so if I toggle to this simplified
+    # view and then restart the app or update it, whatever, it should
+    # stay in that simplified view".
+    #
+    # Which is the whole reason it has to be HERE rather than only set
+    # by the menu: this dict is the WRITE FILTER as well as the
+    # fallback, so a key it does not name is kept for the session and
+    # dropped on the way to disk - the fault that lost the transparency
+    # setting. An update keeps it for a different reason: the file is
+    # gitignored, so `tools/update_app.py` cannot write over it.
+    "simple_view": False,
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather

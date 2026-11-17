@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (QApplication,
                              QDoubleSpinBox, QListWidget,
                              QPushButton,
                              QScrollArea, QSizePolicy, QSlider,
-                             QStatusBar, QTabWidget,
+                             QStackedWidget, QStatusBar, QTabWidget,
                              QVBoxLayout, QWidget)
 
 from .. import bugreport, console, version
@@ -78,6 +78,7 @@ from . import strays
 from . import chrome
 from . import ornate
 from . import reasons
+from . import simpleview
 from . import tilekit
 from .bracket_dialog import BracketDialog
 from . import appicon
@@ -456,6 +457,12 @@ class MainWindow(QMainWindow):
         # costs nothing when it is already right. NOT rebuilding the
         # views: see `_apply_greyscale`.
         self._apply_greyscale(rebuild=False)
+        # AND WHICH SHAPE THE DRAFT TAB IS IN, for the same two reasons:
+        # a settings file saying simplified must arrive at the simplified
+        # page, and `rebuild=False` because `_refresh_views` from inside
+        # the constructor reaches grids that are not laid out yet. The
+        # first tick fills whichever page is showing.
+        self._apply_simple_view(rebuild=False)
         # Before the window is shown, because the taskbar reads a window's
         # relaunch properties when it creates the button — and a pin of the
         # running window is built from those, not from the window icon.
@@ -1278,7 +1285,29 @@ class MainWindow(QMainWindow):
         # nothing to scroll, and on a short screen the tab scrolls instead
         # of hiding its last row of tiles.
         self.draft_scroll = _scrolling(draft_widget)
-        tabs.addTab(self.draft_scroll, "Draft")
+        # TWO SHAPES OF ONE TAB, at the user's request: "I kind of want
+        # something like that where I can toggle between view types for
+        # this app... it will change to like a spreadsheet view where
+        # it's just like simple data tables... we'll call it a
+        # simplified view". A QStackedWidget rather than a second tab,
+        # because these are not two places to be - they are one draft,
+        # drawn two ways, and a second "Draft" tab would be two answers
+        # to one question with the reader left to notice which they were
+        # reading.
+        #
+        # BOTH PAGES ARE SCROLL AREAS, which is load-bearing: a stack's
+        # minimum is its TALLEST page whether or not anybody is looking
+        # at it, exactly like a tab widget's, and the simple view is six
+        # tables. Inside a scroll area each asks for nothing, so neither
+        # can set the window's floor - the property
+        # `test_a_tall_tab_does_not_set_the_windows_floor` holds.
+        self.simple_view = simpleview.SimpleView()
+        self.simple_scroll = _scrolling(self.simple_view)
+        self.draft_pages = QStackedWidget()
+        self.draft_pages.setProperty("bare", True)
+        self.draft_pages.addWidget(self.draft_scroll)
+        self.draft_pages.addWidget(self.simple_scroll)
+        tabs.addTab(self.draft_pages, "Draft")
         # WHAT A CLICKED HERO IS MADE OF, in a box pointing down at it,
         # at the user's request: "when i click on a hero in addition to
         # the gold border i want to see the stats show up above in a
@@ -2985,11 +3014,24 @@ class MainWindow(QMainWindow):
             self.section_actions[key] = act
         self._apply_sections()
 
-        # GREYSCALE, on its own below the blocks, because it is not one
-        # of them: those four say what is ON the Draft tab, this says how
-        # the whole app looks. Its own separator keeps the two questions
-        # apart in a menu that is read at a glance.
+        # SIMPLIFIED VIEW AND GREYSCALE, on their own below the blocks,
+        # because neither is one of them: those four say what is ON the
+        # Draft tab, these two say what it LOOKS LIKE. Their own
+        # separator keeps the two questions apart in a menu read at a
+        # glance.
+        #
+        # IN THE VIEW MENU rather than on the tab row, which is the
+        # argument the four above it were moved on: this is a setting
+        # somebody flips and leaves, the way Greyscale is, and the tab
+        # row has to stay readable at the window's minimum width. Moving
+        # it to a one-click control on that row is one line if it turns
+        # out to be flipped often.
         self.view_menu.addSeparator()
+        self.simple_action = QAction("Simplified view", self)
+        self.simple_action.setCheckable(True)
+        self.simple_action.setChecked(bool(self.settings.get("simple_view")))
+        self.simple_action.toggled.connect(self._set_simple_view)
+        self.view_menu.addAction(self.simple_action)
         self.greyscale_action = QAction("Greyscale", self)
         self.greyscale_action.setCheckable(True)
         self.greyscale_action.setChecked(bool(self.settings.get("greyscale")))
@@ -3063,6 +3105,50 @@ class MainWindow(QMainWindow):
             self._refresh_views()
         self.update()
 
+    def _set_simple_view(self, on: bool) -> None:
+        if bool(self.settings.get("simple_view")) == bool(on):
+            return
+        self.settings["simple_view"] = bool(on)
+        ui_settings.save(self.settings)
+        self._apply_simple_view()
+
+    def _apply_simple_view(self, rebuild: bool = True) -> None:
+        """Show the page the setting asks for, and fill it if it is new.
+
+        `rebuild=False` FROM `__init__`, for the reason
+        `_apply_greyscale` takes the same argument: `_refresh_views`
+        runs the whole draw and from inside the constructor reaches
+        grids that are built but not yet laid out, which SEGFAULTS
+        rather than raising. Nothing is lost there - the first tick
+        changes `last_draft_key` and draws everything anyway.
+
+        IDEMPOTENT, and called from `_apply_settings` as well as from
+        the menu, so a hand-edited settings file arrives where a click
+        does. The tick is corrected with signals BLOCKED: setting a
+        control to what the file already says is not the user pressing
+        it, and unblocked it would write the settings file on every
+        start.
+        """
+        want = bool(self.settings.get("simple_view"))
+        pages = getattr(self, "draft_pages", None)
+        if pages is None:
+            return
+        pages.setCurrentWidget(self.simple_scroll if want
+                               else self.draft_scroll)
+        act = getattr(self, "simple_action", None)
+        if act is not None and act.isChecked() != want:
+            act.blockSignals(True)
+            act.setChecked(want)
+            act.blockSignals(False)
+        # THE SIMPLE PAGE IS FILLED ONLY WHEN IT IS ON SCREEN, so
+        # turning it on has to fill it: `_update_simple_view` returns
+        # early while it is hidden, which is the rule `_update_debug`
+        # follows and for the same reason - this page is six tables
+        # rebuilt per pick, and rebuilding them for nobody is the
+        # smooth-scaled hidden widget all over again.
+        if rebuild and want and getattr(self, "suggest_row", None) is not None:
+            self._refresh_views()
+
     def _set_section(self, key: str, shown: bool) -> None:
         """Remember a tick and redraw. Written through `ui_settings.save`
         like every other preference — `DEFAULTS` is the write filter, so
@@ -3099,6 +3185,29 @@ class MainWindow(QMainWindow):
                 act.blockSignals(True)
                 act.setChecked(shown)
                 act.blockSignals(False)
+        # AND THE SAME FOUR TICKS GOVERN THE SIMPLIFIED VIEW, so a block
+        # turned off is off wherever you look. One exception, stated
+        # because it is one: THE SYNERGY AND COUNTER TABLES ARE ALWAYS
+        # DRAWN there. "Synergies and counters" is the one tick that
+        # starts OFF, and the reason is the painted cards' SIZE - a 5x5
+        # of portraits with two outlined triangles is most of a screen.
+        # A twenty-row pair list and a 5x5 of text cost a fraction of
+        # that, and the user named synergies as content of this view in
+        # the breath that asked for it: "it's got what's been drafted,
+        # what the recommended hero selection is, what the synergies
+        # are". A simplified view missing one of the three things it was
+        # asked for would be the tick box answering a question about the
+        # other view.
+        view = getattr(self, "simple_view", None)
+        if view is not None:
+            view.set_sections({
+                "board": True,
+                "roles": bool(self.settings.get("show_roles", True)),
+                "picks": bool(self.settings.get("show_suggestions", True)),
+                "items": bool(self.settings.get("show_items", True)),
+                "synergy": True,
+                "counters": True,
+            })
 
     def _show_profile(self) -> None:
         """Drop the account detail under the button that was clicked.
@@ -4575,6 +4684,7 @@ class MainWindow(QMainWindow):
                 before.get("use_gsi"), before.get("use_vision")):
             self._apply_sources()
         self._apply_sections()
+        self._apply_simple_view()
         self._apply_greyscale()
         marks = ("heart_count", "shield_count")
         if any(self.settings.get(k) != before.get(k) for k in marks):
@@ -4748,6 +4858,11 @@ class MainWindow(QMainWindow):
         # The Roles card names its two halves from the same answer, so a
         # heading there can never disagree with the panel above it.
         self.role_bar.set_sides(mine, theirs)
+        # AND SO DOES THE SIMPLIFIED VIEW, which has no panels to read a
+        # side off: its tables name the two teams in a Side column and a
+        # pair of headings, so it is handed the same two words rather
+        # than working them out again from `my_team`.
+        self._side_names = (mine, theirs)
         # The player's five go to the side they actually belong to, rather
         # than always sitting on the left: Radiant is the left bank of
         # Dota's own pick bar, so a panel on the left labelled Dire would
@@ -5123,6 +5238,107 @@ class MainWindow(QMainWindow):
         self._update_suggestions(draft)
         self._update_items(draft)
         self._update_relations()
+        # LAST, because it reads what the four above it worked out: the
+        # ranked list the strip is showing, the advice the item strip is
+        # showing, and the grids' own objects. The simplified view is a
+        # second DRAWING of this draft, never a second calculation of
+        # it.
+        self._update_simple_view(draft)
+
+    def _update_simple_view(self, draft: scoring.DraftState) -> None:
+        """The same draft as six tables (`ui/simpleview.py`).
+
+        ONLY WHILE IT IS THE PAGE ON SCREEN. `_refresh_views` runs per
+        PICK rather than per tick, so this is not the four-times-a-second
+        cost `_update_debug` was - but it is still six tables rebuilt for
+        nobody, and `_apply_simple_view` fills the page when it is turned
+        on, so there is nothing to gain by doing it in the dark.
+
+        EVERY FIGURE COMES FROM WHAT THE OTHER VIEW WAS HANDED. The
+        values on the board are `net_contributions`, which is what rests
+        on the ten tiles; the hero rows are the list the strip is
+        showing; the items are `self._last_advice`, which is what the
+        item strip drew; the pairs come off the very `SynergyGrid` the
+        painted triangles are drawn from and the matchups off the very
+        `Matrix` the painted grid was given. Nothing here is computed a
+        second time, because the surface nobody is looking at is the one
+        that would quietly disagree.
+        """
+        view = getattr(self, "simple_view", None)
+        if view is None or self.draft_pages.currentWidget() is not \
+                self.simple_scroll:
+            return
+        mine, theirs = getattr(self, "_side_names", ("Radiant", "Dire"))
+        net = scoring.net_contributions(self.ds, draft)
+
+        # ----- the board. RADIANT FIRST, always, which is the same rule
+        # `_order_panels` follows for the panels: Radiant is the left
+        # bank of Dota's own pick bar, so a table that listed Dire first
+        # because the matchmaker put you there would disagree with the
+        # screen it is read beside.
+        sides = [("ally", mine), ("enemy", theirs)]
+        if mine != "Radiant":
+            sides.reverse()
+        rows, totals = [], {}
+        for side, name in sides:
+            figures = []
+            for index, tile in enumerate(self.team_buttons[side]):
+                hid = tile.property("hero_id")
+                label = None
+                if hid is not None:
+                    label = self.ds.name(hid)
+                    # WHOSE PICK IT IS, in the one column there is room
+                    # for it in. The rich view says this on the tile.
+                    if hid == self.my_hero_id:
+                        label += " (you)"
+                value = net.get(hid) if hid is not None else None
+                if value is not None:
+                    figures.append(value)
+                rows.append((name, self.slot_roles[side][index], label,
+                             value))
+            # NOTHING AT ALL when nothing on that side resolved, rather
+            # than "+0.0", which claims a measurement nobody made. Same
+            # rule as the heading beside the painted panel.
+            totals[side] = sum(figures) if figures else None
+        view.show_board(rows, mine, theirs, totals["ally"], totals["enemy"])
+
+        # ----- the roles, as each side's share of what it could score.
+        # `team_scores` comes back in Valve's own column order for both
+        # sides, so the two line up by construction and the role name
+        # can be read off either.
+        ours = roles_mod.team_scores(draft.allies)
+        yours = roles_mod.team_scores(draft.enemies)
+        view.show_roles([(a.role, a, b) for a, b in zip(ours, yours)],
+                        mine, theirs)
+
+        view.show_heroes(getattr(self, "_shown_picks", []),
+                         getattr(self, "_picks_note", ""))
+        view.show_items(getattr(self, "_last_advice", []))
+
+        # ----- the pairs, strongest first WITHIN a team. Across both
+        # teams would be a ranking of two different questions: a green
+        # number on their rows is a pair that works for THEM, which the
+        # painted card says with an outline and this says with the Team
+        # column.
+        if self.ds.meta.get("has_synergy") is False:
+            view.show_synergy([], (
+                f"{self.ds.meta.get('pair_source', 'this source')} "
+                "publishes no ally-pair data \u2014 switch the statistics "
+                "source to Stratz in Settings and re-pull."))
+        else:
+            grid = scoring.team_synergy_grid(self.ds, draft)
+            pairs = []
+            for want, name in (("ally", mine), ("enemy", theirs)):
+                side_pairs = [c for c in grid.pairs if c.side == want]
+                side_pairs.sort(key=lambda c: c.delta, reverse=True)
+                pairs += [(name, self.ds.name(c.hero_id),
+                           self.ds.name(c.other_id), c.delta)
+                          for c in side_pairs]
+            view.show_synergy(pairs)
+
+        matrix = scoring.matchup_matrix(self.ds, draft)
+        view.show_counters(matrix.rows, matrix.cols, matrix.cells,
+                           mine, theirs)
 
     def _update_matrices(self, draft: scoring.DraftState) -> None:
         # NO SENTENCE UNDER AN EMPTY GRID. "Fill in both teams" is read
@@ -6003,20 +6219,37 @@ class MainWindow(QMainWindow):
         # the figure comes back in the corner with it.
         drafted = bool(draft.allies or draft.enemies)
         ranked = pool if drafted else self._by_counter_rank(pool)
+        shown = ranked[:self._how_many("suggested_picks")]
         rows = [
             (s.hero_id, s.name, s.score,
              f"{s.name}\nCounter Score = {s.vs_total * 100:+.1f}"
              f"\nSynergy Score = {s.with_total * 100:+.1f}")
-            for s in ranked[:self._how_many("suggested_picks")]
+            for s in shown
         ]
+        # THE SAME LIST, IN THE SAME ORDER, for the simplified view's
+        # table. Kept rather than re-derived: the cut is a count the user
+        # sets, the filter is eight role boxes and the ordering changes
+        # with whether anything is drafted at all, so a second place
+        # working it out is a second place to get one of those wrong -
+        # and the view nobody is looking at is the one that would.
+        # `Fit` is None for exactly the boards the strip draws no badge
+        # on, so the two agree about that too.
+        self._shown_picks = [
+            (s.name, s.score if drafted else None, s.vs_total, s.with_total)
+            for s in shown]
         # A FILTER MATCHING NOTHING SAYS SO. An empty strip is
         # indistinguishable from the app having stopped working, which is
         # the lesson the hero picker's refused rows already carry.
-        self.suggest_row.show_heroes(rows, empty=(
+        # ONE SPELLING of the refusal, read by both views: two would be
+        # two sentences about one filter, and the second to be edited
+        # would be the one somebody actually read.
+        self._picks_note = (
             "No hero left in the draft is "
             + ", ".join(f"{role} {least}" for role, least in wanted.items())
             + " — turn one down to widen it."
-            if wanted and not rows else ""),
+            if wanted and not rows else "")
+        self.suggest_row.show_heroes(
+            rows, empty=self._picks_note,
             blanks=self._how_many("suggested_picks"), show_fit=drafted)
         # AFTER `show_heroes`, always: it destroys every tile and builds
         # new ones, so a mark applied before this is a mark on a widget

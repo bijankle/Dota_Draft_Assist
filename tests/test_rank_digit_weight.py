@@ -212,7 +212,7 @@ def test_alegreyas_own_figures_are_the_defect_this_fixes(qapp):
         font.setPixelSize(100)
         font.setWeight(QFont.Weight.Black)
         if feature:
-            tilekit._lining_figures(font)
+            tilekit.lining_figures(font)
         metrics = QFontMetricsF(font)
         return [metrics.tightBoundingRect(d) for d in "0123456789"]
 
@@ -273,4 +273,4 @@ def test_the_lining_figures_request_survives_a_qt_without_it(qapp):
         def __getattr__(self, name):
             raise AttributeError(name)
 
-    tilekit._lining_figures(Older())      # must not raise
+    tilekit.lining_figures(Older())      # must not raise

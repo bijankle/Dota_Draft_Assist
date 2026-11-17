@@ -571,7 +571,7 @@ SHIELD = (("m", 0.50, 0.02),
           ("c", 0.17, 0.13, 0.33, 0.06, 0.50, 0.02))
 
 
-def _lining_figures(font: QFont) -> None:
+def lining_figures(font: QFont) -> None:
     """Ask for digits that are all one height and all on the baseline.
 
     **ALEGREYA HAS OLD-STYLE FIGURES BY DEFAULT**, which is right for
@@ -585,6 +585,12 @@ def _lining_figures(font: QFont) -> None:
     it: every digit becomes 61-65 tall and bottoms out on the baseline.
     It also makes the digits CAP HEIGHT rather than x-height, so 1 and 2
     - the ranks that matter - grow about a sixth at no cost in weight.
+
+    PUBLIC, because it is no longer one module's business: the
+    simplified view's tables print columns of these figures and want
+    them to line up for the same reason a rank digit inside a heart
+    does. One implementation, so a column of numbers and a badge cannot
+    end up drawn with two different sets of digits.
 
     Guarded twice. `QFont.setFeature` is Qt 6.7 and this project asks
     only for PyQt6>=6.6, so an older install must get the old figures
@@ -645,7 +651,7 @@ def _paint_rank(painter: QPainter, where: QRect, rank,
     # should still be as heavy as it can be.
     font.setWeight(QFont.Weight.Black)
     font.setBold(True)
-    _lining_figures(font)
+    lining_figures(font)
     painter.save()
     painter.setFont(font)
     painter.setPen(QPen(STROKE))

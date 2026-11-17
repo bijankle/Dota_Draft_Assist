@@ -70,8 +70,14 @@ def settle(win, width):
 
 
 def draft_page(win):
-    tab = win.tabs.widget(0)
-    return tab.widget() if isinstance(tab, QScrollArea) else tab
+    """THE RICH PAGE BY NAME, never `tabs.widget(0)`.
+
+    The Draft tab is a QStackedWidget now - the rich page and the
+    simplified one (View - Simplified view) - so the index names the
+    stack rather than either page. Every test in this file is about the
+    rich page's width, and `draft_scroll` is what that is called.
+    """
+    return win.draft_scroll.widget()
 
 
 # ---- the floor ----------------------------------------------------------
@@ -107,7 +113,7 @@ def test_a_team_panel_asks_for_the_tile_FLOOR_not_its_current_tiles(window):
 
 
 def test_no_horizontal_scrollbar_at_any_width(window):
-    tab = window.tabs.widget(0)
+    tab = window.draft_scroll
     assert isinstance(tab, QScrollArea)
     for width in WIDTHS:
         settle(window, width)

@@ -254,6 +254,25 @@ class SynergyGrid:
     def columns(self) -> int:
         return len(self.cells[0]) if self.cells else 0
 
+    @property
+    def pairs(self) -> list[PairCell]:
+        """Every pair on the board, once, with no blanks.
+
+        The two triangles between them hold each team's pairings exactly
+        once and the only empty cells are the diagonal gap and the slots
+        of an unfinished team - so the non-empty cells ARE the complete
+        pair list, rather than a sample of one.
+
+        It is read by the simplified view, which lists the pairs as rows
+        instead of drawing them as a square. Taken off this object on
+        purpose: computing the pairs a second time from `delta_with`
+        would be a second answer to a question this grid has already
+        settled, and the figure nobody is looking at is the one that
+        goes wrong.
+        """
+        return [cell for line in self.cells for cell in line
+                if cell is not None]
+
 
 def team_synergy_grid(ds: Dataset, draft: DraftState) -> SynergyGrid:
     """Both teams' own pairings, as two triangles that TOUCH.

@@ -136,10 +136,12 @@ def test_a_hidden_section_leaves_no_gap_behind(window):
     """A LAYOUT whose children are all hidden still takes the spacing
     either side of it, which is why each row is wrapped in a block that
     can be hidden whole. Turning three off must shorten the page."""
-    # THE TAB IS A QScrollArea, so its own sizeHint is the viewport's
-    # and never moves. The PAGE inside it is what shortens.
-    page = window.tabs.widget(0)
-    page = page.widget() if hasattr(page, "widget") else page
+    # THE TAB IS A QStackedWidget holding two SCROLL AREAS - the rich
+    # page and the simplified one - so neither the tab's own sizeHint
+    # nor the scroll area's moves. The PAGE inside is what shortens, and
+    # it is reached by NAME: an index names the stack, and `widget` on a
+    # stack takes one.
+    page = window.draft_scroll.widget()
     _settle()
     tall = page.sizeHint().height()
     for key in ("show_roles", "show_suggestions", "show_items"):

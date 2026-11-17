@@ -2761,6 +2761,113 @@ credentials, and put the account at risk. Do not go there.
   the only way this family ever gets caught. Nothing is lost by skipping
   it there: the first paint draws everything anyway.
 
+- **THE WHOLE DRAFT TAB AS TEXT, BEHIND ONE TICK** (`ui/simpleview.py`,
+  `ui_settings.simple_view`, View ▸ Simplified view,
+  `MainWindow.draft_pages` / `_apply_simple_view` / `_update_simple_view`),
+  at the user's request and in their own shape: "you know in SharePoint
+  how you can change the view to be like a grid view or a road view...
+  i kind of want something like that where i can toggle between view
+  types for this app... it will change to like a spreadsheet view where
+  it's just like simple data tables - it's got what's been drafted, what
+  the recommended hero selection is, what the synergies are, basically
+  just useful summary tables, and hero names are in text instead of any
+  portraits or anything like that. We'll call it a simplified view and i
+  want this to be off by default... once you toggle to it it should be
+  remembered".
+  Six tables in the order the rich tab reads: the board, the roles, the
+  top heroes, the top items, every pair, and counters as a 5x5.
+  **IT IS A SECOND DRAWING AND NEVER A SECOND CALCULATION**, which is
+  the whole discipline of the module. Every delta goes through
+  `tilekit.delta_text`, the one place a stored fraction becomes
+  percentage points; the hero rows are the list `_update_suggestions`
+  is showing, kept as `_shown_picks` rather than re-derived (the cut is
+  a count the user sets, the filter is eight role boxes and the
+  ordering changes with whether anything is drafted at all - three
+  things for a second place to get wrong); the items are
+  `_last_advice`; the pairs come off the very `SynergyGrid` the painted
+  triangles are drawn from, through the new `SynergyGrid.pairs`; the
+  counters table is the `Matrix` the painted grid is handed. Two
+  surfaces that compute one number twice are two surfaces that will
+  disagree about it, and the one nobody is looking at is the one that
+  goes wrong.
+  **A QStackedWidget, NOT A SECOND TAB.** These are not two places to
+  be - they are one draft drawn two ways, and a second "Draft" tab
+  would be two answers to one question with the reader left to notice
+  which they were reading. BOTH PAGES ARE SCROLL AREAS, which is
+  load-bearing for the same reason a tab's are: a stack's minimum is
+  its TALLEST page whether or not anybody is looking at it, and this
+  one is six tables.
+  **OFF BY DEFAULT AND REMEMBERED**, which is one line in
+  `ui_settings.DEFAULTS` and has to be: that dict is the WRITE FILTER,
+  so a key it does not name is kept for the session and dropped on the
+  way to disk - the fault that lost the transparency setting. An update
+  keeps it because the settings file is gitignored and the ZIP updater
+  writes only tracked files.
+  **IN THE VIEW MENU, beside Greyscale**, which is its exact analogue:
+  the four ticks above say what is ON the Draft tab, these two say what
+  it LOOKS LIKE. `_apply_simple_view` mirrors `_apply_greyscale` down
+  to taking `rebuild=False` from `__init__` - `_refresh_views` from
+  inside the constructor reaches grids that are built but not laid out,
+  which SEGFAULTS rather than raising.
+  **IT IS FILLED ONLY WHILE IT IS THE PAGE ON SCREEN**, the rule
+  `_update_debug` follows, so turning it on is what fills it. Six
+  tables rebuilt for nobody is the smooth-scaled hidden widget again.
+  **THE SAME FOUR TICKS GOVERN BOTH VIEWS, WITH ONE STATED
+  EXCEPTION: the synergy and counter tables are ALWAYS drawn here.**
+  "Synergies and counters" is the one tick that starts OFF, and the
+  reason is the painted cards' SIZE - a 5x5 of portraits with two
+  outlined triangles is most of a screen. A twenty-row pair list and a
+  5x5 of text cost a fraction of that, and the user named synergies as
+  content of this view in the breath that asked for it. A simplified
+  view missing one of the three things it was asked for would be a tick
+  box answering a question about the other view.
+  **SYNERGIES ARE A LIST AND COUNTERS IS A MATRIX**, which is the
+  opposite choice twice over and each has its reason. The painted
+  synergy card is two triangles because synergy is symmetric and half a
+  square is blank; a table read by column wants every row to be a pair,
+  so the blank half would be half a table of nothing. Counters is a
+  full 5x5 with no spare half, and the thing it exists to show is the
+  one lane losing badly that a comfortable total conceals - a column of
+  25 rows would bury that. **THE ENEMY HALF IS STILL NOT SIGN-FLIPPED**,
+  so the Team column carries what the two coloured outlines carry in
+  the other view.
+  **AND THE COUNTERS AXES ARE NAMED IN WORDS.** Ten heroes with nothing
+  saying which five are yours is the one way that table can be read
+  backwards; the painted card says it with a green box and a red one,
+  and a table has no boxes.
+  **NO TABLE SCROLLS INSIDE ITSELF AND NONE ANSWERS THE WHEEL**
+  (`TextTable._fit_height`, `wheelEvent`), which is `MatrixTable`'s rule
+  and `BucketTable`'s, for their reasons: a table sized to its rows has
+  nothing of its own to scroll, so a scrollbar on one can only mean the
+  fit was wrong - and a control that answers the wheel while somebody
+  is scrolling past it catches the page.
+  **QT SORTS BY TEXT**, so "10" lands before "9" and "+6.4" before
+  "+62.1" - every column here is a number wearing a sign, so sorting is
+  simply OFF and the order is the one the app already decided. The
+  cells ARE selectable: a table nobody can copy out of is a picture of
+  a table.
+  **A HEADING IS ALIGNED LIKE THE COLUMN UNDER IT.** Qt centres header
+  text whatever the cells do, so "Hero" sat in the middle of a
+  stretched column with every name against its left edge, which reads
+  as two columns rather than one. Caught by rendering the page and
+  looking at it; every test passed.
+  **`tilekit.lining_figures` IS PUBLIC NOW** for the same reason the
+  rank digit wanted it: Alegreya's figures are old-style, so a column
+  of them is ragged. One implementation, so a column of numbers and the
+  badge on a pick cannot end up drawn with two different sets of
+  digits.
+  **AND THE VIEW MENU'S GUARD WENT 7 TO 8** to let it in
+  (`test_the_menu_bar_stays_small`). Worth recording rather than
+  waving through: that number is a guard against menus sprawling and
+  View is the menu at the bar. The next thing this menu wants is
+  probably a submenu rather than another line - and the alternative
+  considered and not taken was a tick box on the TAB ROW, which the
+  strip has width for (135px of minimum against a 940px window) and
+  which is where a SharePoint-style switcher would sit. What argued
+  against it is that the record dot and the Auto tick were moved OFF
+  that row into the Run menu at the user's request; it is one line to
+  move if they would rather have the switch one click away.
+
 - **THE SUGGESTION COUNTS ARE A LEGEND, AND THE MARKS NAME THEMSELVES**
   (`_picks_controls`), at the user's request: "i want a legend added to
   the title (suggested picks)... so i want 1 row below the header to
