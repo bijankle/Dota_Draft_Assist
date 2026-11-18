@@ -2163,12 +2163,20 @@ def test_the_tab_row_keeps_only_what_belongs_there(window):
     other half of the same message — the two headings came out of their
     cards, so there is a row up there for the three of them to sit in the
     middle of.
+
+    EXCEPT THE VIEW SWITCH, which is the one thing asked for here since:
+    "simplified view should be a toggle at top corner". Its two halves
+    are the only buttons the strip may hold, and they are the switch's
+    own rather than loose controls on the row.
     """
     from PyQt6.QtWidgets import QPushButton, QToolBar
     assert window.findChild(QToolBar) is None, "the empty toolbar is back"
 
-    labels = {w.text() for w in window.tabs.strip.findChildren(QPushButton)}
-    assert not labels, f"the tab row has picked up controls again: {labels}"
+    loose = {w.text() for w in window.tabs.strip.findChildren(QPushButton)
+             if not window.view_switch.isAncestorOf(w)}
+    assert not loose, f"the tab row has picked up controls again: {loose}"
+    halves = {w.text() for w in window.view_switch.findChildren(QPushButton)}
+    assert halves == {"Visual", "Simplified"}, halves
     board = {w.text() for w in window.board_actions.findChildren(QPushButton)}
     assert board == {"Clear all", "Detect all", "Demo"}, board
     # Update went to Help: it is pressed once a patch and it was taking
