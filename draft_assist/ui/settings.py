@@ -157,6 +157,14 @@ DEFAULTS = {
     # setting. An update keeps it for a different reason: the file is
     # gitignored, so `tools/update_app.py` cannot write over it.
     "simple_view": False,
+    # WHICH OF THE SIMPLIFIED VIEW'S CARDS ARE FOLDED SHUT, by key
+    # (`simpleview.SimpleView.KEYS`), at the user's request: "i wanna be
+    # able to show / hide the different tables (collapsible) and you
+    # remember the last state". A LIST of the closed ones rather than a
+    # dict of all six, so a card added later is open until somebody
+    # shuts it and no dead key sits in anybody's file. `load` copies
+    # lists, so appending to it cannot edit DEFAULTS.
+    "simple_collapsed": [],
     # THE HISTORY TAB'S OWN CONTROLS, remembered ACROSS ACCOUNTS: "if I
     # look up someone else's account, the sorts and filters should be the
     # same as I had on the previous analysis". So they live here rather

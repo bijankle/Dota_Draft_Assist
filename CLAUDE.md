@@ -2761,9 +2761,10 @@ credentials, and put the account at risk. Do not go there.
   the only way this family ever gets caught. Nothing is lost by skipping
   it there: the first paint draws everything anyway.
 
-- **THE WHOLE DRAFT TAB AS TEXT, BEHIND ONE TICK** (`ui/simpleview.py`,
-  `ui_settings.simple_view`, View ▸ Simplified view,
-  `MainWindow.draft_pages` / `_apply_simple_view` / `_update_simple_view`),
+- **THE WHOLE DRAFT TAB AS TEXT, BEHIND ONE SWITCH** (`ui/simpleview.py`,
+  `ui_settings.simple_view`, the Visual | Simplified switch on the tab
+  row, `MainWindow.draft_pages` / `_apply_simple_view` /
+  `_update_simple_view`),
   at the user's request and in their own shape: "you know in SharePoint
   how you can change the view to be like a grid view or a road view...
   i kind of want something like that where i can toggle between view
@@ -2803,12 +2804,32 @@ credentials, and put the account at risk. Do not go there.
   way to disk - the fault that lost the transparency setting. An update
   keeps it because the settings file is gitignored and the ZIP updater
   writes only tracked files.
-  **IN THE VIEW MENU, beside Greyscale**, which is its exact analogue:
-  the four ticks above say what is ON the Draft tab, these two say what
-  it LOOKS LIKE. `_apply_simple_view` mirrors `_apply_greyscale` down
-  to taking `rebuild=False` from `__init__` - `_refresh_views` from
-  inside the constructor reaches grids that are built but not laid out,
-  which SEGFAULTS rather than raising.
+  **ON THE TAB ROW, NOT IN THE VIEW MENU** (`chrome.ViewSwitch`,
+  `BandedTabs.add_corner`, `QPushButton[seg]`), at the user's request -
+  "I think simplified view should be a toggle at top corner" - which
+  REVERSES "IN THE VIEW MENU, beside Greyscale". That placement's
+  argument was that the four ticks above it say what is ON the Draft
+  tab and these two say what it LOOKS LIKE, and it still holds for
+  Greyscale, which is set once for the evening. This one is flipped
+  mid-draft, and a control you flip while looking at the result
+  belongs beside the result - the same argument that put the count
+  boxes on the strips they size. Two labelled halves rather than one
+  tick, because a tick reading "Simplified" says nothing about what the
+  OTHER state is called; and it is the SharePoint shape the request
+  was made in. It sits at the right-hand end of the strip, after the
+  stretch, where the record dot used to be. `_apply_simple_view` still
+  mirrors `_apply_greyscale` down to taking `rebuild=False` from
+  `__init__` - `_refresh_views` from inside the constructor reaches
+  grids that are built but not laid out, which SEGFAULTS rather than
+  raising - and it syncs the switch with signals blocked, since
+  setting a control to what the file already says is not the user
+  pressing it.
+  **AND THE THREE BOARD BUTTONS ARE ON THE PAGE** (`MainWindow.
+  simple_buttons`, `SimpleView.set_actions`): "i also dont have those 3
+  buttons at the top". Clear all, Detect all and Demo sit between the
+  Radiant and Dire headings on the rich page, and a widget has ONE
+  parent, so the simplified page carries a second set wired to the
+  same three handlers. Two sets of buttons and one set of behaviour.
   **IT IS FILLED ONLY WHILE IT IS THE PAGE ON SCREEN**, the rule
   `_update_debug` follows, so turning it on is what fills it. Six
   tables rebuilt for nobody is the smooth-scaled hidden widget again.
@@ -2821,20 +2842,104 @@ credentials, and put the account at risk. Do not go there.
   content of this view in the breath that asked for it. A simplified
   view missing one of the three things it was asked for would be a tick
   box answering a question about the other view.
-  **SYNERGIES ARE A LIST AND COUNTERS IS A MATRIX**, which is the
-  opposite choice twice over and each has its reason. The painted
-  synergy card is two triangles because synergy is symmetric and half a
-  square is blank; a table read by column wants every row to be a pair,
-  so the blank half would be half a table of nothing. Counters is a
-  full 5x5 with no spare half, and the thing it exists to show is the
-  one lane losing badly that a comfortable total conceals - a column of
-  25 rows would bury that. **THE ENEMY HALF IS STILL NOT SIGN-FLIPPED**,
-  so the Team column carries what the two coloured outlines carry in
-  the other view.
-  **AND THE COUNTERS AXES ARE NAMED IN WORDS.** Ten heroes with nothing
-  saying which five are yours is the one way that table can be read
-  backwards; the painted card says it with a green box and a red one,
-  and a table has no boxes.
+  **IT IS BANDS, NOT A COLUMN OF TABLES, AND IT FITS IN ONE VIEW**
+  (`SimpleView.KEYS`, `Fold`, `Chip`, `ChipGrid`, `RoleStrip`,
+  `set_budget` / `_refit`), chosen by the user from five previews: "go
+  with A, show as many as fit is fine". The first version was six
+  tables down one column - Side / Pos / Hero / Value for the board, a
+  hero per row for the suggestions, a twenty-row pair list - and the
+  user's own screenshot said what was wrong with it: "there is a lot of
+  blank space, i dont need such a wide column for the hero name - i was
+  expecting you to sort of intelligently occupy the space so everything
+  fits in there nicely... i dont like scrolling". A table with four
+  columns in a 940px window is a table that is mostly margin, and a
+  thirty-three row table is a page.
+  So the page reads top to bottom as the rich tab does, in bands the
+  width of the window: the board as TWO ROWS OF FIVE slot chips
+  (Radiant above Dire, an open slot drawn dashed, the same order the
+  pick bar has); the roles as ONE eight-column strip with the role
+  names as headers and a Radiant row and a Dire row of shares; the
+  suggestions as a GRID OF CHIPS, name on the left and fit on the
+  right, five across at the owner's own width; the items three
+  across, each chip naming the item and the heroes asking for it with
+  its percentage; and the synergy square and the counters 5x5 SIDE BY
+  SIDE at the bottom, since two five-column tables fit a 940px row and
+  stacked they are the one thing that would push the page past the
+  window.
+  **THE HERO GRID IS THE ONE BLOCK THAT COULD GROW WITHOUT BOUND, SO IT
+  IS CUT TO THE ROWS THE PAGE HAS LEFT.** Everything else here is a
+  fixed size - ten slots, eight roles, at most seven items, two 5x5s -
+  and the suggestion count the user sets runs to 33. `set_budget` is
+  handed the viewport's height on every resize and every fill, and
+  `_refit` subtracts every OTHER visible card's `sizeHint` and the
+  chrome between them and gives the grid whatever is left, in whole
+  rows; the heading says "all 33" or "first 25 of 33" so a strip cut
+  short says so. It excludes the hero card ITSELF from the sum so the
+  answer converges in one step rather than chasing its own height, and
+  the column count comes from the width (`CHIP_MIN_W`), so a wider
+  window gets more across and a narrower one fewer. Fold a card and the
+  grid grows into the room; shrink the window and it gives rows back
+  rather than scrolling. A test holds the vertical scrollbar's maximum
+  at nought at 940x895 and after both of those.
+  **EVERY CARD FOLDS FROM ITS HEADING, AND THE FOLDS ARE REMEMBERED**
+  (`Fold`, `ui_settings.simple_collapsed`, `MainWindow.
+  _simple_card_folded`), at the user's request: "i wanna be able to
+  show / hide the different tables (collapsible)", "and you remember
+  the last state". A folded card is its heading and a chevron, never a
+  gap - the same rule the View ticks follow about hiding a whole block
+  rather than leaving a hole where one was. The closed keys are a list
+  in `DEFAULTS`, because that dict is the write filter and a key it
+  does not name is dropped on the way to disk. The six keys are
+  `SimpleView.KEYS`, and `set_sections` (the View ticks) and
+  `set_folded` (the user's own folds) are kept apart: a card hidden by
+  a tick is not on the page, a card folded by its heading is.
+  **THERE IS NO Pos COLUMN**, at the user's request - "dont show pos...
+  i dont have that added to this drafter yet". The slot's role is a
+  thing the rich tab lets you set and nothing reads back yet, so a
+  column of it here would be a column of dashes. A test parses the
+  module for the string.
+  **THE TOTALS ARE THE TABLE SIZE** (`QLabel[totals]`, `CELL_PX`): "its
+  weird that the total synergy value is a smaller font than the tables
+  themselves". They were the status line's footnote size at the top of
+  a page of 15px cells, which read as an aside about the page rather
+  than its headline. They sit at the right of the button row, each side
+  named and coloured by its sign through the same `_delta` every cell
+  goes through.
+  **THE CHIPS ARE PAINTED** (`Chip.paintEvent`), for the reason every
+  mark in this app is: a QLabel per name and a QLabel per figure is
+  sixty-six widgets to lay out and style for a block that is redrawn on
+  every pick, and a painted chip elides its own name, sets its figure
+  in tabular lining digits flush right, and draws a dashed outline for
+  an open slot - none of which a stylesheet can be asked for. Your own
+  pick wears the frame's gold, the one "this one" colour, where every
+  other chip is plain.
+  **SYNERGY IS A SQUARE AND COUNTERS IS A 5x5**, both read the way the
+  painted cards are. Synergy was a twenty-row LIST first, on the
+  argument that a table read by column wants every row to be a pair;
+  twenty rows was most of the page, and the painted card's own shape -
+  symmetric, so one square carries both teams, Radiant's pairs
+  lower-left against the row names and Dire's upper-right against the
+  column names, the diagonal blank - costs five rows and reads the same
+  way on both views. Counters is a full 5x5 with no spare half, and the
+  thing it exists to show is the one lane losing badly that a
+  comfortable total conceals; its corner cell names the axes in words
+  ("Radiant ↓  Dire →"), since ten heroes with nothing saying which five
+  are yours is the one way that table can be read backwards, and a table
+  has no coloured boxes. **THE ENEMY HALF IS STILL NOT SIGN-FLIPPED**:
+  the upper triangle carries what the red outline carries in the other
+  view.
+  **AND A COLUMN HEADING FITS ITS NAME RATHER THAN CUTTING IT**
+  (`FitHeader`). Five hero names across half a 940px card is about 85px
+  a column, and Qt's header has two answers to a name wider than that,
+  both wrong: the default elides to "Sha...", and `ElideNone` runs
+  "Clockwerk" under the next column. Asking for a two-line label does
+  not help either - a QHeaderView elides a multi-line label BEFORE it
+  breaks it. So the header is painted: it wraps at a space, shrinks the
+  face from 12px to 9 until the widest word fits, and elides only when
+  that fails too. "Witch Doctor" wraps, "Enchantress" shrinks, nothing
+  is clipped - checked by rendering the real window at the owner's size.
+  Its height is two lines whatever the names, so the two squares stay
+  level.
   **NO TABLE SCROLLS INSIDE ITSELF AND NONE ANSWERS THE WHEEL**
   (`TextTable._fit_height`, `wheelEvent`), which is `MatrixTable`'s rule
   and `BucketTable`'s, for their reasons: a table sized to its rows has
@@ -2850,7 +2955,8 @@ credentials, and put the account at risk. Do not go there.
   text whatever the cells do, so "Hero" sat in the middle of a
   stretched column with every name against its left edge, which reads
   as two columns rather than one. Caught by rendering the page and
-  looking at it; every test passed.
+  looking at it; every test passed. (The hero table that taught it is
+  gone with layout A; `FitHeader` keeps the rule for the two squares.)
   **`tilekit.lining_figures` IS PUBLIC NOW** for the same reason the
   rank digit wanted it: Alegreya's figures are old-style, so a column
   of them is ragged. One implementation, so a column of numbers and the
@@ -2902,17 +3008,26 @@ credentials, and put the account at risk. Do not go there.
   decimal points wander down the page. Off by default, because a badge
   on a tile is one number on its own and proportional digits set better
   there.
-  **AND THE VIEW MENU'S GUARD WENT 7 TO 8** to let it in
-  (`test_the_menu_bar_stays_small`). Worth recording rather than
-  waving through: that number is a guard against menus sprawling and
-  View is the menu at the bar. The next thing this menu wants is
-  probably a submenu rather than another line - and the alternative
-  considered and not taken was a tick box on the TAB ROW, which the
-  strip has width for (135px of minimum against a 940px window) and
-  which is where a SharePoint-style switcher would sit. What argued
-  against it is that the record dot and the Auto tick were moved OFF
-  that row into the Run menu at the user's request; it is one line to
-  move if they would rather have the switch one click away.
+  **AND THE VIEW MENU'S GUARD IS BACK AT 7** (`test_the_menu_bar_
+  stays_small`). It went to eight for one round to let a Simplified
+  tick in beside Greyscale, and that note argued the alternative was a
+  switch on the TAB ROW, "which the strip has width for (135px of
+  minimum against a 940px window) and which is where a SharePoint-style
+  switcher would sit", against it being "one line to move if they would
+  rather have the switch one click away". They would: "simplified view
+  should be a toggle at top corner". The tick is gone from the menu,
+  the guard is what it was, and the switch is where that note said it
+  would go. The record dot and the Auto tick having been moved OFF that
+  row was the argument against, and it does not apply: those were
+  switched once a session, this one is flipped while reading.
+  **THE PAGE'S STYLESHEET IS A FUNCTION, NOT A CONSTANT**
+  (`simpleview.stylesheet()`, `SimpleView.restyle`). Layout A's cards
+  and headers carry colours of their own - a card ground, a header
+  fill, a hairline - and a widget stylesheet is the one thing
+  `theme.set_greyscale` does not sweep. So the sheet is built from
+  `theme.*` at call time and re-applied on every fill, with the string
+  compared first so an unchanged palette costs no restyle. A test turns
+  greyscale on and requires the page's colours to be greys.
 
 - **THE SUGGESTION COUNTS ARE A LEGEND, AND THE MARKS NAME THEMSELVES**
   (`_picks_controls`), at the user's request: "i want a legend added to

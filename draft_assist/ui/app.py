@@ -962,6 +962,15 @@ class MainWindow(QMainWindow):
         # painted by the tab widget itself where no stylesheet reaches.
         tabs = chrome.BandedTabs()
         self.tabs = tabs
+        # VISUAL | SIMPLIFIED, in the top-right corner of the tab row, at
+        # the user's request. It was a tick in the View menu for one
+        # round; a view switch is worked by looking at the result, so it
+        # sits beside the result, and two labelled halves say what both
+        # states are where a tick named only one.
+        self.view_switch = chrome.ViewSwitch()
+        self.view_switch.set_simplified(bool(self.settings.get("simple_view")))
+        self.view_switch.chosen.connect(self._set_simple_view)
+        tabs.add_corner(self.view_switch)
 
         shell = chrome.FramedShell()
         shell_lay = QVBoxLayout(shell)
@@ -1302,7 +1311,28 @@ class MainWindow(QMainWindow):
         # can set the window's floor - the property
         # `test_a_tall_tab_does_not_set_the_windows_floor` holds.
         self.simple_view = simpleview.SimpleView()
+        # THE SAME THREE COMMANDS THE BOARD HEAD HAS, on this page too -
+        # "i also dont have those 3 buttons at the top". A widget can
+        # have one parent, and the originals sit between the Radiant and
+        # Dire headings of the picture view, so these are a second set
+        # of buttons wired to the SAME handlers: two controls, one
+        # command each, the way the section ticks drive both views.
+        self.simple_buttons = []
+        for label, tip_from, handler in (
+                ("Clear all", self.clear_all_button, self._clear_all),
+                ("Detect all", self.detect_all_button, self._detect_all),
+                ("Demo", self.demo_button, self._demo_draft)):
+            button = QPushButton(label)
+            button.setProperty("plain", True)
+            button.setToolTip(tip_from.toolTip())
+            button.clicked.connect(handler)
+            self.simple_buttons.append(button)
+        self.simple_view.set_actions(self.simple_buttons)
+        self.simple_view.set_folded(self.settings.get("simple_collapsed", []))
+        self.simple_view.folded.connect(self._simple_card_folded)
         self.simple_scroll = _scrolling(self.simple_view)
+        self.simple_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.draft_pages = QStackedWidget()
         self.draft_pages.setProperty("bare", True)
         self.draft_pages.addWidget(self.draft_scroll)
@@ -3014,24 +3044,16 @@ class MainWindow(QMainWindow):
             self.section_actions[key] = act
         self._apply_sections()
 
-        # SIMPLIFIED VIEW AND GREYSCALE, on their own below the blocks,
-        # because neither is one of them: those four say what is ON the
-        # Draft tab, these two say what it LOOKS LIKE. Their own
-        # separator keeps the two questions apart in a menu read at a
-        # glance.
-        #
-        # IN THE VIEW MENU rather than on the tab row, which is the
-        # argument the four above it were moved on: this is a setting
-        # somebody flips and leaves, the way Greyscale is, and the tab
-        # row has to stay readable at the window's minimum width. Moving
-        # it to a one-click control on that row is one line if it turns
-        # out to be flipped often.
+        # GREYSCALE, on its own below the blocks, because it is not one
+        # of them: those four say what is ON the Draft tab, this says how
+        # the whole app looks. Its own separator keeps the two questions
+        # apart in a menu that is read at a glance.
+        # THE SIMPLIFIED VIEW IS NOT HERE. It sat beside Greyscale for one
+        # round and moved to the tab row at the user's request - "i think
+        # simplified view should be a toggle at top corner" - which is
+        # where a view switch belongs: a control you work by looking at
+        # the result sits beside the result. See `chrome.ViewSwitch`.
         self.view_menu.addSeparator()
-        self.simple_action = QAction("Simplified view", self)
-        self.simple_action.setCheckable(True)
-        self.simple_action.setChecked(bool(self.settings.get("simple_view")))
-        self.simple_action.toggled.connect(self._set_simple_view)
-        self.view_menu.addAction(self.simple_action)
         self.greyscale_action = QAction("Greyscale", self)
         self.greyscale_action.setCheckable(True)
         self.greyscale_action.setChecked(bool(self.settings.get("greyscale")))
@@ -3105,6 +3127,17 @@ class MainWindow(QMainWindow):
             self._refresh_views()
         self.update()
 
+    def _simple_card_folded(self, key: str, closed: bool) -> None:
+        """Remember a card the simplified view folded shut. A LIST of
+        the closed keys, written through `ui_settings.save` like every
+        other preference - `DEFAULTS` is the write filter."""
+        closed_keys = [k for k in self.settings.get("simple_collapsed", [])
+                       if k != key]
+        if closed:
+            closed_keys.append(key)
+        self.settings["simple_collapsed"] = closed_keys
+        ui_settings.save(self.settings)
+
     def _set_simple_view(self, on: bool) -> None:
         if bool(self.settings.get("simple_view")) == bool(on):
             return
@@ -3135,11 +3168,9 @@ class MainWindow(QMainWindow):
             return
         pages.setCurrentWidget(self.simple_scroll if want
                                else self.draft_scroll)
-        act = getattr(self, "simple_action", None)
-        if act is not None and act.isChecked() != want:
-            act.blockSignals(True)
-            act.setChecked(want)
-            act.blockSignals(False)
+        switch = getattr(self, "view_switch", None)
+        if switch is not None and switch.simplified != want:
+            switch.set_simplified(want)
         # THE SIMPLE PAGE IS FILLED ONLY WHEN IT IS ON SCREEN, so
         # turning it on has to fill it: `_update_simple_view` returns
         # early while it is hidden, which is the rule `_update_debug`
@@ -5270,37 +5301,40 @@ class MainWindow(QMainWindow):
             return
         mine, theirs = getattr(self, "_side_names", ("Radiant", "Dire"))
         net = scoring.net_contributions(self.ds, draft)
+        # THE PAGE'S OWN COLOURS FOLLOW THE PALETTE: its stylesheet is
+        # rebuilt from `theme` on each draw, which is how greyscale
+        # reaches a sheet the application-wide sweep cannot.
+        view.restyle()
 
-        # ----- the board. RADIANT FIRST, always, which is the same rule
+        # ----- the board. RADIANT ON TOP, always, which is the same rule
         # `_order_panels` follows for the panels: Radiant is the left
-        # bank of Dota's own pick bar, so a table that listed Dire first
+        # bank of Dota's own pick bar, so a board that put Dire first
         # because the matchmaker put you there would disagree with the
         # screen it is read beside.
-        sides = [("ally", mine), ("enemy", theirs)]
-        if mine != "Radiant":
-            sides.reverse()
-        rows, totals = [], {}
-        for side, name in sides:
-            figures = []
-            for index, tile in enumerate(self.team_buttons[side]):
+        rows, totals = {}, {}
+        for side in ("ally", "enemy"):
+            slots, figures = [], []
+            for tile in self.team_buttons[side]:
                 hid = tile.property("hero_id")
-                label = None
-                if hid is not None:
-                    label = self.ds.name(hid)
-                    # WHOSE PICK IT IS, in the one column there is room
-                    # for it in. The rich view says this on the tile.
-                    if hid == self.my_hero_id:
-                        label += " (you)"
-                value = net.get(hid) if hid is not None else None
+                if hid is None:
+                    slots.append((None, None, False))
+                    continue
+                value = net.get(hid)
                 if value is not None:
                     figures.append(value)
-                rows.append((name, self.slot_roles[side][index], label,
-                             value))
+                slots.append((self.ds.name(hid), value,
+                              hid == self.my_hero_id))
+            rows[side] = slots
             # NOTHING AT ALL when nothing on that side resolved, rather
             # than "+0.0", which claims a measurement nobody made. Same
             # rule as the heading beside the painted panel.
             totals[side] = sum(figures) if figures else None
-        view.show_board(rows, mine, theirs, totals["ally"], totals["enemy"])
+        radiant_first = mine == "Radiant"
+        top, bottom = (("ally", "enemy") if radiant_first
+                       else ("enemy", "ally"))
+        view.show_board(rows[top], rows[bottom])
+        view.set_totals(mine, theirs, totals["ally"], totals["enemy"],
+                        radiant_first=radiant_first)
 
         # ----- the roles, as each side's share of what it could score.
         # `team_scores` comes back in Valve's own column order for both
@@ -5315,30 +5349,30 @@ class MainWindow(QMainWindow):
                          getattr(self, "_picks_note", ""))
         view.show_items(getattr(self, "_last_advice", []))
 
-        # ----- the pairs, strongest first WITHIN a team. Across both
-        # teams would be a ranking of two different questions: a green
-        # number on their rows is a pair that works for THEM, which the
-        # painted card says with an outline and this says with the Team
-        # column.
+        # ----- the two matrices. The pairs come off the very grid the
+        # painted triangles are drawn from, and keep its sides: whichever
+        # team is Radiant takes the lower-left half, as it does there.
+        ally_names = [self.ds.name(h) for h in draft.allies]
+        enemy_names = [self.ds.name(h) for h in draft.enemies]
         if self.ds.meta.get("has_synergy") is False:
-            view.show_synergy([], (
+            view.show_synergy(mine, theirs, ally_names, enemy_names, [], (
                 f"{self.ds.meta.get('pair_source', 'this source')} "
                 "publishes no ally-pair data \u2014 switch the statistics "
                 "source to Stratz in Settings and re-pull."))
         else:
             grid = scoring.team_synergy_grid(self.ds, draft)
-            pairs = []
-            for want, name in (("ally", mine), ("enemy", theirs)):
-                side_pairs = [c for c in grid.pairs if c.side == want]
-                side_pairs.sort(key=lambda c: c.delta, reverse=True)
-                pairs += [(name, self.ds.name(c.hero_id),
-                           self.ds.name(c.other_id), c.delta)
-                          for c in side_pairs]
-            view.show_synergy(pairs)
+            pairs = [simpleview.Pair(self.ds.name(c.hero_id),
+                                     self.ds.name(c.other_id), c.delta)
+                     for c in grid.pairs]
+            if radiant_first:
+                view.show_synergy(mine, theirs, ally_names, enemy_names, pairs)
+            else:
+                view.show_synergy(theirs, mine, enemy_names, ally_names, pairs)
 
         matrix = scoring.matchup_matrix(self.ds, draft)
         view.show_counters(matrix.rows, matrix.cols, matrix.cells,
                            mine, theirs)
+        view.set_budget(self.simple_scroll.viewport().height())
 
     def _update_matrices(self, draft: scoring.DraftState) -> None:
         # NO SENTENCE UNDER AN EMPTY GRID. "Fill in both teams" is read
@@ -6037,6 +6071,12 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         self._remember_place()
         self._match_grid_portraits()
+        # The simplified page cuts its hero grid to the height it has, so
+        # it is told the new height. Cheap: it rebuilds the chips only
+        # when the row count actually changes.
+        view = getattr(self, "simple_view", None)
+        if view is not None:
+            view.set_budget(self.simple_scroll.viewport().height())
 
     def moveEvent(self, event) -> None:         # noqa: N802 - Qt naming
         super().moveEvent(event)

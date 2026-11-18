@@ -403,6 +403,22 @@ QPushButton[plain="true"]:pressed {{
 QPushButton[plain="true"]:disabled {{
     background: {ACCENT}; color: {TEXT_DIM}; border-color: {ACCENT};
 }}
+/* THE VIEW SWITCH on the tab row: two halves of one control, the lit
+   half in the accent because switching a view is an action. Each half
+   rounds only its outer corners so the pair reads as one object. */
+QPushButton[seg="left"], QPushButton[seg="right"] {{
+    background: {BG_INPUT}; color: {TEXT_DIM};
+    border: 1px solid {BORDER}; padding: 3px 12px;
+    font-size: 13px; font-weight: bold; min-height: 0;
+}}
+QPushButton[seg="left"] {{ border-top-left-radius: 6px; border-bottom-left-radius: 6px;
+    border-top-right-radius: 0; border-bottom-right-radius: 0; }}
+QPushButton[seg="right"] {{ border-top-right-radius: 6px; border-bottom-right-radius: 6px;
+    border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }}
+QPushButton[seg="left"]:hover, QPushButton[seg="right"]:hover {{ color: {TEXT}; }}
+QPushButton[seg="left"]:checked, QPushButton[seg="right"]:checked {{
+    background: {ACCENT}; color: #ffffff; border-color: {ACCENT};
+}}
 /* Recording is the one state the eye must catch across the room. */
 QPushButton[recording="true"] {{
     background: #c2453f; border-color: #c2453f; color: #ffffff;

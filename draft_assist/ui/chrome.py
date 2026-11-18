@@ -17,7 +17,7 @@ from PyQt6.QtCore import (QEvent, QObject, QPoint, QPointF, QRect, QRectF,
 from PyQt6.QtGui import (QTextOption, QColor, QFontMetrics, QPainter,
                          QPainterPath, QPen, QPixmap, QPolygonF)
 from PyQt6.QtWidgets import (QPlainTextEdit, QAbstractButton, QCheckBox, QComboBox, QFrame,
-                             QHBoxLayout, QLabel, QMenuBar,
+                             QHBoxLayout, QLabel, QMenuBar, QPushButton,
                              QSizeGrip, QSizePolicy, QSpinBox, QTabBar,
                              QTabWidget, QVBoxLayout, QWidget)
 
@@ -1550,6 +1550,19 @@ class BandedTabs(QTabWidget):
         self.bar.currentChanged.connect(self._bar_chose)
         self.currentChanged.connect(self._page_changed)
 
+    def add_corner(self, widget: QWidget) -> None:
+        """A control at the RIGHT end of the row, after the stretch.
+
+        The View switch lives here at the user's request - "simplified
+        view should be a toggle at top corner" - and this is the one
+        place on the row for it: the tabs hang from the left, the stretch
+        takes the middle, and what goes after it sits against the window's
+        edge with `EDGE_GAP` keeping it off the frame. The widget is
+        parented to the strip here, so it is never a window of its own.
+        """
+        widget.setParent(self.strip)
+        self._row.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+
     # -- the row ---------------------------------------------------------
     def addTab(self, page, label):                  # noqa: N802 - Qt naming
         index = super().addTab(page, label)
@@ -1658,3 +1671,60 @@ class GrowingLog(QPlainTextEdit):
         height = max(self.EMPTY_H, height)
         if height != self.minimumHeight() or height != self.maximumHeight():
             self.setFixedHeight(height)
+
+
+class ViewSwitch(QWidget):
+    """Visual | Simplified - which shape the Draft tab is in.
+
+    A SEGMENTED PAIR rather than a tick box, at the user's request and in
+    their own image: "you know in SharePoint how you can change the view
+    to be like a grid view or a road view... I think simplified view
+    should be a toggle at top corner". Two labelled halves say what BOTH
+    states are, where a tick labelled "Simplified" says one of them and
+    leaves the other to be inferred. Exactly one half is lit, in the
+    accent, because switching a view is an action in a way a setting in
+    the View menu is not.
+
+    `chosen(bool)` fires with True for Simplified. `set_simplified`
+    restores the state with no signal - setting a control to what the
+    file already says is not the user pressing it, and unblocked it
+    would write the settings file on every start.
+    """
+
+    chosen = pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setProperty("bare", True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        self.visual = QPushButton("Visual")
+        self.simple = QPushButton("Simplified")
+        for button, side in ((self.visual, "left"), (self.simple, "right")):
+            button.setCheckable(True)
+            button.setProperty("seg", side)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.addWidget(button)
+        self.visual.setChecked(True)
+        self.visual.clicked.connect(lambda: self._pick(False))
+        self.simple.clicked.connect(lambda: self._pick(True))
+
+    def _pick(self, simplified: bool) -> None:
+        self.set_simplified(simplified)
+        self.chosen.emit(simplified)
+
+    @property
+    def simplified(self) -> bool:
+        return self.simple.isChecked()
+
+    def set_simplified(self, simplified: bool) -> None:
+        for button, on in ((self.visual, not simplified),
+                           (self.simple, simplified)):
+            button.blockSignals(True)
+            button.setChecked(on)
+            button.blockSignals(False)
+            # A property change does not re-run the stylesheet by itself.
+            button.style().unpolish(button)
+            button.style().polish(button)

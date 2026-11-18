@@ -1081,18 +1081,14 @@ def test_the_menu_bar_stays_small(window):
     # inserted before View so the bar reads what the app is DOING,
     # then how it looks, then help.
     assert titles == ["File", "Run", "View", "Help"]
-    # EIGHT, which was seven until View - Simplified view landed on it.
-    # The number is a guard against menus sprawling rather than a
-    # measurement of anything, and View is the one at the bar: four
-    # section ticks under one separator, then Transparency, Sizes, and
-    # the two that say what the whole app looks like. A ninth should be
-    # argued for rather than waved through - the next thing this menu
-    # wants is probably a submenu, not another line.
     for action in window.menu_bar.actions():
         menu = action.menu()
         if menu is not None:
             visible = [a for a in menu.actions() if not a.isSeparator()]
-            assert len(visible) <= 8, f"{action.text()} has {len(visible)}"
+            # SEVEN. It went to eight for one round, when the simplified
+            # view was a tick in the View menu; the switch is on the tab
+            # row now and the guard is back where it was.
+            assert len(visible) <= 7, f"{action.text()} has {len(visible)}"
 
 
 def test_the_downloads_are_one_group(window):
